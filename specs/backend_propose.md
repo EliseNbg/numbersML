@@ -1,6 +1,6 @@
 # Trading Backend Architecture Proposal
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Date:** 2026-03-15  
 **Author:** Claw (Senior Software Architect)  
 **Status:** Proposed
@@ -14,8 +14,11 @@ This document proposes a scalable, flexible trading backend architecture for mul
 - **Low latency** (<40ms target)
 - **Parallel strategy execution** (training & testing)
 - **Clean separation of concerns** (hexagonal architecture)
-- **Simple deployment** (Docker Compose)
+- **Fast local development** (no Docker required for iteration)
+- **1-second intervals** (scalping support)
 - **Technology stack**: Python, PostgreSQL, Redis
+
+**Implementation Plan:** See `MVP_Steps.md` for 6-step implementation guide with detailed specifications for each step.
 
 ---
 
@@ -91,7 +94,15 @@ Use **PostgreSQL** as the primary database without TimescaleDB extension.
 - ⚠️ Slightly less optimized for time-series vs. TimescaleDB
 
 ### Schema Design
-See Appendix A: Database Schema
+See Appendix A: Database Schema (preliminary). 
+
+**Note:** Final schema will be updated after Step 3 (Binance data exploration) to include all Binance-specific fields. Current schema is a starting point.
+
+**Key Design Decisions:**
+- Support 1-second candles (high write volume)
+- Partitioning strategy for `candles` table (by date or symbol)
+- Optimized indexes for time-series queries
+- Batch insert support for performance
 
 ---
 
@@ -148,6 +159,7 @@ We need a language that supports:
 - Async I/O for WebSocket connections
 - Rich ecosystem for trading/data analysis
 - Easy integration with PostgreSQL and Redis
+- **1-second interval processing** (scalping requirement)
 
 ### Decision
 Use **Python 3.11+** as the primary language for all components.
@@ -159,6 +171,7 @@ Use **Python 3.11+** as the primary language for all components.
 - Strong PostgreSQL (asyncpg) and Redis (aioredis) support
 - Easy to write and test strategies
 - Good enough performance for 40ms target (not HFT)
+- Can handle 1-second candle processing without blocking
 
 **Consequences:**
 - ✅ Fast iteration on strategies
@@ -166,9 +179,10 @@ Use **Python 3.11+** as the primary language for all components.
 - ✅ Easy to hire/find help if needed
 - ⚠️ Not suitable for microsecond-level HFT
 - ⚠️ GIL limits true multi-threading (use asyncio + multiprocessing)
+- ⚠️ Must ensure async code doesn't block (no synchronous I/O in hot path)
 
 ### Key Libraries
-- `asyncio` - Async I/O
+- `asyncio` - Async I/O (critical for 1-second intervals)
 - `asyncpg` - PostgreSQL async driver
 - `aioredis` - Redis async client
 - `ccxt` - Crypto exchange connectivity
@@ -179,34 +193,47 @@ Use **Python 3.11+** as the primary language for all components.
 
 ---
 
-## ADR-005: Docker Compose Deployment
+## ADR-005: Local Development with Docker for Deployment
 
 **Status:** Proposed  
-**Date:** 2026-03-15
+**Date:** 2026-03-15 (Updated 2026-03-15)
 
 ### Context
-We need simple, reproducible deployment that:
-- Runs on a local notebook
-- Spins up all dependencies (DB, Redis, app)
-- Is easy to backup and restore
-- Can be deployed to cloud later if needed
+We need a development workflow that:
+- Enables fast iteration without Docker overhead
+- Runs directly on developer's notebook (native Python)
+- Uses Docker only for final deployment/testing
+- Supports both PostgreSQL and Redis locally
 
 ### Decision
-Use **Docker Compose** for local development and deployment.
+**Develop natively without Docker.** Use Docker Compose only for:
+- Final integration testing after each step
+- Production deployment
+- Clean environment validation
+
+**Local Development Setup:**
+- Install PostgreSQL natively (or use system package manager)
+- Install Redis natively
+- Run Python app directly in virtual environment
+- Fast edit → test → iterate cycle
+
+**Docker Usage:**
+- Build Docker image after each successful step
+- Run integration tests in Docker environment
+- Deploy to production
 
 **Rationale:**
-- Single command to start entire stack
-- Isolated, reproducible environments
-- Easy to version control (docker-compose.yml)
-- Simple backup (docker volumes)
-- Can deploy to cloud (AWS ECS, DigitalOcean, etc.) with minimal changes
+- Docker rebuilds slow down iteration (30-60 seconds per change)
+- Native Python development: instant feedback
+- Debugging easier without container abstraction
+- Docker still provides deployment consistency
 
 **Consequences:**
-- ✅ One-command deployment
-- ✅ Consistent across environments
-- ✅ Easy backup/restore
-- ⚠️ Slight overhead vs. native deployment
-- ⚠️ Learning curve if unfamiliar with Docker
+- ✅ Fast iteration (seconds, not minutes)
+- ✅ Easier debugging (native Python tools)
+- ✅ Developer productivity increased
+- ⚠️ Requires local PostgreSQL + Redis installation
+- ⚠️ Must ensure Docker build works after each step
 
 ---
 
@@ -1553,17 +1580,58 @@ class RedisCacheAdapter(CacheAdapter):
 
 ---
 
-# Appendix A: Database Schema
+# Part 5: MVP Implementation Plan
+
+The implementation is split into **6 independent steps** documented in `MVP_Steps.md`:
+
+| Step | Title | Effort | Key Deliverables |
+|------|-------|--------|------------------|
+| 1 | Project Foundation & Infrastructure | 2-4h | Config, logging, project structure |
+| 2 | Database Layer - Schema & Repositories | 6-8h | Domain models, PostgreSQL repositories |
+| 3 | Binance Data Ingest - WebSocket & REST | 8-12h | Real-time 1s candles, schema finalization |
+| 4 | Redis Cache Layer & Pub/Sub | 4-6h | Caching, real-time pub/sub |
+| 5 | Strategy Engine & Signal Generation | 8-12h | Strategy runner, signal processing |
+| 6 | Order Management & Execution | 12-16h | OMS, risk management, execution |
+
+**Total Estimated Effort:** 40-58 hours
+
+**Development Workflow:**
+1. Implement step locally (no Docker required)
+2. Test thoroughly (unit + integration tests)
+3. Build Docker image for validation
+4. Commit and proceed to next step
+
+Each step has:
+- Clear objectives
+- Detailed specifications
+- Acceptance criteria
+- Testing requirements
+- Dependencies
+
+See `MVP_Steps.md` for complete specifications.
+
+---
+
+# Appendix A: Database Schema (Preliminary)
+
+**⚠️ NOTE:** This schema is preliminary. It will be **finalized after Step 3** (Binance data exploration) to include all Binance-specific fields. The current schema is a starting point for Step 2 implementation.
+
+**Key Design Considerations:**
+- **1-second candles**: High write volume → optimize for batch inserts
+- **Partitioning**: Consider partitioning `candles` table by date or symbol
+- **Indexes**: Optimized for time-series queries (symbol + timestamp)
+- **Scalability**: Design for millions of candles per day
 
 ```sql
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Market data (OHLCV candles)
+-- PRELIMINARY: Will be updated with all Binance fields after Step 3
 CREATE TABLE candles (
     id BIGSERIAL PRIMARY KEY,
     symbol TEXT NOT NULL,
-    timeframe TEXT NOT NULL,
+    timeframe TEXT NOT NULL,  -- "1s", "5s", "10s", "1m", etc.
     timestamp TIMESTAMPTZ NOT NULL,
     open NUMERIC(20, 8),
     high NUMERIC(20, 8),
@@ -1571,6 +1639,8 @@ CREATE TABLE candles (
     close NUMERIC(20, 8),
     volume NUMERIC(20, 8),
     source TEXT DEFAULT 'unknown',
+    trade_count INTEGER DEFAULT 0,      -- Number of trades in candle
+    quote_volume NUMERIC(20, 8),        -- Quote asset volume
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -1681,10 +1751,23 @@ CREATE INDEX idx_audit_created ON audit_log(created_at DESC);
 
 # Next Steps
 
-1. **Review this proposal** - Does this architecture match your vision?
-2. **Create the project structure** - I can generate all the files
-3. **Implement MVP** - Start with data ingest + basic strategy runner
-4. **Test locally** - Run with Docker Compose on your notebook
-5. **Iterate** - Add features based on real usage
+**Implementation is ready to begin!**
 
-Want me to start creating the actual files, or do you want to discuss any changes first? 🐾
+1. **Review documents:**
+   - `backend_propose.md` (this file) - Architecture overview
+   - `MVP_Steps.md` - Detailed 6-step implementation plan
+
+2. **Spawn Coder-Agent** - I'll create a Coder-Agent to implement Step 1
+
+3. **Development workflow:**
+   - Each step implemented, tested, and validated separately
+   - Local development (no Docker required for iteration)
+   - Docker build after each successful step
+   - Proceed sequentially through all 6 steps
+
+4. **Key milestones:**
+   - Step 3: Finalize database schema (after Binance data exploration)
+   - Step 5: First strategy running with real-time 1-second candles
+   - Step 6: Full MVP complete (data → strategy → execution)
+
+**Ready to start Step 1?** 🐾
