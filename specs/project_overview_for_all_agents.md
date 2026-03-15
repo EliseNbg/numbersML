@@ -43,6 +43,49 @@ Binance WebSocket → Data Ingest → Redis Cache → Strategy Engine → Signal
 PostgreSQL ← Order Manager ← Risk Manager ← Signal Processor
 ```
 
+## 🔧 Configuration & Logging System
+
+### Configuration Management
+
+**Frontend vs Backend Separation:**
+- **Backend Configuration**: Database connections, Redis, exchange APIs, risk limits, performance tuning
+- **Frontend Configuration**: UI preferences, display settings, notifications, chart configurations
+
+**Configuration Layers:**
+1. **Default values** (code-level defaults)
+2. **Environment variables** (runtime configuration)
+3. **Configuration files** (`.env`, `config.yaml`)
+4. **Runtime API** (dynamic updates via admin endpoints)
+
+**Security Considerations:**
+- Sensitive data (API keys, passwords) stored in environment variables or secure vault
+- Configuration validation before loading
+- Runtime configuration reload without restart
+- Audit trail for configuration changes
+
+### System-Wide Logging
+
+**Core Principles:**
+- **Correlation IDs**: Unique ID per operation for tracing across services
+- **Structured JSON**: Machine-readable logs for analysis
+- **Context Enrichment**: Strategy ID, symbol, order ID, request ID in all logs
+- **Log Levels**: Per-component control (debug/info/warning/error/critical)
+- **Log Aggregation**: Support for centralized logging systems
+- **Retention Policies**: Automatic rotation and cleanup
+
+**Logging Components:**
+- **System Log**: Global events, startup/shutdown, health checks
+- **Backend Log**: Trading engine, strategy execution, order management
+- **Frontend Log**: UI interactions, user actions, display events
+- **Audit Log**: Critical operations (trades, orders, configuration changes)
+- **Performance Log**: Latency metrics, throughput statistics
+
+**Implementation:**
+- Structlog with custom processors for correlation IDs
+- Async logging to avoid blocking
+- Log file rotation with size/time-based policies
+- Integration with monitoring tools (Prometheus, Grafana)
+
 ---
 
 ## 📁 Project Structure
@@ -53,6 +96,8 @@ trading-backend/
 │   ├── __init__.py
 │   ├── main.py                 # Entry point
 │   ├── config.py               # Configuration (pydantic-settings)
+│   ├── config_backend.py       # Backend-specific configuration
+│   ├── config_frontend.py      # Frontend-specific configuration
 │   ├── logging_config.py       # Structured logging (structlog)
 │   ├── domain/                 # Domain layer (business logic)
 │   │   ├── __init__.py
@@ -81,6 +126,18 @@ trading-backend/
 │   ├── __init__.py
 │   ├── base.py                 # Base strategy class
 │   └── example_sma.py          # Example strategy
+├── api/                        # API layer
+│   ├── __init__.py
+│   ├── routes.py               # REST API endpoints
+│   └── schemas.py              # API request/response schemas
+├── web/                        # Frontend (if implemented later)
+│   ├── __init__.py
+│   ├── config.py               # Frontend configuration
+│   └── static/                 # Static assets
+├── logs/                       # Log files (gitignored)
+│   ├── system.log              # System-wide logs
+│   ├── backend.log             # Backend component logs
+│   └── frontend.log            # Frontend component logs
 ├── tests/                      # All tests
 │   ├── __init__.py
 │   ├── conftest.py             # Pytest fixtures
@@ -97,6 +154,8 @@ trading-backend/
 ├── requirements-dev.txt        # Development dependencies
 ├── pyproject.toml              # Project metadata, tool config
 ├── .env.example                # Environment template
+├── .env.backend.example        # Backend environment template
+├── .env.frontend.example       # Frontend environment template
 ├── .gitignore
 └── README.md                   # Project documentation
 ```
@@ -195,6 +254,21 @@ git push
 - Easy to test (mock adapters)
 - Swap implementations without changing core
 
+### ADR-007: Frontend/Backend Configuration Separation
+- Separate configuration for frontend and backend components
+- Backend: database, Redis, exchange keys, risk limits
+- Frontend: UI settings, display preferences, theme, notifications
+- Runtime configuration updates via API (admin endpoints)
+- Secure handling of sensitive credentials (environment variables, vault integration)
+
+### ADR-008: System-Wide Logging
+- Centralized structured logging across all components
+- Correlation IDs for tracing requests across services
+- Log aggregation and analysis capabilities
+- Different log levels per component (debug, info, warning, error)
+- Audit trail for all critical operations
+- Log rotation and retention policies
+
 ---
 
 ## 🔑 Key Requirements
@@ -206,6 +280,8 @@ git push
 - Order management with lifecycle tracking
 - Risk controls (position limits, circuit breakers)
 - Real-time PnL calculation
+- **Configuration management** (frontend/backend separation)
+- **System-wide logging** with correlation IDs
 
 ### Non-Functional
 - **Latency:** <40ms end-to-end
@@ -213,6 +289,8 @@ git push
 - **Reliability:** Auto-reconnect on failures
 - **Testability:** >80% code coverage
 - **Maintainability:** Clean architecture, documented
+- **Configurability:** Dynamic configuration updates
+- **Observability:** Comprehensive system-wide logging and monitoring
 
 ---
 
@@ -258,20 +336,49 @@ git push
 - Flake8 for linting
 - Type hints required
 
+### Configuration Management
+- **Backend configuration** (`app/config_backend.py`):
+  - Database connections
+  - Redis connections  
+  - Exchange API keys (Binance, etc.)
+  - Risk limits and trading parameters
+  - Performance tuning (batch sizes, timeouts)
+  - Environment-specific settings (dev/staging/prod)
+
+- **Frontend configuration** (`app/config_frontend.py`):
+  - UI display preferences
+  - Theme and styling options
+  - Notification settings
+  - Chart configurations
+  - User preferences
+  - API endpoint URLs
+
+- **Runtime configuration**:
+  - Admin API endpoints for dynamic updates
+  - Configuration validation and reloading
+  - Secure credential management (environment variables, secrets manager integration)
+  - Configuration versioning and rollback
+
 ### Logging
-- Structured logging (structlog)
-- Include context: strategy_id, symbol, etc.
-- JSON format in production, console in development
+- **System-wide structured logging** with correlation IDs
+- **Correlation IDs**: Unique ID per request/operation for tracing across components
+- **Log levels**: Per-component log level control (debug, info, warning, error, critical)
+- **Log aggregation**: Support for centralized logging (ELK, Loki, or local file-based)
+- **Audit trail**: All critical operations logged with user/context information
+- **Log rotation**: Automatic rotation and retention policies
+- **Context enrichment**: Strategy ID, symbol, order ID, request ID in all logs
 
 ### Error Handling
 - Custom exceptions in `app/domain/exceptions.py`
-- Log errors with full context
-- Graceful degradation (no crashes)
+- Log errors with full context (correlation ID, component, operation)
+- Graceful degradation (no crashes, circuit breakers)
+- Retry mechanisms for transient failures
 
 ### Async
 - Use asyncio throughout
 - No blocking I/O in hot path
 - Proper timeout handling
+- Backpressure management for high-throughput scenarios
 
 ---
 
