@@ -172,6 +172,9 @@ def get_settings() -> Settings:
 - Different formats for development (console) vs. production (JSON)
 - Include context: timestamp, level, logger, event
 - Support adding context (strategy_id, symbol, etc.)
+- **Loki Integration**: Structured JSON format for Loki compatibility
+- **Correlation IDs**: Unique ID per operation for tracing across components
+- **Trading-specific labels**: strategy_id, symbol, order_id, component
 
 **Implementation:**
 
@@ -179,15 +182,29 @@ def get_settings() -> Settings:
 # app/logging_config.py
 import logging
 import sys
-from typing import Any, Dict
+import uuid
+import datetime
+from typing import Any, Dict, Optional
 
 import structlog
 from structlog.types import Processor
+from pydantic import BaseModel
+
+
+class LogContext(BaseModel):
+    """Log context for correlation and tracing"""
+    correlation_id: str = ""
+    strategy_id: str = ""
+    symbol: str = ""
+    order_id: str = ""
+    trade_id: str = ""
+    component: str = ""
+    latency_ms: float = 0.0
 
 
 def setup_logging(environment: str = "development", log_level: str = "INFO") -> None:
     """
-    Configure structured logging.
+    Configure structured logging for trading system.
     
     Args:
         environment: "development" or "production"
@@ -214,9 +231,11 @@ def setup_logging(environment: str = "development", log_level: str = "INFO") -> 
             cache_logger_on_first_use=True,
         )
     else:
-        # Production: JSON output
+        # Production: JSON output for Loki
         structlog.configure(
             processors=shared_processors + [
+                # Add correlation ID processor
+                _add_correlation_id,
                 structlog.processors.dict_tracebacks,
                 structlog.processors.JSONRenderer(),
             ],
@@ -236,7 +255,7 @@ def setup_logging(environment: str = "development", log_level: str = "INFO") -> 
 
 def get_logger(name: str = __name__) -> structlog.BoundLogger:
     """
-    Get a structured logger instance.
+    Get a structured logger instance with correlation ID support.
     
     Args:
         name: Logger name (usually __name__)
@@ -245,37 +264,90 @@ def get_logger(name: str = __name__) -> structlog.BoundLogger:
         Structured logger with context support
     """
     return structlog.get_logger(name)
+
+
+def generate_correlation_id() -> str:
+    """Generate unique correlation ID for tracing operations"""
+    return f"corr-{uuid.uuid4().hex[:8]}"
+
+
+def _add_correlation_id(logger, method_name, event_dict):
+    """Add correlation ID to log events if not present"""
+    if 'correlation_id' not in event_dict:
+        event_dict['correlation_id'] = generate_correlation_id()
+    
+    # Ensure trading-specific fields are present
+    if 'strategy_id' not in event_dict:
+        event_dict['strategy_id'] = ""
+    if 'symbol' not in event_dict:
+        event_dict['symbol'] = ""
+    if 'order_id' not in event_dict:
+        event_dict['order_id'] = ""
+    if 'trade_id' not in event_dict:
+        event_dict['trade_id'] = ""
+    if 'component' not in event_dict:
+        event_dict['component'] = ""
+    if 'latency_ms' not in event_dict:
+        event_dict['latency_ms'] = 0.0
+    
+    return event_dict
 ```
 
 **Usage Example:**
 
 ```python
-from app.logging_config import get_logger
+from app.logging_config import get_logger, generate_correlation_id
 
 logger = get_logger(__name__)
 
-# Basic logging
+# Basic logging (auto-correlation ID)
 logger.info("Application started")
 
-# Logging with context
+# Logging with context (trading-specific)
+correlation_id = generate_correlation_id()
 logger.info(
     "Candle received",
+    correlation_id=correlation_id,
     symbol="BTCUSDT",
     timeframe="1s",
-    price=50000.00
+    price=50000.00,
+    component="data_ingest",
+    strategy_id="sma_1"
 )
 
-# Logging with error
+# Logging with error (includes correlation for tracing)
 try:
     # ... code ...
 except Exception as e:
     logger.error(
         "Failed to process candle",
+        correlation_id=correlation_id,
         symbol="BTCUSDT",
         error=str(e),
-        exc_info=True
+        exc_info=True,
+        component="strategy_runner"
     )
 ```
+
+**Loki Compatibility Requirements:**
+- Output structured JSON logs (not plain text)
+- Include these mandatory fields for Loki labels:
+  - `correlation_id`
+  - `strategy_id`
+  - `symbol`
+  - `component`
+  - `order_id`
+  - `trade_id`
+- Log levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
+- Timestamp format: ISO 8601
+- Max line size: 1MB (for large JSON payloads)
+
+**Testing Requirements:**
+- [ ] All logs include correlation_id
+- [ ] Trading-specific fields are present in all logs
+- [ ] JSON format validates correctly
+- [ ] Structured logging works in both dev and prod modes
+- [ ] Correlation ID generation is unique and consistent
 
 ---
 

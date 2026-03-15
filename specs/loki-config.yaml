@@ -1,0 +1,83 @@
+# Loki Configuration for Trading System
+# Version: 2.9.1
+# Purpose: High-performance, low-latency log collection for trading backend
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: info
+
+ingester:
+  lifecycler:
+    address: 127.0.0.1
+    heartbeat_timeout: 1m
+    join_after: 0s
+    observe_period: 3s
+    period: 15s
+    num_tokens: 512
+    transfer_period: 1m
+    final_sleep: 10s
+  chunk_idle_period: 1h       # Longer idle period for trading logs
+  chunk_target_size: 1536000 # 1.5MB chunks
+  max_chunk_age: 6h            # Keep chunks for 6 hours
+  chunk_retain_period: 1m      # Retain in memory for 1 minute
+  max_transfer_retries: 0      # Disable transfers for single-node
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  boltdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/cache
+    cache_ttl: 168h  # 7 days
+    shared_store: filesystem
+  filesystem:
+    directory: /loki/chunks
+
+compactor:
+  working_directory: /loki/compactor
+  compaction_interval: 10m
+  retention_delete_delay: 2h
+  retention_period: 720h  # 30 days retention
+
+limits_config:
+  enforce_metric_name: false
+  reject_old_samples: true
+  reject_old_samples_max_age: 6h
+  ingestion_rate_mb: 100     # High throughput for trading data
+  ingestion_burst_size_mb: 200
+  max_series_per_user: 10000
+  max_streams_per_user: 10000
+  max_label_names_per_series: 30
+  max_label_values_per_series: 30
+  max_line_size: 1048576     # 1MB lines (for large JSON logs)
+  max_entries_limit_per_query: 5000
+  max_query_parallelism: 10
+
+query_scheduler:
+  max_outstanding_requests_per_tenant: 2048
+
+# Trading-specific optimizations
+# Labels for correlation and filtering
+# These are critical for tracing trading operations
+ingester:
+  # Enable label-based sharding for high cardinality
+  shard_by_labels: [correlation_id, strategy_id, symbol, component]
+
+# Performance tuning for trading workloads
+limits_config:
+  # Higher limits for trading system
+  ingestion_rate_mb: 200
+  ingestion_burst_size_mb: 400
+  max_streams_per_user: 50000
+  max_series_per_user: 50000

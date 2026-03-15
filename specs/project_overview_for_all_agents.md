@@ -65,26 +65,74 @@ PostgreSQL ← Order Manager ← Risk Manager ← Signal Processor
 
 ### System-Wide Logging
 
-**Core Principles:**
-- **Correlation IDs**: Unique ID per operation for tracing across services
-- **Structured JSON**: Machine-readable logs for analysis
-- **Context Enrichment**: Strategy ID, symbol, order ID, request ID in all logs
-- **Log Levels**: Per-component control (debug/info/warning/error/critical)
-- **Log Aggregation**: Support for centralized logging systems
-- **Retention Policies**: Automatic rotation and cleanup
+**Recommended Stack: Loki + Promtail + Grafana**
 
-**Logging Components:**
-- **System Log**: Global events, startup/shutdown, health checks
-- **Backend Log**: Trading engine, strategy execution, order management
-- **Frontend Log**: UI interactions, user actions, display events
-- **Audit Log**: Critical operations (trades, orders, configuration changes)
-- **Performance Log**: Latency metrics, throughput statistics
+#### Why Loki for Trading Systems:
+- **Lightweight & Low Overhead**: Minimal resource usage, perfect for high-throughput trading
+- **Label-Based Querying**: Correlation IDs as labels for cross-component tracing
+- **Integrated with Prometheus/Grafana**: Real-time dashboards and alerting
+- **Cost Effective**: Much cheaper than ELK stack
 
-**Implementation:**
-- Structlog with custom processors for correlation IDs
-- Async logging to avoid blocking
-- Log file rotation with size/time-based policies
-- Integration with monitoring tools (Prometheus, Grafana)
+#### Architecture:
+```
+Trading Backend (Python)
+     ↓
+Promtail (sidecar or separate process)
+     ↓
+Loki (log storage)
+     ↓
+Grafana (visualization & alerting)
+```
+
+#### Key Configuration Files:
+
+**1. Loki Configuration (`loki-config.yaml`)**:
+- Optimized for trading workloads (high ingestion rate: 200MB/s)
+- Trading-specific labels: `correlation_id`, `strategy_id`, `symbol`, `component`
+- 30-day retention for audit purposes
+- High chunk sizes for efficient storage
+
+**2. Promtail Configuration (`promtail-config.yaml`)**:
+- Extracts structured fields from JSON logs
+- Labels for correlation tracking: `correlation_id`, `strategy_id`, `symbol`, `order_id`
+- Pipeline stages for JSON parsing and label extraction
+- Optimized for high-volume trading logs
+
+**3. Grafana Dashboard (`grafana-dashboard-trading.json`)**:
+- Real-time monitoring of trading operations
+- Log volume by component and level
+- Order and signal tracking
+- Latency metrics (<40ms target visibility)
+- Error correlation with correlation IDs
+
+#### Structured Logging Format (Python):
+```json
+{
+  "timestamp": "2026-03-15T12:00:00Z",
+  "level": "INFO",
+  "logger": "strategy.sma_1",
+  "message": "Signal generated",
+  "correlation_id": "corr-12345",
+  "strategy_id": "sma_1",
+  "symbol": "BTCUSDT",
+  "action": "BUY",
+  "quantity": "0.01",
+  "confidence": 0.85,
+  "latency_ms": 23.5,
+  "component": "strategy_runner"
+}
+```
+
+#### Deployment Options:
+- **Local Development**: Docker Compose on your notebook
+- **Production**: Kubernetes with persistent volumes
+- **Cloud**: AWS EKS/GKE with managed Loki
+
+**Implementation Steps:**
+1. Add Loki/Promtail to docker-compose.yml
+2. Configure Python app to output structured JSON logs
+3. Set up Grafana dashboard
+4. Test correlation ID tracing across components
 
 ---
 
