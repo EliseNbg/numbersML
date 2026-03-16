@@ -60,6 +60,46 @@ scripts/
 
 ## 📝 Specifications
 
+### Logging Requirements for Step 2
+
+**All database operations MUST use structured logging with:**
+- **Correlation IDs**: Generate unique ID per operation for tracing
+- **Component label**: Always set `component="database"`
+- **Operation context**: Include symbol, timeframe, strategy_id where applicable
+- **Latency tracking**: Log execution time for all database operations
+- **Error context**: Include full error details with exc_info=True
+
+**Example logging pattern:**
+```python
+correlation_id = generate_correlation_id()
+start_time = datetime.utcnow()
+
+try:
+    # Database operation
+    logger.debug(
+        "Operation description",
+        correlation_id=correlation_id,
+        symbol="BTCUSDT",
+        strategy_id="sma_1",
+        component="database",
+        latency_ms=(datetime.utcnow() - start_time).total_seconds() * 1000
+    )
+except Exception as e:
+    logger.error(
+        "Operation failed",
+        correlation_id=correlation_id,
+        error=str(e),
+        component="database",
+        exc_info=True
+    )
+```
+
+**Loki Labels Required:**
+- `correlation_id` - Unique operation ID
+- `component` - Always "database" for this layer
+- `symbol` - Trading pair (when applicable)
+- `strategy_id` - Strategy identifier (when applicable)
+
 ### 2.1 Domain Models (`app/domain/models.py`)
 
 **Requirements:**
@@ -737,7 +777,7 @@ from typing import List, Optional
 from app.domain.models import Candle
 from app.ports.repositories import CandleRepository
 from app.adapters.repositories.postgres_pool import DatabasePool
-from app.logging_config import get_logger
+from app.logging_config import get_logger, generate_correlation_id
 
 logger = get_logger(__name__)
 
@@ -749,7 +789,10 @@ class PostgresCandleRepository(CandleRepository):
         self.pool = pool
     
     async def save(self, candle: Candle) -> None:
-        """Save a single candle"""
+        """Save a single candle with correlation ID tracking"""
+        correlation_id = generate_correlation_id()
+        start_time = datetime.utcnow()
+        
         query = """
             INSERT INTO candles (
                 symbol, timeframe, timestamp, open, high, low, close,
@@ -774,19 +817,36 @@ class PostgresCandleRepository(CandleRepository):
                     candle.trade_count,
                     float(candle.quote_volume)
                 )
+                
+                logger.debug(
+                    "Saved candle",
+                    correlation_id=correlation_id,
+                    symbol=candle.symbol,
+                    timeframe=candle.timeframe,
+                    timestamp=candle.timestamp.isoformat(),
+                    component="database",
+                    latency_ms=(datetime.utcnow() - start_time).total_seconds() * 1000
+                )
         except Exception as e:
             logger.error(
                 "Failed to save candle",
+                correlation_id=correlation_id,
                 symbol=candle.symbol,
                 timeframe=candle.timeframe,
-                error=str(e)
+                error=str(e),
+                component="database",
+                exc_info=True
             )
             raise
     
     async def save_batch(self, candles: List[Candle]) -> None:
-        """Save multiple candles in batch"""
+        """Save multiple candles in batch with correlation ID tracking"""
         if not candles:
             return
+        
+        # Generate correlation ID for this batch operation
+        correlation_id = generate_correlation_id()
+        start_time = datetime.utcnow()
         
         query = """
             INSERT INTO candles (
@@ -832,13 +892,24 @@ class PostgresCandleRepository(CandleRepository):
                         ]
                     )
             
-            logger.debug(f"Saved {len(candles)} candles")
+            logger.debug(
+                "Saved candles batch",
+                correlation_id=correlation_id,
+                count=len(candles),
+                symbol=candles[0].symbol if candles else "",
+                timeframe=candles[0].timeframe if candles else "",
+                component="database",
+                latency_ms=(datetime.utcnow() - start_time).total_seconds() * 1000
+            )
             
         except Exception as e:
             logger.error(
                 "Failed to save batch candles",
+                correlation_id=correlation_id,
                 count=len(candles),
-                error=str(e)
+                error=str(e),
+                component="database",
+                exc_info=True
             )
             raise
     
