@@ -1,7 +1,7 @@
 # Step 5: Strategy Engine & Signal Generation
 
-**Status:** ⏳ Pending  
-**Effort:** 8-12 hours  
+**Status:** ⏳ Pending
+**Effort:** 8-12 hours
 **Dependencies:** Step 1 (Foundation), Step 2 (Database), Step 3 (Binance Ingest), Step 4 (Redis Cache)
 
 ---
@@ -51,6 +51,51 @@ tests/
 ---
 
 ## 📝 Specifications
+
+### Logging Requirements for Step 5
+
+**All strategy operations MUST use structured logging with:**
+- **Correlation IDs**: Generate unique ID per signal/candle event for tracing across strategies
+- **Component label**: Always set `component="strategy"` for strategy runner, `component="strategy_execution"` for individual strategies
+- **Operation context**: Include strategy_id, symbol, action, signal_id in all logs
+- **Latency tracking**: Log execution time for on_candle(), signal validation, and signal publishing
+- **Error context**: Include full error details with exc_info=True
+- **Strategy lifecycle**: Log all start/stop/reload events with correlation IDs
+
+**Example logging pattern:**
+```python
+correlation_id = generate_correlation_id()
+start_time = datetime.utcnow()
+
+try:
+    # Strategy operation
+    signal = await strategy.on_candle(candle)
+    logger.info(
+        "Signal generated",
+        correlation_id=correlation_id,
+        strategy_id=strategy.strategy_id,
+        symbol=candle.symbol,
+        action=signal.action if signal else "HOLD",
+        component="strategy_execution",
+        latency_ms=(datetime.utcnow() - start_time).total_seconds() * 1000
+    )
+except Exception as e:
+    logger.error(
+        "Strategy operation failed",
+        correlation_id=correlation_id,
+        strategy_id=strategy.strategy_id,
+        error=str(e),
+        component="strategy_execution",
+        exc_info=True
+    )
+```
+
+**Loki Labels Required:**
+- `correlation_id` - Unique operation ID
+- `component` - Always "strategy" or "strategy_execution"
+- `strategy_id` - Strategy identifier
+- `symbol` - Trading pair
+- `action` - Signal action (BUY/SELL/HOLD/CLOSE)
 
 ### 5.1 Domain Models Update (`app/domain/models.py`)
 
@@ -122,10 +167,11 @@ import asyncio
 from abc import ABC, abstractmethod
 from decimal import Decimal
 from typing import Dict, Optional, List
+from datetime import datetime
 from uuid import uuid4
 
 from app.domain.models import Candle, Tick, Signal, StrategyConfig
-from app.logging_config import get_logger
+from app.logging_config import get_logger, generate_correlation_id
 
 logger = get_logger(__name__)
 
@@ -135,7 +181,7 @@ class BaseStrategy(ABC):
     Base class for all trading strategies.
     Users inherit from this and implement on_candle() and/or on_tick().
     """
-    
+
     def __init__(self, config: dict):
         self.strategy_id: str = config.get("strategy_id", str(uuid4()))
         self.symbol: str = config.get("symbol", "BTCUSDT")
@@ -146,117 +192,202 @@ class BaseStrategy(ABC):
         self.total_signals: int = 0
         self.errors: List[str] = []
         self.logger = get_logger(f"strategy.{self.strategy_id}")
-    
+
     @property
     def name(self) -> str:
         return self.config.get("name", f"Strategy-{self.strategy_id[:8]}")
-    
+
     @abstractmethod
     async def on_candle(self, candle: Candle) -> Optional[Signal]:
         """
         Called when new candle arrives.
-        
+
         Args:
             candle: OHLCV candle data
-            
+
         Returns:
             Optional[Signal] - Trading signal or None
         """
         pass
-    
+
     async def on_tick(self, tick: Tick) -> Optional[Signal]:
         """
         Called on real-time tick (optional, for tick-based strategies).
-        
+
         Args:
             tick: Real-time price tick
-            
+
         Returns:
             Optional[Signal] - Trading signal or None
         """
         return None
-    
+
     async def start(self) -> None:
-        """Called when strategy is activated"""
+        """Called when strategy is activated with correlation ID tracking"""
+        correlation_id = generate_correlation_id()
+        start_time = datetime.utcnow()
+
         self.is_running = True
-        self.logger.info("Strategy started", strategy_id=self.strategy_id)
-        await self._on_start()
-    
+
+        try:
+            await self._on_start()
+
+            self.logger.info(
+                "Strategy started",
+                correlation_id=correlation_id,
+                strategy_id=self.strategy_id,
+                symbol=self.symbol,
+                component="strategy_execution",
+                latency_ms=(datetime.utcnow() - start_time).total_seconds() * 1000
+            )
+        except Exception as e:
+            self.logger.error(
+                "Failed to start strategy",
+                correlation_id=correlation_id,
+                strategy_id=self.strategy_id,
+                component="strategy_execution",
+                error=str(e),
+                exc_info=True
+            )
+            raise
+
     async def stop(self) -> None:
-        """Called when strategy is deactivated"""
+        """Called when strategy is deactivated with correlation ID tracking"""
+        correlation_id = generate_correlation_id()
+        start_time = datetime.utcnow()
+
         self.is_running = False
-        self.logger.info("Strategy stopped", strategy_id=self.strategy_id)
-        await self._on_stop()
-    
+
+        try:
+            await self._on_stop()
+
+            self.logger.info(
+                "Strategy stopped",
+                correlation_id=correlation_id,
+                strategy_id=self.strategy_id,
+                component="strategy_execution",
+                latency_ms=(datetime.utcnow() - start_time).total_seconds() * 1000
+            )
+        except Exception as e:
+            self.logger.error(
+                "Failed to stop strategy",
+                correlation_id=correlation_id,
+                strategy_id=self.strategy_id,
+                component="strategy_execution",
+                error=str(e),
+                exc_info=True
+            )
+            raise
+
     async def _on_start(self) -> None:
         """Hook for subclass initialization"""
         pass
-    
+
     async def _on_stop(self) -> None:
         """Hook for subclass cleanup"""
         pass
-    
+
     def add_error(self, error: str) -> None:
         """Add error to strategy error log"""
         self.errors.append(f"{datetime.utcnow()}: {error}")
         if len(self.errors) > 100:
             self.errors.pop(0)
-    
+
     async def validate_signal(self, signal: Signal) -> bool:
         """
-        Validate signal before submission.
-        
+        Validate signal before submission with correlation tracking.
+
         Args:
             signal: Signal to validate
-            
+
         Returns:
             bool: True if valid
         """
+        correlation_id = generate_correlation_id()
+
         try:
             # Basic validation
             if signal.quantity <= 0:
                 raise ValueError("Quantity must be positive")
-            
+
             if signal.confidence < 0 or signal.confidence > 1:
                 raise ValueError("Confidence must be between 0 and 1")
-            
+
             if signal.action not in ["BUY", "SELL", "HOLD", "CLOSE"]:
                 raise ValueError("Invalid action")
-            
+
             # Strategy-specific validation
-            return await self._validate_signal(signal)
-            
+            result = await self._validate_signal(signal)
+
+            self.logger.debug(
+                "Signal validated",
+                correlation_id=correlation_id,
+                strategy_id=self.strategy_id,
+                signal_id=signal.signal_id,
+                action=signal.action,
+                component="strategy_execution"
+            )
+
+            return result
+
         except Exception as e:
+            self.logger.error(
+                "Signal validation failed",
+                correlation_id=correlation_id,
+                strategy_id=self.strategy_id,
+                signal_id=signal.signal_id,
+                component="strategy_execution",
+                error=str(e),
+                exc_info=True
+            )
             self.add_error(f"Signal validation failed: {e}")
             return False
-    
+
     async def _validate_signal(self, signal: Signal) -> bool:
         """Subclass can override for custom validation"""
         return True
-    
+
     async def execute_signal(self, signal: Signal) -> bool:
         """
-        Execute signal (can be overridden for simulation mode).
-        
+        Execute signal (can be overridden for simulation mode) with correlation tracking.
+
         Args:
             signal: Validated signal
-            
+
         Returns:
             bool: True if executed successfully
         """
+        correlation_id = generate_correlation_id()
+        start_time = datetime.utcnow()
+
         try:
             # Default: just log and increment counter
             self.total_signals += 1
+
             self.logger.info(
                 "Signal executed",
+                correlation_id=correlation_id,
+                strategy_id=self.strategy_id,
+                signal_id=signal.signal_id,
                 action=signal.action,
                 quantity=float(signal.quantity),
                 price=float(signal.price) if signal.price else None,
-                confidence=signal.confidence
+                confidence=signal.confidence,
+                component="strategy_execution",
+                latency_ms=(datetime.utcnow() - start_time).total_seconds() * 1000
             )
             return True
-            
+
         except Exception as e:
+            self.logger.error(
+                "Signal execution failed",
+                correlation_id=correlation_id,
+                strategy_id=self.strategy_id,
+                signal_id=signal.signal_id,
+                component="strategy_execution",
+                error=str(e),
+                exc_info=True
+            )
             self.add_error(f"Signal execution failed: {e}")
             return False
 ```
@@ -274,7 +405,7 @@ from app.domain.models import Candle, Signal, StrategyState
 from app.ports.strategies import StrategyPort
 from app.adapters.cache.redis_cache import RedisCacheAdapter
 from app.adapters.repositories.candles import PostgresCandleRepository
-from app.logging_config import get_logger
+from app.logging_config import get_logger, generate_correlation_id
 
 logger = get_logger(__name__)
 
@@ -282,14 +413,15 @@ logger = get_logger(__name__)
 class StrategyRunner:
     """
     Manages multiple strategy instances and routes events to them.
-    
+
     Features:
     - Concurrent strategy execution
     - Error isolation (one strategy failure doesn't crash others)
     - Signal routing to Redis pub/sub
     - Performance monitoring
+    - Structured logging with correlation IDs
     """
-    
+
     def __init__(
         self,
         cache: RedisCacheAdapter,
@@ -304,54 +436,118 @@ class StrategyRunner:
         self.signal_channel = "signals"
         self.candle_channels: Dict[str, str] = {}  # symbol:channel mapping
         self.lock = asyncio.Lock()
-    
+
     async def start(self) -> None:
-        """Start all strategies and subscribe to candle streams"""
+        """Start all strategies and subscribe to candle streams with correlation tracking"""
+        correlation_id = generate_correlation_id()
+        start_time = datetime.utcnow()
+
         self.running = True
-        
-        # Initialize strategy states
-        for strategy_id, strategy in self.strategies.items():
-            self.strategy_states[strategy_id] = StrategyState(strategy_id=strategy_id)
-            
-            # Start strategy
-            try:
-                await strategy.start()
-                logger.info("Strategy started", strategy_id=strategy_id)
-            except Exception as e:
-                logger.error("Failed to start strategy", strategy_id=strategy_id, error=str(e))
-                self.strategy_states[strategy_id].errors.append(f"Start failed: {e}")
-        
-        # Subscribe to candle streams via Redis
-        for strategy_id, strategy in self.strategies.items():
-            channel = f"candles:{strategy.symbol}:{strategy.timeframe}"
-            self.candle_channels[strategy.symbol] = channel
-            await self.cache.subscribe(channel, self._handle_candle)
-        
-        logger.info("Strategy runner started", strategy_count=len(self.strategies))
-    
+
+        try:
+            # Initialize strategy states
+            for strategy_id, strategy in self.strategies.items():
+                self.strategy_states[strategy_id] = StrategyState(strategy_id=strategy_id)
+
+                # Start strategy
+                try:
+                    await strategy.start()
+                    logger.info(
+                        "Strategy started",
+                        correlation_id=correlation_id,
+                        strategy_id=strategy_id,
+                        component="strategy"
+                    )
+                except Exception as e:
+                    logger.error(
+                        "Failed to start strategy",
+                        correlation_id=correlation_id,
+                        strategy_id=strategy_id,
+                        component="strategy",
+                        error=str(e),
+                        exc_info=True
+                    )
+                    self.strategy_states[strategy_id].errors.append(f"Start failed: {e}")
+
+            # Subscribe to candle streams via Redis
+            for strategy_id, strategy in self.strategies.items():
+                channel = f"candles:{strategy.symbol}:{strategy.timeframe}"
+                self.candle_channels[strategy.symbol] = channel
+                await self.cache.subscribe(channel, self._handle_candle)
+
+            logger.info(
+                "Strategy runner started",
+                correlation_id=correlation_id,
+                strategy_count=len(self.strategies),
+                component="strategy",
+                latency_ms=(datetime.utcnow() - start_time).total_seconds() * 1000
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to start strategy runner",
+                correlation_id=correlation_id,
+                component="strategy",
+                error=str(e),
+                exc_info=True
+            )
+            raise
+
     async def stop(self) -> None:
-        """Stop all strategies"""
+        """Stop all strategies with correlation tracking"""
+        correlation_id = generate_correlation_id()
+        start_time = datetime.utcnow()
+
         self.running = False
-        
-        # Stop strategies
-        for strategy_id, strategy in self.strategies.items():
-            try:
-                await strategy.stop()
-                logger.info("Strategy stopped", strategy_id=strategy_id)
-            except Exception as e:
-                logger.error("Failed to stop strategy", strategy_id=strategy_id, error=str(e))
-        
-        # Unsubscribe from channels
-        for channel, callback in self.candle_channels.items():
-            await self.cache.unsubscribe(channel, callback)
-        
-        logger.info("Strategy runner stopped")
-    
+
+        try:
+            # Stop strategies
+            for strategy_id, strategy in self.strategies.items():
+                try:
+                    await strategy.stop()
+                    logger.info(
+                        "Strategy stopped",
+                        correlation_id=correlation_id,
+                        strategy_id=strategy_id,
+                        component="strategy"
+                    )
+                except Exception as e:
+                    logger.error(
+                        "Failed to stop strategy",
+                        correlation_id=correlation_id,
+                        strategy_id=strategy_id,
+                        component="strategy",
+                        error=str(e),
+                        exc_info=True
+                    )
+
+            # Unsubscribe from channels
+            for channel, callback in self.candle_channels.items():
+                await self.cache.unsubscribe(channel, callback)
+
+            logger.info(
+                "Strategy runner stopped",
+                correlation_id=correlation_id,
+                component="strategy",
+                latency_ms=(datetime.utcnow() - start_time).total_seconds() * 1000
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to stop strategy runner",
+                correlation_id=correlation_id,
+                component="strategy",
+                error=str(e),
+                exc_info=True
+            )
+            raise
+
     async def _handle_candle(self, candle_data: dict) -> None:
-        """Handle incoming candle from Redis pub/sub"""
+        """Handle incoming candle from Redis pub/sub with correlation tracking"""
+        correlation_id = generate_correlation_id()
+        start_time = datetime.utcnow()
+
         if not self.running:
             return
-        
+
         try:
             # Convert to Candle object
             candle = Candle(
@@ -367,39 +563,54 @@ class StrategyRunner:
                 trade_count=candle_data.get("trade_count", 0),
                 quote_volume=candle_data.get("quote_volume", 0)
             )
-            
+
             # Route to appropriate strategies
             tasks = []
             for strategy_id, strategy in self.strategies.items():
                 if strategy.symbol == candle.symbol and strategy.timeframe == candle.timeframe:
-                    task = asyncio.create_task(self._process_candle(strategy, candle))
+                    task = asyncio.create_task(self._process_candle(strategy, candle, correlation_id))
                     tasks.append(task)
-            
+
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
-                
+
+            logger.debug(
+                "Candle handled",
+                correlation_id=correlation_id,
+                symbol=candle.symbol,
+                timeframe=candle.timeframe,
+                component="strategy",
+                latency_ms=(datetime.utcnow() - start_time).total_seconds() * 1000
+            )
         except Exception as e:
-            logger.error("Error handling candle", error=str(e), exc_info=True)
-    
-    async def _process_candle(self, strategy: StrategyPort, candle: Candle) -> None:
-        """Process candle for a single strategy"""
+            logger.error(
+                "Error handling candle",
+                correlation_id=correlation_id,
+                component="strategy",
+                error=str(e),
+                exc_info=True
+            )
+
+    async def _process_candle(self, strategy: StrategyPort, candle: Candle, correlation_id: str) -> None:
+        """Process candle for a single strategy with correlation tracking"""
         strategy_state = self.strategy_states[strategy.strategy_id]
-        
+        start_time = datetime.utcnow()
+
         try:
             # Update state
             strategy_state.last_candle_time = candle.timestamp
             strategy_state.total_signals += 1
-            
+
             # Call strategy method
             signal = await strategy.on_candle(candle)
-            
+
             # Process signal
             if signal:
                 # Validate signal
                 if await strategy.validate_signal(signal):
                     # Execute signal
                     success = await strategy.execute_signal(signal)
-                    
+
                     if success:
                         # Publish to Redis
                         await self.cache.publish(
@@ -416,43 +627,80 @@ class StrategyRunner:
                                 "metadata": signal.metadata
                             }
                         )
-                        
-                        logger.debug(
+
+                        logger.info(
                             "Signal published",
+                            correlation_id=correlation_id,
                             strategy_id=strategy.strategy_id,
+                            symbol=candle.symbol,
                             action=signal.action,
-                            quantity=float(signal.quantity)
+                            quantity=float(signal.quantity),
+                            component="strategy",
+                            latency_ms=(datetime.utcnow() - start_time).total_seconds() * 1000
                         )
                     else:
-                        logger.warning("Signal execution failed", strategy_id=strategy.strategy_id)
+                        logger.warning(
+                            "Signal execution failed",
+                            correlation_id=correlation_id,
+                            strategy_id=strategy.strategy_id,
+                            component="strategy"
+                        )
                 else:
-                    logger.warning("Signal validation failed", strategy_id=strategy.strategy_id)
-            
+                    logger.warning(
+                        "Signal validation failed",
+                        correlation_id=correlation_id,
+                        strategy_id=strategy.strategy_id,
+                        component="strategy"
+                    )
+
         except Exception as e:
             error_msg = f"Strategy {strategy.strategy_id} error: {e}"
-            logger.error(error_msg, exc_info=True)
+            logger.error(
+                "Strategy processing error",
+                correlation_id=correlation_id,
+                strategy_id=strategy.strategy_id,
+                component="strategy",
+                error=str(e),
+                exc_info=True
+            )
             strategy_state.errors.append(error_msg)
             strategy.add_error(str(e))
-    
+
     async def get_strategy_state(self, strategy_id: str) -> Optional[StrategyState]:
         """Get strategy runtime state"""
         return self.strategy_states.get(strategy_id)
-    
+
     async def get_all_states(self) -> Dict[str, StrategyState]:
         """Get all strategy states"""
         return self.strategy_states.copy()
-    
+
     async def reload_strategy(self, strategy_id: str) -> bool:
-        """Reload a strategy (stop + start)"""
+        """Reload a strategy (stop + start) with correlation tracking"""
+        correlation_id = generate_correlation_id()
+
         if strategy_id not in self.strategies:
             return False
-        
+
         try:
             await self.strategies[strategy_id].stop()
             await self.strategies[strategy_id].start()
+
+            logger.info(
+                "Strategy reloaded",
+                correlation_id=correlation_id,
+                strategy_id=strategy_id,
+                component="strategy"
+            )
             return True
         except Exception as e:
-            logger.error("Failed to reload strategy", strategy_id=strategy_id, error=str(e))
+            logger.error(
+                "Failed to reload strategy",
+                correlation_id=correlation_id,
+                strategy_id=strategy_id,
+                component="strategy",
+                error=str(e),
+                exc_info=True
+            )
             return False
 ```
 
@@ -565,15 +813,18 @@ class SimpleMovingAverageStrategy(BaseStrategy):
 ## ✅ Acceptance Criteria
 
 - [ ] Strategy interface defined
-- [ ] Base strategy class implemented with validation
+- [ ] Base strategy class implemented with validation and correlation ID tracking
 - [ ] Strategy runner manages multiple strategies concurrently
-- [ ] Candles routed to strategies correctly
-- [ ] Signals published to Redis pub/sub
+- [ ] Candles routed to strategies correctly with proper logging
+- [ ] Signals published to Redis pub/sub with correlation IDs
 - [ ] Example SMA strategy works
 - [ ] Strategies run concurrently without blocking
 - [ ] Error isolation (one strategy failure doesn't crash others)
-- [ ] All components have unit tests
+- [ ] All components have unit tests with logging verification
 - [ ] Integration tests with Binance data
+- [ ] All logs include correlation_id, component="strategy" or "strategy_execution"
+- [ ] Latency tracking on all operations (on_candle, signal validation, publishing)
+- [ ] Error logging includes exc_info=True
 
 ---
 
@@ -582,11 +833,19 @@ class SimpleMovingAverageStrategy(BaseStrategy):
 ### Strategy Tests
 ```python
 # tests/strategies/test_example_sma.py
+import pytest
+from decimal import Decimal
+from datetime import datetime
+from app.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 @pytest.mark.asyncio
 async def test_sma_buy_signal():
-    config = {"symbol": "BTCUSDT", "timeframe": "1s"}
+    """Test SMA strategy generates buy signal with correlation tracking"""
+    config = {"symbol": "BTCUSDT", "timeframe": "1s", "strategy_id": "test_sma"}
     strategy = SimpleMovingAverageStrategy(config)
-    
+
     # Simulate price rising
     candles = []
     for i in range(40):
@@ -602,11 +861,96 @@ async def test_sma_buy_signal():
             source="test"
         )
         candles.append(candle)
-    
+
     # Get signal after enough candles
     signal = await strategy.on_candle(candles[-1])
     assert signal is not None
     assert signal.action == "BUY"
+
+@pytest.mark.asyncio
+async def test_strategy_start_stop_logging():
+    """Test strategy start/stop generates proper logs"""
+    config = {"symbol": "BTCUSDT", "timeframe": "1s", "strategy_id": "test_sma"}
+    strategy = SimpleMovingAverageStrategy(config)
+
+    await strategy.start()
+    assert strategy.is_running
+
+    await strategy.stop()
+    assert not strategy.is_running
+
+@pytest.mark.asyncio
+async def test_signal_validation():
+    """Test signal validation with correlation tracking"""
+    config = {"symbol": "BTCUSDT", "timeframe": "1s", "strategy_id": "test_sma"}
+    strategy = SimpleMovingAverageStrategy(config)
+
+    # Valid signal
+    signal = Signal(
+        strategy_id="test",
+        symbol="BTCUSDT",
+        action="BUY",
+        quantity=Decimal("0.01"),
+        confidence=0.8
+    )
+
+    result = await strategy.validate_signal(signal)
+    assert result is True
+
+    # Invalid signal (negative quantity)
+    invalid_signal = Signal(
+        strategy_id="test",
+        symbol="BTCUSDT",
+        action="BUY",
+        quantity=Decimal("-0.01"),
+        confidence=0.8
+    )
+
+    result = await strategy.validate_signal(invalid_signal)
+    assert result is False
+```
+
+### Strategy Runner Tests
+```python
+# tests/services/test_strategy_runner.py
+@pytest.mark.asyncio
+async def test_strategy_runner_start_stop():
+    """Test strategy runner start/stop with correlation tracking"""
+    runner = StrategyRunner(
+        cache=mock_cache,
+        candle_repository=mock_repo,
+        strategies=[SimpleMovingAverageStrategy({"strategy_id": "test1"})]
+    )
+
+    await runner.start()
+    assert runner.running
+
+    await runner.stop()
+    assert not runner.running
+
+@pytest.mark.asyncio
+async def test_candle_routing():
+    """Test candle routing to strategies with logging"""
+    runner = StrategyRunner(
+        cache=mock_cache,
+        candle_repository=mock_repo,
+        strategies=[SimpleMovingAverageStrategy({"strategy_id": "test1", "symbol": "BTCUSDT", "timeframe": "1s"})]
+    )
+
+    candle_data = {
+        "symbol": "BTCUSDT",
+        "timeframe": "1s",
+        "timestamp": datetime.utcnow().isoformat(),
+        "open": 50000.0,
+        "high": 50100.0,
+        "low": 49900.0,
+        "close": 50050.0,
+        "volume": 100.0,
+        "source": "test"
+    }
+
+    await runner._handle_candle(candle_data)
+    # Verify candle was processed (check logs for correlation_id)
 ```
 
 ---

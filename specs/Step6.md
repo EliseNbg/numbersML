@@ -1,7 +1,7 @@
 # Step 6: Order Management & Execution
 
-**Status:** ⏳ Pending  
-**Effort:** 12-16 hours  
+**Status:** ⏳ Pending
+**Effort:** 12-16 hours
 **Dependencies:** Steps 1-5 (All previous steps)
 
 ---
@@ -47,6 +47,53 @@ tests/
 
 ## 📝 Specifications
 
+### Logging Requirements for Step 6
+
+**All order management operations MUST use structured logging with:**
+- **Correlation IDs**: Generate unique ID per order/signal for tracing from signal to execution
+- **Component label**: Always set `component="order_management"`, `component="risk"`, or `component="execution"`
+- **Operation context**: Include order_id, signal_id, strategy_id, symbol, action in all logs
+- **Latency tracking**: Log execution time for order placement, risk validation, and position updates (target: <40ms end-to-end)
+- **Error context**: Include full error details with exc_info=True
+- **Order lifecycle**: Log all status transitions (PENDING → SUBMITTED → FILLED/CANCELLED) with correlation IDs
+
+**Example logging pattern:**
+```python
+correlation_id = generate_correlation_id()
+start_time = datetime.utcnow()
+
+try:
+    # Order operation
+    executed_order = await exchange.place_order(order)
+    logger.info(
+        "Order placed",
+        correlation_id=correlation_id,
+        order_id=order.order_id,
+        strategy_id=order.strategy_id,
+        symbol=order.symbol,
+        action=order.side.value,
+        component="execution",
+        latency_ms=(datetime.utcnow() - start_time).total_seconds() * 1000
+    )
+except Exception as e:
+    logger.error(
+        "Order placement failed",
+        correlation_id=correlation_id,
+        order_id=order.order_id,
+        component="execution",
+        error=str(e),
+        exc_info=True
+    )
+```
+
+**Loki Labels Required:**
+- `correlation_id` - Unique operation ID (traces signal → order → trade → position)
+- `component` - Always "order_management", "risk", "execution", or "position"
+- `order_id` - Order identifier
+- `strategy_id` - Strategy identifier
+- `symbol` - Trading pair
+- `action` - Order action (BUY/SELL)
+
 ### 6.1 Order Manager (`app/services/order_manager.py`)
 
 ```python
@@ -64,7 +111,7 @@ from app.adapters.repositories.orders import PostgresOrderRepository
 from app.adapters.repositories.trades import PostgresTradeRepository
 from app.adapters.repositories.positions import PostgresPositionRepository
 from app.adapters.cache.redis_cache import RedisCacheAdapter
-from app.logging_config import get_logger
+from app.logging_config import get_logger, generate_correlation_id
 
 logger = get_logger(__name__)
 
@@ -72,15 +119,16 @@ logger = get_logger(__name__)
 class OrderManager:
     """
     Order Management System (OMS) for trading backend.
-    
+
     Handles:
     - Signal to order conversion
     - Order lifecycle management
     - Execution via exchange adapter
     - Risk validation
     - Position updates
+    - Structured logging with correlation IDs
     """
-    
+
     def __init__(
         self,
         exchange: ExchangeAdapter,
@@ -98,34 +146,74 @@ class OrderManager:
         self.risk_manager = risk_manager
         self.signal_channels: Dict[str, str] = {}  # strategy_id:symbol -> channel
         self.running = False
-    
+
     async def start(self) -> None:
-        """Start order manager and subscribe to signal channels"""
+        """Start order manager and subscribe to signal channels with correlation tracking"""
+        correlation_id = generate_correlation_id()
+        start_time = datetime.utcnow()
+
         self.running = True
-        
-        # Subscribe to signal channels
-        for strategy_id in self.risk_manager.strategies.keys():
-            channel = f"signals:{strategy_id}"
-            self.signal_channels[strategy_id] = channel
-            await self.cache.subscribe(channel, self._handle_signal)
-        
-        logger.info("Order manager started")
-    
+
+        try:
+            # Subscribe to signal channels
+            for strategy_id in self.risk_manager.strategies.keys():
+                channel = f"signals:{strategy_id}"
+                self.signal_channels[strategy_id] = channel
+                await self.cache.subscribe(channel, self._handle_signal)
+
+            logger.info(
+                "Order manager started",
+                correlation_id=correlation_id,
+                strategy_count=len(self.risk_manager.strategies),
+                component="order_management",
+                latency_ms=(datetime.utcnow() - start_time).total_seconds() * 1000
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to start order manager",
+                correlation_id=correlation_id,
+                component="order_management",
+                error=str(e),
+                exc_info=True
+            )
+            raise
+
     async def stop(self) -> None:
-        """Stop order manager"""
+        """Stop order manager with correlation tracking"""
+        correlation_id = generate_correlation_id()
+        start_time = datetime.utcnow()
+
         self.running = False
-        
-        # Unsubscribe from channels
-        for channel, callback in self.signal_channels.items():
-            await self.cache.unsubscribe(channel, callback)
-        
-        logger.info("Order manager stopped")
-    
+
+        try:
+            # Unsubscribe from channels
+            for channel, callback in self.signal_channels.items():
+                await self.cache.unsubscribe(channel, callback)
+
+            logger.info(
+                "Order manager stopped",
+                correlation_id=correlation_id,
+                component="order_management",
+                latency_ms=(datetime.utcnow() - start_time).total_seconds() * 1000
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to stop order manager",
+                correlation_id=correlation_id,
+                component="order_management",
+                error=str(e),
+                exc_info=True
+            )
+            raise
+
     async def _handle_signal(self, signal_data: dict) -> None:
-        """Handle incoming signal from Redis pub/sub"""
+        """Handle incoming signal from Redis pub/sub with full correlation tracking"""
+        correlation_id = generate_correlation_id()
+        start_time = datetime.utcnow()
+
         if not self.running:
             return
-        
+
         try:
             # Convert to Signal object
             signal = Signal(
@@ -139,51 +227,106 @@ class OrderManager:
                 timestamp=datetime.fromisoformat(signal_data["timestamp"]),
                 metadata=signal_data.get("metadata", {})
             )
-            
+
+            logger.debug(
+                "Signal received",
+                correlation_id=correlation_id,
+                signal_id=signal.signal_id,
+                strategy_id=signal.strategy_id,
+                symbol=signal.symbol,
+                action=signal.action,
+                component="order_management"
+            )
+
             # Validate signal with risk manager
             if not await self.risk_manager.validate_signal(signal):
-                logger.warning("Signal rejected by risk manager", signal_id=signal.signal_id)
+                logger.warning(
+                    "Signal rejected by risk manager",
+                    correlation_id=correlation_id,
+                    signal_id=signal.signal_id,
+                    strategy_id=signal.strategy_id,
+                    component="risk"
+                )
                 return
-            
+
             # Create order
             order = await self._create_order_from_signal(signal)
-            
+
             # Save to database
             await self.order_repo.save(order)
-            
+
+            logger.debug(
+                "Order created",
+                correlation_id=correlation_id,
+                order_id=order.order_id,
+                strategy_id=order.strategy_id,
+                symbol=order.symbol,
+                side=order.side.value,
+                component="order_management"
+            )
+
             # Submit to exchange
             try:
-                executed_order = await self._submit_order(order)
-                
+                executed_order = await self._submit_order(order, correlation_id)
+
                 # Update order status
                 if executed_order.status == "FILLED":
                     await self.order_repo.update_status(order.order_id, "FILLED")
-                    
+
                     # Create trade
                     trade = await self._create_trade_from_order(executed_order)
                     await self.trade_repo.save(trade)
-                    
+
                     # Update position
-                    await self._update_position(trade)
-                    
+                    await self._update_position(trade, correlation_id)
+
+                    logger.info(
+                        "Order filled",
+                        correlation_id=correlation_id,
+                        order_id=order.order_id,
+                        strategy_id=order.strategy_id,
+                        symbol=order.symbol,
+                        action=signal.action,
+                        quantity=float(signal.quantity),
+                        component="order_management",
+                        latency_ms=(datetime.utcnow() - start_time).total_seconds() * 1000
+                    )
+
                 elif executed_order.status in ["SUBMITTED", "PARTIALLY_FILLED"]:
                     await self.order_repo.update_status(order.order_id, executed_order.status)
-                    
-                logger.info(
-                    "Order processed",
-                    order_id=order.order_id,
-                    action=signal.action,
-                    quantity=float(signal.quantity),
-                    status=executed_order.status
-                )
-                
+
+                    logger.info(
+                        "Order submitted",
+                        correlation_id=correlation_id,
+                        order_id=order.order_id,
+                        strategy_id=order.strategy_id,
+                        symbol=order.symbol,
+                        status=executed_order.status,
+                        component="order_management",
+                        latency_ms=(datetime.utcnow() - start_time).total_seconds() * 1000
+                    )
+
             except Exception as e:
-                logger.error("Order submission failed", order_id=order.order_id, error=str(e))
+                logger.error(
+                    "Order submission failed",
+                    correlation_id=correlation_id,
+                    order_id=order.order_id,
+                    strategy_id=order.strategy_id,
+                    component="execution",
+                    error=str(e),
+                    exc_info=True
+                )
                 await self.order_repo.update_status(order.order_id, "REJECTED")
-                
+
         except Exception as e:
-            logger.error("Error handling signal", error=str(e), exc_info=True)
-    
+            logger.error(
+                "Error handling signal",
+                correlation_id=correlation_id,
+                component="order_management",
+                error=str(e),
+                exc_info=True
+            )
+
     async def _create_order_from_signal(self, signal: Signal) -> Order:
         """Create order from signal"""
         return Order(
@@ -197,9 +340,11 @@ class OrderManager:
             exchange="binance",
             created_at=signal.timestamp
         )
-    
-    async def _submit_order(self, order: Order) -> Order:
-        """Submit order to exchange"""
+
+    async def _submit_order(self, order: Order, correlation_id: str) -> Order:
+        """Submit order to exchange with correlation tracking"""
+        start_time = datetime.utcnow()
+
         try:
             # Get current price for market orders
             if order.type == "MARKET" and order.price is None:
@@ -207,20 +352,39 @@ class OrderManager:
                 tick = await self.cache.get_latest_tick(order.symbol)
                 if tick:
                     order.price = tick.last
-            
+
             # Submit to exchange
             executed_order = await self.exchange.place_order(order)
-            
+
             # Update order with exchange response
             if hasattr(executed_order, 'client_order_id'):
                 order.client_order_id = executed_order.client_order_id
-            
+
+            logger.info(
+                "Order placed on exchange",
+                correlation_id=correlation_id,
+                order_id=order.order_id,
+                strategy_id=order.strategy_id,
+                symbol=order.symbol,
+                side=order.side.value,
+                component="execution",
+                latency_ms=(datetime.utcnow() - start_time).total_seconds() * 1000
+            )
+
             return executed_order
-            
+
         except Exception as e:
-            logger.error("Exchange order placement failed", order_id=order.order_id, error=str(e))
+            logger.error(
+                "Exchange order placement failed",
+                correlation_id=correlation_id,
+                order_id=order.order_id,
+                strategy_id=order.strategy_id,
+                component="execution",
+                error=str(e),
+                exc_info=True
+            )
             raise
-    
+
     async def _create_trade_from_order(self, order: Order) -> Trade:
         """Create trade from filled order"""
         return Trade(
@@ -235,17 +399,12 @@ class OrderManager:
             executed_at=order.filled_at or datetime.utcnow(),
             is_maker=False
         )
-    
-    async def _update_position(self, trade: Trade) -> None:
-        """Update position based on trade"""
-        # Get current position
-        position = await self.position_repo.get_by_id(trade.strategy_id, trade.symbol)
-        
-        if position is None:
-            # Create new position
-            position = Position(
-                strategy_id=trade.strategy_id,
-                symbol=trade.symbol,
+
+    async def _update_position(self, trade: Trade, correlation_id: str) -> None:
+        """Update position based on trade with correlation tracking"""
+        start_time = datetime.utcnow()
+
+        try:
                 quantity=trade.quantity if trade.side == "BUY" else -trade.quantity,
                 avg_entry_price=trade.price,
                 current_price=trade.price,
@@ -648,17 +807,20 @@ class BinanceTrading(ExchangeAdapter):
 
 ## ✅ Acceptance Criteria
 
-- [ ] Order manager handles full lifecycle (PENDING → SUBMITTED → FILLED/CANCELLED)
-- [ ] Orders submitted to Binance correctly
-- [ ] Order status updates tracked
-- [ ] Risk checks performed before every order
-- [ ] Circuit breakers working
-- [ ] Position tracking accurate (real-time PnL)
+- [ ] Order manager handles full lifecycle (PENDING → SUBMITTED → FILLED/CANCELLED) with correlation ID tracking
+- [ ] Orders submitted to Binance correctly with proper logging
+- [ ] Order status updates tracked with correlation IDs
+- [ ] Risk checks performed before every order with logging
+- [ ] Circuit breakers working with proper logging
+- [ ] Position tracking accurate (real-time PnL) with correlation IDs
 - [ ] PostgreSQL persistence for all orders/trades
 - [ ] Redis cache for active orders/positions
-- [ ] All components have unit tests
+- [ ] All components have unit tests with logging verification
 - [ ] Integration tests with Binance testnet
-- [ ] Performance: End-to-end <40ms
+- [ ] Performance: End-to-end <40ms (logged)
+- [ ] All logs include correlation_id, component ("order_management", "risk", "execution", "position")
+- [ ] Latency tracking on all operations
+- [ ] Error logging includes exc_info=True
 
 ---
 
@@ -667,16 +829,23 @@ class BinanceTrading(ExchangeAdapter):
 ### Order Manager Tests
 ```python
 # tests/services/test_order_manager.py
+import pytest
+from decimal import Decimal
+from datetime import datetime
+from app.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 @pytest.mark.asyncio
 async def test_order_lifecycle():
-    """Test full order lifecycle"""
+    """Test full order lifecycle with correlation tracking"""
     # Setup mock dependencies
     order_repo = MockOrderRepository()
     trade_repo = MockTradeRepository()
     position_repo = MockPositionRepository()
     cache = MockRedisCache()
     risk_manager = MockRiskManager()
-    
+
     om = OrderManager(
         exchange=MockExchange(),
         order_repo=order_repo,
@@ -685,7 +854,7 @@ async def test_order_lifecycle():
         cache=cache,
         risk_manager=risk_manager
     )
-    
+
     # Create signal
     signal = Signal(
         strategy_id="test",
@@ -694,7 +863,7 @@ async def test_order_lifecycle():
         quantity=Decimal("0.01"),
         confidence=0.8
     )
-    
+
     # Handle signal
     await om._handle_signal({
         "signal_id": "test-signal",
@@ -705,18 +874,93 @@ async def test_order_lifecycle():
         "confidence": 0.8,
         "timestamp": datetime.utcnow().isoformat()
     })
-    
+
     # Verify order created
     assert len(order_repo.orders) == 1
     assert order_repo.orders[0].status == "SUBMITTED"
-    
+
     # Verify trade created
     assert len(trade_repo.trades) == 1
     assert trade_repo.trades[0].side == "BUY"
-    
+
     # Verify position updated
     assert len(position_repo.positions) == 1
     assert position_repo.positions[0].quantity == Decimal("0.01")
+
+@pytest.mark.asyncio
+async def test_order_manager_start_stop_logging():
+    """Test order manager start/stop generates proper logs"""
+    om = OrderManager(
+        exchange=MockExchange(),
+        order_repo=MockOrderRepository(),
+        trade_repo=MockTradeRepository(),
+        position_repo=MockPositionRepository(),
+        cache=MockRedisCache(),
+        risk_manager=MockRiskManager()
+    )
+
+    await om.start()
+    assert om.running
+
+    await om.stop()
+    assert not om.running
+
+@pytest.mark.asyncio
+async def test_risk_manager_validation():
+    """Test risk manager validation with correlation tracking"""
+    risk_manager = RiskManager(
+        position_repo=MockPositionRepository(),
+        strategies={"test": StrategyConfig(strategy_id="test")}
+    )
+
+    signal = Signal(
+        strategy_id="test",
+        symbol="BTCUSDT",
+        action="BUY",
+        quantity=Decimal("0.01"),
+        confidence=0.8
+    )
+
+    result = await risk_manager.validate_signal(signal)
+    assert result is True
+
+@pytest.mark.asyncio
+async def test_circuit_breaker():
+    """Test circuit breaker activation/deactivation"""
+    risk_manager = RiskManager(
+        position_repo=MockPositionRepository(),
+        strategies={"test": StrategyConfig(strategy_id="test")}
+    )
+
+    await risk_manager.activate_circuit_breaker("Test reason")
+    assert risk_manager.circuit_breaker_active
+
+    await risk_manager.deactivate_circuit_breaker()
+    assert not risk_manager.circuit_breaker_active
+```
+
+### Binance Trading Tests
+```python
+# tests/adapters/exchanges/test_binance_trading.py
+@pytest.mark.asyncio
+async def test_binance_order_placement():
+    """Test Binance order placement with correlation tracking"""
+    trading = BinanceTrading(api_key="test", secret_key="test")
+
+    order = Order(
+        strategy_id="test",
+        symbol="BTCUSDT",
+        side=OrderSide.BUY,
+        type=OrderType.MARKET,
+        quantity=Decimal("0.01"),
+        exchange="binance"
+    )
+
+    # Mock the session for testing
+    trading.session = MockSession()
+
+    result = await trading.place_order(order)
+    assert result is not None
 ```
 
 ---
