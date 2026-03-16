@@ -22,6 +22,146 @@ This document defines **6 independent implementation steps** for the trading bac
 
 ---
 
+## Step 0: Critical Safety Infrastructure
+
+**Objective:** Implement critical safety controls that MUST be in place before any live trading.
+
+### Deliverables
+```
+app/
+├── services/
+│   ├── market_data_validator.py    # Data quality checks
+│   ├── order_validator.py          # Order sanity checks
+│   ├── risk_manager.py             # Multi-layer risk management
+│   ├── position_reconciler.py      # Exchange reconciliation
+│   └── kill_switch.py              # Emergency stops
+├── modes/
+│   ├── paper_trading.py            # Simulation mode
+│   └── live_trading.py             # Real trading mode
+└── adapters/
+    └── validators/
+        ├── price_bounds_validator.py
+        ├── timestamp_validator.py
+        └── volume_validator.py
+
+tests/
+├── safety/
+│   ├── test_market_data_validator.py
+│   ├── test_order_validator.py
+│   ├── test_risk_manager.py
+│   ├── test_kill_switch.py
+│   └── test_paper_trading.py
+└── failure_modes/
+    ├── test_exchange_failure.py
+    ├── test_data_corruption.py
+    └── test_cascade_failure.py
+
+runbooks/
+├── daily/
+│   ├── RUNBOOK-001-daily-startup.md
+│   └── RUNBOOK-002-daily-monitoring.md
+├── incident/
+│   ├── RUNBOOK-100-emergency-stop.md
+│   └── RUNBOOK-101-exchange-outage.md
+└── recovery/
+    └── RUNBOOK-300-recover-from-backup.md
+```
+
+### Specifications
+
+#### 0.1 Market Data Validator
+- Price bounds checking (reject >5% deviation from fair value)
+- Timestamp validation (reject candles older than 10 seconds)
+- Volume sanity checks (reject zero or anomalous volume)
+- OHLC consistency validation
+- Cross-venue validation (compare Binance vs. Coinbase)
+
+#### 0.2 Order Validator
+- Quantity limits (max 0.01 BTC per order)
+- Value limits (max $500 per order)
+- Rate limiting (max 10 orders/minute per strategy)
+- Price collars (limit orders within 1% of market)
+- Fat finger detection
+- Signal age check (reject signals older than 5 seconds)
+
+#### 0.3 Risk Manager (Multi-Layer)
+**Layer 1: Pre-Trade Limits**
+- Max order quantity: 0.01 BTC
+- Max order value: $500
+- Max position value per strategy: $5000
+
+**Layer 2: Intra-Day Risk**
+- Max daily loss: $100
+- Max consecutive losses: 5
+- Max drawdown: 5%
+- Max open positions: 10
+
+**Layer 3: Portfolio Risk**
+- Max total exposure: $10000
+- Max concentration: 30% in one symbol
+- Max leverage: 2x
+
+**Layer 4: Circuit Breakers**
+- Volatility threshold: 5% move in 5 minutes
+- Spread threshold: 1% bid-ask spread
+- Loss rate threshold: 10%
+
+**Layer 5: Kill Switches**
+- Global emergency stop
+- Exchange-specific stop
+- Strategy-specific stop
+
+#### 0.4 Paper Trading Mode
+- Simulated order execution
+- Tracks hypothetical PnL
+- Same order flow as live trading
+- Minimum 2 weeks paper trading before live
+
+#### 0.5 Kill Switch
+- API endpoint activation
+- Automatic activation on risk triggers
+- Immediate position closure
+- Audit trail of activation
+
+### Acceptance Criteria
+- [ ] Market data validator rejects bad candles (test with malformed data)
+- [ ] Order validator rejects fat finger orders
+- [ ] Risk manager enforces all 5 layers
+- [ ] Kill switch stops trading in <100ms
+- [ ] Paper trading mode works identically to live
+- [ ] All validators have correlation ID tracking
+- [ ] All validators have latency tracking
+- [ ] All runbooks documented and tested
+- [ ] Performance tests pass (latency <40ms end-to-end)
+
+### Testing Requirements
+- **Unit tests:** 100% coverage on all validators
+- **Integration tests:** Full safety chain tested
+- **Failure mode tests:** Exchange failure, data corruption, network issues
+- **Performance tests:** Latency, throughput, stress, endurance
+- **Runbook tests:** All runbooks executed and validated
+
+### Dependencies
+- None (implement before Step 1)
+
+### Estimated Effort
+- 16-24 hours
+
+### ⚠️ Critical Warning
+
+**DO NOT SKIP STEP 0.**
+
+Trading without these controls is gambling. The specifications in Steps 1-6 build a functional system, but Step 0 builds a SAFE system.
+
+**Before proceeding to Step 1:**
+- [ ] All Step 0 deliverables implemented
+- [ ] All tests passing
+- [ ] All runbooks documented
+- [ ] Paper trading successful for 2 weeks
+- [ ] Senior architect sign-off
+
+---
+
 ## Step 1: Project Foundation & Infrastructure Setup
 
 **Objective:** Create project structure, configuration management, and base dependencies.
@@ -869,14 +1009,17 @@ Based on Step 3 findings, finalize:
 
 | Step | Title | Effort | Dependencies |
 |------|-------|--------|--------------|
-| 1 | Project Foundation & Infrastructure | 2-4h | None |
-| 2 | Database Layer - Schema & Repositories | 6-8h | Step 1 |
-| 3 | Binance Data Ingest - WebSocket & REST | 8-12h | Step 1, 2 |
-| 4 | Redis Cache Layer & Pub/Sub | 4-6h | Step 1, 2 |
-| 5 | Strategy Engine & Signal Generation | 8-12h | Step 1-4 |
-| 6 | Order Management & Execution | 12-16h | Step 1-5 |
+| 0 | Critical Safety Infrastructure | 16-24h | None (REQUIRED FIRST) |
+| 1 | Project Foundation & Infrastructure | 2-4h | Step 0 |
+| 2 | Database Layer - Schema & Repositories | 6-8h | Step 0, 1 |
+| 3 | Binance Data Ingest - WebSocket & REST | 8-12h | Step 0, 1, 2 |
+| 4 | Redis Cache Layer & Pub/Sub | 4-6h | Step 0, 1, 2 |
+| 5 | Strategy Engine & Signal Generation | 8-12h | Step 0-4 |
+| 6 | Order Management & Execution | 12-16h | Step 0-5 |
 
-**Total Estimated Effort:** 40-58 hours
+**Total Estimated Effort:** 56-82 hours
+
+**Critical Path:** Step 0 → Step 1 → Step 2 → Step 3 → Step 4 → Step 5 → Step 6
 
 ---
 
