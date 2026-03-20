@@ -9,6 +9,7 @@ Four-stage streaming pipeline:
 - Real-time indicator calculation (dynamic indicators)
 - **Dynamic indicator definitions** (Python code, git-versioned)
 - **Automatic recalculation** when indicators change
+- **Hybrid data collection**: 24hr ticker stats (all symbols) + individual trades (key symbols only)
 - Store indicator values in PostgreSQL (flexible schema)
 - Message queue for strategy communication
 - Unified code for backtest and live trading
@@ -16,6 +17,17 @@ Four-stage streaming pipeline:
 ---
 
 ## 1. Complete Data Flow
+
+### Data Types Collected
+
+| Data Type | Frequency | Storage (10 symbols, 6mo) | Use Case |
+|-----------|-----------|---------------------------|----------|
+| **24hr Ticker Stats** | 1 second | ~77 GB | Market monitoring, most strategies |
+| **Individual Trades** | Every trade | ~100 GB (2 symbols only) | Detailed backtesting, order flow |
+| **Order Book** | 1 second | ~500 GB (future) | Market making, liquidity analysis |
+| **1m Candles** | Derived | ~10 GB | Standard backtesting |
+
+**Recommendation**: Start with 24hr ticker for all symbols, add individual trades for 2-3 key symbols.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
