@@ -36,8 +36,9 @@ logger = logging.getLogger(__name__)
 # EU Compliance Configuration
 # Per MiFID II regulations, only certain stablecoins are approved for EU traders
 # BTC and ETH are NOT stablecoins - they are crypto assets and ARE allowed
-EU_ALLOWED_QUOTES: Set[str] = {'USDC', 'EUR', 'GBP', 'BTC', 'ETH'}  # EU-compliant + crypto assets
-EU_EXCLUDED_QUOTES: Set[str] = {'USDT', 'BUSD', 'TUSD'}  # NOT EU allowed (stablecoins)
+# Note: GBP removed (user doesn't have GBP access)
+EU_ALLOWED_QUOTES: Set[str] = {'USDC', 'EUR', 'BTC', 'ETH'}  # EU-compliant + crypto assets
+EU_EXCLUDED_QUOTES: Set[str] = {'USDT', 'BUSD', 'TUSD', 'GBP'}  # NOT EU allowed or no access
 STABLECOINS: Set[str] = {'USDT', 'USDC', 'BUSD', 'TUSD', 'DAI', 'FDUSD'}  # Only actual stablecoins
 
 
