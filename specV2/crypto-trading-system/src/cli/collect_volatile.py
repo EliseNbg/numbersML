@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 async def get_volatile_symbols(limit: int = 5) -> List[str]:
-    """Get most volatile symbols from Binance."""
+    """Get most volatile symbols from Binance with minimum volume."""
     url = "https://api.binance.com/api/v3/ticker/24hr"
     
     async with aiohttp.ClientSession() as session:
@@ -45,7 +45,9 @@ async def get_volatile_symbols(limit: int = 5) -> List[str]:
             high = Decimal(ticker['highPrice'])
             low = Decimal(ticker['lowPrice'])
             open_p = Decimal(ticker['openPrice'])
-            if open_p > 0:
+            volume = Decimal(ticker['quoteVolume'])
+            # Require minimum $500k volume for liquid symbols
+            if open_p > 0 and volume > 500000:
                 vol = ((high - low) / open_p) * 100
                 symbols.append({
                     'symbol': f"{base}/{quote}",
@@ -69,12 +71,12 @@ async def setup_database(db_url: str, symbols: List[str]) -> Dict[str, int]:
         for symbol in symbols:
             base, quote = symbol.split('/')
             
-            # Insert or update symbol
+            # Insert or update symbol (matching actual schema)
             row = await conn.fetchrow(
                 """
-                INSERT INTO symbols (symbol, base_asset, quote_asset, exchange, 
+                INSERT INTO symbols (symbol, base_asset, quote_asset, 
                                     tick_size, step_size, min_notional, is_allowed, is_active)
-                VALUES ($1, $2, $3, 'binance', 0.00000001, 0.00000001, 10, true, true)
+                VALUES ($1, $2, $3, 0.00000001, 0.00000001, 10, true, true)
                 ON CONFLICT (symbol) DO UPDATE SET 
                     is_active = true, 
                     is_allowed = true,
@@ -97,11 +99,13 @@ class DataCollector:
         self,
         db_url: str,
         symbols: List[str],
-        batch_size: int = 100,
+        batch_size: int = 5,  # Very small for immediate storage
+        batch_interval: float = 5.0,  # Flush every 5 seconds
     ) -> None:
         self.db_url = db_url
         self.symbols = symbols
         self.batch_size = batch_size
+        self.batch_interval = batch_interval
         self.db_pool = None
         self.running = False
         self.stats = {'trades': 0, 'errors': 0}
@@ -123,6 +127,7 @@ class DataCollector:
         
         self.running = True
         buffer = []
+        last_flush = datetime.now()
         
         logger.info(f"Connecting to {ws_url}")
         
@@ -131,7 +136,7 @@ class DataCollector:
             
             while self.running:
                 try:
-                    msg = await asyncio.wait_for(ws.recv(), timeout=60)
+                    msg = await asyncio.wait_for(ws.recv(), timeout=1)
                     data = json.loads(msg)
                     
                     if data.get('e') != 'trade':
@@ -160,10 +165,25 @@ class DataCollector:
                     # Batch insert
                     if len(buffer) >= self.batch_size:
                         await self._store_trades(buffer)
+                        logger.info(f"Stored {len(buffer)} trades (total: {self.stats['trades']})")
                         buffer = []
-                        
+                    
+                    # Timed flush
+                    elif (datetime.now() - last_flush).total_seconds() >= self.batch_interval:
+                        if buffer:
+                            await self._store_trades(buffer)
+                            logger.info(f"Timed flush: {len(buffer)} trades (total: {self.stats['trades']})")
+                            buffer = []
+                        last_flush = datetime.now()
+
                 except asyncio.TimeoutError:
                     await ws.ping()
+                    # Timed flush on timeout too
+                    if buffer and (datetime.now() - last_flush).total_seconds() >= self.batch_interval:
+                        await self._store_trades(buffer)
+                        logger.info(f"Timeout flush: {len(buffer)} trades (total: {self.stats['trades']})")
+                        buffer = []
+                        last_flush = datetime.now()
                 except Exception as e:
                     self.stats['errors'] += 1
                     logger.error(f"Error: {e}")
@@ -181,33 +201,46 @@ class DataCollector:
         if not trades:
             return
         
+        stored = 0
+        errors = 0
+
         async with self.db_pool.acquire() as conn:
             for trade in trades:
                 try:
                     # Get symbol ID
                     row = await conn.fetchrow(
-                        "SELECT id FROM symbols WHERE symbol = $1",
+                        "SELECT id, is_active FROM symbols WHERE symbol = $1",
                         trade['symbol']
                     )
                     if not row:
+                        logger.warning(f"Symbol not found: {trade['symbol']}")
+                        errors += 1
                         continue
                     
+                    if not row['is_active']:
+                        logger.warning(f"Symbol not active: {trade['symbol']}")
+                        continue
+
                     await conn.execute(
                         """
-                        INSERT INTO trades (time, symbol_id, trade_id, price, quantity, side, is_buyer_maker)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                        INSERT INTO trades (time, symbol_id, trade_id, price, quantity, is_buyer_maker)
+                        VALUES ($1, $2, $3, $4, $5, $6)
                         ON CONFLICT (trade_id, symbol_id) DO NOTHING
                         """,
                         trade['time'],
                         row['id'],
-                        trade['trade_id'],
+                        int(trade['trade_id']),  # Convert to int for bigint column
                         trade['price'],
                         trade['quantity'],
-                        trade['side'],
                         trade['is_buyer_maker'],
                     )
+                    stored += 1
                 except Exception as e:
-                    logger.debug(f"Error storing trade: {e}")
+                    logger.error(f"Error storing trade: {e} - {trade}")
+                    errors += 1
+        
+        if stored > 0:
+            logger.info(f"Database stored: {stored} trades, errors: {errors}")
         
         logger.info(f"Stored {len(trades)} trades (total: {self.stats['trades']})")
     
@@ -220,7 +253,8 @@ class DataCollector:
 
 async def main() -> None:
     """Main entry point."""
-    db_url = "postgresql://crypto:crypto@localhost:5432/crypto_trading"
+    # Use same password as docker-compose-infra.yml (POSTGRES_PASSWORD=crypto_secret)
+    db_url = "postgresql://crypto:crypto_secret@localhost:5432/crypto_trading"
     
     print("=" * 70)
     print("Crypto Trading System - Data Collection")
