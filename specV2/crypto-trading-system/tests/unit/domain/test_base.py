@@ -7,47 +7,45 @@ from src.domain.models.base import Entity, ValueObject, DomainEvent
 
 class TestEntity:
     """Test Entity base class."""
-    
+
     def test_entity_timestamps_auto_initialized(self) -> None:
         """Test that Entity timestamps are auto-initialized."""
-        @dataclass
+        @dataclass(eq=False)
         class TestEntity(Entity):
             name: str = "test"
-        
+
         entity = TestEntity()
-        
+
         assert entity.created_at is not None
         assert entity.updated_at is not None
         assert isinstance(entity.created_at, datetime)
-    
+
     def test_entity_equality_by_id(self) -> None:
         """Test that entities are equal when IDs match."""
-        @dataclass
+        @dataclass(eq=False)
         class TestEntity(Entity):
             name: str = "test"
-        
+
         # Entities with same ID are equal (even with different names)
         entity1 = TestEntity(id=1, name="test1")
         entity2 = TestEntity(id=1, name="test2")
-        
-        # Test __eq__ method directly (pytest assert rewriting causes issues)
-        result = entity1.__eq__(entity2)
-        assert result is True, f"Expected True but got {result}"
-        
+
+        # Test __eq__ method
+        assert entity1 == entity2, "Entities with same ID should be equal"
+
         # Different IDs should not be equal
         entity3 = TestEntity(id=2, name="test1")
-        result = entity1.__eq__(entity3)
-        assert result is False
-    
+        assert entity1 != entity3, "Entities with different IDs should not be equal"
+
     def test_entity_without_id_not_equal(self) -> None:
         """Test that entities without ID are never equal."""
-        @dataclass
+        @dataclass(eq=False)
         class TestEntity(Entity):
             name: str = "test"
-        
+
         entity1 = TestEntity(name="test1")
         entity2 = TestEntity(name="test2")
-        
+
         # Both have None ID, so not equal
         assert entity1 != entity2
 

@@ -213,40 +213,50 @@ class RecalculationService:
     ) -> int:
         """Recalculate indicator for symbol."""
         logger.info(f"Recalculating {indicator.name} for {symbol}")
-        
+
         ticks_processed = 0
         offset = 0
-        
+        max_iterations = 1000
+        iteration = 0
+
         while True:
+            if iteration >= max_iterations:
+                logger.error(
+                    f"Max iterations ({max_iterations}) reached for {symbol}. "
+                    f"Processed {ticks_processed} ticks. Stopping to prevent infinite loop."
+                )
+                break
+
             # Load batch of ticks
             ticks = await self._load_ticks(symbol_id, offset, self.batch_size)
-            
+
             if not ticks:
                 break
-            
+
             # Calculate indicator
             prices = np.array([float(t['price']) for t in ticks])
             volumes = np.array([float(t['quantity']) for t in ticks])
-            
+
             result = indicator.calculate(prices, volumes)
-            
+
             # Store results
             await self._store_indicator_results(
                 symbol_id,
                 ticks,
                 result,
             )
-            
+
             ticks_processed += len(ticks)
             offset += self.batch_size
-            
+            iteration += 1
+
             # Update progress
             await self._update_job_progress(job_id, ticks_processed)
-            
+
             logger.debug(
                 f"Processed {ticks_processed} ticks for {symbol}"
             )
-        
+
         return ticks_processed
     
     async def _load_ticks(
@@ -278,37 +288,45 @@ class RecalculationService:
         ticks: List[Dict],
         result: Any,
     ) -> None:
-        """Store indicator results."""
+        """Store indicator results using batch insert."""
         async with self.db_pool.acquire() as conn:
+            # Build all records first
+            records = []
             for i, tick in enumerate(ticks):
                 # Get indicator values for this tick
                 indicator_values = {}
-                
+
                 for key, values in result.values.items():
                     if i < len(values) and not np.isnan(values[i]):
                         indicator_values[f"{result.name}_{key}"] = float(values[i])
-                
+
                 if indicator_values:
-                    await conn.execute(
-                        """
-                        INSERT INTO tick_indicators (
-                            time, symbol_id, price, volume,
-                            values, indicator_keys, indicator_version
-                        ) VALUES (
-                            $1, $2, $3, $4, $5, $6, 1
-                        )
-                        ON CONFLICT (time, symbol_id) DO UPDATE SET
-                            values = EXCLUDED.values,
-                            indicator_keys = EXCLUDED.indicator_keys,
-                            updated_at = NOW()
-                        """,
+                    records.append((
                         tick['time'],
                         symbol_id,
                         tick['price'],
                         tick['quantity'],
                         json.dumps(indicator_values),
                         list(indicator_values.keys()),
+                    ))
+
+            # Batch insert all records at once
+            if records:
+                await conn.executemany(
+                    """
+                    INSERT INTO tick_indicators (
+                        time, symbol_id, price, volume,
+                        values, indicator_keys, indicator_version
+                    ) VALUES (
+                        $1, $2, $3, $4, $5, $6, 1
                     )
+                    ON CONFLICT (time, symbol_id) DO UPDATE SET
+                        values = EXCLUDED.values,
+                        indicator_keys = EXCLUDED.indicator_keys,
+                        updated_at = NOW()
+                    """,
+                    records,
+                )
     
     async def _get_active_symbols(self) -> List[tuple]:
         """Get all active symbols."""

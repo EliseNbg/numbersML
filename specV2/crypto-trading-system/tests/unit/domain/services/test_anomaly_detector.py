@@ -132,7 +132,37 @@ class TestAnomalyDetector:
             side='BUY',
         )
         detector.detect(trade1)
-        
+
+        # Second trade at $53,000 (6% spike - should be HIGH, not CRITICAL)
+        trade2 = Trade(
+            time=datetime.utcnow() + timedelta(seconds=1),
+            symbol_id=1,
+            trade_id='123457',
+            price=Decimal('53000.00'),
+            quantity=Decimal('0.001'),
+            side='BUY',
+        )
+
+        result = detector.detect(trade2)
+
+        assert result.is_anomaly is True
+        assert result.should_reject is True
+        assert result.anomalies[0].anomaly_type == AnomalyType.PRICE_SPIKE
+        assert result.anomalies[0].severity == AnomalySeverity.HIGH
+
+    def test_price_spike_critical_severity(self, detector: AnomalyDetector) -> None:
+        """Test that large price spikes are CRITICAL severity."""
+        # First trade at $50,000
+        trade1 = Trade(
+            time=datetime.utcnow(),
+            symbol_id=1,
+            trade_id='123456',
+            price=Decimal('50000.00'),
+            quantity=Decimal('0.001'),
+            side='BUY',
+        )
+        detector.detect(trade1)
+
         # Second trade at $65,000 (30% spike - should be CRITICAL)
         trade2 = Trade(
             time=datetime.utcnow() + timedelta(seconds=1),
@@ -142,13 +172,13 @@ class TestAnomalyDetector:
             quantity=Decimal('0.001'),
             side='BUY',
         )
-        
+
         result = detector.detect(trade2)
-        
+
         assert result.is_anomaly is True
         assert result.should_reject is True
         assert result.anomalies[0].anomaly_type == AnomalyType.PRICE_SPIKE
-        assert result.anomalies[0].severity == AnomalySeverity.HIGH
+        assert result.anomalies[0].severity == AnomalySeverity.CRITICAL
     
     def test_price_drop_detected(self, detector: AnomalyDetector) -> None:
         """Test that price drops are detected."""
