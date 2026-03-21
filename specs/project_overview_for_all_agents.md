@@ -1,4 +1,5 @@
 # Trading Backend - Project Overview for All Agents
+# The system goal is to designed the trading systems that survive and thrive, not like the others 95% that fail.
 
 **Project:** Multi-Strategy Trading Backend  
 **Version:** 1.0  

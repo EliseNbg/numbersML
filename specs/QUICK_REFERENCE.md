@@ -1,4 +1,5 @@
 # Trading System - Quick Reference Card
+# The system goal is to designed the trading systems that survive and thrive, not like the others 95% that fail.
 
 **Version:** 1.0
 **Date:** 2026-03-16
