@@ -282,26 +282,10 @@ jobs:
       - name: Publish test summary
         if: always()
         run: |
-          echo "## 🧪 Pipeline Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "## Pipeline Test Results" >> $GITHUB_STEP_SUMMARY
           if [ -f /tmp/integration_test_results.json ]; then
-            cat /tmp/integration_test_results.json | python -c "
-import sys, json
-data = json.load(sys.stdin)
-summary = data.get('summary', {})
-if data.get('passed'):
-    print(f'✅ **PASSED**: {summary.get(\"passed\", 0)}/{summary.get(\"total\", 0)} tests')
-else:
-    print(f'❌ **FAILED**: {summary.get(\"failed\", 0)}/{summary.get(\"total\", 0)} tests')
-" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Test Details" >> $GITHUB_STEP_SUMMARY
-            cat /tmp/integration_test_results.json | python -c "
-import sys, json
-data = json.load(sys.stdin)
-for result in data.get('results', []):
-    status = '✅' if result.get('passed') else '❌'
-    print(f'{status} {result.get(\"name\", \"Unknown\")}')
-" >> $GITHUB_STEP_SUMMARY
+            echo "Check /tmp/integration_test_results.json for details" >> $GITHUB_STEP_SUMMARY
+            cat /tmp/integration_test_results.json >> $GITHUB_STEP_SUMMARY
           fi
 
   # =============================================================================
