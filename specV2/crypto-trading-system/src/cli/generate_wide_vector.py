@@ -8,10 +8,11 @@ as a wide vector for LLM buy/sell decision making.
 Format:
 [symbol1_price, symbol1_rsi, symbol1_sma20, ..., symbol2_price, symbol2_rsi, ...]
 
-Enrichment Synchronization:
-- Waits for EnrichmentService to complete indicator calculation
-- Uses PostgreSQL NOTIFY 'enrichment_complete' channel
-- Timeout: 10 seconds (configurable)
+Architecture:
+- Reads ticker data from ticker_24hr_stats table
+- Reads indicators from tick_indicators table (calculated by EnrichmentService)
+- No waiting/synchronization - reads whatever is in DB
+- EnrichmentService runs async and keeps indicators up-to-date
 """
 
 import asyncio
@@ -19,7 +20,7 @@ import asyncpg
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional, Set
+from typing import Dict, List, Any, Optional
 import numpy as np
 
 logging.basicConfig(
@@ -27,93 +28,6 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-
-class EnrichmentWaiter:
-    """Wait for enrichment to complete before generating vector."""
-
-    def __init__(self, db_pool: asyncpg.Pool, dsn: str, timeout: float = 10.0) -> None:
-        self.db_pool = db_pool
-        self.dsn = dsn
-        self.timeout = timeout
-
-    async def wait_for_enrichment(self, symbol_ids: List[int]) -> bool:
-        """Wait for enrichment complete notifications."""
-        timeout = self.timeout
-        start_time = datetime.now(timezone.utc)
-
-        try:
-            async with self.db_pool.acquire() as conn:
-                expected = await self._get_latest_ticks(conn, symbol_ids)
-
-                if not expected:
-                    logger.warning("No ticks found to wait for")
-                    return True
-
-                logger.info(f"Waiting for enrichment for {len(expected)} symbols...")
-
-            # Create dedicated connection for LISTEN
-            listen_conn = await asyncpg.connect(self.dsn)
-            try:
-                notification_event = asyncio.Event()
-                received_keys: Set[tuple] = set()
-
-                def notification_handler(connection, pid, channel, payload):
-                    try:
-                        payload_dict = json.loads(payload)
-                        key = (payload_dict['symbol_id'], payload_dict['time'])
-                        received_keys.add(key)
-                        notification_event.set()
-                    except Exception as e:
-                        logger.error(f"Error parsing notification: {e}")
-
-                await listen_conn.add_listener('enrichment_complete', notification_handler)
-
-                while (datetime.now(timezone.utc) - start_time).total_seconds() < timeout:
-                    try:
-                        await asyncio.wait_for(notification_event.wait(), timeout=1.0)
-                        notification_event.clear()
-
-                        for key in list(expected):
-                            if key in received_keys:
-                                expected.discard(key)
-                                logger.debug(f"✓ Enriched: symbol_id={key[0]}")
-
-                        if not expected:
-                            elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
-                            logger.info(f"All symbols enriched in {elapsed:.2f}s")
-                            return True
-
-                    except asyncio.TimeoutError:
-                        continue
-
-                logger.warning(f"Timeout: {len(expected)} symbols not enriched")
-                return False
-
-            finally:
-                await listen_conn.close()
-
-        except Exception as e:
-            logger.error(f"Error waiting for enrichment: {e}")
-            return False
-
-    async def _get_latest_ticks(
-        self,
-        conn: asyncpg.Connection,
-        symbol_ids: List[int]
-    ) -> Set[tuple]:
-        """Get latest tick time for each symbol."""
-        rows = await conn.fetch(
-            """
-            SELECT DISTINCT ON (symbol_id)
-                symbol_id, time
-            FROM ticker_24hr_stats
-            WHERE symbol_id = ANY($1)
-            ORDER BY symbol_id, time DESC
-            """,
-            symbol_ids
-        )
-        return {(row['symbol_id'], str(row['time'])) for row in rows}
 
 
 class WideVectorGenerator:
@@ -124,11 +38,12 @@ class WideVectorGenerator:
     
     Flow:
     1. Connect to database
-    2. Wait for enrichment complete (all indicators calculated)
-    3. Load latest ticker data for all symbols
-    4. Load latest indicators for all symbols
-    5. Build flat vector: [symbol1_features, symbol2_features, ...]
-    6. Save to JSON and NumPy formats
+    2. Load latest ticker data for all symbols
+    3. Load latest indicators for all symbols (if available)
+    4. Build flat vector: [symbol1_features, symbol2_features, ...]
+    5. Save to JSON and NumPy formats
+    
+    Note: Does NOT wait for enrichment. Reads whatever is in DB.
     """
 
     def __init__(
@@ -136,7 +51,6 @@ class WideVectorGenerator:
         db_url: str,
         symbols: Optional[List[str]] = None,
         include_indicators: bool = True,
-        enrichment_timeout: float = 10.0,
     ) -> None:
         """
         Initialize vector generator.
@@ -145,15 +59,12 @@ class WideVectorGenerator:
             db_url: PostgreSQL connection URL
             symbols: List of symbols to include (None = all active)
             include_indicators: Include indicator columns
-            enrichment_timeout: Max seconds to wait for enrichment
         """
         self.db_url = db_url
         self.symbols = symbols
         self.include_indicators = include_indicators
-        self.enrichment_timeout = enrichment_timeout
         self.db_pool = None
         self._symbol_list: List[str] = []
-        self._column_names: List[str] = []
 
     async def connect(self) -> None:
         """Connect to database."""
@@ -199,11 +110,8 @@ class WideVectorGenerator:
         """
         Generate wide vector for all symbols.
 
-        Flow:
-        1. Wait for enrichment to complete (all indicators calculated)
-        2. Get latest ticker data for all symbols
-        3. Get latest indicators for all symbols
-        4. Build wide vector
+        Simply reads from database - no waiting for enrichment.
+        Indicators are included if EnrichmentService has calculated them.
 
         Returns:
             Dictionary with:
@@ -211,23 +119,9 @@ class WideVectorGenerator:
             - symbols: List of symbols in order
             - vector: Flat numpy array of values
             - column_names: Names for each column
-            - metadata: Additional info including enrichment_complete flag
+            - metadata: Additional info
         """
         async with self.db_pool.acquire() as conn:
-            # Get symbol IDs for enrichment wait
-            symbol_ids = await self._get_symbol_ids(conn)
-
-            if not symbol_ids:
-                logger.warning("No symbols to process")
-                return None
-
-            # Wait for enrichment to complete
-            waiter = EnrichmentWaiter(self.db_pool, self.db_url, timeout=self.enrichment_timeout)
-            enriched = await waiter.wait_for_enrichment(symbol_ids)
-
-            if not enriched:
-                logger.warning("Enrichment did not complete, using available data")
-
             # Get latest ticker data for all symbols
             ticker_data = await self._get_latest_tickers(conn)
 
@@ -235,10 +129,16 @@ class WideVectorGenerator:
                 logger.warning("No ticker data found")
                 return None
 
-            # Get latest indicators for all symbols
-            indicator_data = {}
+            # Get latest indicators for all symbols (if available)
+            indicator_data: Dict[str, Dict[str, float]] = {}
+            indicators_found = 0
+            
             if self.include_indicators:
                 indicator_data = await self._get_latest_indicators(conn)
+                indicators_found = sum(len(v) for v in indicator_data.values())
+
+            if indicators_found == 0:
+                logger.info("No indicators found in DB (EnrichmentService may not be running)")
 
             # Build wide vector
             vector = self._build_wide_vector(ticker_data, indicator_data)
@@ -252,31 +152,11 @@ class WideVectorGenerator:
                     'total_columns': len(vector['columns']),
                     'symbols_count': len(self._symbol_list),
                     'includes_indicators': self.include_indicators,
+                    'indicators_found': indicators_found,
                     'null_count': vector['null_count'],
-                    'enrichment_complete': enriched,
                 }
             }
 
-    async def _get_symbol_ids(self, conn: asyncpg.Connection) -> List[int]:
-        """Get symbol IDs for configured symbols."""
-        if self.symbols:
-            rows = await conn.fetch(
-                """
-                SELECT id FROM symbols
-                WHERE symbol = ANY($1) AND is_active = true AND is_allowed = true
-                ORDER BY symbol
-                """,
-                self.symbols
-            )
-        else:
-            rows = await conn.fetch(
-                """
-                SELECT id FROM symbols
-                WHERE is_active = true AND is_allowed = true
-                ORDER BY symbol
-                """
-            )
-        return [row['id'] for row in rows]
     async def _get_latest_tickers(
         self,
         conn: asyncpg.Connection
@@ -340,11 +220,10 @@ class WideVectorGenerator:
             
             # Handle JSONB - can be dict, string, or list
             if values_raw is None:
-                values = {}
+                values: Dict[str, Any] = {}
             elif isinstance(values_raw, dict):
                 values = values_raw
             elif isinstance(values_raw, str):
-                import json
                 values = json.loads(values_raw)
             elif isinstance(values_raw, (list, tuple)):
                 # Convert list of [key, value] pairs to dict
@@ -441,6 +320,9 @@ async def test_wide_vector_generator() -> None:
     print("Wide Vector Generator Test for LLM Model")
     print("=" * 70)
     print()
+    print("Architecture: Reads from DB (no waiting for enrichment)")
+    print("Indicators: Included if EnrichmentService has calculated them")
+    print()
 
     generator = WideVectorGenerator(
         db_url=db_url,
@@ -468,11 +350,27 @@ async def test_wide_vector_generator() -> None:
         print(f"Symbols: {vector_data['metadata']['symbols_count']}")
         print(f"Total columns: {vector_data['metadata']['total_columns']}")
         print(f"Vector size: {len(vector_data['vector'])} floats")
+        print(f"Indicators found: {vector_data['metadata']['indicators_found']}")
         print(f"Null values: {vector_data['metadata']['null_count']}")
-        print(f"Includes indicators: {vector_data['metadata']['includes_indicators']}")
-        print(f"Enrichment complete: {vector_data['metadata']['enrichment_complete']}")
         print()
 
+        # Show sample columns
+        print()
+        print("=" * 70)
+        print("SAMPLE COLUMNS (first 3 symbols)")
+        print("=" * 70)
+        for i in range(min(3, len(generator._symbol_list))):
+            symbol = generator._symbol_list[i]
+            symbol_cols = [c for c in vector_data['column_names'] if c.startswith(f"{symbol}_")]
+            print(f"\n{symbol}:")
+            for col in symbol_cols[:10]:  # Show first 10 columns per symbol
+                idx = vector_data['column_names'].index(col)
+                value = vector_data['vector'][idx]
+                print(f"  {col}: {value:.4f}")
+            if len(symbol_cols) > 10:
+                print(f"  ... and {len(symbol_cols) - 10} more")
+
+        print()
         print("=" * 70)
         print("SAVING TO FILES")
         print("=" * 70)
@@ -499,6 +397,12 @@ async def test_wide_vector_generator() -> None:
         print("=" * 70)
         print("TEST COMPLETE")
         print("=" * 70)
+        print()
+        print("Usage in LLM model:")
+        print("  import numpy as np")
+        print("  vector = np.load('/tmp/wide_vector_llm.npy')")
+        print("  # Pass to your LLM for buy/sell decision")
+        print()
 
     except Exception as e:
         print(f"ERROR: {e}")
