@@ -8,7 +8,7 @@
 
 ```bash
 # 1. Initialize git repository (if not already done)
-cd /home/andy/projects/numbers/specV2/crypto-trading-system
+cd /home/andy/projects/numbers/specV2/numbersML
 git init
 
 # 2. Add all files
@@ -19,11 +19,11 @@ git commit -m "Initial commit: Crypto Trading System with test enforcement"
 
 # 4. Create GitHub repository (via web or CLI)
 # Go to: https://github.com/new
-# Repository name: crypto-trading-system
+# Repository name: numbersML
 # Visibility: Private (recommended) or Public
 
 # 5. Push to GitHub
-git remote add origin https://github.com/YOUR_USERNAME/crypto-trading-system.git
+git remote add origin https://github.com/YOUR_USERNAME/numbersML.git
 git branch -M main
 git push -u origin main
 ```
@@ -61,7 +61,7 @@ Push/PR → Quick Check → Unit Tests → Integration Tests → Pipeline Test �
 
 ### Steps
 
-1. Go to: `https://github.com/YOUR_USERNAME/crypto-trading-system/settings/branches`
+1. Go to: `https://github.com/YOUR_USERNAME/numbersML/settings/branches`
 
 2. Click "Add branch protection rule"
 
@@ -238,7 +238,7 @@ Before pushing to GitHub:
 
 ### 1. Verify GitHub Actions Running
 
-Go to: `https://github.com/YOUR_USERNAME/crypto-trading-system/actions`
+Go to: `https://github.com/YOUR_USERNAME/numbersML/actions`
 
 You should see:
 - ✅ Quick Check
@@ -285,7 +285,7 @@ git commit -m "Add my feature"
 git push origin feature/my-feature
 
 # 6. Create PR on GitHub
-# Go to: https://github.com/YOUR_USERNAME/crypto-trading-system/pulls
+# Go to: https://github.com/YOUR_USERNAME/numbersML/pulls
 # Click "New pull request"
 ```
 
@@ -353,7 +353,7 @@ Add test status badge to README.md:
 ```markdown
 # Crypto Trading System
 
-[![Tests](https://github.com/YOUR_USERNAME/crypto-trading-system/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/crypto-trading-system/actions/workflows/ci.yml)
+[![Tests](https://github.com/YOUR_USERNAME/numbersML/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/numbersML/actions/workflows/ci.yml)
 [![Branch Protection](https://img.shields.io/badge/branch%20protection-enabled-green)]()
 
 **Status**: ✅ Production Ready
@@ -415,9 +415,9 @@ updates:
 
 ### GitHub Insights
 
-- **Actions**: `https://github.com/YOUR_USERNAME/crypto-trading-system/actions`
-- **Issues**: `https://github.com/YOUR_USERNAME/crypto-trading-system/issues`
-- **Pull Requests**: `https://github.com/YOUR_USERNAME/crypto-trading-system/pulls`
+- **Actions**: `https://github.com/YOUR_USERNAME/numbersML/actions`
+- **Issues**: `https://github.com/YOUR_USERNAME/numbersML/issues`
+- **Pull Requests**: `https://github.com/YOUR_USERNAME/numbersML/pulls`
 
 ### Test Trends
 

@@ -1,52 +1,105 @@
-# 📚 Crypto Trading System - Documentation Index
+# 📊 numbersML - Crypto Trading System
 
-**Last Updated**: March 21, 2026
+**Last Updated**: March 22, 2026
 **Status**: ✅ Phase 1 Complete - Production Ready
-**Version**: 2.0
+**Version**: 1.0 (Phase 1)
 
 ---
 
 ## 🚀 Quick Start
 
-### Start Data Collection (2 Methods)
-
-#### Method 1: 24hr Ticker Statistics (Recommended)
-Collects aggregated 24hr stats from top 20 symbols by volume, updated every 1 second.
+### 1. Start Infrastructure
 
 ```bash
-cd /home/andy/projects/numbers/specV2/crypto-trading-system
-.venv/bin/python src/cli/collect_ticker_24hr.py
+cd numbersML
+
+# Start PostgreSQL + Redis
+./scripts/test.sh start
 ```
 
-**Storage**: ~1.2 GB/day | **Symbols**: 20 top volume assets
-
-#### Method 2: Individual Trades
-Collects individual trades from volatile symbols.
+### 2. Run Tests
 
 ```bash
-.venv/bin/python src/cli/collect_volatile.py
+# Run pipeline test (critical)
+./scripts/test.sh pipeline
 ```
 
-**Storage**: ~500 MB/day | **Symbols**: 5 most volatile
+### 3. Push to GitHub
+
+```bash
+git add .
+git commit -m "Phase 1 complete - numbersML"
+git push origin main
+```
+
+**GitHub Actions will automatically run all tests!**
 
 ---
 
-## 📁 Documentation Structure
+## 📁 Documentation
 
 ### Getting Started
-- [START_HERE.md](START_HERE.md) - Complete guide
-- [QUICKSTART.md](QUICKSTART.md) - 5-minute setup
-- [START_COLLECTION.md](START_COLLECTION.md) - Data collection guide
+- [QUICKSTART.md](QUICKSTART.md) - 1-minute setup
+- [PHASE1_COMPLETE_SUMMARY.md](PHASE1_COMPLETE_SUMMARY.md) - What was built
+- [GITHUB_SETUP.md](GITHUB_SETUP.md) - GitHub configuration
 
 ### Architecture
-- [ARCHITECTURE-SUMMARY.md](../docs/ARCHITECTURE-SUMMARY.md) - System overview
-- [MODULAR-SERVICE-ARCHITECTURE.md](../docs/modular-service-architecture.md) - Docker services
-- [DATA_FLOW_DESIGN.md](../docs/data-flow-design.md) - Data pipeline
+- [docs/00-START-HERE.md](docs/00-START-HERE.md) - Complete guide
+- [docs/ARCHITECTURE-SUMMARY.md](docs/ARCHITECTURE-SUMMARY.md) - System overview
+- [docs/data-flow-design.md](docs/data-flow-design.md) - Data pipeline
 
-### Implementation
-- [PROJECT_STATUS.md](PROJECT_STATUS.md) - Current status
-- [COMPLETED_STEPS.md](COMPLETED_STEPS.md) - What's done
-- [TICKER_COLLECTION_STARTED.md](TICKER_COLLECTION_STARTED.md) - 24hr ticker setup
+### Testing & CI/CD
+- [TEST_ENFORCEMENT.md](TEST_ENFORCEMENT.md) - Test policy
+- [TEST_SUITE_COMPLETE.md](TEST_SUITE_COMPLETE.md) - Test suite docs
+- [GITHUB_INFRASTRUCTURE.md](GITHUB_INFRASTRUCTURE.md) - CI/CD infrastructure
+
+### Database
+- [migrations/INIT_DATABASE.sql](migrations/INIT_DATABASE.sql) - Complete schema
+
+---
+
+## 🎯 Phase 1 Status
+
+| Component | Status |
+|-----------|--------|
+| Data Collection | ✅ Complete |
+| Indicator Framework | ✅ 15 indicators |
+| Enrichment Service | ✅ Complete |
+| WIDE Vector | ✅ Complete |
+| Test Suite | ✅ 6/6 passing |
+| CI/CD Pipeline | ✅ Complete |
+| Documentation | ✅ Complete |
+
+---
+
+## 📊 What's in Phase 1
+
+- ✅ 24hr ticker statistics collection
+- ✅ Individual trades collection
+- ✅ Data quality validation
+- ✅ 15 Python indicators (RSI, MACD, SMA, EMA, etc.)
+- ✅ Real-time enrichment service
+- ✅ WIDE vector for LLM/ML
+- ✅ PostgreSQL database (12 tables)
+- ✅ Test suite (6 tests)
+- ✅ GitHub Actions CI/CD
+
+---
+
+## 🧹 Cleanup Notes
+
+**Removed** (26 old files):
+- Old STEP-*.md completion files
+- Old design documents (superseded)
+- Old logs and summaries
+
+**Kept** (essential):
+- Core architecture docs (docs/)
+- Test documentation
+- Setup guides
+- Migration scripts
+
+See [PHASE1_COMPLETE_SUMMARY.md](PHASE1_COMPLETE_SUMMARY.md) for details.
 
 ### Operations
 - [MONITORING.md](MONITORING.md) - Monitor collection
@@ -118,7 +171,7 @@ Binance WebSocket → Collect → Validate → Store → Enrich
 ## 🗂️ File Structure
 
 ```
-crypto-trading-system/
+numbersML/
 ├── src/
 │   ├── domain/              # Business logic (DDD)
 │   │   ├── models/          # Entities (Symbol, Trade)

@@ -52,7 +52,7 @@
 ## 📁 Current Project Structure
 
 ```
-crypto-trading-system/
+numbersML/
 ├── src/
 │   ├── domain/
 │   │   ├── models/
