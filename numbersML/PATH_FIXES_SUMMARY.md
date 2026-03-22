@@ -1,144 +1,163 @@
-# Path and Folder Name Fixes - Summary
+# Path Fixes Summary - Relative Paths
 
 **Date**: March 22, 2026
-**Status**: ✅ COMPLETE
+**Status**: ✅ COMPLETE - Using Relative Paths
 
 ---
 
-## Issues Fixed
+## Key Decision: Relative Paths Only
 
-### 1. Incorrect Repository Path (`specV2` → `numbers`)
+All documentation now uses **relative paths** instead of absolute paths.
 
-**Problem**: Documentation referenced old `specV2` folder name instead of `numbers`.
-
-**Files Fixed**:
-
-| File | Old Path | New Path |
-|------|----------|----------|
-| `GITHUB_SETUP.md` | `/home/andy/projects/numbers/specV2/numbersML` | `/home/andy/projects/numbers/numbersML` |
-| `PHASE1-COMPLETE.md` | `/home/andy/projects/numbers/specV2/numbersML` | `/home/andy/projects/numbers/numbersML` |
-| `QUICKSTART.md` | `/home/andy/projects/numbers/specV2/numbersML` | `/home/andy/projects/numbers/numbersML` |
-| `README-SETUP.md` | `/home/andy/projects/numbers/specV2/numbersML` | `/home/andy/projects/numbers/numbersML` |
-| `README-SETUP.md` | `rootdir: /home/andy/projects/numbers/specV2/numbersML` | `rootdir: /home/andy/projects/numbers/numbersML` |
-| `WIDE_VECTOR_LLM.md` | `/home/andy/projects/numbers/specV2/numbersML` | `/home/andy/projects/numbers/numbersML` |
+**Why**:
+- ✅ Works on any machine (not just `/home/andy/...`)
+- ✅ Works in CI/CD (GitHub Actions)
+- ✅ Easier to copy/paste
+- ✅ No hardcoded usernames
 
 ---
 
 ## Repository Structure
 
-**Correct structure**:
 ```
-/home/andy/projects/numbers/           ← Repository root
+numbers/                    ← Parent folder (repository root)
 ├── .github/
 │   └── workflows/
 │       └── ci.yml
-├── numbersML/                          ← Main project folder
+├── numbersML/              ← Main project folder
 │   ├── src/
 │   ├── tests/
 │   ├── migrations/
 │   ├── scripts/
+│   ├── docker/
 │   └── *.md (documentation)
-├── docs/                               ← Architecture docs
-└── specs/                              ← Original specifications
-```
-
-**Important**: The repository name is `numbersML` on GitHub, but the parent folder is `numbers`.
-
----
-
-## CI/CD Path Fixes
-
-### GitHub Actions Workflow (`.github/workflows/ci.yml`)
-
-**Fixed paths**:
-- `requirements.txt` → `numbersML/requirements.txt`
-- Added `cd numbersML` before running commands
-
-**Why**: The workflow runs from the repository root, not from inside `numbersML/`.
-
----
-
-## Test Script Fix (`numbersML/scripts/test.sh`)
-
-**Added CI detection**:
-```bash
-if [ -n "${GITHUB_ACTIONS:-}" ]; then
-    PYTHON="python"
-    PYTEST="pytest"
-else
-    PYTHON="${PROJECT_DIR}/.venv/bin/python"
-    PYTEST="${PROJECT_DIR}/.venv/bin/pytest"
-fi
-```
-
-**Why**: GitHub Actions doesn't have a virtual environment at `.venv/bin/python`.
-
----
-
-## Verification
-
-All path references have been verified:
-
-```bash
-# Check for old specV2 references (should return empty)
-grep -r "specV2" numbersML/*.md
-
-# Check for correct paths
-grep -r "numbers/numbersML" numbersML/*.md
+├── docs/                   ← Architecture docs
+└── specs/                  ← Original specifications
 ```
 
 ---
 
-## Files Changed
+## Correct Path Usage
 
-| File | Changes |
-|------|---------|
-| `.github/workflows/ci.yml` | Fixed requirements path, added cd numbersML |
-| `numbersML/scripts/test.sh` | Added CI detection for Python paths |
-| `numbersML/GITHUB_SETUP.md` | Fixed repository path |
-| `numbersML/PHASE1-COMPLETE.md` | Fixed repository path |
-| `numbersML/QUICKSTART.md` | Fixed repository path |
-| `numbersML/README-SETUP.md` | Fixed repository path (2 places) |
-| `numbersML/WIDE_VECTOR_LLM.md` | Fixed repository path |
-| `numbersML/GITHUB_ACTIONS_FIX.md` | New file - CI/CD documentation |
+### From Repository Root (`numbers/`)
 
----
-
-## Commit History
-
-1. **0d7839e** - Fix GitHub Actions CI pipeline
-   - Updated actions to Node.js 24 compatible versions
-   - Fixed requirements.txt path
-   - Fixed test.sh CI detection
-
-2. **0c112bf** - Fix incorrect path references in documentation
-   - Replaced all specV2 references with numbers
-   - Fixed 6 documentation files
-
----
-
-## Correct Usage Examples
-
-### Local Development
 ```bash
-cd /home/andy/projects/numbers/numbersML
-./scripts/test.sh start
+# Navigate to project
+cd numbersML
+
+# Run tests
+./scripts/test.sh check
 ./scripts/test.sh pipeline
+
+# Start infrastructure
+./scripts/test.sh start
 ```
 
-### GitHub Actions
+### From Project Folder (`numbersML/`)
+
+```bash
+# All commands work from here
+./scripts/test.sh check
+./scripts/test.sh pipeline
+python src/cli/generate_wide_vector.py
+```
+
+---
+
+## Files Updated (All Using Relative Paths)
+
+| File | Old (Absolute) | New (Relative) |
+|------|----------------|----------------|
+| `GITHUB_SETUP.md` | `cd /home/andy/projects/numbers/numbersML` | `cd numbersML` |
+| `PHASE1-COMPLETE.md` | `cd /home/andy/projects/numbers/numbersML` | `cd numbersML` |
+| `QUICKSTART.md` | `cd /home/andy/projects/numbers/numbersML` | `cd numbersML` |
+| `README-SETUP.md` | `cd /home/andy/projects/numbers/numbersML` | `cd numbersML` |
+| `README-SETUP.md` | `rootdir: /home/andy/projects/numbers/numbersML` | `rootdir: numbersML` |
+| `WIDE_VECTOR_LLM.md` | `cd /home/andy/projects/numbers/numbersML` | `cd numbersML` |
+
+---
+
+## GitHub Actions Paths
+
+The CI/CD workflow (`.github/workflows/ci.yml`) uses relative paths:
+
 ```yaml
 - name: Install dependencies
   run: |
     pip install -r numbersML/requirements.txt
 
-- name: Run tests
+- name: Run quick check
   run: |
     cd numbersML
-    ./scripts/test.sh pipeline
+    ./scripts/test.sh check
 ```
 
 ---
 
-**Status**: ✅ All paths corrected and verified
-**Next**: No further path fixes needed
+## Test Script CI Detection
+
+The `scripts/test.sh` automatically detects the environment:
+
+```bash
+if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    # GitHub Actions - use system Python
+    PYTHON="python"
+    PYTEST="pytest"
+else
+    # Local development - use virtual environment
+    PYTHON="${PROJECT_DIR}/.venv/bin/python"
+    PYTEST="${PROJECT_DIR}/.venv/bin/pytest"
+fi
+```
+
+---
+
+## Quick Reference
+
+### Local Development (from any location)
+
+```bash
+# Clone repository
+git clone https://github.com/EliseNbg/numbersML.git
+cd numbersML
+
+# Install dependencies
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Run tests
+./scripts/test.sh check
+```
+
+### GitHub Actions (automatic)
+
+```yaml
+# Workflow runs from repository root
+steps:
+  - uses: actions/checkout@v5
+  
+  - name: Run tests
+    run: |
+      cd numbersML
+      ./scripts/test.sh pipeline
+```
+
+---
+
+## Verification
+
+All absolute paths have been removed:
+
+```bash
+# Check for absolute paths (should return empty)
+grep -r "/home/andy" numbersML/*.md | grep -v PATH_FIXES
+
+# Check for relative paths (should show correct usage)
+grep -r "cd numbersML" numbersML/*.md
+```
+
+---
+
+**Status**: ✅ All paths are now relative
+**Works on**: Any machine, any username, any OS

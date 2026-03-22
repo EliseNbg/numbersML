@@ -55,7 +55,7 @@ Generates a **single wide SQL row** with all symbols' ticker info and indicators
 ### Generate Vector
 
 ```bash
-cd /home/andy/projects/numbers/numbersML
+cd numbersML
 .venv/bin/python src/cli/generate_wide_vector.py
 ```
 
