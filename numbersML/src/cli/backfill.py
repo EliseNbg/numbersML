@@ -171,10 +171,10 @@ class HistoricalBackfill:
         print(f"Collecting active symbols for {duration_sec} seconds...")
 
         symbols_seen: set[str] = set()
-        end_time = datetime.now(timezone.utc) + timedelta(seconds=duration_sec)
+        end_time = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=duration_sec)
 
         async with aiohttp.ClientSession() as session:
-            while datetime.now(timezone.utc) < end_time:
+            while datetime.now(timezone.utc).replace(tzinfo=None) < end_time:
                 # Fetch 24hr tickers from Binance REST API
                 async with session.get(
                     f"{BINANCE_API_BASE}/ticker/24hr",
@@ -189,7 +189,7 @@ class HistoricalBackfill:
                 await asyncio.sleep(1)
 
                 # Progress
-                remaining = int((end_time - datetime.now(timezone.utc)).total_seconds())
+                remaining = int((end_time - datetime.now(timezone.utc).replace(tzinfo=None)).total_seconds())
                 if remaining % 10 == 0:
                     print(f"  Collecting... {remaining}s remaining, {len(symbols_seen)} symbols found", end='\r')
 
@@ -273,7 +273,7 @@ class HistoricalBackfill:
                 print(f"  Resuming from checkpoint ({days_backfilled} days already done)")
 
         # Fetch historical klines
-        end_time = datetime.now(timezone.utc)
+        end_time = datetime.now(timezone.utc).replace(tzinfo=None)
         start_time = end_time - timedelta(days=self.days)
 
         print(f"  Fetching klines from {start_time.strftime('%Y-%m-%d %H:%M')} to {end_time.strftime('%H:%M')}...")
@@ -296,7 +296,7 @@ class HistoricalBackfill:
             await self._save_checkpoint(
                 conn,
                 binance_symbol,
-                end_time,
+                datetime.now(timezone.utc).replace(tzinfo=None),
                 self.days,
                 inserted
             )
@@ -425,6 +425,9 @@ class HistoricalBackfill:
             Number of records inserted
         """
         # Initialize indicator registry
+        import sys
+        sys.path.insert(0, '/home/andy/projects/numbers/numbersML')
+        
         IndicatorRegistry.discover()
         indicators = {
             name: IndicatorRegistry.get(name)
@@ -618,7 +621,7 @@ class HistoricalBackfill:
             """,
             f"backfill_checkpoint_{symbol}",
             json.dumps({
-                'last_time': last_time.isoformat(),
+                'last_time': last_time.isoformat(timespec='seconds'),
                 'days': days,
                 'records': records_count,
             }),
