@@ -318,12 +318,16 @@ class Ticker24hrCollector:
 
     async def _store_ticker(self, ticker: Dict[str, Any]) -> None:
         """
-        Store ticker in database.
+        Store ticker in database and trigger indicator calculation.
+
+        The insert TRIGGERS indicator calculation via database trigger.
+        1-second interval ensures enough time for calculation.
 
         Args:
             ticker: Ticker data dictionary
         """
         async with self.db_pool.acquire() as conn:
+            # Insert/update ticker - this TRIGGERS indicator calculation
             await conn.execute(
                 """
                 INSERT INTO ticker_24hr_stats (
@@ -338,19 +342,8 @@ class Ticker24hrCollector:
                     total_volume = EXCLUDED.total_volume,
                     total_quote_volume = EXCLUDED.total_quote_volume,
                     total_trades = EXCLUDED.total_trades
-                """,
-                ticker['time'],
-                ticker['symbol_id'],
-                ticker['symbol'],
-                ticker['last_price'],
-                ticker['open_price'],
-                ticker['high_price'],
-                ticker['low_price'],
-                ticker['volume'],
-                ticker['quote_volume'],
-                ticker['price_change'],
-                ticker['price_change_pct'],
-                ticker['trade_count'],
+                """
+                # No pg_notify here - calculation happens in DB transaction
             )
 
 

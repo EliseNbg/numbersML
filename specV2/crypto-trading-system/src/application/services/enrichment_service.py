@@ -1,15 +1,15 @@
 """
 Real-time indicator enrichment service.
 
-Listens to incoming ticks and calculates indicators in real-time.
+Listens to incoming ticks from ticker_24hr_stats and calculates indicators in real-time.
 """
 
 import asyncio
 import asyncpg
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 import logging
 import json
 
@@ -22,193 +22,298 @@ logger = logging.getLogger(__name__)
 class EnrichmentService:
     """
     Real-time indicator enrichment service.
-    
-    Listens to new ticks via PostgreSQL NOTIFY/LISTEN,
-    calculates all configured indicators, and stores
-    enriched data.
+
+    Listens to new ticks via PostgreSQL NOTIFY/LISTEN from ticker_24hr_stats,
+    calculates all configured indicators using Python/NumPy, and stores
+    enriched data in tick_indicators table.
+
+    Flow:
+    1. ticker_24hr_stats INSERT fires NOTIFY new_tick
+    2. This service receives notification
+    3. Loads recent tick history (last 200 ticks)
+    4. Calculates all indicators (15+)
+    5. Stores in tick_indicators table
+    6. Fires NOTIFY enrichment_complete for synchronization
+
+    Attributes:
+        db_pool: PostgreSQL connection pool
+        redis_pool: Redis connection pool (optional)
+        window_size: Number of ticks to load for calculations
+        indicator_names: List of indicator names to calculate
+
+    Example:
+        >>> service = EnrichmentService(db_pool, indicator_names=['rsi_14', 'sma_20'])
+        >>> await service.start()
     """
-    
+
+    # Default indicators to calculate (all available Python indicators)
+    DEFAULT_INDICATORS = [
+        'rsiindicator_period14',
+        'smaindicator_period20',
+        'smaindicator_period50',
+        'emaindicator_period12',
+        'emaindicator_period26',
+        'bbindicator_period20_std_dev2.0',
+        'macdindicator_fast_period12_slow_period26_signal_period9',
+        'stochasticindicator_k_period14_d_period3',
+        'adxindicator_period14',
+        'aroonindicator_period25',
+        'atrinticator_period14',
+        'obvindicator',
+        'vwapindicator',
+        'mfiindicator_period14',
+    ]
+
     def __init__(
         self,
         db_pool: asyncpg.Pool,
         redis_pool: Optional[Any] = None,
-        window_size: int = 1000,
+        window_size: int = 200,
         indicator_names: Optional[List[str]] = None,
+        min_ticks_for_calc: int = 50,
     ) -> None:
         """
         Initialize enrichment service.
-        
+
         Args:
             db_pool: PostgreSQL connection pool
-            redis_pool: Redis connection pool (optional)
-            window_size: Tick window size (default: 1000)
+            redis_pool: Redis connection pool (optional, for pub/sub to strategies)
+            window_size: Number of ticks to load for calculations (default: 200)
             indicator_names: List of indicator names to calculate
+            min_ticks_for_calc: Minimum ticks required before calculating (default: 50)
         """
         self.db_pool: asyncpg.Pool = db_pool
         self.redis_pool: Optional[Any] = redis_pool
         self.window_size: int = window_size
-        self.indicator_names: List[str] = indicator_names or []
-        
+        self.indicator_names: List[str] = indicator_names or self.DEFAULT_INDICATORS.copy()
+        self.min_ticks_for_calc: int = min_ticks_for_calc
+
         # State per symbol
-        self._tick_windows: Dict[int, Dict] = {}
+        self._tick_windows: Dict[int, Dict[str, np.ndarray]] = {}
         self._indicators: Dict[str, Indicator] = {}
         self._running: bool = False
         self._stats: Dict[str, int] = {
             'ticks_processed': 0,
             'indicators_calculated': 0,
-            'errors': 0
+            'errors': 0,
+            'skipped_insufficient_data': 0,
         }
-    
+
     async def start(self) -> None:
         """Start enrichment service."""
         logger.info("Starting Enrichment Service...")
-        
+
         await self._init_indicators()
         self._running = True
-        
+
         await self._listen_for_ticks()
-    
+
     async def stop(self) -> None:
         """Stop enrichment service."""
         logger.info("Stopping Enrichment Service...")
         self._running = False
-    
+
     async def _init_indicators(self) -> None:
         """Initialize indicators from registry."""
+        logger.info(f"Initializing {len(self.indicator_names)} indicators...")
+
         IndicatorRegistry.discover()
-        
-        # Default indicators if not specified
-        if not self.indicator_names:
-            self.indicator_names = [
-                'rsiindicator_period14',
-                'smaindicator_period20',
-                'smaindicator_period50',
-                'emaindicator_period20',
-                'bbindicator_period20_std_dev2.0',
-            ]
-        
+
         # Create indicator instances
+        loaded = 0
         for name in self.indicator_names:
             indicator = IndicatorRegistry.get(name)
             if indicator:
                 self._indicators[name] = indicator
-                logger.info(f"Loaded indicator: {name}")
+                logger.debug(f"Loaded indicator: {name}")
+                loaded += 1
             else:
                 logger.warning(f"Indicator not found: {name}")
-    
+
+        logger.info(f"Loaded {loaded}/{len(self.indicator_names)} indicators")
+
     async def _listen_for_ticks(self) -> None:
-        """Listen for new ticks via PostgreSQL NOTIFY."""
+        """
+        Listen for new ticks via PostgreSQL NOTIFY.
+
+        Listens to 'new_tick' channel which is fired when ticker_24hr_stats receives INSERT.
+        """
         async with self.db_pool.acquire() as conn:
             await conn.listen('new_tick')
             logger.info("Listening for new_tick notifications...")
-            
+
             while self._running:
                 try:
                     notification = await asyncio.wait_for(
                         conn.notification(),
                         timeout=60.0
                     )
-                    
+
                     await self._process_notification(notification)
-                
+
                 except asyncio.TimeoutError:
                     # Send heartbeat
                     await self._heartbeat()
-                
+
                 except Exception as e:
-                    logger.error(f"Error processing notification: {e}")
+                    logger.error(f"Error processing notification: {e}", exc_info=True)
                     self._stats['errors'] += 1
-    
+
     async def _process_notification(self, notification: Any) -> None:
-        """Process tick notification."""
+        """
+        Process tick notification from ticker_24hr_stats.
+
+        Flow:
+        1. Parse notification payload (symbol_id, time)
+        2. Load tick history from database (last 200 ticks)
+        3. Calculate all indicators
+        4. Store in tick_indicators table
+        5. Fire enrichment_complete notification
+
+        Args:
+            notification: PostgreSQL notification object
+        """
+        start_time = datetime.utcnow()
+
         try:
             # Parse notification payload
             payload = json.loads(notification.payload)
             symbol_id = payload.get('symbol_id')
-            tick_data = payload.get('tick', {})
-            
-            if not symbol_id:
+            tick_time = payload.get('time')
+
+            if not symbol_id or not tick_time:
+                logger.warning(f"Invalid notification payload: {payload}")
                 return
-            
-            # Update tick window
-            await self._update_tick_window(symbol_id, tick_data)
-            
-            # Calculate indicators
-            await self._calculate_indicators(symbol_id)
-            
+
+            # Load recent tick history for this symbol
+            tick_history = await self._load_tick_history(symbol_id, limit=self.window_size)
+
+            if len(tick_history) < self.min_ticks_for_calc:
+                logger.debug(
+                    f"Insufficient data for symbol {symbol_id}: "
+                    f"got {len(tick_history)}, need {self.min_ticks_for_calc}"
+                )
+                self._stats['skipped_insufficient_data'] += 1
+                return
+
+            # Extract arrays for calculation
+            prices, volumes, highs, lows = self._extract_arrays(tick_history)
+
+            # Calculate all indicators
+            indicator_values = await self._calculate_indicators(prices, volumes, highs, lows)
+
+            if not indicator_values:
+                logger.warning(f"No indicators calculated for symbol {symbol_id}")
+                return
+
+            # Get latest tick data
+            latest_tick = tick_history[-1]
+            latest_time = latest_tick.get('time') or tick_time
+            latest_price = float(latest_tick.get('last_price', 0))
+            latest_volume = float(latest_tick.get('volume', 0))
+
+            # Store enriched data
+            await self._store_enriched_data(
+                symbol_id=symbol_id,
+                time=latest_time,
+                price=latest_price,
+                volume=latest_volume,
+                indicator_values=indicator_values,
+            )
+
+            # Fire enrichment complete notification (for WIDE_Vector synchronization)
+            await self._notify_enrichment_complete(symbol_id, str(latest_time))
+
+            # Publish to Redis (if available)
+            if self.redis_pool:
+                await self._publish_to_redis(symbol_id, latest_price, indicator_values)
+
+            # Update stats
             self._stats['ticks_processed'] += 1
-        
+            self._stats['indicators_calculated'] += len(indicator_values)
+
+            # Log performance
+            elapsed_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+            logger.debug(f"Enrichment completed for symbol {symbol_id} in {elapsed_ms:.2f}ms")
+
         except Exception as e:
-            logger.error(f"Error processing tick: {e}")
+            logger.error(f"Error processing tick: {e}", exc_info=True)
             self._stats['errors'] += 1
-    
-    async def _update_tick_window(
+            raise  # Re-raise to allow retry logic if needed
+
+    async def _load_tick_history(
         self,
         symbol_id: int,
-        tick_data: Dict,
-    ) -> None:
-        """Update tick window for symbol."""
-        if symbol_id not in self._tick_windows:
-            self._tick_windows[symbol_id] = {
-                'prices': np.zeros(self.window_size),
-                'volumes': np.zeros(self.window_size),
-                'highs': np.zeros(self.window_size),
-                'lows': np.zeros(self.window_size),
-                'count': 0,
-                'index': 0,
-            }
-        
-        window = self._tick_windows[symbol_id]
-        idx = window['index']
-        
-        # Add new tick
-        window['prices'][idx] = float(tick_data.get('price', 0))
-        window['volumes'][idx] = float(tick_data.get('quantity', 0))
-        window['highs'][idx] = float(tick_data.get('high', tick_data.get('price', 0)))
-        window['lows'][idx] = float(tick_data.get('low', tick_data.get('price', 0)))
-        
-        # Update index
-        window['index'] = (idx + 1) % self.window_size
-        window['count'] = min(window['count'] + 1, self.window_size)
-    
-    async def _calculate_indicators(self, symbol_id: int) -> None:
-        """Calculate all indicators for symbol."""
-        window = self._tick_windows.get(symbol_id)
-        
-        if not window or window['count'] < 2:
-            return
-        
-        # Get valid data
-        count = window['count']
-        idx = window['index']
-        
-        # Extract circular buffer data
-        if count < self.window_size:
-            prices = window['prices'][:count]
-            volumes = window['volumes'][:count]
-            highs = window['highs'][:count]
-            lows = window['lows'][:count]
-        else:
-            prices = np.concatenate([
-                window['prices'][idx:],
-                window['prices'][:idx]
-            ])
-            volumes = np.concatenate([
-                window['volumes'][idx:],
-                window['volumes'][:idx]
-            ])
-            highs = np.concatenate([
-                window['highs'][idx:],
-                window['highs'][:idx]
-            ])
-            lows = np.concatenate([
-                window['lows'][idx:],
-                window['lows'][:idx]
-            ])
-        
-        # Calculate all indicators
-        indicator_values = {}
-        
+        limit: int = 200
+    ) -> List[Dict[str, Any]]:
+        """
+        Load recent tick history for symbol from ticker_24hr_stats.
+
+        Args:
+            symbol_id: Symbol ID to load history for
+            limit: Number of ticks to load (default: 200)
+
+        Returns:
+            List of tick dictionaries, ordered by time ascending
+        """
+        async with self.db_pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT time, last_price, open_price, high_price, low_price,
+                       volume, quote_volume, price_change, price_change_pct
+                FROM ticker_24hr_stats
+                WHERE symbol_id = $1
+                ORDER BY time ASC
+                LIMIT $2
+                """,
+                symbol_id,
+                limit
+            )
+
+            # Return as list of dicts, ordered by time ascending
+            return [dict(row) for row in rows]
+
+    def _extract_arrays(
+        self,
+        tick_history: List[Dict[str, Any]]
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Extract numpy arrays from tick history.
+
+        Args:
+            tick_history: List of tick dictionaries
+
+        Returns:
+            Tuple of (prices, volumes, highs, lows) as numpy arrays
+        """
+        prices = np.array([float(t.get('last_price', 0)) for t in tick_history])
+        volumes = np.array([float(t.get('volume', 0)) for t in tick_history])
+        highs = np.array([float(t.get('high_price', 0)) for t in tick_history])
+        lows = np.array([float(t.get('low_price', 0)) for t in tick_history])
+
+        return prices, volumes, highs, lows
+
+    async def _calculate_indicators(
+        self,
+        prices: np.ndarray,
+        volumes: np.ndarray,
+        highs: np.ndarray,
+        lows: np.ndarray,
+    ) -> Dict[str, float]:
+        """
+        Calculate all configured indicators.
+
+        Args:
+            prices: Array of prices
+            volumes: Array of volumes
+            highs: Array of high prices
+            lows: Array of low prices
+
+        Returns:
+            Dictionary of indicator_name -> latest_value
+        """
+        indicator_values: Dict[str, float] = {}
+
         for name, indicator in self._indicators.items():
             try:
                 result = indicator.calculate(
@@ -217,42 +322,38 @@ class EnrichmentService:
                     highs=highs,
                     lows=lows,
                 )
-                
+
                 # Get latest value for each indicator output
                 for key, values in result.values.items():
-                    if len(values) > 0 and not np.isnan(values[-1]):
-                        indicator_values[f"{name}_{key}"] = float(values[-1])
-                
-                self._stats['indicators_calculated'] += 1
-            
+                    if len(values) > 0:
+                        latest_value = values[-1]
+                        if not np.isnan(latest_value):
+                            indicator_values[f"{name}_{key}"] = float(latest_value)
+
             except Exception as e:
-                logger.error(f"Error calculating {name}: {e}")
+                logger.error(f"Error calculating indicator {name}: {e}", exc_info=True)
                 self._stats['errors'] += 1
-        
-        # Store enriched data
-        await self._store_enriched_data(
-            symbol_id,
-            prices[-1] if len(prices) > 0 else 0,
-            volumes[-1] if len(volumes) > 0 else 0,
-            indicator_values,
-        )
-        
-        # Publish to Redis
-        if self.redis_pool:
-            await self._publish_to_redis(
-                symbol_id,
-                prices[-1] if len(prices) > 0 else 0,
-                indicator_values,
-            )
-    
+
+        return indicator_values
+
     async def _store_enriched_data(
         self,
         symbol_id: int,
+        time: Any,
         price: float,
         volume: float,
         indicator_values: Dict[str, float],
     ) -> None:
-        """Store enriched tick data in database."""
+        """
+        Store enriched tick data in tick_indicators table.
+
+        Args:
+            symbol_id: Symbol ID
+            time: Tick time
+            price: Current price
+            volume: Current volume
+            indicator_values: Calculated indicator values
+        """
         async with self.db_pool.acquire() as conn:
             await conn.execute(
                 """
@@ -260,7 +361,7 @@ class EnrichmentService:
                     time, symbol_id, price, volume,
                     values, indicator_keys, indicator_version
                 ) VALUES (
-                    NOW(), $1, $2, $3, $4, $5, 1
+                    $1, $2, $3, $4, $5, $6, 1
                 )
                 ON CONFLICT (time, symbol_id) DO UPDATE SET
                     price = EXCLUDED.price,
@@ -269,20 +370,56 @@ class EnrichmentService:
                     indicator_keys = EXCLUDED.indicator_keys,
                     updated_at = NOW()
                 """,
+                time,
                 symbol_id,
                 Decimal(str(price)),
                 Decimal(str(volume)),
                 json.dumps(indicator_values),
                 list(indicator_values.keys()),
             )
-    
+
+            logger.debug(f"Stored {len(indicator_values)} indicators for symbol {symbol_id}")
+
+    async def _notify_enrichment_complete(
+        self,
+        symbol_id: int,
+        time: str
+    ) -> None:
+        """
+        Notify that enrichment is complete for this tick.
+
+        Used by WIDE_Vector generator to synchronize and ensure all indicators
+        are calculated before generating the vector.
+
+        Args:
+            symbol_id: Symbol ID
+            time: Tick time
+        """
+        async with self.db_pool.acquire() as conn:
+            await conn.execute(
+                "SELECT pg_notify('enrichment_complete', $1)",
+                json.dumps({
+                    'symbol_id': symbol_id,
+                    'time': time,
+                    'processed_at': datetime.utcnow().isoformat(),
+                    'indicators_count': len(self._indicators),
+                })
+            )
+
     async def _publish_to_redis(
         self,
         symbol_id: int,
         price: float,
         indicator_values: Dict[str, float],
     ) -> None:
-        """Publish enriched tick to Redis."""
+        """
+        Publish enriched tick to Redis for strategy consumption.
+
+        Args:
+            symbol_id: Symbol ID
+            price: Current price
+            indicator_values: Indicator values
+        """
         try:
             # Get symbol name
             async with self.db_pool.acquire() as conn:
@@ -290,7 +427,7 @@ class EnrichmentService:
                     "SELECT symbol FROM symbols WHERE id = $1",
                     symbol_id
                 )
-            
+
             # Publish message
             message = {
                 'symbol': symbol,
@@ -299,24 +436,43 @@ class EnrichmentService:
                 'time': datetime.utcnow().isoformat(),
                 'indicators': indicator_values,
             }
-            
+
             await self.redis_pool.publish(
                 f'enriched_tick:{symbol}',
                 json.dumps(message)
             )
-        
+
         except Exception as e:
             logger.error(f"Error publishing to Redis: {e}")
-    
+
     async def _heartbeat(self) -> None:
         """Send heartbeat / update stats."""
-        if self._stats['ticks_processed'] % 1000 == 0:
+        if self._stats['ticks_processed'] > 0 and self._stats['ticks_processed'] % 100 == 0:
             logger.info(
                 f"Enrichment stats: {self._stats['ticks_processed']} ticks, "
                 f"{self._stats['indicators_calculated']} indicators, "
-                f"{self._stats['errors']} errors"
+                f"{self._stats['errors']} errors, "
+                f"{self._stats['skipped_insufficient_data']} skipped (insufficient data)"
             )
-    
+
     def get_stats(self) -> Dict[str, int]:
         """Get enrichment statistics."""
         return self._stats.copy()
+
+    def set_indicators(self, indicator_names: List[str]) -> None:
+        """
+        Update list of indicators to calculate.
+
+        Args:
+            indicator_names: New list of indicator names
+        """
+        logger.info(f"Updating indicators: {len(self.indicator_names)} -> {len(indicator_names)}")
+        self.indicator_names = indicator_names
+        self._indicators.clear()
+
+        # Reinitialize indicators
+        IndicatorRegistry.discover()
+        for name in self.indicator_names:
+            indicator = IndicatorRegistry.get(name)
+            if indicator:
+                self._indicators[name] = indicator
