@@ -9,7 +9,7 @@
 ### 1. Start Infrastructure
 
 ```bash
-cd /home/andy/projects/numbers/specV2/numbersML
+cd /home/andy/projects/numbers/numbersML
 
 # Start PostgreSQL + Redis
 ./scripts/test.sh start

@@ -96,7 +96,7 @@ TOTAL: 55.07% ✅ (Requirement: 50%+)
 ## 🚀 How to Run Tests
 
 ```bash
-cd /home/andy/projects/numbers/specV2/numbersML
+cd /home/andy/projects/numbers/numbersML
 
 # Build and run tests in Docker
 docker build -f docker/Dockerfile.test -t crypto-tests .

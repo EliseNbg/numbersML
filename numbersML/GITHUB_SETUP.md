@@ -8,7 +8,7 @@
 
 ```bash
 # 1. Initialize git repository (if not already done)
-cd /home/andy/projects/numbers/specV2/numbersML
+cd /home/andy/projects/numbers/numbersML
 git init
 
 # 2. Add all files

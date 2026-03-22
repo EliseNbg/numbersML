@@ -17,7 +17,7 @@
 ### 1. Install Dependencies
 
 ```bash
-cd /home/andy/projects/numbers/specV2/numbersML
+cd /home/andy/projects/numbers/numbersML
 
 # Create virtual environment
 python3 -m venv .venv
@@ -169,7 +169,7 @@ When you run the tests, you should see:
 ```
 ============================= test session starts ==============================
 platform linux -- Python 3.13.7, pytest-7.4.3, pluggy-1.0.0
-rootdir: /home/andy/projects/numbers/specV2/numbersML
+rootdir: /home/andy/projects/numbers/numbersML
 configfile: pytest.ini
 plugins: cov-4.1.0, asyncio-0.21.1, mock-3.12.0
 asyncio: mode=Mode.AUTO
