@@ -115,24 +115,25 @@ class MessageBus:
         try:
             # Add timestamp
             message['timestamp'] = datetime.utcnow().isoformat()
-            
+
             # Serialize
             message_json = json.dumps(message)
-            
+
             if not REDIS_AVAILABLE or not self._client:
-                # Mock mode
+                # Mock mode - still track stats
                 logger.debug(f"Mock publish to {channel}: {message_json}")
+                self._stats['messages_published'] += 1
                 return 0
-            
+
             # Publish
             num_subscribers = await self._client.publish(channel, message_json)
-            
+
             self._stats['messages_published'] += 1
-            
+
             logger.debug(
                 f"Published to {channel}: {num_subscribers} subscribers"
             )
-            
+
             return num_subscribers
         
         except Exception as e:

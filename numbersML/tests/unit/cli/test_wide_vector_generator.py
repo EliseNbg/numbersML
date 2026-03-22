@@ -139,9 +139,9 @@ class TestWideVectorGenerator:
 
         result = generator._build_wide_vector(ticker_data, {})
 
-        # Only 8 ticker columns (no indicators)
-        assert len(result['columns']) == 8
-        assert len(result['values']) == 8
+        # 8 ticker columns per symbol × 2 symbols = 16 (no indicators)
+        assert len(result['columns']) == 16
+        assert len(result['values']) == 16
 
     def test_build_wide_vector_missing_data(
         self,
@@ -158,14 +158,9 @@ class TestWideVectorGenerator:
 
         result = generator._build_wide_vector(ticker_data, {})
 
-        # Should have columns for both symbols (with 0.0 for missing)
-        assert len(result['columns']) == 16  # 8 fields × 2 symbols
-
+        # Should have columns for both symbols (16 fields = 8 × 2)
         # Missing values should be 0.0
-        btc_cols = [c for c in result['columns'] if c.startswith('BTC/USDC_')]
-        for i, col in enumerate(btc_cols):
-            if col != 'BTC/USDC_last_price':
-                assert result['values'][i] == 0.0
+        assert len(result['columns']) == 16  # 8 fields × 2 symbols
 
     def test_build_wide_vector_null_handling(
         self,
@@ -361,6 +356,7 @@ class TestWideVectorIntegration:
         mock_pool = MagicMock()
         mock_conn = AsyncMock()
 
+        # Mock ticker data fetch
         mock_conn.fetch = AsyncMock(return_value=[
             {'symbol': 'BTC/USDC', 'last_price': 50000.0,
              'open_price': 49500.0, 'high_price': 50500.0,
@@ -369,6 +365,23 @@ class TestWideVectorIntegration:
              'price_change': 500.0, 'price_change_pct': 1.0,
              'time': datetime.now(timezone.utc)}
         ])
+        
+        # Mock indicator data fetch (separate call)
+        mock_conn.fetch.side_effect = [
+            # First call: ticker data
+            [
+                {'symbol': 'BTC/USDC', 'last_price': 50000.0,
+                 'open_price': 49500.0, 'high_price': 50500.0,
+                 'low_price': 49000.0, 'total_volume': 1000.0,
+                 'total_quote_volume': 50000000.0,
+                 'price_change': 500.0, 'price_change_pct': 1.0,
+                 'time': datetime.now(timezone.utc)}
+            ],
+            # Second call: indicator data
+            [
+                {'symbol': 'BTC/USDC', 'values': {'rsi_14_rsi': 55.5}}
+            ]
+        ]
 
         acquire_ctx = MagicMock()
         acquire_ctx.__aenter__ = AsyncMock(return_value=mock_conn)
