@@ -85,10 +85,11 @@ jobs:
       - name: Run unit tests
         run: |
           cd numbersML
-          ./scripts/test.sh unit --tb=short -v
+          # Run unit tests directly (no infrastructure needed)
+          python -m pytest tests/unit/ -v --tb=short --timeout=60
       
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: unit-test-results
@@ -167,7 +168,7 @@ jobs:
           ./scripts/test.sh pipeline
       
       - name: Upload pipeline results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: pipeline-test-results
