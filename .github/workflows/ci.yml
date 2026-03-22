@@ -12,6 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   # Database configuration
   POSTGRES_DB: crypto_trading
   POSTGRES_USER: crypto
@@ -106,6 +107,7 @@ jobs:
       postgres:
         image: postgres:15-alpine
         env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
           POSTGRES_DB: ${{ env.POSTGRES_DB }}
           POSTGRES_USER: ${{ env.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
@@ -167,6 +169,7 @@ jobs:
           psql -h localhost -U crypto -d crypto_trading -f migrations/004_remove_plpgsql_indicators.sql
           echo "✅ Database schema initialized"
         env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
           PGPASSWORD: ${{ env.POSTGRES_PASSWORD }}
       
       - name: Verify infrastructure
@@ -203,6 +206,7 @@ jobs:
       postgres:
         image: postgres:15-alpine
         env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
           POSTGRES_DB: ${{ env.POSTGRES_DB }}
           POSTGRES_USER: ${{ env.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
@@ -256,6 +260,7 @@ jobs:
           psql -h localhost -U crypto -d crypto_trading -f migrations/002_ticker_24hr_stats.sql
           psql -h localhost -U crypto -d crypto_trading -f migrations/004_remove_plpgsql_indicators.sql
         env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
           PGPASSWORD: ${{ env.POSTGRES_PASSWORD }}
       
       - name: Start infrastructure simulation
