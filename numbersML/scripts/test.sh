@@ -28,9 +28,17 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration
-PYTHON="${PROJECT_DIR}/.venv/bin/python"
-PYTEST="${PROJECT_DIR}/.venv/bin/pytest"
+# Configuration - Detect CI environment (GitHub Actions) vs local
+if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    # Running in GitHub Actions - use system Python
+    PYTHON="python"
+    PYTEST="pytest"
+else
+    # Local development - use virtual environment
+    PYTHON="${PROJECT_DIR}/.venv/bin/python"
+    PYTEST="${PROJECT_DIR}/.venv/bin/pytest"
+fi
+
 DB_URL="${DATABASE_URL:-postgresql://crypto:crypto_secret@localhost:5432/crypto_trading}"
 
 # Functions

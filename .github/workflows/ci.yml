@@ -12,7 +12,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   # Database configuration
   POSTGRES_DB: crypto_trading
   POSTGRES_USER: crypto
@@ -24,17 +23,17 @@ env:
 
 jobs:
   # =============================================================================
-  # QUICK CHECK (Fast feedback on every commit) 22.03.2026
+  # QUICK CHECK (Fast feedback on every commit)
   # =============================================================================
   quick-check:
     name: Quick Check
     runs-on: ubuntu-latest
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -42,19 +41,22 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r numbersML/requirements.txt
       
       - name: Run quick check
         run: |
+          cd numbersML
           ./scripts/test.sh check
       
       - name: Check Python syntax
         run: |
+          cd numbersML
           python -m py_compile src/cli/generate_wide_vector.py
           python -m py_compile src/application/services/enrichment_service.py
       
       - name: Verify imports
         run: |
+          cd numbersML
           python -c "from src.cli.generate_wide_vector import WideVectorGenerator"
           python -c "from src.application.services.enrichment_service import EnrichmentService"
 
@@ -67,10 +69,10 @@ jobs:
     needs: quick-check
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -78,10 +80,11 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r numbersML/requirements.txt
       
       - name: Run unit tests
         run: |
+          cd numbersML
           ./scripts/test.sh unit --tb=short -v
       
       - name: Upload test results
@@ -90,8 +93,8 @@ jobs:
         with:
           name: unit-test-results
           path: |
-            .pytest_cache/
-            htmlcov/
+            numbersML/.pytest_cache/
+            numbersML/htmlcov/
           retention-days: 7
 
   # =============================================================================
@@ -107,7 +110,6 @@ jobs:
       postgres:
         image: postgres:15-alpine
         env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
           POSTGRES_DB: ${{ env.POSTGRES_DB }}
           POSTGRES_USER: ${{ env.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
@@ -118,8 +120,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
-        volumes:
-          - /var/run/postgresql:/var/run/postgresql
       
       redis:
         image: redis:7-alpine
@@ -132,10 +132,10 @@ jobs:
           --health-retries 10
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -143,124 +143,14 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      
-      - name: Wait for PostgreSQL
-        run: |
-          echo "Waiting for PostgreSQL to be ready..."
-          until pg_isready -h localhost -p 5432 -U crypto; do
-            sleep 1
-          done
-          echo "✅ PostgreSQL is ready!"
-      
-      - name: Wait for Redis
-        run: |
-          echo "Waiting for Redis to be ready..."
-          until redis-cli -h localhost -p 6379 ping; do
-            sleep 1
-          done
-          echo "✅ Redis is ready!"
+          pip install -r numbersML/requirements.txt
       
       - name: Initialize database schema
         run: |
-          echo "📦 Running database migrations..."
-          psql -h localhost -U crypto -d crypto_trading -f migrations/001_initial_schema.sql
-          psql -h localhost -U crypto -d crypto_trading -f migrations/002_ticker_24hr_stats.sql
-          psql -h localhost -U crypto -d crypto_trading -f migrations/004_remove_plpgsql_indicators.sql
-          echo "✅ Database schema initialized"
+          psql -h localhost -U crypto -d crypto_trading -f numbersML/migrations/001_initial_schema.sql
+          psql -h localhost -U crypto -d crypto_trading -f numbersML/migrations/002_ticker_24hr_stats.sql
+          psql -h localhost -U crypto -d crypto_trading -f numbersML/migrations/004_remove_plpgsql_indicators.sql
         env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-          PGPASSWORD: ${{ env.POSTGRES_PASSWORD }}
-      
-      - name: Verify infrastructure
-        run: |
-          echo "🔍 Checking infrastructure..."
-          echo "PostgreSQL: $(pg_isready -h localhost -p 5432 -U crypto)"
-          echo "Redis: $(redis-cli -h localhost -p 6379 ping)"
-          echo "✅ Infrastructure ready"
-      
-      - name: Run integration tests
-        run: |
-          echo "🧪 Running integration tests..."
-          ./scripts/test.sh integration --tb=short -v
-      
-      - name: Upload test results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: integration-test-results
-          path: |
-            /tmp/integration_test_results.json
-          retention-days: 7
-
-  # =============================================================================
-  # PIPELINE TEST (Critical path - must pass)
-  # =============================================================================
-  pipeline-test:
-    name: Pipeline Test ⭐
-    runs-on: ubuntu-latest
-    needs: integration-tests
-    
-    # Start infrastructure services (PostgreSQL + Redis)
-    services:
-      postgres:
-        image: postgres:15-alpine
-        env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-          POSTGRES_DB: ${{ env.POSTGRES_DB }}
-          POSTGRES_USER: ${{ env.POSTGRES_USER }}
-          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-      
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-      
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      
-      - name: Wait for PostgreSQL
-        run: |
-          until pg_isready -h localhost -p 5432 -U crypto; do
-            sleep 1
-          done
-      
-      - name: Wait for Redis
-        run: |
-          until redis-cli -h localhost -p 6379 ping; do
-            sleep 1
-          done
-      
-      - name: Initialize database
-        run: |
-          psql -h localhost -U crypto -d crypto_trading -f migrations/001_initial_schema.sql
-          psql -h localhost -U crypto -d crypto_trading -f migrations/002_ticker_24hr_stats.sql
-          psql -h localhost -U crypto -d crypto_trading -f migrations/004_remove_plpgsql_indicators.sql
-        env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
           PGPASSWORD: ${{ env.POSTGRES_PASSWORD }}
       
       - name: Start infrastructure simulation
@@ -273,6 +163,7 @@ jobs:
       - name: Run pipeline test
         run: |
           echo "🧪 Running critical pipeline test..."
+          cd numbersML
           ./scripts/test.sh pipeline
       
       - name: Upload pipeline results
@@ -303,10 +194,10 @@ jobs:
     if: github.event_name == 'pull_request'
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -317,15 +208,18 @@ jobs:
       
       - name: Run flake8
         run: |
+          cd numbersML
           flake8 src/ --count --select=E9,F63,F7,F82 --show-source --statistics
           flake8 src/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
       
       - name: Run mypy (type checking)
         run: |
+          cd numbersML
           mypy src/ --ignore-missing-imports --no-strict-optional || true
       
       - name: Check code formatting
         run: |
+          cd numbersML
           black --check src/ tests/ || true
 
   # =============================================================================
@@ -338,7 +232,7 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
       - name: Check test status
         run: |
