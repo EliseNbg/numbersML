@@ -41,7 +41,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r numbersML/requirements.txt
+          pip install -r numbersML/requirements-dev.txt
       
       - name: Run quick check
         run: |
@@ -80,7 +80,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r numbersML/requirements.txt
+          pip install -r numbersML/requirements-dev.txt
       
       - name: Run unit tests
         run: |
@@ -144,7 +144,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r numbersML/requirements.txt
+          pip install -r numbersML/requirements-dev.txt
       
       - name: Initialize database schema
         run: |
