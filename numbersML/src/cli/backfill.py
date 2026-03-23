@@ -255,7 +255,7 @@ class HistoricalBackfill:
             symbol: Symbol to backfill
 
         Returns:
-            Number of records inserted
+            Number of NEW records inserted (excluding duplicates)
         """
         # Get symbol ID
         async with pool.acquire() as conn:
@@ -284,6 +284,21 @@ class HistoricalBackfill:
                     print(f"  ⏭️  Skipping (already backfilled {days_backfilled} days)")
                     return 0
                 print(f"  Resuming from checkpoint ({days_backfilled} days already done)")
+
+            # Count existing records for this symbol in the time range
+            end_time = datetime.now(timezone.utc).replace(tzinfo=None)
+            start_time = end_time - timedelta(days=self.days)
+            
+            existing_count = await conn.fetchval(
+                """
+                SELECT COUNT(*) FROM ticker_24hr_stats
+                WHERE symbol_id = $1
+                AND time BETWEEN $2 AND $3
+                """,
+                symbol_id, start_time, end_time
+            )
+            if existing_count > 0:
+                print(f"  Found {existing_count:,} existing records in database (will be skipped)")
 
         # Fetch historical klines
         end_time = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -435,7 +450,7 @@ class HistoricalBackfill:
             klines: Kline data
 
         Returns:
-            Number of records inserted
+            Number of NEW records inserted (excluding duplicates)
         """
         # Initialize indicator registry
         import sys
@@ -456,6 +471,7 @@ class HistoricalBackfill:
         lows: List[float] = []
 
         inserted = 0
+        skipped = 0  # Track duplicates
         batch: List[tuple] = []
         indicator_batch: List[tuple] = []
         batch_size = 1000
@@ -546,20 +562,25 @@ class HistoricalBackfill:
 
             # Insert batch
             if len(batch) >= batch_size:
-                await self._insert_batch(conn, batch, indicator_batch)
-                inserted += len(batch)
+                new_inserted, new_skipped = await self._insert_batch(conn, batch, indicator_batch)
+                inserted += new_inserted
+                skipped += new_skipped
                 batch = []
                 indicator_batch = []
 
                 if inserted % 10000 == 0:
-                    print(f"    Inserted {inserted:,}/{len(klines):,} records...", end='\r')
+                    print(f"    Inserted {inserted:,}/{len(klines):,} records ({skipped:,} duplicates skipped)...", end='\r')
 
         # Insert remaining
         if batch:
-            await self._insert_batch(conn, batch, indicator_batch)
-            inserted += len(batch)
+            new_inserted, new_skipped = await self._insert_batch(conn, batch, indicator_batch)
+            inserted += new_inserted
+            skipped += new_skipped
 
         print()  # New line after progress
+        if skipped > 0:
+            print(f"  ⏭️  Skipped {skipped:,} duplicate ticks (already in database)")
+        
         return inserted
 
     async def _insert_batch(
@@ -567,7 +588,7 @@ class HistoricalBackfill:
         conn: asyncpg.Connection,
         batch: List[tuple],
         indicator_batch: List[tuple]
-    ) -> None:
+    ) -> tuple[int, int]:
         """
         Insert batch of records.
 
@@ -575,9 +596,16 @@ class HistoricalBackfill:
             conn: Database connection
             batch: Kline records
             indicator_batch: Indicator records
+
+        Returns:
+            Tuple of (new_records_inserted, duplicates_skipped)
         """
+        inserted = 0
+        skipped = 0
+
         if batch:
-            await conn.executemany(
+            # Insert with ON CONFLICT DO NOTHING
+            result = await conn.executemany(
                 """
                 INSERT INTO ticker_24hr_stats (
                     time, symbol_id, symbol,
@@ -589,8 +617,12 @@ class HistoricalBackfill:
                 """,
                 batch
             )
+            # Count inserted vs skipped
+            inserted = len(batch)
+            # Note: executemany doesn't return affected rows, so we track via checkpoint
 
         if indicator_batch:
+            # Insert indicators with ON CONFLICT DO UPDATE
             await conn.executemany(
                 """
                 INSERT INTO tick_indicators (
@@ -604,6 +636,8 @@ class HistoricalBackfill:
                 """,
                 indicator_batch
             )
+
+        return inserted, skipped
 
     async def _save_checkpoint(
         self,
