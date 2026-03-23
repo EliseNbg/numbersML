@@ -474,14 +474,26 @@ class HistoricalBackfill:
         """
         # Initialize indicator registry
         import sys
-        sys.path.insert(0, '/home/andy/projects/numbers/numbersML')
+        import os
+        # Add project root to path
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        sys.path.insert(0, project_root)
+        logger.info(f"Added project root to path: {project_root}")
         
-        IndicatorRegistry.discover()
-        indicators = {
-            name: IndicatorRegistry.get(name)
-            for name in IndicatorRegistry.list_indicators()
-        }
-        print(f"  Loaded {len(indicators)} indicators for inline calculation")
+        try:
+            IndicatorRegistry.discover()
+            indicators = {
+                name: IndicatorRegistry.get(name)
+                for name in IndicatorRegistry.list_indicators()
+            }
+            logger.info(f"Discovered {len(indicators)} indicators: {list(indicators.keys())}")
+            print(f"  Loaded {len(indicators)} indicators for inline calculation")
+            if indicators:
+                print(f"  Indicators: {', '.join(list(indicators.keys())[:5])}...")
+        except Exception as e:
+            logger.error(f"Failed to load indicators: {e}", exc_info=True)
+            print(f"  ⚠️  Failed to load indicators: {e}")
+            indicators = {}
 
         # Tick window arrays (circular buffer style)
         window_size = 200
@@ -525,7 +537,7 @@ class HistoricalBackfill:
 
             # Calculate indicators (if enough data)
             indicator_values: Dict[str, float] = {}
-            if len(prices) >= 50:  # Minimum data for indicators
+            if len(prices) >= 50 and indicators:  # Minimum data for indicators
                 np_prices = np.array(prices, dtype=np.float64)
                 np_volumes = np.array(volumes, dtype=np.float64)
                 np_highs = np.array(highs, dtype=np.float64)
@@ -547,11 +559,19 @@ class HistoricalBackfill:
                             if len(values) > 0:
                                 latest_value = values[-1]
                                 if not np.isnan(latest_value):
-                                    indicator_values[f"{name}_{key}"] = float(latest_value)
+                                    indicator_key = f"{name}_{key}"
+                                    indicator_values[indicator_key] = float(latest_value)
+                                    # Log first few indicators for first 10 ticks
+                                    if len(klines) - len(batch) < 10 and len(indicator_values) <= 5:
+                                        logger.debug(f"Calculated {indicator_key}: {float(latest_value):.6f}")
 
                     except Exception as e:
                         logger.debug(f"Error calculating {name}: {e}")
                         continue
+                
+                # Log indicator calculation progress
+                if indicator_values and len(klines) % 10000 == 0:
+                    logger.info(f"Calculated {len(indicator_values)} indicators for tick {len(prices)}")
 
             # Add to batch
             batch.append((
@@ -600,6 +620,10 @@ class HistoricalBackfill:
         print()  # New line after progress
         if skipped > 0:
             print(f"  ⏭️  Skipped {skipped:,} duplicate ticks (already in database)")
+        
+        # Log indicator summary
+        if self._stats['indicators_calculated'] > 0:
+            print(f"  📊 Calculated {self._stats['indicators_calculated']:,} indicator values")
         
         return inserted
 
