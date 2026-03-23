@@ -207,7 +207,7 @@ class HistoricalBackfill:
         Check if symbol is EU-compliant.
 
         Per MiFID II regulations:
-        - Allowed: USDC, BTC, ETH quote assets
+        - Allowed: USDC, EUR, BTC, ETH quote assets
         - Excluded: USDT, BUSD, TUSD (not EU approved stablecoins)
         - Excluded: Leveraged tokens (UP/DOWN)
 
@@ -224,9 +224,9 @@ class HistoricalBackfill:
             return False
 
         # Parse quote asset (e.g., BTCUSDT -> USDT, BTC/USDT -> USDT)
-        # Binance format: BASEQUOTE (e.g., BTCUSDT, ETHUSDC)
+        # Binance format: BASEQUOTE (e.g., BTCUSDT, ETHUSDC, BTCEUR)
         quote_asset = None
-        for allowed_quote in ['USDC', 'BTC', 'ETH']:
+        for allowed_quote in ['USDC', 'EUR', 'BTC', 'ETH']:
             if symbol.endswith(allowed_quote):
                 quote_asset = allowed_quote
                 break
