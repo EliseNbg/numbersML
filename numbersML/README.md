@@ -22,7 +22,7 @@ cd numbersML
 ./scripts/test.sh pipeline
 
 # 4. Backfill historical data (optional)
-.venv/bin/python src/cli/backfill.py --days 7
+.venv/bin/python src/cli/backfill --days 7
 
 # 5. Generate a wide vector for LLM input
 .venv/bin/python src/cli/generate_wide_vector.py
@@ -210,22 +210,22 @@ numbersML/
 .venv/bin/python src/cli/health_check
 
 # Backfill historical data (NEW!)
-.venv/bin/python src/cli/backfill.py --days 7
+.venv/bin/python src/cli/backfill --days 7
 ```
 
 ### Backfill Examples
 ```bash
 # Backfill last 3 days (default) for all active symbols
-python -m src.cli.backfill.py
+python -m src.cli.backfill
 
 # Backfill last 7 days
-python -m src.cli.backfill.py --days 7
+python -m src.cli.backfill --days 7
 
 # Backfill specific symbol
-python -m src.cli.backfill.py --days 3 --symbol BTC/USDT
+python -m src.cli.backfill --days 3 --symbol BTC/USDT
 
 # Dry run (test without inserting)
-python -m src.cli.backfill.py --days 3 --dry-run
+python -m src.cli.backfill --days 3 --dry-run
 ```
 
 ---
