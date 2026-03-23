@@ -279,6 +279,11 @@ class HistoricalBackfill:
 
             if checkpoint and not self.symbol_filter:
                 checkpoint_data = checkpoint['value']
+                # JSONB is returned as string, parse it
+                if isinstance(checkpoint_data, str):
+                    import json
+                    checkpoint_data = json.loads(checkpoint_data)
+                
                 days_backfilled = checkpoint_data.get('days', 0)
                 if days_backfilled >= self.days:
                     print(f"  ⏭️  Skipping (already backfilled {days_backfilled} days)")
