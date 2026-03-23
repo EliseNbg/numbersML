@@ -206,6 +206,11 @@ class HistoricalBackfill:
         """
         Check if symbol is EU-compliant.
 
+        Per MiFID II regulations:
+        - Allowed: USDC, BTC, ETH quote assets
+        - Excluded: USDT, BUSD, TUSD (not EU approved stablecoins)
+        - Excluded: Leveraged tokens (UP/DOWN)
+
         Args:
             ticker: Ticker data from Binance
 
@@ -218,11 +223,19 @@ class HistoricalBackfill:
         if 'UP' in symbol or 'DOWN' in symbol:
             return False
 
-        # Exclude non-USDT pairs (for EU compliance)
-        if not symbol.endswith('USDT'):
+        # Parse quote asset (e.g., BTCUSDT -> USDT, BTC/USDT -> USDT)
+        # Binance format: BASEQUOTE (e.g., BTCUSDT, ETHUSDC)
+        quote_asset = None
+        for allowed_quote in ['USDC', 'BTC', 'ETH']:
+            if symbol.endswith(allowed_quote):
+                quote_asset = allowed_quote
+                break
+        
+        # Must end with allowed quote asset
+        if quote_asset is None:
             return False
 
-        # Exclude low volume (< 1M USDT)
+        # Exclude low volume (< 1M in quote currency)
         quote_volume = float(ticker.get('quoteVolume', 0))
         if quote_volume < 1_000_000:
             return False
