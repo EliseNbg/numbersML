@@ -475,12 +475,15 @@ class HistoricalBackfill:
         # Initialize indicator registry
         import sys
         import os
-        # Add project root to path
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        sys.path.insert(0, project_root)
-        logger.info(f"Added project root to path: {project_root}")
+        # Add src to path so we can import indicators module
+        src_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'src')
+        sys.path.insert(0, src_path)
+        logger.info(f"Added src to path: {src_path}")
         
         try:
+            from indicators.registry import IndicatorRegistry
+            from indicators.base import Indicator
+            
             IndicatorRegistry.discover()
             indicators = {
                 name: IndicatorRegistry.get(name)
@@ -489,7 +492,9 @@ class HistoricalBackfill:
             logger.info(f"Discovered {len(indicators)} indicators: {list(indicators.keys())}")
             print(f"  Loaded {len(indicators)} indicators for inline calculation")
             if indicators:
-                print(f"  Indicators: {', '.join(list(indicators.keys())[:5])}...")
+                # Show first 5 indicator names
+                indicator_names = list(indicators.keys())[:5]
+                print(f"  Indicators: {', '.join(indicator_names)}...")
         except Exception as e:
             logger.error(f"Failed to load indicators: {e}", exc_info=True)
             print(f"  ⚠️  Failed to load indicators: {e}")
