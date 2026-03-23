@@ -316,9 +316,24 @@ class HistoricalBackfill:
             print(f"  [DRY RUN] Would insert {len(klines):,} records")
             return 0
 
+        # Count before insert
+        async with pool.acquire() as conn:
+            count_before = await conn.fetchval(
+                "SELECT COUNT(*) FROM ticker_24hr_stats WHERE symbol_id = $1",
+                symbol_id
+            )
+
         # Insert and enrich
         async with pool.acquire() as conn:
             inserted = await self._insert_and_enrich(conn, symbol_id, symbol, klines)
+            
+            # Count after insert to determine duplicates
+            count_after = await conn.fetchval(
+                "SELECT COUNT(*) FROM ticker_24hr_stats WHERE symbol_id = $1",
+                symbol_id
+            )
+            actual_new = count_after - count_before
+            duplicates = len(klines) - actual_new
 
             # Save checkpoint
             await self._save_checkpoint(
@@ -326,10 +341,15 @@ class HistoricalBackfill:
                 binance_symbol,
                 datetime.now(timezone.utc).replace(tzinfo=None),
                 self.days,
-                inserted
+                actual_new
             )
 
-        return inserted
+        if duplicates > 0:
+            print(f"  ✅ Inserted {actual_new:,} new records ({duplicates:,} duplicates skipped)")
+        else:
+            print(f"  ✅ Inserted {actual_new:,} records")
+
+        return actual_new
 
     async def _insert_symbol(
         self,
