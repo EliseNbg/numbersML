@@ -571,16 +571,16 @@ class HistoricalBackfill:
                                 if not np.isnan(latest_value):
                                     indicator_key = f"{name}_{key}"
                                     indicator_values[indicator_key] = float(latest_value)
-                                    # Log first few indicators for first 10 ticks
-                                    if len(klines) - len(batch) < 10 and len(indicator_values) <= 5:
+                                    # Log first 3 indicators for first tick only (debug)
+                                    if len(prices) == 50 and len(indicator_values) <= 3:
                                         logger.debug(f"Calculated {indicator_key}: {float(latest_value):.6f}")
 
                     except Exception as e:
                         logger.debug(f"Error calculating {name}: {e}")
                         continue
                 
-                # Log indicator calculation progress
-                if indicator_values and len(klines) % 10000 == 0:
+                # Log indicator calculation progress (only every 1000 ticks to reduce noise)
+                if indicator_values and len(prices) % 1000 == 0:
                     logger.info(f"Calculated {len(indicator_values)} indicators for tick {len(prices)}")
 
             # Add to batch
