@@ -14,7 +14,7 @@ from typing import Dict, List, Any
 from src.domain.models.symbol import Symbol
 from src.domain.models.trade import Trade
 from src.domain.services.tick_validator import TickValidator, ValidationResult
-from src.domain.services.anomaly_detector import AnomalyDetector, AnomalyDetectionResult
+from src.domain.services.anomaly_detector import AnomalyDetector, AnomalyResult
 from src.domain.services.gap_detector import GapDetector
 from src.domain.services.quality_metrics import QualityMetricsTracker
 from src.application.services.asset_sync_service import AssetSyncService
