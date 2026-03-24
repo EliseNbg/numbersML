@@ -4,37 +4,44 @@ import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from src.application.services.enrichment_service import EnrichmentService
+from src.indicators.providers import PythonIndicatorProvider
 
 
 class TestEnrichmentService:
     """Test EnrichmentService."""
-    
+
     @pytest.fixture
     def mock_db_pool(self) -> MagicMock:
         """Create mock database pool."""
         pool = MagicMock()
         pool.acquire = MagicMock()
         return pool
-    
+
     @pytest.fixture
     def mock_redis_pool(self) -> MagicMock:
         """Create mock Redis pool."""
         pool = MagicMock()
         pool.publish = AsyncMock()
         return pool
-    
+
+    @pytest.fixture
+    def mock_indicator_provider(self) -> PythonIndicatorProvider:
+        """Create mock indicator provider."""
+        return PythonIndicatorProvider({})  # Empty for basic tests
+
     @pytest.fixture
     def enrichment_service(
         self,
         mock_db_pool: MagicMock,
         mock_redis_pool: MagicMock,
+        mock_indicator_provider: PythonIndicatorProvider,
     ) -> EnrichmentService:
         """Create enrichment service for testing."""
         return EnrichmentService(
             db_pool=mock_db_pool,
+            indicator_provider=mock_indicator_provider,
             redis_pool=mock_redis_pool,
             window_size=100,
-            indicator_names=[],  # No indicators for basic tests
         )
     
     def test_service_initialization(
@@ -204,16 +211,22 @@ class TestEnrichmentServiceWithIndicators:
     ) -> None:
         """Test indicator calculation in enrichment service."""
         from src.indicators.momentum import RSIIndicator
+        from src.indicators.providers import PythonIndicatorProvider
         import numpy as np
+
+        # Create provider with RSI indicator
+        provider = PythonIndicatorProvider({
+            'rsi_14': RSIIndicator,
+        })
 
         service = EnrichmentService(
             db_pool=mock_db_pool,
+            indicator_provider=provider,
             window_size=100,
-            indicator_names=['rsi_14'],
         )
 
-        # Initialize indicators manually for test
-        service._indicators['rsi_14'] = RSIIndicator(period=14)
+        # Initialize indicators from provider
+        await service._init_indicators()
 
         # Prepare test data
         prices = np.array([50.0 + i for i in range(100)], dtype=np.float64)
@@ -234,15 +247,22 @@ class TestEnrichmentServiceWithIndicators:
     ) -> None:
         """Test indicator calculation with insufficient data."""
         from src.indicators.momentum import RSIIndicator
+        from src.indicators.providers import PythonIndicatorProvider
         import numpy as np
+
+        # Create provider with RSI indicator
+        provider = PythonIndicatorProvider({
+            'rsi_14': RSIIndicator,
+        })
 
         service = EnrichmentService(
             db_pool=mock_db_pool,
+            indicator_provider=provider,
             window_size=100,
-            indicator_names=['rsi_14'],
         )
 
-        service._indicators['rsi_14'] = RSIIndicator(period=14)
+        # Initialize indicators from provider
+        await service._init_indicators()
 
         # Insufficient data (less than RSI period of 14)
         prices = np.array([50.0, 51.0, 52.0], dtype=np.float64)
