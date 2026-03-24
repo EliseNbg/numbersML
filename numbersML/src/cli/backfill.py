@@ -156,7 +156,7 @@ class HistoricalBackfill:
     async def _collect_active_symbols(
         self,
         pool: asyncpg.Pool,
-        duration_sec: int = 60
+        duration_sec: int = 10  # Reduced from 60 to 10 seconds for faster startup
     ) -> List[str]:
         """
         Collect active symbols by sampling 24hr ticker.

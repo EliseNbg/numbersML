@@ -114,23 +114,50 @@ class EnrichmentService:
         self._running = False
 
     async def _init_indicators(self) -> None:
-        """Initialize indicators from registry."""
-        logger.info(f"Initializing {len(self.indicator_names)} indicators...")
+        """
+        Initialize active indicators from database.
+        
+        Loads only indicators where is_active = true from indicator_definitions table.
+        Supports dynamic activation/deactivation at runtime.
+        """
+        logger.info("Loading active indicators from database...")
 
-        IndicatorRegistry.discover()
-
-        # Create indicator instances
-        loaded = 0
-        for name in self.indicator_names:
-            indicator = IndicatorRegistry.get(name)
-            if indicator:
-                self._indicators[name] = indicator
-                logger.debug(f"Loaded indicator: {name}")
-                loaded += 1
-            else:
-                logger.warning(f"Indicator not found: {name}")
-
-        logger.info(f"Loaded {loaded}/{len(self.indicator_names)} indicators")
+        async with self.db_pool.acquire() as conn:
+            # Fetch active indicators from database
+            rows = await conn.fetch(
+                """
+                SELECT name, params
+                FROM indicator_definitions
+                WHERE is_active = true
+                ORDER BY name
+                """
+            )
+            
+            IndicatorRegistry.discover()
+            
+            # Clear existing indicators
+            self._indicators.clear()
+            self.indicator_names = []
+            
+            loaded = 0
+            for row in rows:
+                name = row['name']
+                params = row['params'] or {}
+                
+                indicator = IndicatorRegistry.get(name, **params)
+                if indicator:
+                    self._indicators[name] = indicator
+                    self.indicator_names.append(name)
+                    logger.debug(f"Loaded active indicator: {name}")
+                    loaded += 1
+                else:
+                    logger.warning(f"Active indicator not found: {name}")
+            
+            logger.info(f"Loaded {loaded} active indicators from database")
+            
+            if loaded == 0:
+                logger.warning("No active indicators configured - add some via:")
+                logger.warning("  UPDATE indicator_definitions SET is_active = true WHERE name = 'rsiindicator_period14';")
 
     async def _listen_for_ticks(self) -> None:
         """
@@ -228,9 +255,22 @@ class EnrichmentService:
             if self.redis_pool:
                 await self._publish_to_redis(symbol_id, latest_price, indicator_values)
 
+            # Calculate processing time
+            total_time_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+
             # Update stats
             self._stats['ticks_processed'] += 1
             self._stats['indicators_calculated'] += len(indicator_values)
+
+            # Save pipeline metrics for dashboard monitoring
+            await self._save_pipeline_metrics(
+                symbol_id=symbol_id,
+                enrichment_time_ms=total_time_ms,
+                total_time_ms=total_time_ms,
+                active_symbols_count=len(self._symbol_ids) if hasattr(self, '_symbol_ids') else 0,
+                active_indicators_count=len(self._indicators),
+                status='success' if total_time_ms < 1000 else 'slow',
+            )
 
             # Log performance
             elapsed_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
@@ -459,13 +499,62 @@ class EnrichmentService:
         """Get enrichment statistics."""
         return self._stats.copy()
 
+    async def _save_pipeline_metrics(
+        self,
+        symbol_id: int,
+        enrichment_time_ms: int,
+        total_time_ms: int,
+        active_symbols_count: int,
+        active_indicators_count: int,
+        status: str = 'success',
+        error_message: str = None,
+    ) -> None:
+        """
+        Save pipeline performance metrics to database.
+        
+        Args:
+            symbol_id: Symbol ID that was processed
+            enrichment_time_ms: Time to calculate indicators (ms)
+            total_time_ms: Total processing time (ms)
+            active_symbols_count: Number of active symbols
+            active_indicators_count: Number of active indicators
+            status: 'success', 'slow', or 'failed'
+            error_message: Error message if failed
+        """
+        try:
+            async with self.db_pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO pipeline_metrics (
+                        symbol_id, symbol, enrichment_time_ms,
+                        total_time_ms, active_symbols_count,
+                        active_indicators_count, status, error_message
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    """,
+                    symbol_id,
+                    await conn.fetchval("SELECT symbol FROM symbols WHERE id = $1", symbol_id),
+                    enrichment_time_ms,
+                    total_time_ms,
+                    active_symbols_count,
+                    active_indicators_count,
+                    status,
+                    error_message,
+                )
+        except Exception as e:
+            # Don't fail the pipeline if metrics saving fails
+            logger.debug(f"Failed to save pipeline metrics: {e}")
+
     def set_indicators(self, indicator_names: List[str]) -> None:
         """
         Update list of indicators to calculate.
-
+        
+        DEPRECATED: Use database activation instead:
+            UPDATE indicator_definitions SET is_active = true/false WHERE name = '...';
+        
         Args:
             indicator_names: New list of indicator names
         """
+        logger.warning("set_indicators() is deprecated - use database activation instead")
         logger.info(f"Updating indicators: {len(self.indicator_names)} -> {len(indicator_names)}")
         self.indicator_names = indicator_names
         self._indicators.clear()
