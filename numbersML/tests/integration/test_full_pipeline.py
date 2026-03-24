@@ -128,7 +128,8 @@ class TestFullPipelineIntegration:
         
         result = validator.validate(invalid_trade)
         assert result.is_valid is False
-        assert 'price_sanity' in result.errors
+        # Check for actual error message (not internal error code)
+        assert any('price' in error.lower() and 'exceeds' in error.lower() for error in result.errors)
         
     def test_anomaly_detection_pipeline(
         self,
@@ -173,7 +174,9 @@ class TestFullPipelineIntegration:
         
         result = detector.detect(spike_trade)
         assert result.is_anomaly is True
-        assert result.should_flag is True
+        # Check that anomaly was detected and should be rejected
+        assert result.should_reject is True
+        assert len(result.anomalies) > 0
         
     def test_gap_detection_pipeline(
         self,
@@ -287,7 +290,7 @@ class TestFullPipelineIntegration:
         
         # Verify configuration
         assert service.window_size == 100
-        assert service._indicator_names == ['rsiindicator_period14']
+        assert service.indicator_names == ['rsiindicator_period14']
         assert service._running is False
         
     def test_multi_symbol_pipeline(

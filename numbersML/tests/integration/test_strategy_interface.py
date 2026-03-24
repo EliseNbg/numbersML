@@ -447,16 +447,19 @@ class TestMonitoringIntegration:
         # Get metrics for dashboard
         score = tracker.calculate_quality_score(symbol_id)
         metrics = tracker.get_metrics(symbol_id)
-        
+
         # Dashboard data
+        # Note: anomaly_rate is calculated, not stored as attribute
+        anomaly_rate = (metrics.anomalies_detected / metrics.ticks_received * 100) if metrics.ticks_received > 0 else 0.0
+        
         dashboard_data = {
             'quality_score': score,
             'quality_level': metrics.quality_level.value,
             'ticks_received': metrics.ticks_received,
             'validation_rate': metrics.validation_rate,
-            'anomaly_rate': metrics.anomaly_rate,
+            'anomaly_rate': anomaly_rate,
         }
-        
+
         # Verify dashboard data
         assert dashboard_data['quality_score'] > 90
         assert dashboard_data['quality_level'] in ['excellent', 'good', 'fair', 'poor']
