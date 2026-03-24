@@ -62,9 +62,17 @@ class TestHistoricalBackfill:
 
     def test_is_eu_compliant_valid(self, backfill: HistoricalBackfill) -> None:
         """Test EU compliance check for valid symbol."""
+        # USDC is EU compliant (USDT is NOT)
         ticker = {
-            'symbol': 'BTCUSDT',
-            'quoteVolume': '10000000',  # 10M USDT
+            'symbol': 'BTCUSDC',
+            'quoteVolume': '10000000',  # 10M USDC
+        }
+        assert backfill._is_eu_compliant(ticker) is True
+        
+        # EUR is also EU compliant
+        ticker = {
+            'symbol': 'BTCEUR',
+            'quoteVolume': '10000000',  # 10M EUR
         }
         assert backfill._is_eu_compliant(ticker) is True
 
@@ -181,8 +189,13 @@ class TestBackfillIntegration:
             )
 
             assert checkpoint is not None
-            assert checkpoint['value']['days'] == 1
-            assert checkpoint['value']['records'] == 86400
+            # JSONB is returned as string, parse it
+            checkpoint_value = checkpoint['value']
+            if isinstance(checkpoint_value, str):
+                checkpoint_value = json.loads(checkpoint_value)
+            
+            assert checkpoint_value['days'] == 1
+            assert checkpoint_value['records'] == 86400
 
     @pytest.mark.asyncio
     async def test_backfill_resume_from_checkpoint(
