@@ -31,7 +31,7 @@ NC='\033[0m' # No Color
 # Configuration - Detect CI environment (GitHub Actions) vs local
 if [ -n "${GITHUB_ACTIONS:-}" ]; then
     # Running in GitHub Actions - use system Python
-    PYTHON="python"
+    PYTHON="python3"
     PYTEST="pytest"
 else
     # Local development - use virtual environment
@@ -88,14 +88,14 @@ check_infrastructure() {
         log_success "Redis is ready (GitHub Actions)"
         
         # Check Python environment
-        if ! command -v python &> /dev/null; then
+        if ! command -v python3 &> /dev/null; then
             log_error "Python not found"
             exit 2
         fi
         log_success "Python environment found"
         
         # Check database connection
-        if ! python -c "import asyncpg; import asyncio; asyncio.run(asyncpg.connect('$DB_URL'))" > /dev/null 2>&1; then
+        if ! python3 -c "import asyncpg; import asyncio; asyncio.run(asyncpg.connect('$DB_URL'))" > /dev/null 2>&1; then
             log_error "Cannot connect to database"
             exit 2
         fi
@@ -276,31 +276,38 @@ run_all_tests() {
 
 quick_check() {
     print_header "QUICK CHECK"
-    
+
     log_info "Running quick syntax and import check..."
-    
+
+    # Use python3 in GitHub Actions, otherwise use $PYTHON
+    if [ -n "${GITHUB_ACTIONS:-}" ]; then
+        PY_CMD="python3"
+    else
+        PY_CMD="$PYTHON"
+    fi
+
     # Check Python syntax
-    if ! $PYTHON -m py_compile src/cli/generate_wide_vector.py 2>&1; then
+    if ! $PY_CMD -m py_compile src/cli/generate_wide_vector.py 2>&1; then
         log_error "Syntax error in generate_wide_vector.py"
         return 1
     fi
-    
-    if ! $PYTHON -m py_compile src/application/services/enrichment_service.py 2>&1; then
+
+    if ! $PY_CMD -m py_compile src/application/services/enrichment_service.py 2>&1; then
         log_error "Syntax error in enrichment_service.py"
         return 1
     fi
-    
+
     # Check imports
-    if ! $PYTHON -c "from src.cli.generate_wide_vector import WideVectorGenerator" 2>&1; then
+    if ! $PY_CMD -c "from src.cli.generate_wide_vector import WideVectorGenerator" 2>&1; then
         log_error "Import error in generate_wide_vector.py"
         return 1
     fi
-    
-    if ! $PYTHON -c "from src.application.services.enrichment_service import EnrichmentService" 2>&1; then
+
+    if ! $PY_CMD -c "from src.application.services.enrichment_service import EnrichmentService" 2>&1; then
         log_error "Import error in enrichment_service.py"
         return 1
     fi
-    
+
     log_success "Quick check passed"
     return 0
 }
