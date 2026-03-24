@@ -2,6 +2,11 @@
 Real-time indicator enrichment service.
 
 Listens to incoming ticks from ticker_24hr_stats and calculates indicators in real-time.
+
+Architecture:
+    Uses IIndicatorProvider for indicator loading (dependency injection).
+    Production: DatabaseIndicatorProvider (loads from indicator_definitions)
+    Tests: PythonIndicatorProvider or MockIndicatorProvider
 """
 
 import asyncio
@@ -13,7 +18,7 @@ from typing import Dict, List, Optional, Any, Tuple
 import logging
 import json
 
-from src.indicators.registry import IndicatorRegistry
+from src.indicators.providers.provider import IIndicatorProvider
 from src.indicators.base import Indicator
 
 logger = logging.getLogger(__name__)
@@ -42,34 +47,22 @@ class EnrichmentService:
         indicator_names: List of indicator names to calculate
 
     Example:
-        >>> service = EnrichmentService(db_pool, indicator_names=['rsi_14', 'sma_20'])
+        # Production (load from database)
+        provider = DatabaseIndicatorProvider(db_pool)
+        service = EnrichmentService(db_pool, provider)
+        
+        # Tests (explicit registration)
+        provider = PythonIndicatorProvider({'rsi_14': RSIIndicator})
+        service = EnrichmentService(db_pool, provider)
         >>> await service.start()
     """
-
-    # Default indicators to calculate (all available Python indicators)
-    DEFAULT_INDICATORS = [
-        'rsiindicator_period14',
-        'smaindicator_period20',
-        'smaindicator_period50',
-        'emaindicator_period12',
-        'emaindicator_period26',
-        'bbindicator_period20_std_dev2.0',
-        'macdindicator_fast_period12_slow_period26_signal_period9',
-        'stochasticindicator_k_period14_d_period3',
-        'adxindicator_period14',
-        'aroonindicator_period25',
-        'atrinticator_period14',
-        'obvindicator',
-        'vwapindicator',
-        'mfiindicator_period14',
-    ]
 
     def __init__(
         self,
         db_pool: asyncpg.Pool,
+        indicator_provider: IIndicatorProvider,
         redis_pool: Optional[Any] = None,
         window_size: int = 200,
-        indicator_names: Optional[List[str]] = None,
         min_ticks_for_calc: int = 50,
     ) -> None:
         """
@@ -77,15 +70,24 @@ class EnrichmentService:
 
         Args:
             db_pool: PostgreSQL connection pool
+            indicator_provider: Provider for loading indicators (dependency injection)
             redis_pool: Redis connection pool (optional, for pub/sub to strategies)
             window_size: Number of ticks to load for calculations (default: 200)
-            indicator_names: List of indicator names to calculate
             min_ticks_for_calc: Minimum ticks required before calculating (default: 50)
+        
+        Example:
+            # Production (load from database)
+            provider = DatabaseIndicatorProvider(db_pool)
+            service = EnrichmentService(db_pool, provider)
+            
+            # Tests (explicit registration)
+            provider = PythonIndicatorProvider({'rsi_14': RSIIndicator})
+            service = EnrichmentService(db_pool, provider)
         """
         self.db_pool: asyncpg.Pool = db_pool
+        self.indicator_provider: IIndicatorProvider = indicator_provider
         self.redis_pool: Optional[Any] = redis_pool
         self.window_size: int = window_size
-        self.indicator_names: List[str] = indicator_names or self.DEFAULT_INDICATORS.copy()
         self.min_ticks_for_calc: int = min_ticks_for_calc
 
         # State per symbol
@@ -115,49 +117,37 @@ class EnrichmentService:
 
     async def _init_indicators(self) -> None:
         """
-        Initialize active indicators from database.
+        Initialize indicators from provider.
         
-        Loads only indicators where is_active = true from indicator_definitions table.
-        Supports dynamic activation/deactivation at runtime.
+        Uses the injected IIndicatorProvider to load indicators.
+        This allows different loading strategies:
+        - DatabaseIndicatorProvider (production)
+        - PythonIndicatorProvider (tests/dev)
+        - MockIndicatorProvider (unit tests)
         """
-        logger.info("Loading active indicators from database...")
-
-        async with self.db_pool.acquire() as conn:
-            # Fetch active indicators from database
-            rows = await conn.fetch(
-                """
-                SELECT name, params
-                FROM indicator_definitions
-                WHERE is_active = true
-                ORDER BY name
-                """
-            )
-            
-            IndicatorRegistry.discover()
-            
-            # Clear existing indicators
-            self._indicators.clear()
-            self.indicator_names = []
-            
-            loaded = 0
-            for row in rows:
-                name = row['name']
-                params = row['params'] or {}
-                
-                indicator = IndicatorRegistry.get(name, **params)
-                if indicator:
-                    self._indicators[name] = indicator
-                    self.indicator_names.append(name)
-                    logger.debug(f"Loaded active indicator: {name}")
-                    loaded += 1
-                else:
-                    logger.warning(f"Active indicator not found: {name}")
-            
-            logger.info(f"Loaded {loaded} active indicators from database")
-            
-            if loaded == 0:
-                logger.warning("No active indicators configured - add some via:")
-                logger.warning("  UPDATE indicator_definitions SET is_active = true WHERE name = 'rsiindicator_period14';")
+        logger.info("Initializing indicators from provider...")
+        
+        # Get list of indicators from provider
+        indicator_names = self.indicator_provider.list_indicators()
+        logger.info(f"Provider has {len(indicator_names)} indicators: {indicator_names}")
+        
+        # Load each indicator
+        self._indicators.clear()
+        loaded = 0
+        
+        for name in indicator_names:
+            indicator = self.indicator_provider.get_indicator(name)
+            if indicator:
+                self._indicators[name] = indicator
+                logger.debug(f"Loaded indicator: {name}")
+                loaded += 1
+            else:
+                logger.warning(f"Failed to load indicator: {name}")
+        
+        logger.info(f"Loaded {loaded}/{len(indicator_names)} indicators")
+        
+        if loaded == 0:
+            logger.warning("No indicators loaded - check provider configuration")
 
     async def _listen_for_ticks(self) -> None:
         """
@@ -543,25 +533,3 @@ class EnrichmentService:
         except Exception as e:
             # Don't fail the pipeline if metrics saving fails
             logger.debug(f"Failed to save pipeline metrics: {e}")
-
-    def set_indicators(self, indicator_names: List[str]) -> None:
-        """
-        Update list of indicators to calculate.
-        
-        DEPRECATED: Use database activation instead:
-            UPDATE indicator_definitions SET is_active = true/false WHERE name = '...';
-        
-        Args:
-            indicator_names: New list of indicator names
-        """
-        logger.warning("set_indicators() is deprecated - use database activation instead")
-        logger.info(f"Updating indicators: {len(self.indicator_names)} -> {len(indicator_names)}")
-        self.indicator_names = indicator_names
-        self._indicators.clear()
-
-        # Reinitialize indicators
-        IndicatorRegistry.discover()
-        for name in self.indicator_names:
-            indicator = IndicatorRegistry.get(name)
-            if indicator:
-                self._indicators[name] = indicator

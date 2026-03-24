@@ -19,6 +19,7 @@ from src.domain.services.gap_detector import GapDetector
 from src.domain.services.quality_metrics import QualityMetricsTracker
 from src.application.services.asset_sync_service import AssetSyncService
 from src.application.services.enrichment_service import EnrichmentService
+from src.indicators.providers import PythonIndicatorProvider
 from src.indicators.momentum import RSIIndicator
 from src.indicators.trend import SMAIndicator
 
@@ -279,19 +280,27 @@ class TestFullPipelineIntegration:
         self,
         mock_db_pool: MagicMock,
     ) -> None:
-        """Test enrichment service initializes correctly."""
-        # Create service
+        """Test enrichment service initializes correctly with provider."""
+        # Create provider with explicit indicators
+        provider = PythonIndicatorProvider({
+            'rsi_14': RSIIndicator,
+        })
+        
+        # Create service with provider
         service = EnrichmentService(
             db_pool=mock_db_pool,
-            redis_pool=None,  # type: ignore
+            indicator_provider=provider,
             window_size=100,
-            indicator_names=['rsiindicator_period14'],
         )
-        
+
         # Verify configuration
         assert service.window_size == 100
-        assert service.indicator_names == ['rsiindicator_period14']
+        assert service.indicator_provider is provider
         assert service._running is False
+        
+        # Verify provider has the indicator
+        assert provider.is_available('rsi_14') is True
+        assert 'rsi_14' in provider.list_indicators()
         
     def test_multi_symbol_pipeline(
         self,
@@ -439,46 +448,44 @@ class TestDatabaseIntegration:
 
 
 class TestIndicatorIntegration:
-    """Test indicator framework integration."""
+    """Test indicator framework integration with providers."""
 
-    def test_indicator_registry_discovery(self) -> None:
-        """Test indicator registry discovers all indicators."""
-        from src.indicators.registry import IndicatorRegistry
-        
-        # Clear registry (for test isolation)
-        IndicatorRegistry._indicators = {}
-        
-        # Discover indicators
-        IndicatorRegistry.discover()
-        
-        # Should have discovered indicators
-        indicators = IndicatorRegistry.list_indicators()
-        
-        # Should have at least RSI and Stochastic from momentum.py
+    def test_indicator_provider_registration(self) -> None:
+        """Test PythonIndicatorProvider registration."""
+        from src.indicators.providers import PythonIndicatorProvider
+        from src.indicators.momentum import RSIIndicator, StochasticIndicator
+
+        # Create provider with explicit indicators
+        provider = PythonIndicatorProvider({
+            'rsi_14': RSIIndicator,
+            'stoch_14_3': StochasticIndicator,
+        })
+
+        # Should have registered indicators
+        indicators = provider.list_indicators()
         assert len(indicators) >= 2
-        
+
         # Check for specific indicators
-        indicator_names = [name for name, _ in indicators]
-        assert any('rsi' in name.lower() for name in indicator_names)
+        assert 'rsi_14' in indicators
+        assert 'stoch_14_3' in indicators
+
+    def test_indicator_provider_creation(self) -> None:
+        """Test creating indicators via provider."""
+        from src.indicators.providers import PythonIndicatorProvider
+        from src.indicators.momentum import RSIIndicator
+
+        # Create provider
+        provider = PythonIndicatorProvider({
+            'rsi_14': RSIIndicator,
+        })
+
+        # Create RSI indicator via provider
+        rsi = provider.get_indicator('rsi_14', period=14)
+        assert rsi is not None
+        assert rsi.params['period'] == 14
         
-    def test_indicator_factory_creation(self) -> None:
-        """Test creating indicators via registry."""
-        from src.indicators.registry import IndicatorRegistry
-        
-        # Clear and rediscover
-        IndicatorRegistry._indicators = {}
-        IndicatorRegistry.discover()
-        
-        # Create RSI indicator via registry
-        try:
-            rsi = IndicatorRegistry.get('rsiindicator_period14', period=14)
-            assert rsi is not None
-            assert rsi.params['period'] == 14
-        except KeyError:
-            # Registry might not have discovered yet, test direct creation
-            from src.indicators.momentum import RSIIndicator
-            rsi = RSIIndicator(period=14)
-            assert rsi.params['period'] == 14
+        # Non-existent indicator returns None
+        assert provider.get_indicator('nonexistent') is None
             
     def test_multiple_indicators_calculation(self) -> None:
         """Test calculating multiple indicators together."""
