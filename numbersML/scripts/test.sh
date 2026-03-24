@@ -28,15 +28,20 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration - Detect CI environment (GitHub Actions) vs local
-if [ -n "${GITHUB_ACTIONS:-}" ]; then
-    # Running in GitHub Actions - use system Python
+# Configuration - Use system python3 by default (more reliable than venv)
+# Override with: export USE_VENV=1
+if [ -n "${USE_VENV:-}" ] && [ -f "${PROJECT_DIR}/.venv/bin/python" ]; then
+    # Use virtual environment if requested and available
+    PYTHON="${PROJECT_DIR}/.venv/bin/python"
+    PYTEST="${PROJECT_DIR}/.venv/bin/pytest"
+elif [ -n "${GITHUB_ACTIONS:-}" ]; then
+    # GitHub Actions - use system python3
     PYTHON="python3"
     PYTEST="pytest"
 else
-    # Local development - use virtual environment
-    PYTHON="${PROJECT_DIR}/.venv/bin/python"
-    PYTEST="${PROJECT_DIR}/.venv/bin/pytest"
+    # Default: use system python3
+    PYTHON="python3"
+    PYTEST="pytest"
 fi
 
 DB_URL="${DATABASE_URL:-postgresql://crypto:crypto_secret@localhost:5432/crypto_trading}"
@@ -89,10 +94,10 @@ check_infrastructure() {
         
         # Check Python environment
         if ! command -v python3 &> /dev/null; then
-            log_error "Python not found"
+            log_error "Python3 not found"
             exit 2
         fi
-        log_success "Python environment found"
+        log_success "Python3 environment found"
         
         # Check database connection
         if ! python3 -c "import asyncpg; import asyncio; asyncio.run(asyncpg.connect('$DB_URL'))" > /dev/null 2>&1; then
@@ -130,15 +135,15 @@ check_infrastructure() {
     fi
     log_success "Redis is running"
 
-    # Check Python environment
-    if [ ! -f "$PYTHON" ]; then
-        log_error "Python virtual environment not found at $PYTHON"
+    # Check Python environment (use python3, not venv)
+    if ! command -v python3 &> /dev/null; then
+        log_error "Python3 not found"
         exit 2
     fi
-    log_success "Python environment found"
+    log_success "Python3 environment found"
 
     # Check database connection
-    if ! $PYTHON -c "import asyncpg; import asyncio; asyncio.run(asyncpg.connect('$DB_URL'))" > /dev/null 2>&1; then
+    if ! python3 -c "import asyncpg; import asyncio; asyncio.run(asyncpg.connect('$DB_URL'))" > /dev/null 2>&1; then
         log_error "Cannot connect to database"
         exit 2
     fi
@@ -204,7 +209,7 @@ run_unit_tests() {
     
     log_info "Running unit tests..."
     
-    if $PYTEST tests/unit/ -v --tb=short --timeout=60 "$@"; then
+    if pytest tests/unit/ -v --tb=short --timeout=60 "$@"; then
         log_success "Unit tests passed"
         return 0
     else
@@ -218,7 +223,7 @@ run_integration_tests() {
     
     log_info "Running integration tests..."
     
-    if $PYTEST tests/integration/ -v --tb=short --timeout=300 "$@"; then
+    if pytest tests/integration/ -v --tb=short --timeout=300 "$@"; then
         log_success "Integration tests passed"
         return 0
     else
@@ -229,10 +234,10 @@ run_integration_tests() {
 
 run_pipeline_test() {
     print_header "PIPELINE INTEGRATION TEST"
-    
+
     log_info "Running indicator pipeline test..."
-    
-    if $PYTHON tests/integration/test_indicator_pipeline.py "$@"; then
+
+    if pytest tests/integration/test_indicator_pipeline.py -v --tb=short --timeout=300 "$@"; then
         log_success "Pipeline test passed"
         return 0
     else
@@ -279,31 +284,24 @@ quick_check() {
 
     log_info "Running quick syntax and import check..."
 
-    # Use python3 in GitHub Actions, otherwise use $PYTHON
-    if [ -n "${GITHUB_ACTIONS:-}" ]; then
-        PY_CMD="python3"
-    else
-        PY_CMD="$PYTHON"
-    fi
-
     # Check Python syntax
-    if ! $PY_CMD -m py_compile src/cli/generate_wide_vector.py 2>&1; then
+    if ! python3 -m py_compile src/cli/generate_wide_vector.py 2>&1; then
         log_error "Syntax error in generate_wide_vector.py"
         return 1
     fi
 
-    if ! $PY_CMD -m py_compile src/application/services/enrichment_service.py 2>&1; then
+    if ! python3 -m py_compile src/application/services/enrichment_service.py 2>&1; then
         log_error "Syntax error in enrichment_service.py"
         return 1
     fi
 
     # Check imports
-    if ! $PY_CMD -c "from src.cli.generate_wide_vector import WideVectorGenerator" 2>&1; then
+    if ! python3 -c "from src.cli.generate_wide_vector import WideVectorGenerator" 2>&1; then
         log_error "Import error in generate_wide_vector.py"
         return 1
     fi
 
-    if ! $PY_CMD -c "from src.application.services.enrichment_service import EnrichmentService" 2>&1; then
+    if ! python3 -c "from src.application.services.enrichment_service import EnrichmentService" 2>&1; then
         log_error "Import error in enrichment_service.py"
         return 1
     fi
