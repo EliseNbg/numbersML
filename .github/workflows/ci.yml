@@ -146,6 +146,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r numbersML/requirements-dev.txt
       
+      
+      - name: Install redis-tools (for redis-cli)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-tools
       - name: Initialize database schema
         run: |
           psql -h localhost -U crypto -d crypto_trading -f numbersML/migrations/001_initial_schema.sql

@@ -68,8 +68,44 @@ print_header() {
 
 check_infrastructure() {
     log_info "Checking infrastructure..."
-    
-    # Check if infrastructure is running
+
+    # Detect if running in GitHub Actions (services: provides PostgreSQL on localhost)
+    if [ -n "${GITHUB_ACTIONS:-}" ]; then
+        log_info "Running in GitHub Actions - checking localhost PostgreSQL..."
+        
+        # Check PostgreSQL on localhost
+        if ! pg_isready -h localhost -p 5432 -U crypto -d crypto_trading > /dev/null 2>&1; then
+            log_error "PostgreSQL is not ready on localhost:5432"
+            exit 2
+        fi
+        log_success "PostgreSQL is ready (GitHub Actions)"
+        
+        # Check Redis on localhost
+        if ! redis-cli -h localhost -p 6379 ping > /dev/null 2>&1; then
+            log_error "Redis is not ready on localhost:6379"
+            exit 2
+        fi
+        log_success "Redis is ready (GitHub Actions)"
+        
+        # Check Python environment
+        if ! command -v python &> /dev/null; then
+            log_error "Python not found"
+            exit 2
+        fi
+        log_success "Python environment found"
+        
+        # Check database connection
+        if ! python -c "import asyncpg; import asyncio; asyncio.run(asyncpg.connect('$DB_URL'))" > /dev/null 2>&1; then
+            log_error "Cannot connect to database"
+            exit 2
+        fi
+        log_success "Database connection OK"
+        
+        echo ""
+        return 0
+    fi
+
+    # Local development - check Docker infrastructure
     if ! docker compose -f docker/docker-compose-infra.yml ps > /dev/null 2>&1; then
         log_error "Infrastructure is not running. Start with:"
         echo ""
@@ -77,7 +113,7 @@ check_infrastructure() {
         echo ""
         exit 2
     fi
-    
+
     # Check PostgreSQL specifically
     if ! docker exec crypto-postgres pg_isready -U crypto -d crypto_trading > /dev/null 2>&1; then
         log_error "PostgreSQL is not ready. Wait for it to start:"
@@ -85,7 +121,7 @@ check_infrastructure() {
         exit 2
     fi
     log_success "PostgreSQL is running"
-    
+
     # Check Redis specifically
     if ! docker exec crypto-redis redis-cli ping > /dev/null 2>&1; then
         log_error "Redis is not ready. Wait for it to start:"
@@ -93,21 +129,21 @@ check_infrastructure() {
         exit 2
     fi
     log_success "Redis is running"
-    
+
     # Check Python environment
     if [ ! -f "$PYTHON" ]; then
         log_error "Python virtual environment not found at $PYTHON"
         exit 2
     fi
     log_success "Python environment found"
-    
+
     # Check database connection
     if ! $PYTHON -c "import asyncpg; import asyncio; asyncio.run(asyncpg.connect('$DB_URL'))" > /dev/null 2>&1; then
         log_error "Cannot connect to database"
         exit 2
     fi
     log_success "Database connection OK"
-    
+
     echo ""
 }
 
