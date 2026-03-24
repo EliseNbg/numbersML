@@ -32,17 +32,18 @@ class TestRedisMessageBusIntegration:
     def test_message_bus_publish(self, mock_redis: MagicMock) -> None:
         """Test publishing messages via Redis."""
         from src.infrastructure.redis.message_bus import MessageBus
-        
-        # Create bus with mock
+
+        # Create bus with mock - properly initialize all attributes
         bus = MessageBus.__new__(MessageBus)
         bus._redis = mock_redis
+        bus._client = mock_redis  # Also set _client for publish method
         bus._running = True
         bus._stats = {'messages_published': 0, 'messages_received': 0, 'errors': 0}
-        
+
         # Publish message
         import asyncio
         asyncio.run(bus.publish('test_channel', {'key': 'value'}))
-        
+
         # Verify publish called
         assert mock_redis.publish.called
         

@@ -223,6 +223,7 @@ run_integration_tests() {
     
     log_info "Running integration tests..."
     
+    # Run all integration tests (exclusions handled by pytest.ini)
     if pytest tests/integration/ -v --tb=short --timeout=300 "$@"; then
         log_success "Integration tests passed"
         return 0

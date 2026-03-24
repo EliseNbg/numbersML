@@ -198,6 +198,7 @@ class TestBackfillIntegration:
             assert checkpoint_value['records'] == 86400
 
     @pytest.mark.asyncio
+    @pytest.mark.timeout(600)  # 10 minutes for backfill
     async def test_backfill_resume_from_checkpoint(
         self,
         db_pool: asyncpg.Pool,
