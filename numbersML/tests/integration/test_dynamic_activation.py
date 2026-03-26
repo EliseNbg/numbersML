@@ -131,28 +131,33 @@ class TestIndicatorActivation:
 
     @pytest.mark.asyncio
     async def test_indicator_is_active_filter(self, db_pool: asyncpg.Pool) -> None:
-        """Test that indicator_definitions has is_active field."""
-        # Check that indicator_definitions has is_active field
+        """Test that indicator_definitions table has is_active field for runtime control."""
         async with db_pool.acquire() as conn:
-            # First check if table has any indicators
+            # Verify is_active column exists (critical for runtime activation)
+            result = await conn.fetchval(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'indicator_definitions'
+                    AND column_name = 'is_active'
+                )
+                """
+            )
+            assert result is True, "is_active column must exist for runtime indicator control"
+            
+            # Check if table has indicators
             count = await conn.fetchval("SELECT COUNT(*) FROM indicator_definitions")
             
             if count == 0:
-                # indicator_definitions is empty - that's OK, field exists
-                # Just verify the is_active column exists
-                result = await conn.fetchval(
-                    """
-                    SELECT EXISTS (
-                        SELECT 1 FROM information_schema.columns
-                        WHERE table_name = 'indicator_definitions'
-                        AND column_name = 'is_active'
-                    )
-                    """
+                # Table exists but is empty - this is OK for development
+                # In production, indicators would be registered via migration or script
+                pytest.skip(
+                    "indicator_definitions table is empty. "
+                    "In production, populate via: INSERT INTO indicator_definitions (...)"
                 )
-                assert result is True
-                pytest.skip("indicator_definitions table is empty - no indicators registered yet")
             
-            result = await conn.fetch(
+            # If table has indicators, verify is_active filtering works
+            active = await conn.fetch(
                 """
                 SELECT name, is_active FROM indicator_definitions
                 WHERE is_active = true
@@ -160,42 +165,58 @@ class TestIndicatorActivation:
                 """
             )
             
-            # If there are indicators, some should be active
-            # (or all could be inactive - that's a configuration issue)
-            # Just verify the query works
-            assert result is not None
+            inactive = await conn.fetch(
+                """
+                SELECT name, is_active FROM indicator_definitions
+                WHERE is_active = false
+                LIMIT 5
+                """
+            )
+            
+            # Verify filtering works (at least one query should return results)
+            assert len(active) > 0 or len(inactive) > 0, "Should be able to filter by is_active"
 
     @pytest.mark.asyncio
     async def test_toggle_indicator_activation(self, db_pool: asyncpg.Pool) -> None:
-        """Test toggling indicator activation at runtime."""
-        # Get a test indicator
+        """Test toggling indicator activation at runtime via is_active field."""
         async with db_pool.acquire() as conn:
+            # Check if table has indicators
+            count = await conn.fetchval("SELECT COUNT(*) FROM indicator_definitions")
+            
+            if count == 0:
+                pytest.skip(
+                    "indicator_definitions table is empty. "
+                    "This test requires indicators in database. "
+                    "Use PythonIndicatorProvider for tests without DB indicators."
+                )
+            
+            # Get a test indicator
             indicator_name = await conn.fetchval(
                 "SELECT name FROM indicator_definitions LIMIT 1"
             )
             
             if not indicator_name:
                 pytest.skip("No indicators in database")
-            
+
             # Deactivate
             await conn.execute(
                 "UPDATE indicator_definitions SET is_active = false WHERE name = $1",
                 indicator_name
             )
-            
+
             # Verify inactive
             is_active = await conn.fetchval(
                 "SELECT is_active FROM indicator_definitions WHERE name = $1",
                 indicator_name
             )
             assert is_active is False
-            
+
             # Reactivate
             await conn.execute(
                 "UPDATE indicator_definitions SET is_active = true WHERE name = $1",
                 indicator_name
             )
-            
+
             # Verify active
             is_active = await conn.fetchval(
                 "SELECT is_active FROM indicator_definitions WHERE name = $1",
