@@ -1,12 +1,25 @@
+# Include all production dependencies
 -r requirements.txt
 
+# Testing
 pytest==7.4.3
 pytest-asyncio==0.21.1
 pytest-cov==4.1.0
 pytest-mock==3.12.0
 pytest-timeout==2.2.0
+
+# Type checking
 mypy==1.7.1
+
+# Linting & Formatting
 ruff==0.1.8
 black==23.12.0
+
+# Git hooks
 pre-commit==3.6.0
+
+# Testing utilities
 testcontainers==3.7.1
+
+# API testing (for dashboard)
+httpx==0.26.0
