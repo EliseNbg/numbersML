@@ -97,13 +97,11 @@ class BinanceRESTClient:
             'limit': min(limit, 1000),
         }
         
+        # Binance API: fromId cannot be combined with startTime/endTime
         if from_id is not None:
             params['fromId'] = from_id
-        
-        if start_time is not None:
+        elif start_time is not None and end_time is not None:
             params['startTime'] = int(start_time.timestamp() * 1000)
-        
-        if end_time is not None:
             params['endTime'] = int(end_time.timestamp() * 1000)
         
         url = f"{self.BASE_URL}/aggTrades"
@@ -227,7 +225,8 @@ class RecoveryManager:
             
             if row:
                 self._last_trade_id = row['last_trade_id'] or 0
-                self._last_timestamp = row['last_timestamp'] or datetime.now(timezone.utc)
+                ts = row['last_timestamp']
+                self._last_timestamp = ts.replace(tzinfo=timezone.utc) if ts else datetime.now(timezone.utc)
                 self._is_recovering = row['is_recovering'] or False
                 self._stats['gaps_detected'] = row['gaps_detected'] or 0
             
@@ -402,9 +401,9 @@ class RecoveryManager:
                 """,
                 symbol_id,
                 self._last_trade_id,
-                self._last_timestamp,
+                self._last_timestamp.replace(tzinfo=None),
                 self._is_recovering,
-                self._stats['last_recovery_time'],
+                self._stats['last_recovery_time'].replace(tzinfo=None) if self._is_recovering else None,
                 self._stats['gaps_detected'],
                 self._stats['trades_recovered'],
             )

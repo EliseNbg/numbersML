@@ -88,9 +88,8 @@ async def run_pipeline(symbols: List[str], db_url: str) -> None:
                     """
                     SELECT symbol FROM symbols
                     WHERE is_active = true
-                    AND symbol LIKE '%%/USDT'
+                    AND is_allowed = true
                     ORDER BY symbol
-                    LIMIT 10
                     """
                 )
                 symbols = [row['symbol'] for row in rows]

@@ -131,7 +131,7 @@ class DatabaseWriter:
                 # Prepare batch data
                 records = [
                     (
-                        candle.time,
+                        candle.time.replace(tzinfo=None),
                         self.symbol_id,
                         candle.open,
                         candle.high,
@@ -149,7 +149,7 @@ class DatabaseWriter:
                 # Batch insert
                 await conn.executemany(
                     """
-                    INSERT INTO 1s_candles (
+                    INSERT INTO "1s_candles" (
                         time, symbol_id, open, high, low, close,
                         volume, quote_volume, trade_count,
                         first_trade_id, last_trade_id
@@ -227,6 +227,7 @@ class MultiSymbolDatabaseWriter:
         self.db_pool = db_pool
         self._writers: Dict[int, DatabaseWriter] = {}
         self._symbol_id_cache: Dict[str, int] = {}
+        self._running = False
     
     async def _get_symbol_id(self, symbol: str) -> Optional[int]:
         """
@@ -263,21 +264,28 @@ class MultiSymbolDatabaseWriter:
             DatabaseWriter instance
         """
         if symbol_id not in self._writers:
-            self._writers[symbol_id] = DatabaseWriter(
+            writer = DatabaseWriter(
                 db_pool=self.db_pool,
                 symbol_id=symbol_id,
             )
+            self._writers[symbol_id] = writer
+            # Start flush loop for new writer
+            if self._running:
+                writer._running = True
+                writer._flush_task = asyncio.create_task(writer._flush_loop())
         
         return self._writers[symbol_id]
     
     async def start(self) -> None:
         """Start all writers."""
+        self._running = True
         for writer in self._writers.values():
             await writer.start()
         logger.info("Multi-symbol database writer started")
     
     async def stop(self) -> None:
         """Stop all writers."""
+        self._running = False
         for writer in self._writers.values():
             await writer.stop()
         logger.info("Multi-symbol database writer stopped")
