@@ -15,7 +15,7 @@ Usage:
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any
 
 import asyncpg
@@ -125,6 +125,33 @@ class TradePipeline:
         except Exception as e:
             logger.error(f"Error processing candle: {e}")
             self._stats['database_errors'] += 1
+
+    async def _ticker_loop(self) -> None:
+        """
+        1-second ticker loop.
+        
+        Fires every second, aligns to second boundaries, and calls
+        aggregator.tick_all() to emit one candle per symbol.
+        """
+        while self._running:
+            try:
+                # Sleep until next second boundary
+                now = datetime.now(timezone.utc)
+                next_tick = now.replace(microsecond=0) + timedelta(seconds=1)
+                sleep_secs = (next_tick - now).total_seconds()
+                await asyncio.sleep(sleep_secs)
+                
+                if not self._running:
+                    break
+                
+                # Tick all aggregators
+                tick_time = datetime.now(timezone.utc).replace(microsecond=0)
+                await self._aggregator.tick_all(tick_time)
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Ticker error: {e}")
     
     async def _on_trade(self, trade: AggTrade) -> None:
         """
@@ -194,6 +221,9 @@ class TradePipeline:
             on_trade=self._on_trade,
         )
         
+        # Start 1-second ticker for candle emission
+        self._ticker_task = asyncio.create_task(self._ticker_loop())
+        
         # Start WebSocket (runs until stopped)
         try:
             await self._ws_manager.start()
@@ -216,6 +246,14 @@ class TradePipeline:
         # Stop components
         if self._ws_manager:
             await self._ws_manager.stop()
+        
+        # Stop ticker
+        if hasattr(self, '_ticker_task') and self._ticker_task:
+            self._ticker_task.cancel()
+            try:
+                await self._ticker_task
+            except asyncio.CancelledError:
+                pass
         
         await self._db_writer.stop()
         

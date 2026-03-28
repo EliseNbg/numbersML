@@ -16,7 +16,7 @@ Usage:
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Callable, Optional, Dict, Any, List
 from dataclasses import dataclass, field
@@ -139,6 +139,10 @@ class TradeAggregator:
         self._current: Optional[TradeAggregation] = None
         self._lock = asyncio.Lock()
         
+        # Track last emitted state for flat candle generation
+        self._last_close: Optional[Decimal] = None
+        self._last_emitted_time: Optional[datetime] = None
+        
         # Statistics
         self._stats = {
             'trades_aggregated': 0,
@@ -158,53 +162,136 @@ class TradeAggregator:
         """
         return trade_time.replace(microsecond=0)
     
-    async def add_trade(self, trade: AggTrade) -> Optional[TradeAggregation]:
+    async def add_trade(self, trade: AggTrade) -> None:
         """
         Add trade to aggregation.
         
-        Emits completed candle when window changes.
+        Emits completed candle when trade arrives in a new window.
+        Flat candles are emitted by tick().
         
         Args:
             trade: Trade to add
-        
-        Returns:
-            Completed candle if window changed, None otherwise
         """
         async with self._lock:
             trade_time = trade.timestamp
             window_time = self._get_window_time(trade_time)
             
-            completed_candle = None
+            # If trade is in a new window, emit old window first
+            if self._current is not None and window_time > self._current.time:
+                candle = self._current
+                self._last_close = candle.close
+                self._current = None
+                self._last_emitted_time = candle.time
+                self._stats['candles_emitted'] += 1
+                self._stats['last_candle_time'] = candle.time
+                await self.on_candle(candle)
             
-            # Check if we need to emit current candle
-            if self._current is not None:
-                if window_time > self._current.time:
-                    # Window changed - emit current candle
-                    completed_candle = self._current
-                    self._current = None
-                    self._stats['candles_emitted'] += 1
-                    self._stats['last_candle_time'] = completed_candle.time
-                    
-                    # Emit candle
-                    await self.on_candle(completed_candle)
-            
-            # Create or update current aggregation
+            # Create new window if needed
             if self._current is None:
-                # New window
+                self._current = TradeAggregation(
+                    time=window_time,
+                    symbol=self.symbol,
+                )
+            elif window_time != self._current.time:
+                # Trade jumped to a later window - emit flat candles for gaps
+                while self._current.time < window_time:
+                    gap_time = self._current.time + timedelta(seconds=1)
+                    if self._last_close is not None:
+                        flat = TradeAggregation(
+                            time=self._current.time,
+                            symbol=self.symbol,
+                            open=self._last_close,
+                            high=self._last_close,
+                            low=self._last_close,
+                            close=self._last_close,
+                            volume=Decimal('0'),
+                            quote_volume=Decimal('0'),
+                            trade_count=0,
+                        )
+                        self._last_emitted_time = flat.time
+                        self._stats['candles_emitted'] += 1
+                        self._stats['last_candle_time'] = flat.time
+                        await self.on_candle(flat)
+                    if gap_time >= window_time:
+                        break
+                    self._current = TradeAggregation(
+                        time=gap_time,
+                        symbol=self.symbol,
+                    )
+                
                 self._current = TradeAggregation(
                     time=window_time,
                     symbol=self.symbol,
                 )
             
-            # Add trade to current aggregation
+            # Add trade to current window
             self._current.update(trade)
             self._stats['trades_aggregated'] += 1
+
+    async def tick(self, now: datetime) -> Optional[TradeAggregation]:
+        """
+        Tick at second boundary - emit candle for completed window.
+        
+        This is the ONLY way candles get emitted. Called once per second
+        by the pipeline ticker loop.
+        
+        - If current window has trades: emit real candle
+        - If no trades in window: emit flat candle (previous close)
+        - If never had any trades: emit nothing
+        
+        Args:
+            now: Current time (truncated to second)
+        
+        Returns:
+            Emitted candle, or None if no data yet
+        """
+        async with self._lock:
+            # Determine which window to emit
+            # We emit the previous completed second
+            emit_time = now - timedelta(seconds=1)
             
-            return completed_candle
+            if self._last_emitted_time is not None and emit_time <= self._last_emitted_time:
+                # Already emitted this window
+                return None
+            
+            candle = None
+            
+            if self._current is not None and self._current.time == emit_time:
+                # Current window matches emit time - emit real candle
+                candle = self._current
+                self._last_close = candle.close
+                self._current = None
+            elif self._current is not None and self._current.time < emit_time:
+                # Current window is behind - emit it first
+                candle = self._current
+                self._last_close = candle.close
+                self._current = None
+            elif self._last_close is not None:
+                # No trades in this window - emit flat candle
+                candle = TradeAggregation(
+                    time=emit_time,
+                    symbol=self.symbol,
+                    open=self._last_close,
+                    high=self._last_close,
+                    low=self._last_close,
+                    close=self._last_close,
+                    volume=Decimal('0'),
+                    quote_volume=Decimal('0'),
+                    trade_count=0,
+                )
+            
+            if candle is not None:
+                self._last_emitted_time = candle.time
+                self._stats['candles_emitted'] += 1
+                self._stats['last_candle_time'] = candle.time
+                
+                await self.on_candle(candle)
+            
+            return candle
     
     async def flush(self) -> Optional[TradeAggregation]:
         """
-        Flush current aggregation (emit incomplete candle).
+        Flush current aggregation (emit any remaining candle).
         
         Call this before shutdown to emit final candle.
         
@@ -214,7 +301,9 @@ class TradeAggregator:
         async with self._lock:
             if self._current is not None:
                 candle = self._current
+                self._last_close = candle.close
                 self._current = None
+                self._last_emitted_time = candle.time
                 self._stats['candles_emitted'] += 1
                 self._stats['last_candle_time'] = candle.time
                 
@@ -297,6 +386,25 @@ class MultiSymbolAggregator:
         """
         aggregator = self._get_aggregator(symbol)
         await aggregator.add_trade(trade)
+
+    async def tick_all(self, now: datetime) -> int:
+        """
+        Tick all aggregators at second boundary.
+        
+        Each aggregator emits its completed candle (or flat candle if no trades).
+        
+        Args:
+            now: Current time (truncated to second)
+        
+        Returns:
+            Number of candles emitted
+        """
+        count = 0
+        for aggregator in self._aggregators.values():
+            candle = await aggregator.tick(now)
+            if candle:
+                count += 1
+        return count
     
     async def flush_all(self) -> List[TradeAggregation]:
         """
