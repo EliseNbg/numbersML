@@ -28,8 +28,10 @@ from src.infrastructure.api.routes import (
     symbols_router,
     indicators_router,
     config_router,
+    pipeline_router,
 )
 from src.infrastructure.database import set_db_pool, get_db_pool, get_db_pool_async
+from src.pipeline.service import PipelineManager, set_pipeline_manager
 
 logger = logging.getLogger(__name__)
 
@@ -44,14 +46,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     Handles:
         - Database pool creation on startup
+        - Pipeline manager initialization
         - Database pool cleanup on shutdown
     """
     global db_pool
-    
+
     # Startup
     logger.info("Starting dashboard application...")
     logger.info(f"Connecting to database: {DATABASE_URL.split('@')[-1]}")
-    
+
     try:
         db_pool = await asyncpg.create_pool(
             DATABASE_URL,
@@ -60,17 +63,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             timeout=30,
         )
         set_db_pool(db_pool)
-        logger.info("Database pool created successfully")
         
+        # Initialize pipeline manager
+        pipeline_manager = PipelineManager(db_pool)
+        set_pipeline_manager(pipeline_manager)
+        
+        logger.info("Database pool created successfully")
+        logger.info("Pipeline manager initialized")
+
     except Exception as e:
         logger.error(f"Failed to create database pool: {e}")
         raise
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down dashboard application...")
-    
+
     if db_pool:
         await db_pool.close()
         logger.info("Database pool closed")
