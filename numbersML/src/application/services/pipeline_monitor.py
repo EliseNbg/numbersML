@@ -139,7 +139,7 @@ class PipelineMonitor:
             
             if row and row['started_at']:
                 start_time = row['started_at']
-                uptime = (datetime.utcnow() - start_time).total_seconds()
+                uptime = (datetime.now(timezone.utc) - start_time).total_seconds()
                 return max(0.0, uptime)
             
             return None

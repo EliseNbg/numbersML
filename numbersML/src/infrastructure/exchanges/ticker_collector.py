@@ -175,7 +175,7 @@ class TickerCollector:
             
             # Parse ticker data
             ticker_data = {
-                'time': datetime.utcnow(),
+                'time': datetime.now(timezone.utc),
                 'symbol_id': symbol_id,
                 'symbol': symbol,
                 'pair': data.get('ps', ''),

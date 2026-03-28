@@ -86,7 +86,7 @@ async def wait_for_enrichment(
                 print(f"    ✓ Enriched: symbol_id={payload['symbol_id']}")
 
                 if not expected:
-                    elapsed = (datetime.utcnow() - start_time).total_seconds()
+                    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
                     print(f"  ✓ All symbols enriched in {elapsed:.2f}s")
                     return True
 

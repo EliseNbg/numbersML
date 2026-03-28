@@ -206,7 +206,7 @@ class TestIndicatorManager:
         mock_db_pool: MagicMock,
     ) -> None:
         """Test listing indicators."""
-        from datetime import datetime
+        from datetime import datetime, timezone
         
         # Mock database response
         mock_row = {
@@ -216,7 +216,7 @@ class TestIndicatorManager:
             'category': 'momentum',
             'params': {'period': 14},
             'is_active': True,
-            'created_at': datetime.utcnow(),
+            'created_at': datetime.now(timezone.utc),
             'updated_at': datetime.utcnow(),
         }
         mock_conn = AsyncMock()

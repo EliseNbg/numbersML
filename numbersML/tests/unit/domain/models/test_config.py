@@ -9,7 +9,7 @@ Tests:
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.domain.models.config import (
     ConfigEntry,
@@ -41,7 +41,7 @@ class TestConfigEntry:
     
     def test_create_with_all_fields(self) -> None:
         """Test creating entry with all fields."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         entry = ConfigEntry(
             id=1,
             key='test.key',
@@ -166,7 +166,7 @@ class TestIndicatorConfig:
     
     def test_create_with_values(self) -> None:
         """Test creating indicator with specific values."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         indicator = IndicatorConfig(
             name='rsi_14',
             class_name='RSIIndicator',

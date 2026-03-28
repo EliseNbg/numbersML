@@ -9,7 +9,7 @@ Tests:
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from src.domain.models.dashboard import (
     CollectorStatus,
@@ -34,7 +34,7 @@ class TestCollectorStatus:
     
     def test_create_with_values(self) -> None:
         """Test creating status with specific values."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         status = CollectorStatus(
             is_running=True,
             pid=12345,
@@ -101,7 +101,7 @@ class TestSLAMetric:
     
     def test_create_with_defaults(self) -> None:
         """Test creating metric with default values."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         metric = SLAMetric(timestamp=now)
         
         assert metric.timestamp == now
@@ -112,7 +112,7 @@ class TestSLAMetric:
     
     def test_create_with_values(self) -> None:
         """Test creating metric with specific values."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         metric = SLAMetric(
             timestamp=now,
             avg_time_ms=150.5,

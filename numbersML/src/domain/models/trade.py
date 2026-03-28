@@ -2,8 +2,8 @@
 Trade entity - Individual trade (tick) representation.
 """
 
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from decimal import Decimal
 from src.domain.models.base import Entity
 
@@ -23,7 +23,7 @@ class Trade(Entity):
         is_buyer_maker: True if buyer was maker
     """
     
-    time: datetime = datetime.utcnow
+    time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     symbol_id: int = 0
     trade_id: str = ""
     price: Decimal = Decimal("0")

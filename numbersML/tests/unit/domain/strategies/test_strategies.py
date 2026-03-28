@@ -5,7 +5,7 @@ Tests RSI, MACD, SMA Crossover, Bollinger Bands, and Multi-Indicator strategies.
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Dict, Any
 
@@ -47,7 +47,7 @@ class TestRSIStrategy:
                 symbol='BTC/USDT',
                 price=Decimal(str(price)),
                 volume=Decimal('1.0'),
-                time=datetime.utcnow(),
+                time=datetime.now(timezone.utc),
                 indicators={'rsiindicator_period14_rsi': rsi_value},
             )
         return _create
@@ -169,7 +169,7 @@ class TestMACDStrategy:
                 symbol='BTC/USDT',
                 price=Decimal(str(price)),
                 volume=Decimal('1.0'),
-                time=datetime.utcnow(),
+                time=datetime.now(timezone.utc),
                 indicators={
                     'macdindicator_fast_period12_slow_period26_signal_period9_macd': macd,
                     'macdindicator_fast_period12_slow_period26_signal_period9_signal': signal,
@@ -267,7 +267,7 @@ class TestSMACrossoverStrategy:
                 symbol='BTC/USDT',
                 price=Decimal(str(price)),
                 volume=Decimal('1.0'),
-                time=datetime.utcnow(),
+                time=datetime.now(timezone.utc),
                 indicators={
                     'smaindicator_period20_sma': fast_sma,
                     'smaindicator_period50_sma': slow_sma,
@@ -350,7 +350,7 @@ class TestBollingerBandsStrategy:
                 symbol='BTC/USDT',
                 price=Decimal(str(price)),
                 volume=Decimal('1.0'),
-                time=datetime.utcnow(),
+                time=datetime.now(timezone.utc),
                 indicators={
                     'bbindicator_period20_std_dev2.0_upper': upper,
                     'bbindicator_period20_std_dev2.0_middle': middle,
@@ -456,7 +456,7 @@ class TestMultiIndicatorStrategy:
                 symbol='BTC/USDT',
                 price=Decimal(str(price)),
                 volume=Decimal('1.0'),
-                time=datetime.utcnow(),
+                time=datetime.now(timezone.utc),
                 indicators=indicators,
             )
         return _create
@@ -598,7 +598,7 @@ class TestStrategyIntegration:
             symbol='BTC/USDT',
             price=Decimal('50000.00'),
             volume=Decimal('1.0'),
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             indicators={
                 'rsiindicator_period14_rsi': 25.0,  # Oversold
                 'macdindicator_fast_period12_slow_period26_signal_period9_macd': 100.0,

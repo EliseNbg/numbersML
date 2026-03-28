@@ -6,7 +6,7 @@ and rate limiting.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 from typing import List, Dict, Any
@@ -43,7 +43,7 @@ class TestGapDetector:
         detector.start_monitoring(1, 'BTC/USDT')
 
         # Next tick within threshold
-        tick_time = datetime.utcnow()
+        tick_time = datetime.now(timezone.utc)
         gap = detector.check_tick(1, tick_time)
 
         assert gap is None
@@ -53,11 +53,11 @@ class TestGapDetector:
         detector = GapDetector(max_gap_seconds=5)
 
         # First tick
-        time1 = datetime.utcnow() - timedelta(seconds=10)
+        time1 = datetime.now(timezone.utc) - timedelta(seconds=10)
         detector.check_tick(1, time1)
 
         # Second tick with gap
-        time2 = datetime.utcnow()
+        time2 = datetime.now(timezone.utc)
         gap = detector.check_tick(1, time2)
 
         assert gap is not None
@@ -69,11 +69,11 @@ class TestGapDetector:
         detector = GapDetector(max_gap_seconds=5)
 
         # First tick
-        time1 = datetime.utcnow() - timedelta(seconds=70)
+        time1 = datetime.now(timezone.utc) - timedelta(seconds=70)
         detector.check_tick(1, time1)
 
         # Second tick
-        time2 = datetime.utcnow()
+        time2 = datetime.now(timezone.utc)
         gap = detector.check_tick(1, time2)
 
         assert gap is not None
@@ -84,9 +84,9 @@ class TestGapDetector:
         detector = GapDetector(max_gap_seconds=5)
 
         # Create gap
-        time1 = datetime.utcnow() - timedelta(seconds=10)
+        time1 = datetime.now(timezone.utc) - timedelta(seconds=10)
         detector.check_tick(1, time1)
-        time2 = datetime.utcnow()
+        time2 = datetime.now(timezone.utc)
         detector.check_tick(1, time2)
 
         unfilled = detector.get_unfilled_gaps()
@@ -98,9 +98,9 @@ class TestGapDetector:
         detector = GapDetector(max_gap_seconds=5)
 
         # Create gap
-        time1 = datetime.utcnow() - timedelta(seconds=10)
+        time1 = datetime.now(timezone.utc) - timedelta(seconds=10)
         detector.check_tick(1, time1)
-        time2 = datetime.utcnow()
+        time2 = datetime.now(timezone.utc)
         gap = detector.check_tick(1, time2)
 
         assert gap is not None
@@ -157,8 +157,8 @@ class TestGapFiller:
         gap = DataGap(
             symbol_id=1,
             symbol='BTC/USDT',
-            gap_start=datetime.utcnow() - timedelta(seconds=10),
-            gap_end=datetime.utcnow(),
+            gap_start=datetime.now(timezone.utc) - timedelta(seconds=10),
+            gap_end=datetime.now(timezone.utc),
             gap_seconds=10,
         )
 
@@ -168,7 +168,7 @@ class TestGapFiller:
                 'trade_id': '123',
                 'price': Decimal('50000.00'),
                 'quantity': Decimal('0.001'),
-                'time': datetime.utcnow(),
+                'time': datetime.now(timezone.utc),
                 'is_buyer_maker': False,
                 'side': 'BUY',
             }
@@ -200,8 +200,8 @@ class TestGapFiller:
         gap = DataGap(
             symbol_id=1,
             symbol='BTC/USDT',
-            gap_start=datetime.utcnow() - timedelta(seconds=10),
-            gap_end=datetime.utcnow(),
+            gap_start=datetime.now(timezone.utc) - timedelta(seconds=10),
+            gap_end=datetime.now(timezone.utc),
             gap_seconds=10,
         )
 
@@ -221,8 +221,8 @@ class TestGapFiller:
         gap = DataGap(
             symbol_id=1,
             symbol='BTC/USDT',
-            gap_start=datetime.utcnow() - timedelta(seconds=10),
-            gap_end=datetime.utcnow(),
+            gap_start=datetime.now(timezone.utc) - timedelta(seconds=10),
+            gap_end=datetime.now(timezone.utc),
             gap_seconds=10,
         )
 
@@ -248,15 +248,15 @@ class TestGapFiller:
             DataGap(
                 symbol_id=1,
                 symbol='BTC/USDT',
-                gap_start=datetime.utcnow() - timedelta(seconds=10),
-                gap_end=datetime.utcnow(),
+                gap_start=datetime.now(timezone.utc) - timedelta(seconds=10),
+                gap_end=datetime.now(timezone.utc),
                 gap_seconds=10,
             ),
             DataGap(
                 symbol_id=2,
                 symbol='ETH/USDT',
-                gap_start=datetime.utcnow() - timedelta(seconds=15),
-                gap_end=datetime.utcnow(),
+                gap_start=datetime.now(timezone.utc) - timedelta(seconds=15),
+                gap_end=datetime.now(timezone.utc),
                 gap_seconds=15,
             ),
         ]
@@ -277,7 +277,7 @@ class TestGapFiller:
                     'trade_id': '123',
                     'price': Decimal('50000.00'),
                     'quantity': Decimal('0.001'),
-                    'time': datetime.utcnow(),
+                    'time': datetime.now(timezone.utc),
                     'is_buyer_maker': False,
                     'side': 'BUY',
                 }
@@ -314,8 +314,8 @@ class TestDataGap:
         gap = DataGap(
             symbol_id=1,
             symbol='BTC/USDT',
-            gap_start=datetime.utcnow() - timedelta(seconds=10),
-            gap_end=datetime.utcnow(),
+            gap_start=datetime.now(timezone.utc) - timedelta(seconds=10),
+            gap_end=datetime.now(timezone.utc),
             gap_seconds=10,
         )
 
@@ -330,8 +330,8 @@ class TestDataGap:
         gap = DataGap(
             symbol_id=1,
             symbol='BTC/USDT',
-            gap_start=datetime.utcnow() - timedelta(seconds=70),
-            gap_end=datetime.utcnow(),
+            gap_start=datetime.now(timezone.utc) - timedelta(seconds=70),
+            gap_end=datetime.now(timezone.utc),
             gap_seconds=70,
         )
 
@@ -342,8 +342,8 @@ class TestDataGap:
         gap = DataGap(
             symbol_id=1,
             symbol='BTC/USDT',
-            gap_start=datetime.utcnow() - timedelta(seconds=30),
-            gap_end=datetime.utcnow(),
+            gap_start=datetime.now(timezone.utc) - timedelta(seconds=30),
+            gap_end=datetime.now(timezone.utc),
             gap_seconds=30,
         )
 
@@ -358,8 +358,8 @@ class TestGapFillResult:
         gap = DataGap(
             symbol_id=1,
             symbol='BTC/USDT',
-            gap_start=datetime.utcnow() - timedelta(seconds=10),
-            gap_end=datetime.utcnow(),
+            gap_start=datetime.now(timezone.utc) - timedelta(seconds=10),
+            gap_end=datetime.now(timezone.utc),
             gap_seconds=10,
         )
 
@@ -378,8 +378,8 @@ class TestGapFillResult:
         gap = DataGap(
             symbol_id=1,
             symbol='BTC/USDT',
-            gap_start=datetime.utcnow() - timedelta(seconds=10),
-            gap_end=datetime.utcnow(),
+            gap_start=datetime.now(timezone.utc) - timedelta(seconds=10),
+            gap_end=datetime.now(timezone.utc),
             gap_seconds=10,
         )
 

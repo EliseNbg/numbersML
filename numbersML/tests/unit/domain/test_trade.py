@@ -1,7 +1,7 @@
 """Tests for Trade entity."""
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from src.domain.models.trade import Trade
 
@@ -12,7 +12,7 @@ class TestTradeInitialization:
     def test_create_valid_trade(self) -> None:
         """Test creating a valid trade."""
         trade = Trade(
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             symbol_id=1,
             trade_id='123456',
             price=Decimal('50000.00'),
@@ -29,7 +29,7 @@ class TestTradeInitialization:
         """Test that price must be positive."""
         with pytest.raises(ValueError, match="price must be positive"):
             Trade(
-                time=datetime.utcnow(),
+                time=datetime.now(timezone.utc),
                 symbol_id=1,
                 trade_id='123',
                 price=Decimal('0'),
@@ -41,7 +41,7 @@ class TestTradeInitialization:
         """Test that quantity must be positive."""
         with pytest.raises(ValueError, match="quantity must be positive"):
             Trade(
-                time=datetime.utcnow(),
+                time=datetime.now(timezone.utc),
                 symbol_id=1,
                 trade_id='123',
                 price=Decimal('50000'),
@@ -53,7 +53,7 @@ class TestTradeInitialization:
         """Test that side must be BUY or SELL."""
         with pytest.raises(ValueError, match="Invalid side"):
             Trade(
-                time=datetime.utcnow(),
+                time=datetime.now(timezone.utc),
                 symbol_id=1,
                 trade_id='123',
                 price=Decimal('50000'),
@@ -69,7 +69,7 @@ class TestTradeMethods:
     def sample_trade(self) -> Trade:
         """Create sample trade for testing."""
         return Trade(
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             symbol_id=1,
             trade_id='123456',
             price=Decimal('50000.00'),
@@ -89,7 +89,7 @@ class TestTradeMethods:
     def test_is_sell(self) -> None:
         """Test is_sell method."""
         trade = Trade(
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             symbol_id=1,
             trade_id='123',
             price=Decimal('50000'),

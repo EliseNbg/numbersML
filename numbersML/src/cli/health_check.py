@@ -195,7 +195,7 @@ async def check_database_health(
                     'error': 'Query returned unexpected result',
                 }
 
-        latency_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+        latency_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
 
         return {
             'healthy': True,
@@ -255,7 +255,7 @@ async def check_redis_health(
             timeout=timeout,
         )
 
-        latency_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+        latency_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
 
         await client.close()
 

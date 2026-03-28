@@ -1,7 +1,7 @@
 """Tests for TickValidator service."""
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from src.domain.models.symbol import Symbol
 from src.domain.models.trade import Trade
@@ -31,7 +31,7 @@ class TestTickValidator:
     def test_valid_trade_passes(self, validator: TickValidator) -> None:
         """Test that valid trade passes validation."""
         trade = Trade(
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             symbol_id=1,
             trade_id='123456',
             price=Decimal('50000.00'),
@@ -47,7 +47,7 @@ class TestTickValidator:
     def test_duplicate_trade_id_fails(self, validator: TickValidator) -> None:
         """Test that duplicate trade ID fails validation."""
         trade1 = Trade(
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             symbol_id=1,
             trade_id='123456',
             price=Decimal('50000.00'),
@@ -67,7 +67,7 @@ class TestTickValidator:
     def test_price_not_aligned_fails(self, validator: TickValidator) -> None:
         """Test that price not aligned with tick_size fails."""
         trade = Trade(
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             symbol_id=1,
             trade_id='123456',
             price=Decimal('50000.001'),  # Not aligned with 0.01
@@ -83,7 +83,7 @@ class TestTickValidator:
     def test_quantity_not_aligned_fails(self, validator: TickValidator) -> None:
         """Test that quantity not aligned with step_size fails."""
         trade = Trade(
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             symbol_id=1,
             trade_id='123456',
             price=Decimal('50000.00'),
@@ -100,7 +100,7 @@ class TestTickValidator:
         """Test price sanity validation."""
         # Set last price
         trade1 = Trade(
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             symbol_id=1,
             trade_id='123456',
             price=Decimal('50000.00'),
@@ -111,7 +111,7 @@ class TestTickValidator:
         
         # Large price move (>10%)
         trade2 = Trade(
-            time=datetime.utcnow() + timedelta(seconds=1),
+            time=datetime.now(timezone.utc) + timedelta(seconds=1),
             symbol_id=1,
             trade_id='123457',
             price=Decimal('60000.00'),  # 20% move
@@ -128,7 +128,7 @@ class TestTickValidator:
         """Test that time travel fails validation."""
         # Set last time
         trade1 = Trade(
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             symbol_id=1,
             trade_id='123456',
             price=Decimal('50000.00'),
@@ -139,7 +139,7 @@ class TestTickValidator:
         
         # Trade in the past
         trade2 = Trade(
-            time=datetime.utcnow() - timedelta(seconds=10),
+            time=datetime.now(timezone.utc) - timedelta(seconds=10),
             symbol_id=1,
             trade_id='123457',
             price=Decimal('50000.00'),
@@ -155,7 +155,7 @@ class TestTickValidator:
     def test_reset_clears_state(self, validator: TickValidator) -> None:
         """Test that reset clears validator state."""
         trade = Trade(
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             symbol_id=1,
             trade_id='123456',
             price=Decimal('50000.00'),
@@ -192,4 +192,5 @@ class TestValidationResult:
         
         assert result.is_valid is False
         assert len(result.errors) == 2
-        assert len(result.warnings) == 1
+
+

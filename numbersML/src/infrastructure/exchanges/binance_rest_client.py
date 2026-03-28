@@ -36,7 +36,7 @@ class BinanceRESTClient:
         >>> trades = await client.get_historical_trades(
         ...     symbol='BTCUSDT',
         ...     start_time=datetime.utcnow() - timedelta(hours=1),
-        ...     end_time=datetime.utcnow(),
+        ...     end_time=datetime.now(timezone.utc),
         ... )
     """
 

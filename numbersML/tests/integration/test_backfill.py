@@ -9,7 +9,7 @@ import pytest
 import asyncio
 import asyncpg
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 
 from src.cli.backfill import HistoricalBackfill
@@ -175,7 +175,7 @@ class TestBackfillIntegration:
                 """,
                 "backfill_checkpoint_TESTUSDT",
                 json.dumps({
-                    'last_time': datetime.utcnow().isoformat(),
+                    'last_time': datetime.now(timezone.utc).isoformat(),
                     'days': 1,
                     'records': 86400,
                 }),
@@ -220,7 +220,7 @@ class TestBackfillIntegration:
                 """,
                 "backfill_checkpoint_TESTUSDT",
                 json.dumps({
-                    'last_time': datetime.utcnow().isoformat(),
+                    'last_time': datetime.now(timezone.utc).isoformat(),
                     'days': 7,  # More than our test (1 day)
                     'records': 604800,
                 }),

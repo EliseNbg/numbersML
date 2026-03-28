@@ -1,7 +1,7 @@
 """Tests for domain base classes."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from src.domain.models.base import Entity, ValueObject, DomainEvent
 
 

@@ -38,6 +38,8 @@ logger = logging.getLogger(__name__)
 # Database configuration
 DATABASE_URL = "postgresql://crypto:crypto_secret@localhost:5432/crypto_trading"
 
+# Pipeline manager is managed in src.pipeline.service
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:

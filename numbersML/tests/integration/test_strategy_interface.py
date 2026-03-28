@@ -10,7 +10,7 @@ Tests:
 
 import pytest
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 from typing import Dict, Any, List

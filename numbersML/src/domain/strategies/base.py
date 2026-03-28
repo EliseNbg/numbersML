@@ -7,7 +7,7 @@ consume enriched tick data via Redis pub/sub.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
 from typing import Dict, List, Optional, Any
@@ -63,7 +63,7 @@ class Signal:
     symbol: str
     signal_type: SignalType
     price: Decimal
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     confidence: float = 0.5
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -100,7 +100,7 @@ class Position:
     entry_price: Decimal
     current_price: Decimal = Decimal('0')
     unrealized_pnl: Decimal = Decimal('0')
-    opened_at: datetime = field(default_factory=datetime.utcnow)
+    opened_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def update_price(self, price: Decimal) -> None:
         """Update current price and calculate PnL."""
@@ -156,7 +156,7 @@ class EnrichedTick:
             symbol=message.get('symbol', ''),
             price=Decimal(str(message.get('price', 0))),
             volume=Decimal(str(message.get('volume', 0))),
-            time=datetime.fromisoformat(message.get('time', datetime.utcnow().isoformat())),
+            time=datetime.fromisoformat(message.get('time', datetime.now(timezone.utc).isoformat())),
             indicators=message.get('indicators', {}),
         )
 

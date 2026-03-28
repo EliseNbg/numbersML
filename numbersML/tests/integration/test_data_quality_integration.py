@@ -9,7 +9,7 @@ Tests the integration of:
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from src.domain.models.symbol import Symbol
 from src.domain.models.trade import Trade
@@ -47,7 +47,7 @@ class TestDataQualityIntegration:
         # Simulate normal trades
         for i in range(10):
             trade = Trade(
-                time=datetime.utcnow() + timedelta(seconds=i),
+                time=datetime.now(timezone.utc) + timedelta(seconds=i),
                 symbol_id=1,
                 trade_id=f'trade{i}',
                 price=Decimal('50000.00'),
@@ -62,7 +62,7 @@ class TestDataQualityIntegration:
         
         # Simulate price spike
         spike_trade = Trade(
-            time=datetime.utcnow() + timedelta(seconds=10),
+            time=datetime.now(timezone.utc) + timedelta(seconds=10),
             symbol_id=1,
             trade_id='trade10',
             price=Decimal('60000.00'),  # 20% spike
@@ -87,7 +87,7 @@ class TestDataQualityIntegration:
         gap_detector.start_monitoring(1, 'BTC/USDT')
         
         # First tick
-        time1 = datetime.utcnow()
+        time1 = datetime.now(timezone.utc)
         gap = gap_detector.check_tick(1, time1)
         assert gap is None
         
@@ -181,7 +181,7 @@ class TestDataQualityIntegration:
         symbol_id = 1
         
         # Process stream of ticks
-        base_time = datetime.utcnow()
+        base_time = datetime.now(timezone.utc)
         
         for i in range(50):
             tick_time = base_time + timedelta(seconds=i)

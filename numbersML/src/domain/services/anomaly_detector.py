@@ -10,7 +10,7 @@ Detects various types of anomalies in market data:
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional, List, Dict
 from enum import Enum
@@ -60,7 +60,7 @@ class Anomaly:
     message: str
     expected_value: Optional[Decimal] = None
     actual_value: Optional[Decimal] = None
-    detected_at: datetime = field(default_factory=datetime.utcnow)
+    detected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     can_auto_fix: bool = False
 
 
@@ -206,7 +206,7 @@ class AnomalyDetector:
     
     def _check_stale_data(self, trade: Trade, result: AnomalyResult) -> None:
         """Check for stale data."""
-        age = (datetime.utcnow() - trade.time).total_seconds()
+        age = (datetime.now(timezone.utc) - trade.time).total_seconds()
         
         if age > self.stale_data_seconds:
             result.add(Anomaly(

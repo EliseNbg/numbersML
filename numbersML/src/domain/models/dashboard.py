@@ -98,7 +98,7 @@ class SLAMetric:
     
     Example:
         >>> metric = SLAMetric(
-        ...     timestamp=datetime.utcnow(),
+        ...     timestamp=datetime.now(timezone.utc),
         ...     avg_time_ms=150.5,
         ...     max_time_ms=450.0,
         ...     sla_violations=0,

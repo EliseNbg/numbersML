@@ -190,7 +190,7 @@ class EnrichmentService:
         Args:
             notification: PostgreSQL notification object
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
 
         try:
             # Parse notification payload
@@ -246,7 +246,7 @@ class EnrichmentService:
                 await self._publish_to_redis(symbol_id, latest_price, indicator_values)
 
             # Calculate processing time
-            total_time_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            total_time_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
 
             # Update stats
             self._stats['ticks_processed'] += 1
@@ -263,7 +263,7 @@ class EnrichmentService:
             )
 
             # Log performance
-            elapsed_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+            elapsed_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
             logger.debug(f"Enrichment completed for symbol {symbol_id} in {elapsed_ms:.2f}ms")
 
         except Exception as e:
@@ -431,7 +431,7 @@ class EnrichmentService:
                 json.dumps({
                     'symbol_id': symbol_id,
                     'time': time,
-                    'processed_at': datetime.utcnow().isoformat(),
+                    'processed_at': datetime.now(timezone.utc).isoformat(),
                     'indicators_count': len(self._indicators),
                 })
             )
@@ -463,7 +463,7 @@ class EnrichmentService:
                 'symbol': symbol,
                 'symbol_id': symbol_id,
                 'price': price,
-                'time': datetime.utcnow().isoformat(),
+                'time': datetime.now(timezone.utc).isoformat(),
                 'indicators': indicator_values,
             }
 

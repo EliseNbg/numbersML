@@ -213,7 +213,7 @@ class Ticker24hrCollector:
 
             # Parse ticker data
             ticker = {
-                'time': datetime.utcnow(),
+                'time': datetime.now(timezone.utc),
                 'symbol_id': symbol_id,
                 'symbol': symbol,
 

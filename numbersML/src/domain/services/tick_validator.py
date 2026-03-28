@@ -5,7 +5,7 @@ Validates incoming tick data to ensure data quality before storage.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional, List
 from src.domain.models.symbol import Symbol
@@ -133,7 +133,7 @@ class TickValidator:
             errors.append(f"Time travel detected: {tick.time} < {self._last_time}")
         
         # Check for stale data
-        age = datetime.utcnow() - tick.time
+        age = datetime.now(timezone.utc) - tick.time
         if age > timedelta(seconds=self.max_gap_seconds * 12):
             warnings.append(f"Stale data: {age.total_seconds():.0f}s old")
     

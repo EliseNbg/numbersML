@@ -7,7 +7,7 @@ Provides publish/subscribe functionality for strategy communication.
 import asyncio
 import json
 from typing import Dict, List, Optional, Callable, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 try:
@@ -114,7 +114,7 @@ class MessageBus:
         """
         try:
             # Add timestamp
-            message['timestamp'] = datetime.utcnow().isoformat()
+            message['timestamp'] = datetime.now(timezone.utc).isoformat()
 
             # Serialize
             message_json = json.dumps(message)

@@ -1,7 +1,7 @@
 """Tests for anomaly detector service."""
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from src.domain.models.symbol import Symbol
 from src.domain.models.trade import Trade
@@ -41,7 +41,7 @@ class TestAnomalyDetector:
     def test_no_anomaly_for_normal_trade(self, detector: AnomalyDetector) -> None:
         """Test that normal trade doesn't trigger anomaly."""
         trade = Trade(
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             symbol_id=1,
             trade_id='123456',
             price=Decimal('50000.00'),
@@ -57,7 +57,7 @@ class TestAnomalyDetector:
     def test_duplicate_trade_detected(self, detector: AnomalyDetector) -> None:
         """Test that duplicate trade ID is detected."""
         trade1 = Trade(
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             symbol_id=1,
             trade_id='123456',
             price=Decimal('50000.00'),
@@ -79,7 +79,7 @@ class TestAnomalyDetector:
         """Test that time gaps are detected."""
         # First trade
         trade1 = Trade(
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             symbol_id=1,
             trade_id='123456',
             price=Decimal('50000.00'),
@@ -90,7 +90,7 @@ class TestAnomalyDetector:
         
         # Second trade with gap > 5 seconds
         trade2 = Trade(
-            time=datetime.utcnow() + timedelta(seconds=10),
+            time=datetime.now(timezone.utc) + timedelta(seconds=10),
             symbol_id=1,
             trade_id='123457',
             price=Decimal('50000.00'),
@@ -107,7 +107,7 @@ class TestAnomalyDetector:
         """Test that stale data is detected."""
         # Trade from 2 minutes ago
         trade = Trade(
-            time=datetime.utcnow() - timedelta(minutes=2),
+            time=datetime.now(timezone.utc) - timedelta(minutes=2),
             symbol_id=1,
             trade_id='123456',
             price=Decimal('50000.00'),
@@ -124,7 +124,7 @@ class TestAnomalyDetector:
         """Test that price spikes are detected."""
         # First trade at $50,000
         trade1 = Trade(
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             symbol_id=1,
             trade_id='123456',
             price=Decimal('50000.00'),
@@ -135,7 +135,7 @@ class TestAnomalyDetector:
 
         # Second trade at $53,000 (6% spike - should be HIGH, not CRITICAL)
         trade2 = Trade(
-            time=datetime.utcnow() + timedelta(seconds=1),
+            time=datetime.now(timezone.utc) + timedelta(seconds=1),
             symbol_id=1,
             trade_id='123457',
             price=Decimal('53000.00'),
@@ -154,7 +154,7 @@ class TestAnomalyDetector:
         """Test that large price spikes are CRITICAL severity."""
         # First trade at $50,000
         trade1 = Trade(
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             symbol_id=1,
             trade_id='123456',
             price=Decimal('50000.00'),
@@ -165,7 +165,7 @@ class TestAnomalyDetector:
 
         # Second trade at $65,000 (30% spike - should be CRITICAL)
         trade2 = Trade(
-            time=datetime.utcnow() + timedelta(seconds=1),
+            time=datetime.now(timezone.utc) + timedelta(seconds=1),
             symbol_id=1,
             trade_id='123457',
             price=Decimal('65000.00'),
@@ -184,7 +184,7 @@ class TestAnomalyDetector:
         """Test that price drops are detected."""
         # First trade at $50,000
         trade1 = Trade(
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             symbol_id=1,
             trade_id='123456',
             price=Decimal('50000.00'),
@@ -195,7 +195,7 @@ class TestAnomalyDetector:
         
         # Second trade at $40,000 (20% drop)
         trade2 = Trade(
-            time=datetime.utcnow() + timedelta(seconds=1),
+            time=datetime.now(timezone.utc) + timedelta(seconds=1),
             symbol_id=1,
             trade_id='123457',
             price=Decimal('40000.00'),
@@ -214,7 +214,7 @@ class TestAnomalyDetector:
         # Create several normal trades to establish average
         for i in range(20):
             trade = Trade(
-                time=datetime.utcnow() + timedelta(seconds=i),
+                time=datetime.now(timezone.utc) + timedelta(seconds=i),
                 symbol_id=1,
                 trade_id=f'12345{i}',
                 price=Decimal('50000.00'),
@@ -225,7 +225,7 @@ class TestAnomalyDetector:
         
         # Large volume trade (15x average)
         large_trade = Trade(
-            time=datetime.utcnow() + timedelta(seconds=20),
+            time=datetime.now(timezone.utc) + timedelta(seconds=20),
             symbol_id=1,
             trade_id='123470',
             price=Decimal('50000.00'),
@@ -243,7 +243,7 @@ class TestAnomalyDetector:
         """Test that out-of-order trades are detected."""
         # First trade
         trade1 = Trade(
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             symbol_id=1,
             trade_id='123456',
             price=Decimal('50000.00'),
@@ -254,7 +254,7 @@ class TestAnomalyDetector:
         
         # Second trade with earlier timestamp
         trade2 = Trade(
-            time=datetime.utcnow() - timedelta(seconds=10),
+            time=datetime.now(timezone.utc) - timedelta(seconds=10),
             symbol_id=1,
             trade_id='123457',
             price=Decimal('50000.00'),
@@ -272,7 +272,7 @@ class TestAnomalyDetector:
         """Test that potential wash trades are detected."""
         # First trade
         trade1 = Trade(
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             symbol_id=1,
             trade_id='123456',
             price=Decimal('50000.00'),
@@ -283,7 +283,7 @@ class TestAnomalyDetector:
         
         # Second trade with same price, quantity, within 1 second
         trade2 = Trade(
-            time=datetime.utcnow() + timedelta(milliseconds=500),
+            time=datetime.now(timezone.utc) + timedelta(milliseconds=500),
             symbol_id=1,
             trade_id='123457',
             price=Decimal('50000.00'),
@@ -300,7 +300,7 @@ class TestAnomalyDetector:
     def test_detector_statistics(self, detector: AnomalyDetector) -> None:
         """Test getting detector statistics."""
         trade = Trade(
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             symbol_id=1,
             trade_id='123456',
             price=Decimal('50000.00'),
@@ -317,7 +317,7 @@ class TestAnomalyDetector:
     def test_detector_reset(self, detector: AnomalyDetector) -> None:
         """Test resetting detector state."""
         trade = Trade(
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             symbol_id=1,
             trade_id='123456',
             price=Decimal('50000.00'),

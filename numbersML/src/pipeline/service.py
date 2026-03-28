@@ -417,6 +417,11 @@ class PipelineManager:
 _pipeline_manager = None
 
 
+def get_pipeline_manager() -> Optional[PipelineManager]:
+    """Get global pipeline manager instance."""
+    return _pipeline_manager
+
+
 def set_pipeline_manager(manager: PipelineManager) -> None:
     """Set global pipeline manager instance."""
     global _pipeline_manager

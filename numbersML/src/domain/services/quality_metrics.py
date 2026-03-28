@@ -5,7 +5,7 @@ Tracks and reports on data quality over time.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Dict, Optional
 from enum import Enum
@@ -107,8 +107,8 @@ class QualityMetricsTracker:
         if symbol_id not in self._metrics:
             self._metrics[symbol_id] = QualityMetrics(
                 symbol_id=symbol_id,
-                period_start=datetime.utcnow(),
-                period_end=datetime.utcnow(),
+                period_start=datetime.now(timezone.utc),
+                period_end=datetime.now(timezone.utc),
             )
         
         metrics = self._metrics[symbol_id]
@@ -219,8 +219,8 @@ class QualityMetricsTracker:
         # Reset metrics for next period
         self._metrics[symbol_id] = QualityMetrics(
             symbol_id=symbol_id,
-            period_start=datetime.utcnow(),
-            period_end=datetime.utcnow(),
+            period_start=datetime.now(timezone.utc),
+            period_end=datetime.now(timezone.utc),
         )
     
     def get_metrics(self, symbol_id: int) -> Optional[QualityMetrics]:

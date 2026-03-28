@@ -11,7 +11,7 @@ Enhanced with:
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
 import logging
@@ -40,7 +40,7 @@ class DataGap:
     gap_start: datetime
     gap_end: datetime
     gap_seconds: float
-    detected_at: datetime = field(default_factory=datetime.utcnow)
+    detected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     is_filled: bool = False
     filled_at: Optional[datetime] = None
 
@@ -94,7 +94,7 @@ class GapDetector:
 
     def start_monitoring(self, symbol_id: int, symbol: str) -> None:
         """Start monitoring a symbol for gaps."""
-        self._last_tick_time[symbol_id] = datetime.utcnow()
+        self._last_tick_time[symbol_id] = datetime.now(timezone.utc)
         logger.info(f"Started monitoring {symbol} for gaps")
 
     def check_tick(
@@ -152,7 +152,7 @@ class GapDetector:
     def mark_gap_filled(self, gap: DataGap) -> None:
         """Mark a gap as filled."""
         gap.is_filled = True
-        gap.filled_at = datetime.utcnow()
+        gap.filled_at = datetime.now(timezone.utc)
         logger.info(f"Gap filled: {gap.gap_seconds}s for symbol {gap.symbol_id}")
 
 
@@ -239,7 +239,7 @@ class GapFiller:
             await self._store_ticks(gap.symbol_id, ticks)
 
             gap.is_filled = True
-            gap.filled_at = datetime.utcnow()
+            gap.filled_at = datetime.now(timezone.utc)
 
             self._stats['gaps_filled'] += 1
             self._stats['ticks_fetched'] += len(ticks)

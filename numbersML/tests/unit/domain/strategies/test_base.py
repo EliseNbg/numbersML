@@ -5,7 +5,7 @@ Tests strategy base classes, signals, positions, and strategy manager.
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -175,7 +175,7 @@ class TestEnrichedTick:
             symbol='BTC/USDT',
             price=Decimal('50000.00'),
             volume=Decimal('1.5'),
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             indicators={'rsi': 55.5, 'sma': 49500.0},
         )
 
@@ -212,7 +212,7 @@ class TestEnrichedTick:
             symbol='BTC/USDT',
             price=Decimal('50000.00'),
             volume=Decimal('1.0'),
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
             indicators={'rsi': 55.5},
         )
 
@@ -300,7 +300,7 @@ class TestStrategy:
             symbol='BTC/USDT',
             price=Decimal('50000.00'),
             volume=Decimal('1.0'),
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
         )
 
         # Should not process when stopped
@@ -448,7 +448,7 @@ class TestStrategyManager:
             symbol='BTC/USDT',
             price=Decimal('50000.00'),
             volume=Decimal('1.0'),
-            time=datetime.utcnow(),
+            time=datetime.now(timezone.utc),
         )
 
         # Start strategies

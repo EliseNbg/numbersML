@@ -9,7 +9,7 @@ Provides foundational classes for Domain-Driven Design:
 
 from abc import ABC
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -25,8 +25,8 @@ class Entity(ABC):
     """
     
     id: int | None = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     def __eq__(self, other: Any) -> bool:
         """Compare entities by ID only."""
@@ -70,7 +70,7 @@ class DomainEvent:
     """
     
     event_id: UUID = field(default_factory=uuid4)
-    occurred_at: datetime = field(default_factory=datetime.utcnow)
+    occurred_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     @property
     def event_type(self) -> str:

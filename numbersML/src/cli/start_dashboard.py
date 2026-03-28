@@ -17,6 +17,24 @@ Options:
     --log-level     Logging level (default: INFO)
 """
 
+# Add user site-packages AND .venv FIRST (before any other imports)
+import sys
+import os
+
+# Get project root (parent of src/cli/)
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(os.path.dirname(script_dir))
+
+# Add .venv site-packages if it exists
+venv_site = os.path.join(project_root, '.venv', 'lib', 'python3.13', 'site-packages')
+if os.path.exists(venv_site) and venv_site not in sys.path:
+    sys.path.insert(0, venv_site)
+
+# Add user site-packages as fallback
+USER_SITE = '/home/andy/.local/lib/python3.13/site-packages'
+if USER_SITE not in sys.path:
+    sys.path.insert(0, USER_SITE)
+
 import argparse
 import logging
 import sys
@@ -94,17 +112,10 @@ def main() -> int:
         Exit code (0 for success, 1 for error)
     """
     args = parse_args()
-    
+
     # Set logging level
     logging.getLogger().setLevel(getattr(logging, args.log_level))
-    
-    # Add user site-packages to path (for system-wide pip installs)
-    import site
-    import sys
-    user_site = site.getusersitepackages()
-    if user_site not in sys.path:
-        sys.path.insert(0, user_site)
-    
+
     logger.info("=" * 70)
     logger.info("Starting Crypto Trading Dashboard")
     logger.info("=" * 70)

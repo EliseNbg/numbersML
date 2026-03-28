@@ -10,25 +10,20 @@ Provides REST API for pipeline control:
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List, Dict, Any, Optional
 
-from src.pipeline.service import PipelineManager, _pipeline_manager
+from src.pipeline.service import PipelineManager, get_pipeline_manager as _get_pipeline_manager
 
 router = APIRouter(prefix="/api/pipeline", tags=["pipeline"])
 
 
 def get_pipeline_manager() -> PipelineManager:
     """Get pipeline manager instance."""
-    if _pipeline_manager is None:
+    manager = _get_pipeline_manager()
+    if manager is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Pipeline manager not initialized",
         )
-    return _pipeline_manager
-
-
-def set_pipeline_manager(manager: PipelineManager) -> None:
-    """Set pipeline manager instance."""
-    global _pipeline_manager
-    _pipeline_manager = manager
+    return manager
 
 
 @router.get(
