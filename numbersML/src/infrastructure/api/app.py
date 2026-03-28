@@ -130,6 +130,7 @@ Currently no authentication. Add authentication middleware for production use.
     app.include_router(symbols_router)
     app.include_router(indicators_router)
     app.include_router(config_router)
+    app.include_router(pipeline_router)
     
     # Mount static files for frontend (dashboard)
     # Note: Frontend files will be created in Step 022.6

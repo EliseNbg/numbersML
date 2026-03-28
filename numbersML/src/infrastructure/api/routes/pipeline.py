@@ -10,12 +10,9 @@ Provides REST API for pipeline control:
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List, Dict, Any, Optional
 
-from src.pipeline.service import PipelineManager
+from src.pipeline.service import PipelineManager, _pipeline_manager
 
 router = APIRouter(prefix="/api/pipeline", tags=["pipeline"])
-
-# Global pipeline manager (initialized on app startup)
-_pipeline_manager: Optional[PipelineManager] = None
 
 
 def get_pipeline_manager() -> PipelineManager:

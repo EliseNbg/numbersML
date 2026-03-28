@@ -411,3 +411,13 @@ class PipelineManager:
             await self.stop_pipeline(pipeline_id)
         
         logger.info("All pipelines stopped")
+
+
+# Global pipeline manager instance (for API dependency injection)
+_pipeline_manager = None
+
+
+def set_pipeline_manager(manager: PipelineManager) -> None:
+    """Set global pipeline manager instance."""
+    global _pipeline_manager
+    _pipeline_manager = manager
