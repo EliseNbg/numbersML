@@ -43,21 +43,21 @@ function setupButtonHandlers() {
 }
 
 /**
- * Load collector status
+ * Load pipeline status (replaces old collector status)
  */
 async function loadCollectorStatus() {
     try {
-        const response = await fetch(`${API_BASE}/dashboard/status`);
-        
+        const response = await fetch(`${API_BASE}/pipeline/status`);
+
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
-        
+
         const status = await response.json();
         renderCollectorStatus(status);
-        
+
     } catch (error) {
-        console.error('Failed to load collector status:', error);
+        console.error('Failed to load pipeline status:', error);
         document.getElementById('collector-status').innerHTML = `
             <div class="alert alert-danger">
                 <i class="bi bi-exclamation-triangle"></i>
@@ -68,34 +68,31 @@ async function loadCollectorStatus() {
 }
 
 /**
- * Render collector status
+ * Render pipeline status
  */
 function renderCollectorStatus(status) {
     const container = document.getElementById('collector-status');
     const startBtn = document.getElementById('btn-start-collector');
     const stopBtn = document.getElementById('btn-stop-collector');
-    
+
     if (status.is_running) {
         container.innerHTML = `
             <div class="row align-items-center">
-                <div class="col-md-6">
+                <div class="col-md-12">
                     <p><strong>Status:</strong> <span class="status-running">
                         <i class="bi bi-check-circle-fill"></i> Running
                     </span></p>
-                    <p><strong>PID:</strong> ${status.pid || 'N/A'}</p>
+                    <p><strong>Symbols:</strong> ${(status.symbols || []).length} active</p>
+                    <p><strong>Trades Processed:</strong> ${status.trades_processed?.toLocaleString() || 0}</p>
+                    <p><strong>Candles Written:</strong> ${status.candles_written?.toLocaleString() || 0}</p>
                     <p><strong>Uptime:</strong> ${formatUptime(status.uptime_seconds)}</p>
-                </div>
-                <div class="col-md-6">
-                    <p><strong>Last Tick:</strong> ${formatDateTime(status.last_tick_time)}</p>
-                    <p><strong>Ticks Processed:</strong> ${status.ticks_processed?.toLocaleString() || 0}</p>
-                    <p><strong>Errors:</strong> ${status.errors || 0}</p>
                 </div>
             </div>
         `;
-        
+
         startBtn.disabled = true;
         stopBtn.disabled = false;
-        
+
     } else {
         container.innerHTML = `
             <div class="text-center">
@@ -311,48 +308,56 @@ function updatePerformanceMetrics(metrics) {
 }
 
 /**
- * Start collector
+ * Start pipeline (replaces old collector)
  */
 async function startCollector() {
     try {
-        const response = await fetch(`${API_BASE}/dashboard/collector/start`, {
+        const response = await fetch(`${API_BASE}/pipeline/start`, {
             method: 'POST',
         });
-        
+
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            throw new Error(data.detail || `HTTP ${response.status}`);
         }
-        
+
+        const result = await response.json();
+        alert(`Pipeline started: ${result.message}`);
+
         // Reload status
         loadCollectorStatus();
-        
+
     } catch (error) {
-        alert(`Failed to start collector: ${error.message}`);
+        alert(`Failed to start pipeline: ${error.message}`);
     }
 }
 
 /**
- * Stop collector
+ * Stop pipeline (replaces old collector)
  */
 async function stopCollector() {
-    if (!confirm('Are you sure you want to stop the collector?')) {
+    if (!confirm('Are you sure you want to stop the pipeline?')) {
         return;
     }
-    
+
     try {
-        const response = await fetch(`${API_BASE}/dashboard/collector/stop`, {
+        const response = await fetch(`${API_BASE}/pipeline/stop`, {
             method: 'POST',
         });
-        
+
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            throw new Error(data.detail || `HTTP ${response.status}`);
         }
-        
+
+        const result = await response.json();
+        alert(`Pipeline stopped: ${result.message}`);
+
         // Reload status
         loadCollectorStatus();
-        
+
     } catch (error) {
-        alert(`Failed to stop collector: ${error.message}`);
+        alert(`Failed to stop pipeline: ${error.message}`);
     }
 }
 
