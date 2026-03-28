@@ -183,6 +183,68 @@ class TestSymbolManager:
         assert result is True
         mock_conn.execute.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_allow_symbol(
+        self,
+        mock_db_pool: MagicMock,
+    ) -> None:
+        """Test allowing a symbol."""
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock()
+        mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
+        
+        manager = SymbolManager(mock_db_pool)
+        result = await manager.allow_symbol(1)
+        
+        assert result is True
+        mock_conn.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_disallow_symbol(
+        self,
+        mock_db_pool: MagicMock,
+    ) -> None:
+        """Test disallowing a symbol."""
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock()
+        mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
+        
+        manager = SymbolManager(mock_db_pool)
+        result = await manager.disallow_symbol(1)
+        
+        assert result is True
+        mock_conn.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_allow_symbol_failure(
+        self,
+        mock_db_pool: MagicMock,
+    ) -> None:
+        """Test allow_symbol returns False on exception."""
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock(side_effect=Exception("DB error"))
+        mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
+        
+        manager = SymbolManager(mock_db_pool)
+        result = await manager.allow_symbol(999)
+        
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_disallow_symbol_failure(
+        self,
+        mock_db_pool: MagicMock,
+    ) -> None:
+        """Test disallow_symbol returns False on exception."""
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock(side_effect=Exception("DB error"))
+        mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
+        
+        manager = SymbolManager(mock_db_pool)
+        result = await manager.disallow_symbol(999)
+        
+        assert result is False
+
 
 class TestIndicatorManager:
     """Test IndicatorManager service."""

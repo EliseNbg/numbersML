@@ -158,6 +158,62 @@ class SymbolManager:
         except Exception as e:
             logger.error(f"Failed to deactivate symbol {symbol_id}: {e}")
             return False
+
+    async def allow_symbol(self, symbol_id: int) -> bool:
+        """
+        Allow a symbol (mark as EU-compliant).
+        
+        Args:
+            symbol_id: Symbol ID to allow
+        
+        Returns:
+            True if allowed successfully
+        """
+        try:
+            async with self.db_pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    UPDATE symbols
+                    SET is_allowed = true, updated_at = NOW()
+                    WHERE id = $1
+                    """,
+                    symbol_id,
+                )
+            
+            logger.info(f"Allowed symbol (ID: {symbol_id})")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to allow symbol {symbol_id}: {e}")
+            return False
+
+    async def disallow_symbol(self, symbol_id: int) -> bool:
+        """
+        Disallow a symbol (mark as not EU-compliant).
+        
+        Args:
+            symbol_id: Symbol ID to disallow
+        
+        Returns:
+            True if disallowed successfully
+        """
+        try:
+            async with self.db_pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    UPDATE symbols
+                    SET is_allowed = false, updated_at = NOW()
+                    WHERE id = $1
+                    """,
+                    symbol_id,
+                )
+            
+            logger.info(f"Disallowed symbol (ID: {symbol_id})")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to disallow symbol {symbol_id}: {e}")
+            return False
     
     async def update_symbol(self, symbol: SymbolConfig) -> bool:
         """

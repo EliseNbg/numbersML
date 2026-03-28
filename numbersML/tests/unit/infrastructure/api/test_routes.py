@@ -101,6 +101,12 @@ class TestSymbolRoutes:
         
         response = client.post("/api/symbols/activate-eu-compliant")
         assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
+        
+        response = client.put("/api/symbols/1/allow")
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
+        
+        response = client.put("/api/symbols/1/disallow")
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
 
 
 class TestIndicatorRoutes:

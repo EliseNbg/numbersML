@@ -249,8 +249,8 @@ class TickerCollector:
     
     def _parse_symbol(self, raw_symbol: str) -> str:
         """Parse symbol from Binance format."""
-        if raw_symbol.endswith('USDT'):
-            return f"{raw_symbol[:-4]}/USDT"
+        if raw_symbol.endswith('USDC'):
+            return f"{raw_symbol[:-4]}/USDC"
         elif raw_symbol.endswith('BTC'):
             return f"{raw_symbol[:-3]}/BTC"
         elif raw_symbol.endswith('ETH'):

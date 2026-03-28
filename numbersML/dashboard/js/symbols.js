@@ -113,14 +113,24 @@ function renderSymbolsTable() {
             <td>${symbol.step_size}</td>
             <td>${symbol.min_notional}</td>
             <td>
-                ${symbol.is_active
-                    ? `<button class="btn btn-sm btn-warning" onclick="deactivateSymbol(${symbol.symbol_id})">
-                        <i class="bi bi-x-circle"></i> Deactivate
-                       </button>`
-                    : `<button class="btn btn-sm btn-success" onclick="activateSymbol(${symbol.symbol_id})">
-                        <i class="bi bi-check-circle"></i> Activate
-                       </button>`
-                }
+                <div class="btn-group btn-group-sm">
+                    ${symbol.is_active
+                        ? `<button class="btn btn-warning" onclick="deactivateSymbol(${symbol.symbol_id})" title="Deactivate">
+                            <i class="bi bi-x-circle"></i>
+                           </button>`
+                        : `<button class="btn btn-success" onclick="activateSymbol(${symbol.symbol_id})" title="Activate">
+                            <i class="bi bi-check-circle"></i>
+                           </button>`
+                    }
+                    ${symbol.is_allowed
+                        ? `<button class="btn btn-danger" onclick="disallowSymbol(${symbol.symbol_id})" title="Disallow">
+                            <i class="bi bi-shield-x"></i>
+                           </button>`
+                        : `<button class="btn btn-info" onclick="allowSymbol(${symbol.symbol_id})" title="Allow">
+                            <i class="bi bi-shield-check"></i>
+                           </button>`
+                    }
+                </div>
             </td>
         </tr>
     `).join('');
@@ -165,6 +175,46 @@ async function deactivateSymbol(symbolId) {
         
     } catch (error) {
         alert(`Failed to deactivate symbol: ${error.message}`);
+    }
+}
+
+/**
+ * Allow symbol
+ */
+async function allowSymbol(symbolId) {
+    try {
+        const response = await fetch(`${API_BASE}/symbols/${symbolId}/allow`, {
+            method: 'PUT',
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        await loadSymbols();
+        
+    } catch (error) {
+        alert(`Failed to allow symbol: ${error.message}`);
+    }
+}
+
+/**
+ * Disallow symbol
+ */
+async function disallowSymbol(symbolId) {
+    try {
+        const response = await fetch(`${API_BASE}/symbols/${symbolId}/disallow`, {
+            method: 'PUT',
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        await loadSymbols();
+        
+    } catch (error) {
+        alert(`Failed to disallow symbol: ${error.message}`);
     }
 }
 

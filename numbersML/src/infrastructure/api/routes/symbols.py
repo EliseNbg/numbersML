@@ -179,6 +179,88 @@ async def deactivate_symbol(
 
 
 @router.put(
+    "/{symbol_id}/allow",
+    summary="Allow symbol",
+    description="Allow a symbol (mark as EU-compliant)",
+)
+async def allow_symbol(
+    symbol_id: int,
+    manager: SymbolManager = Depends(get_symbol_manager),
+) -> dict:
+    """
+    Allow a symbol.
+    
+    Args:
+        symbol_id: Symbol ID to allow
+    
+    Returns:
+        Success message
+    
+    Raises:
+        404: Symbol not found
+        500: Failed to allow
+    """
+    # Verify symbol exists
+    symbol = await manager.get_symbol_by_id(symbol_id)
+    if not symbol:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Symbol not found (ID: {symbol_id})",
+        )
+    
+    success = await manager.allow_symbol(symbol_id)
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to allow symbol",
+        )
+    
+    return {"message": f"Symbol {symbol.symbol} allowed"}
+
+
+@router.put(
+    "/{symbol_id}/disallow",
+    summary="Disallow symbol",
+    description="Disallow a symbol (mark as not EU-compliant)",
+)
+async def disallow_symbol(
+    symbol_id: int,
+    manager: SymbolManager = Depends(get_symbol_manager),
+) -> dict:
+    """
+    Disallow a symbol.
+    
+    Args:
+        symbol_id: Symbol ID to disallow
+    
+    Returns:
+        Success message
+    
+    Raises:
+        404: Symbol not found
+        500: Failed to disallow
+    """
+    # Verify symbol exists
+    symbol = await manager.get_symbol_by_id(symbol_id)
+    if not symbol:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Symbol not found (ID: {symbol_id})",
+        )
+    
+    success = await manager.disallow_symbol(symbol_id)
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to disallow symbol",
+        )
+    
+    return {"message": f"Symbol {symbol.symbol} disallowed"}
+
+
+@router.put(
     "/{symbol_id}",
     summary="Update symbol",
     description="Update symbol configuration",
