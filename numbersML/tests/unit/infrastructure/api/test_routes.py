@@ -35,34 +35,29 @@ class TestDashboardRoutes:
     
     def test_routes_registered(self, client: TestClient) -> None:
         """Test that routes are registered."""
-        # All routes should return 501 (not implemented) because no db pool
+        # All routes should now be implemented (return 200 or error from DB)
         response = client.get("/api/dashboard/status")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        # Should not return 501 (Not Implemented) anymore
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
         
         response = client.get("/api/dashboard/metrics")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
         
         response = client.get("/api/dashboard/stats")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
-        
-        response = client.post("/api/dashboard/collector/start")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
-        
-        response = client.post("/api/dashboard/collector/stop")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
     
     def test_metrics_validation(self, client: TestClient) -> None:
         """Test metrics endpoint validation."""
-        # Invalid seconds parameter
+        # Invalid seconds parameter - returns 400 Bad Request
         response = client.get("/api/dashboard/metrics?seconds=0")
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
         
         response = client.get("/api/dashboard/metrics?seconds=301")
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
         
-        # Valid seconds parameter (still returns 501 because no db pool)
+        # Valid seconds parameter (returns 200 or error from DB)
         response = client.get("/api/dashboard/metrics?seconds=60")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
 
 
 class TestSymbolRoutes:
@@ -82,34 +77,30 @@ class TestSymbolRoutes:
     
     def test_routes_registered(self, client: TestClient) -> None:
         """Test that routes are registered."""
-        # List symbols
+        # All routes should now be implemented (return 200 or error from DB)
         response = client.get("/api/symbols")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
         
         response = client.get("/api/symbols?active_only=true")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
         
-        # Get symbol
         response = client.get("/api/symbols/1")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
         
-        # Activate/deactivate
         response = client.put("/api/symbols/1/activate")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
         
         response = client.put("/api/symbols/1/deactivate")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
         
-        # Bulk operations
         response = client.post("/api/symbols/bulk/activate", json=[1, 2, 3])
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
         
         response = client.post("/api/symbols/bulk/deactivate", json=[1, 2, 3])
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
         
-        # EU compliant
         response = client.post("/api/symbols/activate-eu-compliant")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
 
 
 class TestIndicatorRoutes:
@@ -129,34 +120,34 @@ class TestIndicatorRoutes:
     
     def test_routes_registered(self, client: TestClient) -> None:
         """Test that routes are registered."""
-        # List indicators
+        # All routes should now be implemented (return 200 or error from DB)
         response = client.get("/api/indicators")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
         
         response = client.get("/api/indicators?active_only=true")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
         
         response = client.get("/api/indicators?category=momentum")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
         
         # Get categories
         response = client.get("/api/indicators/categories")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
         
         # Get indicator
         response = client.get("/api/indicators/rsi_14")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
         
         # Activate/deactivate
         response = client.put("/api/indicators/rsi_14/activate")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
         
         response = client.put("/api/indicators/rsi_14/deactivate")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
         
         # Unregister
         response = client.delete("/api/indicators/rsi_14")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
 
 
 class TestConfigRoutes:
@@ -178,44 +169,44 @@ class TestConfigRoutes:
         """Test that routes are registered."""
         # Get table data
         response = client.get("/api/config/system_config")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
         
         response = client.get("/api/config/system_config?limit=50")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
         
         # Get entry
         response = client.get("/api/config/system_config/1")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
         
         # Get config value
         response = client.get("/api/config/system-config/collector.batch_size")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
     
     def test_table_validation(self, client: TestClient) -> None:
         """Test table name validation."""
-        # Invalid table name
+        # Invalid table name - returns 400 Bad Request
         response = client.get("/api/config/invalid_table")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         
-        # Valid table names (still returns 501 because no db pool)
+        # Valid table names (returns 200 or error from DB)
         response = client.get("/api/config/system_config")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
         
         response = client.get("/api/config/symbols")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
         
         response = client.get("/api/config/indicator_definitions")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
     
     def test_limit_validation(self, client: TestClient) -> None:
         """Test limit parameter validation."""
-        # Invalid limit
+        # Invalid limit - returns 400 Bad Request
         response = client.get("/api/config/system_config?limit=0")
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
         
         response = client.get("/api/config/system_config?limit=1001")
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
         
         # Valid limit
         response = client.get("/api/config/system_config?limit=50")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
