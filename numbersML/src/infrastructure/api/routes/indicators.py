@@ -16,21 +16,15 @@ from typing import Any, Dict, List, Optional
 
 from src.application.services.indicator_manager import IndicatorManager
 from src.domain.models.config import IndicatorConfig
+from src.infrastructure.database import get_db_pool_async
 
 router = APIRouter(prefix="/api/indicators", tags=["indicators"])
 
 
-def get_indicator_manager() -> IndicatorManager:
-    """
-    Get IndicatorManager instance.
-    
-    Note: In production, use dependency injection with database pool.
-    """
-    # TODO: Inject db_pool and create IndicatorManager
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Indicator API not yet implemented - database pool injection required",
-    )
+async def get_indicator_manager() -> IndicatorManager:
+    """Get IndicatorManager instance with database pool."""
+    db_pool = await get_db_pool_async()
+    return IndicatorManager(db_pool)
 
 
 @router.get(

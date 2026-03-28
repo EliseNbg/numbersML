@@ -15,21 +15,15 @@ from typing import List
 
 from src.application.services.symbol_manager import SymbolManager
 from src.domain.models.config import SymbolConfig
+from src.infrastructure.database import get_db_pool_async
 
 router = APIRouter(prefix="/api/symbols", tags=["symbols"])
 
 
-def get_symbol_manager() -> SymbolManager:
-    """
-    Get SymbolManager instance.
-    
-    Note: In production, use dependency injection with database pool.
-    """
-    # TODO: Inject db_pool and create SymbolManager
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Symbol API not yet implemented - database pool injection required",
-    )
+async def get_symbol_manager() -> SymbolManager:
+    """Get SymbolManager instance with database pool."""
+    db_pool = await get_db_pool_async()
+    return SymbolManager(db_pool)
 
 
 @router.get(

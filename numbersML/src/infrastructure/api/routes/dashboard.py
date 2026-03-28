@@ -15,22 +15,15 @@ from typing import List
 
 from src.application.services.pipeline_monitor import PipelineMonitor
 from src.domain.models.dashboard import CollectorStatus, SLAMetric, DashboardStats
+from src.infrastructure.database import get_db_pool_async
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
-def get_pipeline_monitor() -> PipelineMonitor:
-    """
-    Get PipelineMonitor instance.
-    
-    Note: In production, use dependency injection with database pool.
-    For now, this is a placeholder.
-    """
-    # TODO: Inject db_pool and create PipelineMonitor
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Dashboard API not yet implemented - database pool injection required",
-    )
+async def get_pipeline_monitor() -> PipelineMonitor:
+    """Get PipelineMonitor instance with database pool."""
+    db_pool = await get_db_pool_async()
+    return PipelineMonitor(db_pool)
 
 
 @router.get(

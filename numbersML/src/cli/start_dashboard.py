@@ -98,6 +98,13 @@ def main() -> int:
     # Set logging level
     logging.getLogger().setLevel(getattr(logging, args.log_level))
     
+    # Add user site-packages to path (for system-wide pip installs)
+    import site
+    import sys
+    user_site = site.getusersitepackages()
+    if user_site not in sys.path:
+        sys.path.insert(0, user_site)
+    
     logger.info("=" * 70)
     logger.info("Starting Crypto Trading Dashboard")
     logger.info("=" * 70)

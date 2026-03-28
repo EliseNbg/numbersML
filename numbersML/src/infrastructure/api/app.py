@@ -29,13 +29,9 @@ from src.infrastructure.api.routes import (
     indicators_router,
     config_router,
 )
+from src.infrastructure.database import set_db_pool, get_db_pool, get_db_pool_async
 
 logger = logging.getLogger(__name__)
-
-
-# Database pool (managed by lifespan)
-db_pool: asyncpg.Pool | None = None
-
 
 # Database configuration
 DATABASE_URL = "postgresql://crypto:crypto_secret@localhost:5432/crypto_trading"
@@ -45,7 +41,7 @@ DATABASE_URL = "postgresql://crypto:crypto_secret@localhost:5432/crypto_trading"
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     Manage application lifespan.
-    
+
     Handles:
         - Database pool creation on startup
         - Database pool cleanup on shutdown
@@ -63,6 +59,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             max_size=10,
             timeout=30,
         )
+        set_db_pool(db_pool)
         logger.info("Database pool created successfully")
         
     except Exception as e:

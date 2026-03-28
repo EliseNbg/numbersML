@@ -92,14 +92,14 @@ class PipelineMonitor:
             # Check service_status table
             row = await conn.fetchrow(
                 """
-                SELECT is_running FROM service_status
+                SELECT status, is_healthy FROM service_status
                 WHERE service_name = 'ticker_collector'
                 ORDER BY updated_at DESC LIMIT 1
                 """
             )
             
             if row:
-                return bool(row['is_running'])
+                return row['status'] == 'running' or row['is_healthy']
             
             return False
     
@@ -172,8 +172,8 @@ class PipelineMonitor:
             row = await conn.fetchrow(
                 """
                 SELECT 
-                    COALESCE(SUM(ticks_processed), 0) as ticks_processed,
-                    COALESCE(SUM(errors), 0) as errors
+                    COALESCE(records_processed, 0) as ticks_processed,
+                    COALESCE(errors_last_hour, 0) as errors
                 FROM service_status
                 WHERE service_name = 'ticker_collector'
                 """
