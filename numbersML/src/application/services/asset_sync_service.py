@@ -192,11 +192,10 @@ class AssetSyncService:
                 if 'symbols' not in data:
                     raise AssetSyncError("Invalid response from Binance API")
 
-                # Filter only SPOT trading pairs
+                # Filter only TRADING pairs
                 symbols = [
                     s for s in data['symbols']
                     if s.get('status') == 'TRADING'
-                    and s.get('isSpotEnabled', False)
                 ]
 
                 return symbols
@@ -331,15 +330,14 @@ class AssetSyncService:
             await conn.execute(
                 """
                 INSERT INTO symbols (
-                    symbol, base_asset, quote_asset, exchange,
+                    symbol, base_asset, quote_asset,
                     tick_size, step_size, min_notional,
                     is_allowed, is_active
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 """,
                 symbol.symbol,
                 symbol.base_asset,
                 symbol.quote_asset,
-                symbol.exchange,
                 symbol.tick_size,
                 symbol.step_size,
                 symbol.min_notional,

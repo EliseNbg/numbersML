@@ -255,6 +255,8 @@ class TickerCollector:
             return f"{raw_symbol[:-3]}/BTC"
         elif raw_symbol.endswith('ETH'):
             return f"{raw_symbol[:-3]}/ETH"
+       elif raw_symbol.endswith('EUR'):
+            return f"{raw_symbol[:-3]}/EUR"
         return raw_symbol
     
     async def _store_ticker(self, ticker_data: Dict) -> None:

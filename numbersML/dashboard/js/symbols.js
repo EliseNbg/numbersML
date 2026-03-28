@@ -28,8 +28,11 @@ document.addEventListener('DOMContentLoaded', function() {
  * Setup event handlers
  */
 function setupEventHandlers() {
-    // Filter toggle
+    // Filter toggles
     document.getElementById('filter-active')?.addEventListener('change', () => {
+        renderSymbolsTable();
+    });
+    document.getElementById('filter-allowed')?.addEventListener('change', () => {
         renderSymbolsTable();
     });
     
@@ -44,8 +47,7 @@ function setupEventHandlers() {
  */
 async function loadSymbols() {
     try {
-        const activeOnly = document.getElementById('filter-active')?.checked ?? false;
-        const response = await fetch(`${API_BASE}/symbols?active_only=${activeOnly}`);
+        const response = await fetch(`${API_BASE}/symbols`);
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -75,11 +77,16 @@ async function loadSymbols() {
 function renderSymbolsTable() {
     const tbody = document.getElementById('symbols-table-body');
     const activeOnly = document.getElementById('filter-active')?.checked ?? false;
+    const allowedOnly = document.getElementById('filter-allowed')?.checked ?? false;
     
-    // Filter data
-    const filtered = activeOnly 
-        ? symbolsData.filter(s => s.is_active)
-        : symbolsData;
+    // Filter data by both checkboxes independently
+    let filtered = symbolsData;
+    if (activeOnly) {
+        filtered = filtered.filter(s => s.is_active);
+    }
+    if (allowedOnly) {
+        filtered = filtered.filter(s => s.is_allowed);
+    }
     
     if (filtered.length === 0) {
         tbody.innerHTML = `
