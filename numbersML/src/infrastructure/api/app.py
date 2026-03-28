@@ -160,9 +160,15 @@ Currently no authentication. Add authentication middleware for production use.
         Returns:
             Health status
         """
+        try:
+            pool = get_db_pool()
+            db_status = "connected"
+        except RuntimeError:
+            db_status = "disconnected"
+        
         return {
             "status": "healthy",
-            "database": "connected" if db_pool else "disconnected",
+            "database": db_status,
         }
     
     logger.info("FastAPI application created successfully")
