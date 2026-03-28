@@ -102,9 +102,20 @@ class TradePipeline:
             await self._db_writer.write_candle(symbol, candle)
             self._stats['candles_written'] += 1
             
-            # Calculate indicators
+            # Flush candle to DB so indicator calculator can read it
+            await self._db_writer.flush_symbol(symbol)
+            
+            # Calculate indicators (pass candle directly to avoid DB read timing issues)
             try:
-                count = await self._indicator_calculator.calculate(symbol)
+                count = await self._indicator_calculator.calculate_with_candle(
+                    symbol=symbol,
+                    time=candle.time,
+                    open=float(candle.open),
+                    high=float(candle.high),
+                    low=float(candle.low),
+                    close=float(candle.close),
+                    volume=float(candle.volume),
+                )
                 if count > 0:
                     self._stats['indicators_calculated'] += count
             except Exception as e:
@@ -220,7 +231,6 @@ class TradePipeline:
         """Persist final pipeline state."""
         async with self.db_pool.acquire() as conn:
             for symbol, recovery in self._recovery_managers.items():
-                # Get symbol ID
                 symbol_id = await conn.fetchval(
                     "SELECT id FROM symbols WHERE symbol = $1",
                     symbol,
@@ -228,18 +238,20 @@ class TradePipeline:
                 
                 if symbol_id:
                     stats = recovery.get_stats()
+                    uptime = (datetime.now(timezone.utc) - self._start_time).total_seconds() if self._start_time else 0
+                    tps = self._stats['trades_processed'] / max(1, uptime)
                     
-                    # Update metrics
                     await conn.execute(
                         """
                         INSERT INTO pipeline_metrics (
-                            timestamp, trades_per_second, candles_written,
-                            recovery_events, active_symbols
-                        ) VALUES (NOW(), $1, $2, $3, $4)
+                            timestamp, symbol_id, symbol,
+                            total_time_ms, active_symbols_count,
+                            status
+                        ) VALUES (NOW(), $1, $2, $3, $4, 'success')
                         """,
-                        self._stats['trades_processed'] / max(1, (datetime.now(timezone.utc) - self._start_time).total_seconds()) if self._start_time else 0,
-                        self._stats['candles_written'],
-                        stats.get('recovery_events', 0),
+                        symbol_id,
+                        symbol,
+                        int(1000 / max(tps, 0.001)),
                         len(self.symbols),
                     )
     
@@ -328,18 +340,35 @@ class PipelineManager:
             True if started successfully
         """
         if pipeline_id in self._pipelines:
-            logger.warning(f"Pipeline {pipeline_id} already running")
-            return False
+            # Check if existing task is still running
+            task = self._tasks.get(pipeline_id)
+            if task and not task.done():
+                logger.warning(f"Pipeline {pipeline_id} already running")
+                return False
+            # Clean up stale pipeline
+            logger.info(f"Cleaning up stale pipeline {pipeline_id}")
+            del self._pipelines[pipeline_id]
+            if pipeline_id in self._tasks:
+                del self._tasks[pipeline_id]
         
         # Get active symbols from database
         async with self.db_pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT symbol FROM symbols
-                WHERE is_active = true AND symbol = ANY($1)
-                """,
-                symbols,
-            )
+            if symbols:
+                rows = await conn.fetch(
+                    """
+                    SELECT symbol FROM symbols
+                    WHERE is_active = true AND is_allowed = true AND symbol = ANY($1)
+                    """,
+                    symbols,
+                )
+            else:
+                rows = await conn.fetch(
+                    """
+                    SELECT symbol FROM symbols
+                    WHERE is_active = true AND is_allowed = true
+                    ORDER BY symbol
+                    """
+                )
             active_symbols = [row['symbol'] for row in rows]
         
         if not active_symbols:
@@ -374,17 +403,21 @@ class PipelineManager:
             return False
         
         pipeline = self._pipelines[pipeline_id]
-        await pipeline.stop()
+        
+        try:
+            await pipeline.stop()
+        except Exception as e:
+            logger.error(f"Error stopping pipeline {pipeline_id}: {e}")
         
         if pipeline_id in self._tasks:
             self._tasks[pipeline_id].cancel()
             try:
                 await self._tasks[pipeline_id]
-            except asyncio.CancelledError:
+            except (asyncio.CancelledError, Exception):
                 pass
         
-        del self._pipelines[pipeline_id]
-        del self._tasks[pipeline_id]
+        self._pipelines.pop(pipeline_id, None)
+        self._tasks.pop(pipeline_id, None)
         
         logger.info(f"Stopped pipeline {pipeline_id}")
         return True

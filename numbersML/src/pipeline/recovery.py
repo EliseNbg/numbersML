@@ -195,6 +195,8 @@ class RecoveryManager:
             'trades_recovered': 0,
             'recovery_events': 0,
             'last_recovery_time': None,
+            '_last_persisted_gaps': 0,
+            '_last_persisted_trades': 0,
         }
     
     async def initialize(self) -> None:
@@ -384,6 +386,9 @@ class RecoveryManager:
                 return
             
             # Update state
+            gaps = self._stats['gaps_detected'] - self._stats['_last_persisted_gaps']
+            trades = self._stats['trades_recovered'] - self._stats['_last_persisted_trades']
+            
             await conn.execute(
                 """
                 INSERT INTO pipeline_state (
@@ -403,10 +408,13 @@ class RecoveryManager:
                 self._last_trade_id,
                 self._last_timestamp.replace(tzinfo=None),
                 self._is_recovering,
-                self._stats['last_recovery_time'].replace(tzinfo=None) if self._is_recovering else None,
-                self._stats['gaps_detected'],
-                self._stats['trades_recovered'],
+                self._stats['last_recovery_time'].replace(tzinfo=None) if (self._is_recovering and self._stats['last_recovery_time']) else None,
+                gaps,
+                trades,
             )
+            
+            self._stats['_last_persisted_gaps'] = self._stats['gaps_detected']
+            self._stats['_last_persisted_trades'] = self._stats['trades_recovered']
     
     async def close(self) -> None:
         """Close recovery manager."""

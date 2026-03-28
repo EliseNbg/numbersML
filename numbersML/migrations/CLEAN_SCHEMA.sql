@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict YbHbLxgibDhzJo5c9IkWKePF1Q7VLOrtn4mR9VZ4IZiXSPcnZ1E0BhPzzysF7vc
+\restrict zlagCEBoG0XWEbpgsKWuqjQdmHpMnFK0i1c1PZ6MzcIcCQIkrtnZC8bdlCEX7JN
 
 -- Dumped from database version 15.17
 -- Dumped by pg_dump version 17.9 (Ubuntu 17.9-0ubuntu0.25.10.1)
@@ -210,28 +210,9 @@ END;
 $$;
 
 
+SET default_tablespace = '';
+
 SET default_table_access_method = heap;
-
---
--- Name: 1s_candles; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public."1s_candles" (
-    "time" timestamp with time zone NOT NULL,
-    symbol_id integer NOT NULL,
-    open numeric NOT NULL,
-    high numeric NOT NULL,
-    low numeric NOT NULL,
-    close numeric NOT NULL,
-    volume numeric DEFAULT 0 NOT NULL,
-    quote_volume numeric DEFAULT 0 NOT NULL,
-    trade_count integer DEFAULT 0 NOT NULL,
-    first_trade_id bigint DEFAULT 0 NOT NULL,
-    last_trade_id bigint DEFAULT 0 NOT NULL,
-    created_at timestamp without time zone DEFAULT now(),
-    updated_at timestamp without time zone DEFAULT now()
-);
-
 
 --
 -- Name: symbols; Type: TABLE; Schema: public; Owner: -
@@ -348,6 +329,27 @@ COMMENT ON COLUMN public.candle_indicators."values" IS 'JSONB with all indicator
 --
 
 COMMENT ON COLUMN public.candle_indicators.indicator_keys IS 'Array of indicator keys for fast lookup';
+
+
+--
+-- Name: candles_1s; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.candles_1s (
+    "time" timestamp with time zone NOT NULL,
+    symbol_id integer NOT NULL,
+    open numeric NOT NULL,
+    high numeric NOT NULL,
+    low numeric NOT NULL,
+    close numeric NOT NULL,
+    volume numeric DEFAULT 0 NOT NULL,
+    quote_volume numeric DEFAULT 0 NOT NULL,
+    trade_count integer DEFAULT 0 NOT NULL,
+    first_trade_id bigint DEFAULT 0 NOT NULL,
+    last_trade_id bigint DEFAULT 0 NOT NULL,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now()
+);
 
 
 --
@@ -842,7 +844,7 @@ CREATE TABLE public.pipeline_state (
     recovery_start_time timestamp without time zone,
     recovery_end_time timestamp without time zone,
     trades_processed bigint DEFAULT 0 NOT NULL,
-    gaps_detected integer DEFAULT 0 NOT NULL,
+    gaps_detected bigint DEFAULT 0 NOT NULL,
     last_gap_time timestamp without time zone,
     updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
@@ -1193,11 +1195,11 @@ ALTER TABLE ONLY public.symbols ALTER COLUMN id SET DEFAULT nextval('public.symb
 
 
 --
--- Name: 1s_candles 1s_candles_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: candles_1s candles_1s_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public."1s_candles"
-    ADD CONSTRAINT "1s_candles_pkey" PRIMARY KEY ("time", symbol_id);
+ALTER TABLE ONLY public.candles_1s
+    ADD CONSTRAINT candles_1s_pkey PRIMARY KEY ("time", symbol_id);
 
 
 --
@@ -1652,11 +1654,11 @@ CREATE TRIGGER update_system_config_timestamp BEFORE UPDATE ON public.system_con
 
 
 --
--- Name: 1s_candles 1s_candles_symbol_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: candles_1s candles_1s_symbol_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public."1s_candles"
-    ADD CONSTRAINT "1s_candles_symbol_id_fkey" FOREIGN KEY (symbol_id) REFERENCES public.symbols(id);
+ALTER TABLE ONLY public.candles_1s
+    ADD CONSTRAINT candles_1s_symbol_id_fkey FOREIGN KEY (symbol_id) REFERENCES public.symbols(id);
 
 
 --
@@ -1735,5 +1737,5 @@ ALTER TABLE ONLY public.trades
 -- PostgreSQL database dump complete
 --
 
-\unrestrict YbHbLxgibDhzJo5c9IkWKePF1Q7VLOrtn4mR9VZ4IZiXSPcnZ1E0BhPzzysF7vc
+\unrestrict zlagCEBoG0XWEbpgsKWuqjQdmHpMnFK0i1c1PZ6MzcIcCQIkrtnZC8bdlCEX7JN
 

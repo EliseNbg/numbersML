@@ -103,7 +103,7 @@ class IndicatorCalculator:
             rows = await conn.fetch(
                 """
                 SELECT time, open, high, low, close, volume, quote_volume
-                FROM "1s_candles"
+                FROM "candles_1s"
                 WHERE symbol_id = $1
                 ORDER BY time DESC
                 LIMIT $2
@@ -141,10 +141,15 @@ class IndicatorCalculator:
         if symbol_id is None:
             symbol_id = await self._get_symbol_id(symbol)
         if symbol_id is None:
+            logger.warning(f"Symbol ID not found for {symbol}")
             return 0
 
         candles = await self._fetch_candles(symbol_id)
-        if candles is None or len(candles['close']) < 2:
+        if candles is None:
+            logger.warning(f"No candles in DB for {symbol} (id={symbol_id})")
+            return 0
+        if len(candles['close']) < 2:
+            logger.warning(f"Only {len(candles['close'])} candles for {symbol}, need >= 2")
             return 0
 
         prices = candles['close']
@@ -177,6 +182,98 @@ class IndicatorCalculator:
                 )
 
                 # Extract latest value from each output
+                for key, values in result.values.items():
+                    if len(values) > 0:
+                        val = values[-1]
+                        if np.isnan(val) or np.isinf(val):
+                            continue
+                        results[key] = float(val)
+                        indicator_keys.append(key)
+
+                calculated += 1
+
+            except Exception as e:
+                logger.error(f"Error calculating {defn['name']} for {symbol}: {e}")
+
+        if results:
+            await self._write_results(
+                symbol=symbol,
+                symbol_id=symbol_id,
+                time=latest_time,
+                price=latest_price,
+                volume=latest_volume,
+                values=results,
+                indicator_keys=indicator_keys,
+            )
+
+        return calculated
+
+    async def calculate_with_candle(
+        self,
+        symbol: str,
+        time: datetime,
+        open: float,
+        high: float,
+        low: float,
+        close: float,
+        volume: float,
+        symbol_id: Optional[int] = None,
+    ) -> int:
+        """
+        Calculate indicators using historical data + current candle directly.
+        
+        Avoids DB read timing issues by accepting the current candle as parameter.
+        """
+        if symbol_id is None:
+            symbol_id = await self._get_symbol_id(symbol)
+        if symbol_id is None:
+            return 0
+
+        # Fetch historical candles (excluding current)
+        candles = await self._fetch_candles(symbol_id, limit=self.DEFAULT_CANDLE_WINDOW - 1)
+
+        if candles is None or len(candles['close']) < 1:
+            # First candle ever - can't calculate indicators yet
+            return 0
+
+        # Append current candle to historical data
+        import numpy as np
+        candles['time'].append(time)
+        candles['open'] = np.append(candles['open'], open)
+        candles['high'] = np.append(candles['high'], high)
+        candles['low'] = np.append(candles['low'], low)
+        candles['close'] = np.append(candles['close'], close)
+        candles['volume'] = np.append(candles['volume'], volume)
+
+        prices = candles['close']
+        volumes = candles['volume']
+        highs = candles['high']
+        lows = candles['low']
+        opens = candles['open']
+        latest_time = candles['time'][-1]
+        latest_price = float(prices[-1])
+        latest_volume = float(volumes[-1])
+
+        calculated = 0
+        results: Dict[str, Any] = {}
+        indicator_keys: List[str] = []
+
+        for defn in self._definitions:
+            try:
+                cls = self._get_indicator_class(defn['class_name'], defn['module_path'])
+                if cls is None:
+                    continue
+
+                indicator = cls(**defn['params'])
+                result: IndicatorResult = indicator.calculate(
+                    prices=prices,
+                    volumes=volumes,
+                    highs=highs,
+                    lows=lows,
+                    opens=opens,
+                    closes=prices,
+                )
+
                 for key, values in result.values.items():
                     if len(values) > 0:
                         val = values[-1]

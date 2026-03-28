@@ -149,7 +149,7 @@ class DatabaseWriter:
                 # Batch insert
                 await conn.executemany(
                     """
-                    INSERT INTO "1s_candles" (
+                    INSERT INTO "candles_1s" (
                         time, symbol_id, open, high, low, close,
                         volume, quote_volume, trade_count,
                         first_trade_id, last_trade_id
@@ -312,6 +312,12 @@ class MultiSymbolDatabaseWriter:
         """Flush all writers."""
         for writer in self._writers.values():
             await writer.flush()
+
+    async def flush_symbol(self, symbol: str) -> None:
+        """Flush writer for specific symbol."""
+        symbol_id = self._symbol_id_cache.get(symbol)
+        if symbol_id and symbol_id in self._writers:
+            await self._writers[symbol_id].flush()
     
     def get_stats(self) -> Dict[str, Any]:
         """

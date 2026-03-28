@@ -6,7 +6,7 @@
 -- 1-SECOND CANDLES TABLE
 -- ============================================================================
 
-CREATE TABLE IF NOT EXISTS 1s_candles (
+CREATE TABLE IF NOT EXISTS candles_1s (
     time TIMESTAMP NOT NULL,
     symbol_id INTEGER NOT NULL REFERENCES symbols(id) ON DELETE CASCADE,
     
@@ -33,22 +33,22 @@ CREATE TABLE IF NOT EXISTS 1s_candles (
 );
 
 -- Indexes for performance
-CREATE INDEX IF NOT EXISTS idx_1s_candles_symbol_time 
-    ON 1s_candles(symbol_id, time DESC);
+CREATE INDEX IF NOT EXISTS idx_candles_1s_symbol_time 
+    ON candles_1s(symbol_id, time DESC);
 
-CREATE INDEX IF NOT EXISTS idx_1s_candles_time 
-    ON 1s_candles(time DESC);
+CREATE INDEX IF NOT EXISTS idx_candles_1s_time 
+    ON candles_1s(time DESC);
 
-COMMENT ON TABLE 1s_candles IS '1-second aggregated candles from trade data';
-COMMENT ON COLUMN 1s_candles.open IS 'Opening price (first trade)';
-COMMENT ON COLUMN 1s_candles.high IS 'Highest price in 1s window';
-COMMENT ON COLUMN 1s_candles.low IS 'Lowest price in 1s window';
-COMMENT ON COLUMN 1s_candles.close IS 'Closing price (last trade)';
-COMMENT ON COLUMN 1s_candles.volume IS 'Total base asset volume';
-COMMENT ON COLUMN 1s_candles.quote_volume IS 'Total quote asset volume';
-COMMENT ON COLUMN 1s_candles.trade_count IS 'Number of trades in 1s window';
-COMMENT ON COLUMN 1s_candles.first_trade_id IS 'First aggregate trade ID';
-COMMENT ON COLUMN 1s_candles.last_trade_id IS 'Last aggregate trade ID';
+COMMENT ON TABLE candles_1s IS '1-second aggregated candles from trade data';
+COMMENT ON COLUMN candles_1s.open IS 'Opening price (first trade)';
+COMMENT ON COLUMN candles_1s.high IS 'Highest price in 1s window';
+COMMENT ON COLUMN candles_1s.low IS 'Lowest price in 1s window';
+COMMENT ON COLUMN candles_1s.close IS 'Closing price (last trade)';
+COMMENT ON COLUMN candles_1s.volume IS 'Total base asset volume';
+COMMENT ON COLUMN candles_1s.quote_volume IS 'Total quote asset volume';
+COMMENT ON COLUMN candles_1s.trade_count IS 'Number of trades in 1s window';
+COMMENT ON COLUMN candles_1s.first_trade_id IS 'First aggregate trade ID';
+COMMENT ON COLUMN candles_1s.last_trade_id IS 'Last aggregate trade ID';
 
 -- ============================================================================
 -- PIPELINE STATE TABLE (for recovery)
@@ -129,7 +129,7 @@ COMMENT ON TABLE pipeline_metrics IS 'Real-time pipeline performance metrics';
 -- ============================================================================
 
 -- Update timestamp trigger
-CREATE OR REPLACE FUNCTION update_1s_candle_timestamp()
+CREATE OR REPLACE FUNCTION update_candles_1s_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = NOW();
@@ -137,10 +137,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER update_1s_candle_timestamp_trigger
-    BEFORE UPDATE ON 1s_candles
+CREATE TRIGGER update_candles_1s_timestamp_trigger
+    BEFORE UPDATE ON candles_1s
     FOR EACH ROW
-    EXECUTE FUNCTION update_1s_candle_timestamp();
+    EXECUTE FUNCTION update_candles_1s_timestamp();
 
 -- Update pipeline state timestamp trigger
 CREATE OR REPLACE FUNCTION update_pipeline_state_timestamp()
@@ -174,7 +174,7 @@ ON CONFLICT (symbol_id) DO NOTHING;
 DO $$
 BEGIN
     RAISE NOTICE 'Migration 007: Real-time trade pipeline tables created';
-    RAISE NOTICE '  - 1s_candles: 1-second aggregated candles';
+    RAISE NOTICE '  - candles_1s: 1-second aggregated candles';
     RAISE NOTICE '  - pipeline_state: Recovery state tracking';
     RAISE NOTICE '  - pipeline_metrics: Performance monitoring';
 END $$;
