@@ -314,7 +314,7 @@ class RecalculationService:
             if records:
                 await conn.executemany(
                     """
-                    INSERT INTO tick_indicators (
+                    INSERT INTO candle_indicators (
                         time, symbol_id, price, volume,
                         values, indicator_keys, indicator_version
                     ) VALUES (

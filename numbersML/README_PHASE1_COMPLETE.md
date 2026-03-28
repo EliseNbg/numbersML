@@ -61,7 +61,7 @@ Creates 12 tables:
 1. symbols
 2. trades
 3. ticker_24hr_stats
-4. tick_indicators
+4. candle_indicators
 5. indicator_definitions
 6. recalculation_jobs
 7. data_quality_issues

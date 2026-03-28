@@ -40,7 +40,7 @@ Migrate indicator calculation from **PL/pgSQL database triggers** to **Python En
 │    │         │                                               │
 │    └────┬────┘                                               │
 │         ↓                                                    │
-│  tick_indicators table                                       │
+│  candle_indicators table                                       │
 │                                                              │
 │ ⚠️ PROBLEMS:                                                  │
 │ - Duplicate calculations                                     │
@@ -104,10 +104,10 @@ avg_loss[i] = (avg_loss[i-1] * (period - 1) + losses[i-1]) / period
 │    - LISTEN new_tick channel                                 │
 │    - Load tick window (last 200 ticks)                       │
 │    - Calculate ALL indicators (15+)                         │
-│    - Store in tick_indicators                                │
+│    - Store in candle_indicators                                │
 │    - NOTIFY enrichment_complete                              │
 │         ↓                                                    │
-│    tick_indicators table                                     │
+│    candle_indicators table                                     │
 │         ↓                                                    │
 │    WIDE_Vector Generator                                     │
 │    - Waits for enrichment_complete                           │
@@ -523,7 +523,7 @@ async def test_complete_flow():
     # Verify indicators exist in database
     indicators = await conn.fetch("""
         SELECT symbol, values, indicator_keys
-        FROM tick_indicators ti
+        FROM candle_indicators ti
         JOIN symbols s ON s.id = ti.symbol_id
         WHERE s.is_test = true
         ORDER BY ti.time DESC
@@ -563,7 +563,7 @@ docker logs crypto-data-enricher -f
 # Verify indicators in database
 psql $DATABASE_URL -c "
 SELECT symbol, time, values
-FROM tick_indicators ti
+FROM candle_indicators ti
 JOIN symbols s ON s.id = ti.symbol_id
 ORDER BY ti.time DESC
 LIMIT 5;
@@ -640,7 +640,7 @@ docker stop crypto-data-enricher
 
 # 3. Verify indicators being calculated
 psql $DATABASE_URL -c "
-SELECT COUNT(*) FROM tick_indicators WHERE created_at > NOW() - INTERVAL '1 minute';
+SELECT COUNT(*) FROM candle_indicators WHERE created_at > NOW() - INTERVAL '1 minute';
 "
 ```
 

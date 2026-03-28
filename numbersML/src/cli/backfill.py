@@ -4,7 +4,7 @@ Historical Data Backfill from Binance.
 
 Fetches 1-second klines for active symbols and populates:
 - ticker_24hr_stats (1-sec kline data)
-- tick_indicators (calculated inline)
+- candle_indicators (calculated inline)
 
 Usage:
     # Backfill last 3 days (default) for all active symbols
@@ -679,7 +679,7 @@ class HistoricalBackfill:
             # Insert indicators with ON CONFLICT DO UPDATE
             await conn.executemany(
                 """
-                INSERT INTO tick_indicators (
+                INSERT INTO candle_indicators (
                     time, symbol_id, price, volume,
                     values, indicator_keys
                 ) VALUES ($1, $2, $3, $4, $5, $6)

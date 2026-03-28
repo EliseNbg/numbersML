@@ -46,7 +46,7 @@ $ docker exec crypto-postgres psql -U crypto -d crypto_trading -c \
 - Listens to `NOTIFY new_tick` from database
 - Loads last 200 ticks from `ticker_24hr_stats`
 - Calculates 15+ indicators using Python/NumPy
-- Stores in `tick_indicators` table
+- Stores in `candle_indicators` table
 - Fires `NOTIFY enrichment_complete` for synchronization
 - Performance: ~10ms per tick (non-blocking)
 
@@ -134,7 +134,7 @@ Enrichment complete: False  # Will be True when EnrichmentService runs
 │    EnrichmentService (async, non-blocking)                  │
 │      - Loads last 200 ticks                                  │
 │      - Calculates 15+ indicators (Python/NumPy)             │
-│      - Stores in tick_indicators                             │
+│      - Stores in candle_indicators                             │
 │      - Fires NOTIFY enrichment_complete                      │
 │         ↓                                                    │
 │    NOTIFY enrichment_complete                                │
@@ -238,7 +238,7 @@ docker logs crypto-data-enricher -f
 # Verify indicators
 psql $DATABASE_URL -c "
 SELECT symbol, indicator_keys
-FROM tick_indicators ti
+FROM candle_indicators ti
 JOIN symbols s ON s.id = ti.symbol_id
 ORDER BY ti.time DESC
 LIMIT 5;
@@ -254,7 +254,7 @@ python src/cli/generate_wide_vector.py
 SELECT
     AVG(EXTRACT(EPOCH FROM (ti.created_at - t.time))) * 1000 as avg_latency_ms,
     MAX(EXTRACT(EPOCH FROM (ti.created_at - t.time))) * 1000 as max_latency_ms
-FROM tick_indicators ti
+FROM candle_indicators ti
 JOIN ticker_24hr_stats t ON t.symbol_id = ti.symbol_id AND t.time = ti.time
 WHERE ti.created_at > NOW() - INTERVAL '1 hour';
 ```
@@ -290,13 +290,13 @@ generator = WideVectorGenerator(
 ### Indicator Data Missing
 ```sql
 -- Check if indicators are being calculated
-SELECT COUNT(*) FROM tick_indicators;
+SELECT COUNT(*) FROM candle_indicators;
 
 -- Check enrichment rate
 SELECT
-    (SELECT COUNT(*) FROM tick_indicators) as enriched,
+    (SELECT COUNT(*) FROM candle_indicators) as enriched,
     (SELECT COUNT(*) FROM ticker_24hr_stats) as total,
-    ROUND((SELECT COUNT(*) FROM tick_indicators)::numeric /
+    ROUND((SELECT COUNT(*) FROM candle_indicators)::numeric /
           (SELECT COUNT(*) FROM ticker_24hr_stats)::numeric * 100, 2) as pct;
 ```
 

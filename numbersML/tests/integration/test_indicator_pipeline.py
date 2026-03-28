@@ -348,7 +348,7 @@ async def test_04_enrichment_service_running() -> TestResult:
     
     Checks:
     - EnrichmentService process is running (or can be started)
-    - Indicators are being stored in tick_indicators table
+    - Indicators are being stored in candle_indicators table
     - Indicator calculation latency is acceptable (<100ms)
     """
     result = TestResult("Test 4: Enrichment Service Running")
@@ -358,7 +358,7 @@ async def test_04_enrichment_service_running() -> TestResult:
         conn = await asyncpg.connect(DB_URL)
         
         # Check if indicators exist in DB
-        indicator_count = await conn.fetchval("SELECT COUNT(*) FROM tick_indicators")
+        indicator_count = await conn.fetchval("SELECT COUNT(*) FROM candle_indicators")
         result.details['existing_indicators'] = indicator_count
         
         # Get a test symbol
@@ -378,7 +378,7 @@ async def test_04_enrichment_service_running() -> TestResult:
         # Check if indicators exist for latest ticker
         if latest_time:
             indicators_at_time = await conn.fetchval("""
-                SELECT COUNT(*) FROM tick_indicators
+                SELECT COUNT(*) FROM candle_indicators
                 WHERE symbol_id = $1 AND time = $2
             """, symbol_id, latest_time)
             
@@ -396,7 +396,7 @@ async def test_04_enrichment_service_running() -> TestResult:
             SELECT
                 AVG(EXTRACT(EPOCH FROM (ti.created_at - t.time))) * 1000 as avg_latency_ms,
                 MAX(EXTRACT(EPOCH FROM (ti.created_at - t.time))) * 1000 as max_latency_ms
-            FROM tick_indicators ti
+            FROM candle_indicators ti
             JOIN ticker_24hr_stats t ON t.symbol_id = ti.symbol_id AND t.time = ti.time
             WHERE ti.created_at > NOW() - INTERVAL '5 minutes'
         """)
@@ -549,7 +549,7 @@ async def test_06_complete_pipeline() -> TestResult:
 
         # Check if indicators were calculated
         indicator_count = await conn.fetchval("""
-            SELECT COUNT(*) FROM tick_indicators
+            SELECT COUNT(*) FROM candle_indicators
             WHERE symbol_id = $1 AND time = $2
         """, symbol_id, latest_time)
 
@@ -558,7 +558,7 @@ async def test_06_complete_pipeline() -> TestResult:
         if indicator_count > 0:
             # Get indicator keys
             indicator_keys = await conn.fetchval("""
-                SELECT indicator_keys FROM tick_indicators
+                SELECT indicator_keys FROM candle_indicators
                 WHERE symbol_id = $1 AND time = $2
             """, symbol_id, latest_time)
 

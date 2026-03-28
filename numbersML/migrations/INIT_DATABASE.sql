@@ -150,7 +150,7 @@ CREATE TABLE IF NOT EXISTS indicator_definitions (
 );
 
 -- Calculated indicators (stored per tick)
-CREATE TABLE IF NOT EXISTS tick_indicators (
+CREATE TABLE IF NOT EXISTS candle_indicators (
     time TIMESTAMP NOT NULL,
     symbol_id INTEGER NOT NULL REFERENCES symbols(id),
     price NUMERIC(20,10) NOT NULL,
@@ -319,10 +319,10 @@ CREATE INDEX IF NOT EXISTS idx_ticker_symbol_time ON ticker_24hr_stats(symbol_id
 -- Indicators
 CREATE INDEX IF NOT EXISTS idx_indicator_definitions_category ON indicator_definitions(category);
 CREATE INDEX IF NOT EXISTS idx_indicator_definitions_active ON indicator_definitions(is_active);
-CREATE INDEX IF NOT EXISTS idx_tick_indicators_time_symbol ON tick_indicators(time DESC, symbol_id);
-CREATE INDEX IF NOT EXISTS idx_tick_indicators_symbol_time ON tick_indicators(symbol_id, time DESC);
-CREATE INDEX IF NOT EXISTS idx_tick_indicators_keys ON tick_indicators USING GIN (indicator_keys);
-CREATE INDEX IF NOT EXISTS idx_tick_indicators_values ON tick_indicators USING GIN (values);
+CREATE INDEX IF NOT EXISTS idx_candle_indicators_time_symbol ON candle_indicators(time DESC, symbol_id);
+CREATE INDEX IF NOT EXISTS idx_candle_indicators_symbol_time ON candle_indicators(symbol_id, time DESC);
+CREATE INDEX IF NOT EXISTS idx_candle_indicators_keys ON candle_indicators USING GIN (indicator_keys);
+CREATE INDEX IF NOT EXISTS idx_candle_indicators_values ON candle_indicators USING GIN (values);
 
 -- Recalculation jobs
 CREATE INDEX IF NOT EXISTS idx_recalculation_jobs_status ON recalculation_jobs(status);
@@ -371,7 +371,7 @@ SELECT DISTINCT ON (symbol_id)
     ti.volume,
     ti.values,
     ti.indicator_keys
-FROM tick_indicators ti
+FROM candle_indicators ti
 JOIN symbols s ON s.id = ti.symbol_id
 WHERE s.is_active = true AND s.is_allowed = true
 ORDER BY symbol_id, ti.time DESC;
@@ -454,7 +454,7 @@ CREATE TRIGGER system_config_change_trigger
 COMMENT ON TABLE symbols IS 'Symbol metadata from Binance exchange';
 COMMENT ON TABLE trades IS 'Individual trade ticks';
 COMMENT ON TABLE ticker_24hr_stats IS '24hr ticker statistics collected every 1 second';
-COMMENT ON TABLE tick_indicators IS 'Calculated indicator values per tick';
+COMMENT ON TABLE candle_indicators IS 'Calculated indicator values per tick';
 COMMENT ON TABLE indicator_definitions IS 'Dynamic indicator definitions';
 COMMENT ON TABLE data_quality_issues IS 'Data quality issues and anomalies';
 COMMENT ON TABLE collection_config IS 'Per-symbol collection configuration';

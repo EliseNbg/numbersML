@@ -170,7 +170,7 @@ async def verify_indicators_calculated(
     indicator_row = await conn.fetchrow(
         """
         SELECT values, indicator_keys
-        FROM tick_indicators
+        FROM candle_indicators
         WHERE symbol_id = $1 AND time = $2
         """,
         symbol_id,
@@ -267,7 +267,7 @@ async def run_integration_test() -> Dict:
                         indicators = await conn.fetch(
                             """
                             SELECT values, indicator_keys, time
-                            FROM tick_indicators
+                            FROM candle_indicators
                             WHERE symbol_id = $1
                             ORDER BY time DESC
                             LIMIT 1

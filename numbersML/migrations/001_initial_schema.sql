@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS indicator_definitions (
 );
 
 -- Calculated indicators (stored per tick)
-CREATE TABLE IF NOT EXISTS tick_indicators (
+CREATE TABLE IF NOT EXISTS candle_indicators (
     time TIMESTAMP NOT NULL,
     symbol_id INTEGER NOT NULL REFERENCES symbols(id),
     price NUMERIC(20,10) NOT NULL,
@@ -334,8 +334,8 @@ CREATE INDEX IF NOT EXISTS idx_trades_symbol_time ON trades(symbol_id, time DESC
 -- Indicator indexes
 CREATE INDEX IF NOT EXISTS idx_indicator_definitions_category ON indicator_definitions(category);
 CREATE INDEX IF NOT EXISTS idx_indicator_definitions_active ON indicator_definitions(is_active) WHERE is_active = true;
-CREATE INDEX IF NOT EXISTS idx_tick_indicators_time_symbol ON tick_indicators(time DESC, symbol_id);
-CREATE INDEX IF NOT EXISTS idx_tick_indicators_keys ON tick_indicators USING GIN (indicator_keys);
+CREATE INDEX IF NOT EXISTS idx_candle_indicators_time_symbol ON candle_indicators(time DESC, symbol_id);
+CREATE INDEX IF NOT EXISTS idx_candle_indicators_keys ON candle_indicators USING GIN (indicator_keys);
 
 -- Job indexes
 CREATE INDEX IF NOT EXISTS idx_recalculation_jobs_status ON recalculation_jobs(status);
@@ -386,8 +386,8 @@ CREATE TRIGGER update_indicator_definitions_timestamp
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_tick_indicators_timestamp
-    BEFORE UPDATE ON tick_indicators
+CREATE TRIGGER update_candle_indicators_timestamp
+    BEFORE UPDATE ON candle_indicators
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
@@ -504,7 +504,7 @@ ON CONFLICT (key) DO NOTHING;
 COMMENT ON TABLE symbols IS 'Trading pair symbols from Binance';
 COMMENT ON TABLE trades IS 'Individual trade ticks';
 COMMENT ON TABLE indicator_definitions IS 'Dynamic indicator definitions';
-COMMENT ON TABLE tick_indicators IS 'Calculated indicator values per tick';
+COMMENT ON TABLE candle_indicators IS 'Calculated indicator values per tick';
 COMMENT ON TABLE recalculation_jobs IS 'Background jobs for indicator recalculation';
 
 COMMENT ON TABLE data_quality_issues IS 'Detected data quality problems';
@@ -524,8 +524,8 @@ COMMENT ON COLUMN collection_config.collect_ticks IS 'Collect individual trades'
 COMMENT ON COLUMN collection_config.collect_24hr_ticker IS 'Collect 24hr ticker stats';
 COMMENT ON COLUMN collection_config.is_allowed IS 'EU compliance flag';
 
-COMMENT ON COLUMN tick_indicators.values IS 'JSONB with all indicator values';
-COMMENT ON COLUMN tick_indicators.indicator_keys IS 'Array of indicator keys for fast lookup';
+COMMENT ON COLUMN candle_indicators.values IS 'JSONB with all indicator values';
+COMMENT ON COLUMN candle_indicators.indicator_keys IS 'Array of indicator keys for fast lookup';
 
 COMMENT ON COLUMN data_quality_issues.severity IS 'warning, error, or critical';
 COMMENT ON COLUMN data_quality_metrics.quality_level IS 'excellent, good, fair, or poor';

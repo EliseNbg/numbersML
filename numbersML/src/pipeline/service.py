@@ -24,6 +24,7 @@ from src.pipeline.websocket_manager import BinanceWebSocketManager, AggTrade
 from src.pipeline.aggregator import MultiSymbolAggregator, TradeAggregation
 from src.pipeline.recovery import RecoveryManager
 from src.pipeline.database_writer import MultiSymbolDatabaseWriter
+from src.pipeline.indicator_calculator import IndicatorCalculator
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,7 @@ class TradePipeline:
         # Components
         self._aggregator = MultiSymbolAggregator(on_candle=self._on_candle)
         self._db_writer = MultiSymbolDatabaseWriter(db_pool)
+        self._indicator_calculator = IndicatorCalculator(db_pool)
         self._recovery_managers: Dict[str, RecoveryManager] = {}
         self._ws_manager: Optional[BinanceWebSocketManager] = None
         
@@ -76,6 +78,8 @@ class TradePipeline:
         self._stats = {
             'trades_processed': 0,
             'candles_written': 0,
+            'indicators_calculated': 0,
+            'indicator_errors': 0,
             'recovery_events': 0,
             'websocket_errors': 0,
             'database_errors': 0,
@@ -98,8 +102,14 @@ class TradePipeline:
             await self._db_writer.write_candle(symbol, candle)
             self._stats['candles_written'] += 1
             
-            # TODO: Trigger indicator calculation
-            # await self._trigger_indicators(symbol, candle)
+            # Calculate indicators
+            try:
+                count = await self._indicator_calculator.calculate(symbol)
+                if count > 0:
+                    self._stats['indicators_calculated'] += count
+            except Exception as e:
+                logger.error(f"Error calculating indicators for {symbol}: {e}")
+                self._stats['indicator_errors'] += 1
             
         except Exception as e:
             logger.error(f"Error processing candle: {e}")
@@ -165,6 +175,7 @@ class TradePipeline:
         # Initialize components
         await self._initialize_recovery_managers()
         await self._db_writer.start()
+        await self._indicator_calculator.load_definitions()
         
         # Create WebSocket manager
         self._ws_manager = BinanceWebSocketManager(

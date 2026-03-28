@@ -25,12 +25,12 @@
 │  2. EnrichmentService (async, separate process)             │
 │     - Receives notification                                  │
 │     - Calculates indicators (Python/NumPy)                   │
-│     - Stores in tick_indicators                              │
+│     - Stores in candle_indicators                              │
 │     (Runs continuously, keeps indicators up-to-date)         │
 │                                                              │
 │  3. WIDE_Vector Generator                                    │
 │     - Reads ticker_24hr_stats (latest)                       │
-│     - Reads tick_indicators (if available)                   │
+│     - Reads candle_indicators (if available)                   │
 │     - NO WAIT - generates immediately                        │
 │     ↓                                                        │
 │  4. LLM Model                                                │
@@ -169,7 +169,7 @@ SELECT
     ti.time as indicator_time,
     NOW() - ti.time as age,
     ti.indicator_keys
-FROM tick_indicators ti
+FROM candle_indicators ti
 JOIN symbols s ON s.id = ti.symbol_id
 WHERE s.is_active = true
 ORDER BY ti.time DESC
@@ -181,12 +181,12 @@ LIMIT 10;
 ```sql
 -- Count indicators calculated in last minute
 SELECT COUNT(*) as indicators_last_min
-FROM tick_indicators
+FROM candle_indicators
 WHERE created_at > NOW() - INTERVAL '1 minute';
 
 -- Count indicators calculated in last hour
 SELECT COUNT(*) as indicators_last_hour
-FROM tick_indicators
+FROM candle_indicators
 WHERE created_at > NOW() - INTERVAL '1 hour';
 ```
 
@@ -227,7 +227,7 @@ WHERE created_at > NOW() - INTERVAL '1 hour';
 ```
 INSERT → NOTIFY → EnrichmentService (async)
                       ↓
-                  tick_indicators (DB)
+                  candle_indicators (DB)
                       ↓
 WIDE_Vector ←───────┘ (reads when needed)
 ```

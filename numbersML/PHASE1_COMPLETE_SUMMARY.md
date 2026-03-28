@@ -38,7 +38,7 @@
 ### Data Flow
 
 1. **Collector** → Binance WebSocket → `ticker_24hr_stats`
-2. **EnrichmentService** → Calculates 15 indicators → `tick_indicators`
+2. **EnrichmentService** → Calculates 15 indicators → `candle_indicators`
 3. **WIDE Vector** → Reads from DB → NumPy array for LLM
 
 ---
@@ -165,7 +165,7 @@ psql -U crypto -d numbersml -f migrations/INIT_DATABASE.sql
 1. `symbols` - Symbol metadata
 2. `trades` - Individual trade ticks
 3. `ticker_24hr_stats` - 24hr ticker statistics
-4. `tick_indicators` - Calculated indicators
+4. `candle_indicators` - Calculated indicators
 5. `indicator_definitions` - Dynamic indicator definitions
 6. `recalculation_jobs` - Recalculation tracking
 7. `data_quality_issues` - Quality issues

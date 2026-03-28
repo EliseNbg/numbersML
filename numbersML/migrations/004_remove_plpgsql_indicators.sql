@@ -67,7 +67,7 @@ Flow:
 2. This trigger fires NOTIFY new_tick
 3. Python EnrichmentService receives notification
 4. EnrichmentService loads tick history and calculates indicators
-5. EnrichmentService stores in tick_indicators table
+5. EnrichmentService stores in candle_indicators table
 6. EnrichmentService fires NOTIFY enrichment_complete
 
 See: src/application/services/enrichment_service.py';

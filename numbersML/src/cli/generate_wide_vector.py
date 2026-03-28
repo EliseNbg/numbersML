@@ -10,7 +10,7 @@ Format:
 
 Architecture:
 - Reads ticker data from ticker_24hr_stats table
-- Reads indicators from tick_indicators table (calculated by EnrichmentService)
+- Reads indicators from candle_indicators table (calculated by EnrichmentService)
 - No waiting/synchronization - reads whatever is in DB
 - EnrichmentService runs async and keeps indicators up-to-date
 """
@@ -206,7 +206,7 @@ class WideVectorGenerator:
             SELECT DISTINCT ON (t.symbol_id)
                 s.symbol,
                 t.values
-            FROM tick_indicators t
+            FROM candle_indicators t
             JOIN symbols s ON s.id = t.symbol_id
             WHERE s.is_active = true AND s.is_allowed = true
             ORDER BY t.symbol_id, t.time DESC

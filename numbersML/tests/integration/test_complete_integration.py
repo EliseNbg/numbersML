@@ -121,7 +121,7 @@ async def generate_wide_vector(conn: asyncpg.Connection) -> Dict[str, Any]:
     """
     Generate wide vector from all test symbols.
 
-    This function queries ticker_24hr_stats and tick_indicators tables
+    This function queries ticker_24hr_stats and candle_indicators tables
     and combines them into a single flat vector for LLM consumption.
     """
 
@@ -136,7 +136,7 @@ async def generate_wide_vector(conn: asyncpg.Connection) -> Dict[str, Any]:
             ti.indicator_keys
         FROM symbols s
         JOIN ticker_24hr_stats t ON t.symbol_id = s.id
-        LEFT JOIN tick_indicators ti ON ti.symbol_id = t.symbol_id AND ti.time = t.time
+        LEFT JOIN candle_indicators ti ON ti.symbol_id = t.symbol_id AND ti.time = t.time
         WHERE s.is_test = true
         AND t.time = (
             SELECT MAX(time) FROM ticker_24hr_stats WHERE symbol_id = t.symbol_id
@@ -382,7 +382,7 @@ async def run_integration_test() -> Dict[str, Any]:
             indicators = await conn.fetch(
                 """
                 SELECT s.symbol, COUNT(*) as count
-                FROM tick_indicators ti
+                FROM candle_indicators ti
                 JOIN symbols s ON s.id = ti.symbol_id
                 WHERE s.is_test = true
                 GROUP BY s.symbol
@@ -397,7 +397,7 @@ async def run_integration_test() -> Dict[str, Any]:
                 sample = await conn.fetchrow(
                     """
                     SELECT symbol, indicator_keys, time
-                    FROM tick_indicators ti
+                    FROM candle_indicators ti
                     JOIN symbols s ON s.id = ti.symbol_id
                     WHERE s.is_test = true
                     ORDER BY ti.time DESC

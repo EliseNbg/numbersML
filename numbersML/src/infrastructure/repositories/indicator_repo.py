@@ -348,7 +348,13 @@ class IndicatorRepository:
             Indicator configuration
         """
         # Parse params (JSONB)
-        params = dict(row['params']) if row['params'] else {}
+        raw_params = row['params']
+        if isinstance(raw_params, str):
+            params = json.loads(raw_params)
+        elif isinstance(raw_params, dict):
+            params = raw_params
+        else:
+            params = raw_params or {}
         
         return IndicatorConfig(
             name=row['name'],

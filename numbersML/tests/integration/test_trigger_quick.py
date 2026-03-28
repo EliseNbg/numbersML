@@ -71,7 +71,7 @@ async def test_trigger():
             indicators = await conn.fetch(
                 """
                 SELECT time, values, indicator_keys
-                FROM tick_indicators
+                FROM candle_indicators
                 WHERE symbol_id = $1
                 ORDER BY time DESC
                 LIMIT 5
@@ -120,7 +120,7 @@ async def test_trigger():
             )
             
             indicator_count = await conn.fetchval(
-                "SELECT COUNT(*) FROM tick_indicators WHERE symbol_id = $1",
+                "SELECT COUNT(*) FROM candle_indicators WHERE symbol_id = $1",
                 symbol_id
             )
             

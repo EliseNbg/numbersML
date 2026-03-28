@@ -85,7 +85,7 @@ INSERT INTO ticker_24hr_stats
        ↓
 PL/pgSQL trigger (calculate_indicators_on_insert)
        ↓
-tick_indicators table
+candle_indicators table
        ↓
 WIDE_Vector generator (immediate, no wait)
 ```
@@ -108,7 +108,7 @@ EnrichmentService (async, non-blocking)
        ↓
 NOTIFY enrichment_complete
        ↓
-tick_indicators table
+candle_indicators table
        ↓
 EnrichmentWaiter (waits for signal)
        ↓
@@ -275,7 +275,7 @@ docker logs crypto-data-enricher -f
 # 4. Verify indicators in database
 psql $DATABASE_URL -c "
 SELECT symbol, indicator_keys
-FROM tick_indicators ti
+FROM candle_indicators ti
 JOIN symbols s ON s.id = ti.symbol_id
 ORDER BY ti.time DESC
 LIMIT 5;
@@ -359,15 +359,15 @@ cat /tmp/wide_vector_llm.json | jq '.metadata'
 SELECT
     AVG(EXTRACT(EPOCH FROM (created_at - time))) * 1000 as avg_latency_ms,
     MAX(EXTRACT(EPOCH FROM (created_at - time))) * 1000 as max_latency_ms
-FROM tick_indicators
+FROM candle_indicators
 WHERE created_at > NOW() - INTERVAL '1 hour';
 
 -- Enrichment rate
 SELECT
-    (SELECT COUNT(*) FROM tick_indicators) as enriched_ticks,
+    (SELECT COUNT(*) FROM candle_indicators) as enriched_ticks,
     (SELECT COUNT(*) FROM ticker_24hr_stats) as total_ticks,
     ROUND(
-        (SELECT COUNT(*) FROM tick_indicators)::numeric /
+        (SELECT COUNT(*) FROM candle_indicators)::numeric /
         (SELECT COUNT(*) FROM ticker_24hr_stats)::numeric * 100,
         2
     ) as enrichment_rate_pct;
@@ -376,7 +376,7 @@ SELECT
 SELECT
     indicator_keys,
     COUNT(*) as tick_count
-FROM tick_indicators
+FROM candle_indicators
 GROUP BY indicator_keys
 ORDER BY tick_count DESC
 LIMIT 10;
@@ -403,7 +403,7 @@ docker logs crypto-data-enricher -f | grep -E "Enrichment|indicators|enriched"
 ### Enrichment Not Running
 
 **Symptoms**:
-- No indicators in tick_indicators table
+- No indicators in candle_indicators table
 - EnrichmentService not logging
 
 **Solution**:
@@ -429,7 +429,7 @@ docker restart crypto-data-enricher
 # Check enrichment latency
 psql $DATABASE_URL -c "
 SELECT AVG(EXTRACT(EPOCH FROM (created_at - time))) * 1000 as avg_latency_ms
-FROM tick_indicators;
+FROM candle_indicators;
 "
 
 # If latency > 100ms, increase timeout
@@ -444,7 +444,7 @@ generator = WideVectorGenerator(
 
 **Symptoms**:
 - Indicators calculated twice
-- tick_indicators table has duplicate entries
+- candle_indicators table has duplicate entries
 
 **Solution**:
 ```bash

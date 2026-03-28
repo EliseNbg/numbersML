@@ -285,7 +285,7 @@ class OptimizedEnrichmentService:
                 # Batch insert
                 await conn.executemany(
                     """
-                    INSERT INTO tick_indicators (time, symbol_id, price, volume, values, indicator_keys)
+                    INSERT INTO candle_indicators (time, symbol_id, price, volume, values, indicator_keys)
                     VALUES ($1, $2, $3, $4, $5, $6)
                     ON CONFLICT (time, symbol_id) DO UPDATE SET
                         values = EXCLUDED.values,

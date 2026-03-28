@@ -30,14 +30,14 @@ class EnrichmentService:
 
     Listens to new ticks via PostgreSQL NOTIFY/LISTEN from ticker_24hr_stats,
     calculates all configured indicators using Python/NumPy, and stores
-    enriched data in tick_indicators table.
+    enriched data in candle_indicators table.
 
     Flow:
     1. ticker_24hr_stats INSERT fires NOTIFY new_tick
     2. This service receives notification
     3. Loads recent tick history (last 200 ticks)
     4. Calculates all indicators (15+)
-    5. Stores in tick_indicators table
+    5. Stores in candle_indicators table
     6. Fires NOTIFY enrichment_complete for synchronization
 
     Attributes:
@@ -184,7 +184,7 @@ class EnrichmentService:
         1. Parse notification payload (symbol_id, time)
         2. Load tick history from database (last 200 ticks)
         3. Calculate all indicators
-        4. Store in tick_indicators table
+        4. Store in candle_indicators table
         5. Fire enrichment_complete notification
 
         Args:
@@ -375,7 +375,7 @@ class EnrichmentService:
         indicator_values: Dict[str, float],
     ) -> None:
         """
-        Store enriched tick data in tick_indicators table.
+        Store enriched tick data in candle_indicators table.
 
         Args:
             symbol_id: Symbol ID
@@ -387,7 +387,7 @@ class EnrichmentService:
         async with self.db_pool.acquire() as conn:
             await conn.execute(
                 """
-                INSERT INTO tick_indicators (
+                INSERT INTO candle_indicators (
                     time, symbol_id, price, volume,
                     values, indicator_keys, indicator_version
                 ) VALUES (
