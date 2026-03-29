@@ -101,7 +101,7 @@ class PipelineMetricsRepository:
     
     async def get_collector_pid(self) -> Optional[int]:
         """
-        Get collector process PID from service_status table.
+        Get pipeline service PID from service_status table.
         
         Returns:
             Process ID or None if not running
@@ -110,7 +110,7 @@ class PipelineMetricsRepository:
             row = await conn.fetchrow(
                 """
                 SELECT pid FROM service_status
-                WHERE service_name = 'ticker_collector'
+                WHERE service_name = 'pipeline'
                 ORDER BY updated_at DESC LIMIT 1
                 """
             )
@@ -119,16 +119,16 @@ class PipelineMetricsRepository:
     
     async def get_last_tick_time(self) -> Optional[datetime]:
         """
-        Get last tick timestamp from ticker_24hr_stats table.
+        Get last candle timestamp from candles_1s table.
         
         Returns:
-            Last tick timestamp or None if no ticks
+            Last candle timestamp or None if no candles
         """
         async with self.db_pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
                 SELECT MAX(time) as last_time
-                FROM ticker_24hr_stats
+                FROM candles_1s
                 """
             )
             

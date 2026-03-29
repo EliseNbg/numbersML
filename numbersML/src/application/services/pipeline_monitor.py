@@ -14,7 +14,7 @@ import asyncio
 import logging
 import os
 import signal
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 import asyncpg
@@ -83,17 +83,16 @@ class PipelineMonitor:
     
     async def _is_collector_running(self) -> bool:
         """
-        Check if collector process is running.
+        Check if pipeline service is running.
         
         Returns:
-            True if collector is running
+            True if service is running
         """
         async with self.db_pool.acquire() as conn:
-            # Check service_status table
             row = await conn.fetchrow(
                 """
                 SELECT status, is_healthy FROM service_status
-                WHERE service_name = 'ticker_collector'
+                WHERE service_name = 'pipeline'
                 ORDER BY updated_at DESC LIMIT 1
                 """
             )
@@ -105,7 +104,7 @@ class PipelineMonitor:
     
     async def _get_collector_pid(self) -> Optional[int]:
         """
-        Get collector process PID.
+        Get pipeline service PID.
         
         Returns:
             Process ID or None
@@ -114,7 +113,7 @@ class PipelineMonitor:
             row = await conn.fetchrow(
                 """
                 SELECT pid FROM service_status
-                WHERE service_name = 'ticker_collector'
+                WHERE service_name = 'pipeline'
                 ORDER BY updated_at DESC LIMIT 1
                 """
             )
@@ -123,7 +122,7 @@ class PipelineMonitor:
     
     async def _get_collector_uptime(self) -> Optional[float]:
         """
-        Get collector uptime in seconds.
+        Get pipeline service uptime in seconds.
         
         Returns:
             Uptime in seconds or None
@@ -132,7 +131,7 @@ class PipelineMonitor:
             row = await conn.fetchrow(
                 """
                 SELECT started_at FROM service_status
-                WHERE service_name = 'ticker_collector'
+                WHERE service_name = 'pipeline'
                 ORDER BY updated_at DESC LIMIT 1
                 """
             )
@@ -146,16 +145,16 @@ class PipelineMonitor:
     
     async def _get_last_tick_time(self) -> Optional[datetime]:
         """
-        Get timestamp of last processed tick.
+        Get timestamp of last processed candle.
         
         Returns:
-            Last tick timestamp or None
+            Last candle timestamp or None
         """
         async with self.db_pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
                 SELECT MAX(time) as last_time
-                FROM ticker_24hr_stats
+                FROM candles_1s
                 """
             )
             
@@ -163,7 +162,7 @@ class PipelineMonitor:
     
     async def _get_collector_stats(self) -> dict:
         """
-        Get collector statistics.
+        Get pipeline statistics.
         
         Returns:
             Dict with ticks_processed and errors
@@ -175,7 +174,7 @@ class PipelineMonitor:
                     COALESCE(records_processed, 0) as ticks_processed,
                     COALESCE(errors_last_hour, 0) as errors
                 FROM service_status
-                WHERE service_name = 'ticker_collector'
+                WHERE service_name = 'pipeline'
                 """
             )
             
@@ -189,87 +188,57 @@ class PipelineMonitor:
     
     async def start_collector(self) -> bool:
         """
-        Start collector service.
-        
-        Creates a new collector process and updates service_status.
+        Start pipeline service.
         
         Returns:
             True if started successfully
         """
         try:
-            # Get collector script path
-            collector_script = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                'cli',
-                'collect_ticker_24hr.py',
-            )
-            
-            # Start collector process
-            process = await asyncio.create_subprocess_exec(
-                'python',
-                collector_script,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            
             # Update service_status
             async with self.db_pool.acquire() as conn:
                 await conn.execute(
                     """
                     INSERT INTO service_status (
-                        service_name, is_running, pid, started_at, updated_at
-                    ) VALUES ($1, $2, $3, NOW(), NOW())
+                        service_name, is_running, started_at, updated_at
+                    ) VALUES ($1, $2, NOW(), NOW())
                     ON CONFLICT (service_name) DO UPDATE SET
                         is_running = true,
-                        pid = $3,
                         started_at = NOW(),
                         updated_at = NOW()
                     """,
-                    'ticker_collector',
+                    'pipeline',
                     True,
-                    process.pid,
                 )
             
-            logger.info(f"Started collector (PID: {process.pid})")
+            logger.info("Started pipeline service")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to start collector: {e}")
+            logger.error(f"Failed to start pipeline: {e}")
             return False
     
     async def stop_collector(self) -> bool:
         """
-        Stop collector service.
-        
-        Sends SIGTERM to collector process and updates service_status.
+        Stop pipeline service.
         
         Returns:
             True if stopped successfully
         """
         try:
-            # Get collector PID
-            pid = await self._get_collector_pid()
-            
-            if pid:
-                # Send SIGTERM
-                os.kill(pid, signal.SIGTERM)
-                logger.info(f"Sent SIGTERM to collector (PID: {pid})")
-            
-            # Update service_status
             async with self.db_pool.acquire() as conn:
                 await conn.execute(
                     """
                     UPDATE service_status
                     SET is_running = false, pid = NULL, updated_at = NOW()
-                    WHERE service_name = 'ticker_collector'
+                    WHERE service_name = 'pipeline'
                     """
                 )
             
-            logger.info("Stopped collector")
+            logger.info("Stopped pipeline service")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to stop collector: {e}")
+            logger.error(f"Failed to stop pipeline: {e}")
             return False
     
     async def get_sla_metrics(self, seconds: int = 60) -> List[SLAMetric]:

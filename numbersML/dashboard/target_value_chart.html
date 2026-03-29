@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Target Value - numbersML</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .card { margin-bottom: 1rem; }
+        #chart-container { width: 100%; height: 500px; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/dashboard/index.html">
+                <i class="bi bi-graph-up"></i> numbersML - Target Value
+            </a>
+            <div class="d-flex gap-2">
+                <a href="/dashboard/index.html" class="btn btn-outline-light btn-sm">Dashboard</a>
+                <a href="/dashboard/symbols.html" class="btn btn-outline-light btn-sm">Symbols</a>
+                <a href="/dashboard/chart.html" class="btn btn-outline-light btn-sm">Chart</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-3">
+        <!-- Controls -->
+        <div class="row mb-3">
+            <div class="col-md-2">
+                <label class="form-label">Symbol</label>
+                <select class="form-select" id="target-symbol"></select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Time Range</label>
+                <select class="form-select" id="target-range">
+                    <option value="2" selected>2 Hours</option>
+                    <option value="12">12 Hours</option>
+                    <option value="24">1 Day</option>
+                    <option value="72">3 Days</option>
+                    <option value="168">7 Days</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Window Size</label>
+                <input type="number" class="form-control" id="target-window" value="300" min="1" max="5000">
+            </div>
+            <div class="col-md-3 d-flex align-items-end gap-2">
+                <button class="btn btn-primary" id="btn-load-chart">
+                    <i class="bi bi-play-fill"></i> Load Chart
+                </button>
+                <button class="btn btn-success" id="btn-calculate">
+                    <i class="bi bi-calculator"></i> Calculate Target Values
+                </button>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <div id="calculate-status" class="text-muted"></div>
+            </div>
+        </div>
+
+        <!-- Chart -->
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-graph-up"></i> <span id="chart-title">Select symbol and click Load Chart</span>
+            </div>
+            <div class="card-body">
+                <div id="chart-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="/dashboard/js/target_value_chart.js"></script>
+</body>
+</html>
