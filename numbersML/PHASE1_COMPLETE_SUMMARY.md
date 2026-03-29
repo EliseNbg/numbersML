@@ -1,3 +1,5 @@
+> **Note:** This document references the old architecture. See [CLI Reference](docs/CLI_REFERENCE.md) and [Wide Vector](docs/WIDE_VECTOR.md) for current docs.
+
 # 🎉 numbersML - Phase 1 Complete!
 
 **Project**: numbersML (formerly Crypto Trading System)

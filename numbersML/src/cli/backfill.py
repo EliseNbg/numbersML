@@ -3,21 +3,23 @@
 Historical Data Backfill from Binance.
 
 Fetches 1-second klines for active symbols and populates:
-- ticker_24hr_stats (1-sec kline data)
-- candle_indicators (calculated inline)
+- candles_1s (1-sec OHLCV data, processed=false for later recalculation)
+
+After backfill, run:
+    python3 -m src.cli.recalculate --all --from "YYYY-MM-DD HH:MM:SS"
 
 Usage:
     # Backfill last 3 days (default) for all active symbols
-    python -m src.cli.backfill.py
+    python -m src.cli.backfill
 
     # Backfill last 7 days
-    python -m src.cli.backfill.py --days 7
+    python -m src.cli.backfill --days 7
 
     # Backfill specific symbol
-    python -m src.cli.backfill.py --days 3 --symbol BTC/USDT
+    python -m src.cli.backfill --days 3 --symbol BTC/USDC
 
     # Dry run (no inserts)
-    python -m src.cli.backfill.py --days 3 --dry-run
+    python -m src.cli.backfill --days 3 --dry-run
 """
 
 import asyncio
@@ -29,12 +31,7 @@ import json
 import aiohttp
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import List, Dict, Optional, Any
-
-import numpy as np
-
-from src.indicators.registry import IndicatorRegistry
-from src.indicators.base import Indicator
+from typing import List, Dict, Optional
 
 # Configure logging
 logging.basicConfig(
@@ -49,13 +46,10 @@ BINANCE_API_BASE = "https://api.binance.com/api/v3"
 
 class HistoricalBackfill:
     """
-    Backfill historical data from Binance.
+    Backfill historical data from Binance into candles_1s table.
 
-    Features:
-    - Collects active symbols (1-min sampling)
-    - Fetches 1-sec klines via REST API
-    - Calculates indicators inline
-    - Checkpoint in system_config table for resume
+    Writes 1-second candles with processed=false so indicators and
+    wide vectors can be recalculated later using src.cli.recalculate.
     """
 
     def __init__(
@@ -65,15 +59,6 @@ class HistoricalBackfill:
         symbol_filter: Optional[str] = None,
         dry_run: bool = False,
     ) -> None:
-        """
-        Initialize backfill.
-
-        Args:
-            db_url: Database connection string
-            days: Days to backfill (default: 3)
-            symbol_filter: Optional symbol to backfill (e.g., 'BTC/USDT')
-            dry_run: If True, don't insert data
-        """
         self.db_url = db_url
         self.days = days
         self.symbol_filter = symbol_filter
@@ -82,27 +67,20 @@ class HistoricalBackfill:
         self._stats: Dict[str, int] = {
             'symbols_processed': 0,
             'records_inserted': 0,
-            'indicators_calculated': 0,
             'errors': 0,
         }
 
     async def run(self) -> Dict:
-        """
-        Run backfill process.
-
-        Returns:
-            Statistics dictionary
-        """
-        print(f"🚀 Starting historical backfill ({self.days} days)")
+        """Run backfill process."""
+        print(f"Starting historical backfill ({self.days} days)")
         print(f"Database: {self.db_url.split('@')[-1]}")
         if self.dry_run:
-            print("⚠️  DRY RUN MODE - No data will be inserted")
+            print("DRY RUN MODE - No data will be inserted")
         print()
 
         db_pool: Optional[asyncpg.Pool] = None
 
         try:
-            # Create database pool
             db_pool = await asyncpg.create_pool(
                 dsn=self.db_url,
                 min_size=2,
@@ -110,36 +88,43 @@ class HistoricalBackfill:
                 timeout=60,
             )
 
-            # Step 1: Collect active symbols
-            if self.symbol_filter:
-                symbols = [self.symbol_filter]
-                print(f"Using symbol filter: {symbols}")
-            else:
-                symbols = await self._collect_active_symbols(db_pool)
-                print(f"Collected {len(symbols)} active symbols")
+            # Get active symbols from DB
+            async with db_pool.acquire() as conn:
+                if self.symbol_filter:
+                    symbols = await conn.fetch(
+                        "SELECT id, symbol FROM symbols WHERE symbol = $1 AND is_active = true",
+                        self.symbol_filter,
+                    )
+                else:
+                    symbols = await conn.fetch(
+                        "SELECT id, symbol FROM symbols WHERE is_active = true AND is_allowed = true ORDER BY symbol",
+                    )
 
             if not symbols:
-                print("❌ No symbols to backfill")
+                print("No symbols to backfill")
                 return self._stats
 
+            print(f"Backfilling {len(symbols)} symbols")
             print()
 
-            # Step 2: Backfill each symbol (sequential)
-            for i, symbol in enumerate(symbols, 1):
+            # Backfill each symbol
+            for i, sym_row in enumerate(symbols, 1):
+                symbol_id = sym_row['id']
+                symbol = sym_row['symbol']
+                binance_symbol = symbol.replace('/', '')
+
                 print(f"[{i}/{len(symbols)}] Backfilling {symbol}...")
                 try:
-                    inserted = await self._backfill_symbol(db_pool, symbol)
+                    inserted = await self._backfill_symbol(db_pool, symbol_id, binance_symbol, symbol)
                     self._stats['records_inserted'] += inserted
                     self._stats['symbols_processed'] += 1
-                    print(f"  ✅ Inserted {inserted:,} records")
+                    print(f"  Inserted {inserted:,} records")
                 except Exception as e:
-                    print(f"  ❌ Error backfilling {symbol}: {e}")
+                    print(f"  Error backfilling {symbol}: {e}")
                     logger.error(f"Error backfilling {symbol}: {e}", exc_info=True)
                     self._stats['errors'] += 1
                     continue
 
-            # Print summary
-            print()
             self._print_summary()
 
         except Exception as e:
@@ -147,165 +132,35 @@ class HistoricalBackfill:
             raise
 
         finally:
-            # Close database pool
             if db_pool:
                 await db_pool.close()
 
         return self._stats
 
-    async def _collect_active_symbols(
-        self,
-        pool: asyncpg.Pool,
-        duration_sec: int = 10  # Reduced from 60 to 10 seconds for faster startup
-    ) -> List[str]:
-        """
-        Collect active symbols by sampling 24hr ticker.
-
-        Args:
-            pool: Database pool
-            duration_sec: Sampling duration (default: 60 sec)
-
-        Returns:
-            List of EU-compliant symbols
-        """
-        print(f"Collecting active symbols for {duration_sec} seconds...")
-
-        symbols_seen: set[str] = set()
-        end_time = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=duration_sec)
-
-        async with aiohttp.ClientSession() as session:
-            while datetime.now(timezone.utc).replace(tzinfo=None) < end_time:
-                # Fetch 24hr tickers from Binance REST API
-                async with session.get(
-                    f"{BINANCE_API_BASE}/ticker/24hr",
-                    timeout=aiohttp.ClientTimeout(total=10)
-                ) as response:
-                    if response.status == 200:
-                        tickers = await response.json()
-                        for t in tickers:
-                            if self._is_eu_compliant(t):
-                                symbols_seen.add(t['symbol'])
-                
-                await asyncio.sleep(1)
-
-                # Progress
-                remaining = int((end_time - datetime.now(timezone.utc).replace(tzinfo=None)).total_seconds())
-                if remaining % 10 == 0:
-                    print(f"  Collecting... {remaining}s remaining, {len(symbols_seen)} symbols found", end='\r')
-
-        print()  # New line after progress
-
-        # Filter by minimum volume (1M USDT)
-        # Note: We already filter in _is_eu_compliant, but double-check
-        filtered = sorted(symbols_seen)
-
-        print(f"Found {len(filtered)} EU-compliant symbols with sufficient volume")
-        return filtered
-
-    def _is_eu_compliant(self, ticker: Dict) -> bool:
-        """
-        Check if symbol is EU-compliant.
-
-        Per MiFID II regulations:
-        - Allowed: USDC, EUR, BTC, ETH quote assets
-        - Excluded: USDT, BUSD, TUSD (not EU approved stablecoins)
-        - Excluded: Leveraged tokens (UP/DOWN)
-
-        Args:
-            ticker: Ticker data from Binance
-
-        Returns:
-            True if EU-compliant
-        """
-        symbol = ticker.get('symbol', '')
-
-        # Exclude leveraged tokens
-        if 'UP' in symbol or 'DOWN' in symbol:
-            return False
-
-        # Parse quote asset (e.g., BTCUSDT -> USDT, BTC/USDT -> USDT)
-        # Binance format: BASEQUOTE (e.g., BTCUSDT, ETHUSDC, BTCEUR)
-        quote_asset = None
-        for allowed_quote in ['USDC', 'EUR', 'BTC', 'ETH']:
-            if symbol.endswith(allowed_quote):
-                quote_asset = allowed_quote
-                break
-        
-        # Must end with allowed quote asset
-        if quote_asset is None:
-            return False
-
-        # Exclude low volume (< 1M in quote currency)
-        quote_volume = float(ticker.get('quoteVolume', 0))
-        if quote_volume < 1_000_000:
-            return False
-
-        return True
-
     async def _backfill_symbol(
         self,
         pool: asyncpg.Pool,
-        symbol: str
+        symbol_id: int,
+        binance_symbol: str,
+        symbol: str,
     ) -> int:
-        """
-        Backfill single symbol.
-
-        Args:
-            pool: Database pool
-            symbol: Symbol to backfill
-
-        Returns:
-            Number of NEW records inserted (excluding duplicates)
-        """
-        # Get symbol ID
+        """Backfill single symbol. Returns number of records inserted."""
         async with pool.acquire() as conn:
-            # Convert BTC/USDT → BTCUSDT for Binance API
-            binance_symbol = symbol.replace('/', '')
-
-            symbol_id = await conn.fetchval(
-                "SELECT id FROM symbols WHERE symbol = $1",
-                symbol
-            )
-
-            if not symbol_id:
-                # Insert symbol if not exists
-                symbol_id = await self._insert_symbol(conn, symbol, binance_symbol)
-
-            # Check checkpoint (for resume)
-            checkpoint = await conn.fetchrow(
-                "SELECT value FROM system_config WHERE key = $1",
-                f"backfill_checkpoint_{binance_symbol}"
-            )
-
-            if checkpoint and not self.symbol_filter:
-                checkpoint_data = checkpoint['value']
-                # JSONB is returned as string, parse it
-                if isinstance(checkpoint_data, str):
-                    import json
-                    checkpoint_data = json.loads(checkpoint_data)
-                
-                days_backfilled = checkpoint_data.get('days', 0)
-                if days_backfilled >= self.days:
-                    print(f"  ⏭️  Skipping (already backfilled {days_backfilled} days)")
-                    return 0
-                print(f"  Resuming from checkpoint ({days_backfilled} days already done)")
-
-            # Count existing records for this symbol in the time range
+            # Check existing records
             end_time = datetime.now(timezone.utc).replace(tzinfo=None)
             start_time = end_time - timedelta(days=self.days)
-            
+
             existing_count = await conn.fetchval(
                 """
-                SELECT COUNT(*) FROM ticker_24hr_stats
-                WHERE symbol_id = $1
-                AND time BETWEEN $2 AND $3
+                SELECT COUNT(*) FROM candles_1s
+                WHERE symbol_id = $1 AND time BETWEEN $2 AND $3
                 """,
-                symbol_id, start_time, end_time
+                symbol_id, start_time, end_time,
             )
             if existing_count > 0:
-                print(f"  Found {existing_count:,} existing records in database (will be skipped)")
+                print(f"  Found {existing_count:,} existing records in time range")
 
-        # Fetch historical klines
+        # Fetch klines from Binance
         end_time = datetime.now(timezone.utc).replace(tzinfo=None)
         start_time = end_time - timedelta(days=self.days)
 
@@ -314,444 +169,145 @@ class HistoricalBackfill:
         print(f"  Fetched {len(klines):,} klines")
 
         if not klines:
-            print("  ⚠️  No klines fetched")
+            print("  No klines fetched")
             return 0
 
         if self.dry_run:
             print(f"  [DRY RUN] Would insert {len(klines):,} records")
             return 0
 
-        # Count before insert
-        async with pool.acquire() as conn:
-            count_before = await conn.fetchval(
-                "SELECT COUNT(*) FROM ticker_24hr_stats WHERE symbol_id = $1",
-                symbol_id
-            )
-
-        # Insert and enrich
-        async with pool.acquire() as conn:
-            inserted = await self._insert_and_enrich(conn, symbol_id, symbol, klines)
-            
-            # Count after insert to determine duplicates
-            count_after = await conn.fetchval(
-                "SELECT COUNT(*) FROM ticker_24hr_stats WHERE symbol_id = $1",
-                symbol_id
-            )
-            actual_new = count_after - count_before
-            duplicates = len(klines) - actual_new
-
-            # Save checkpoint
-            await self._save_checkpoint(
-                conn,
-                binance_symbol,
-                datetime.now(timezone.utc).replace(tzinfo=None),
-                self.days,
-                actual_new
-            )
-
-        if duplicates > 0:
-            print(f"  ✅ Inserted {actual_new:,} new records ({duplicates:,} duplicates skipped)")
-        else:
-            print(f"  ✅ Inserted {actual_new:,} records")
-
-        return actual_new
-
-    async def _insert_symbol(
-        self,
-        conn: asyncpg.Connection,
-        symbol: str,
-        binance_symbol: str
-    ) -> int:
-        """
-        Insert symbol if not exists.
-
-        Args:
-            conn: Database connection
-            symbol: Symbol (e.g., 'BTC/USDT')
-            binance_symbol: Binance format (e.g., 'BTCUSDT')
-
-        Returns:
-            Symbol ID
-        """
-        # Parse base and quote assets
-        parts = symbol.split('/')
-        base_asset = parts[0] if len(parts) > 0 else ''
-        quote_asset = parts[1] if len(parts) > 1 else ''
-
-        symbol_id = await conn.fetchval(
-            """
-            INSERT INTO symbols (symbol, base_asset, quote_asset, is_active, is_allowed)
-            VALUES ($1, $2, $3, true, true)
-            ON CONFLICT (symbol) DO UPDATE SET is_active = true
-            RETURNING id
-            """,
-            symbol, base_asset, quote_asset
-        )
-
-        logger.info(f"Inserted symbol: {symbol} (ID: {symbol_id})")
-        return symbol_id
+        # Insert into candles_1s
+        inserted = await self._insert_klines(pool, symbol_id, klines)
+        return inserted
 
     async def _fetch_klines(
         self,
         symbol: str,
         start_time: datetime,
-        end_time: datetime
-    ) -> List[Dict]:
-        """
-        Fetch 1-sec klines from Binance.
-
-        Args:
-            symbol: Symbol (e.g., 'BTCUSDT')
-            start_time: Start time
-            end_time: End time
-
-        Returns:
-            List of kline dictionaries
-        """
-        all_klines: List[Dict] = []
+        end_time: datetime,
+    ) -> List[list]:
+        """Fetch 1-second klines from Binance REST API."""
+        all_klines: List[list] = []
         current_time = start_time
 
         async with aiohttp.ClientSession() as session:
             while current_time < end_time:
                 try:
-                    # Fetch klines from Binance REST API
                     params = {
                         'symbol': symbol,
                         'interval': '1s',
                         'startTime': int(current_time.timestamp() * 1000),
                         'limit': 1000,
                     }
-                    
+
                     async with session.get(
                         f"{BINANCE_API_BASE}/klines",
                         params=params,
-                        timeout=aiohttp.ClientTimeout(total=30)
+                        timeout=aiohttp.ClientTimeout(total=30),
                     ) as response:
                         if response.status != 200:
                             logger.error(f"Binance API error: {response.status}")
                             await asyncio.sleep(1)
                             continue
-                        
+
                         klines = await response.json()
-                        
+
                         if not klines:
                             break
 
                         all_klines.extend(klines)
 
-                        # Advance time (last kline time + 1 sec)
+                        # Advance time
                         current_time = datetime.fromtimestamp(
-                            klines[-1][0] / 1000 + 1
+                            klines[-1][0] / 1000 + 1,
                         )
 
-                        # Rate limiting (100ms)
+                        # Rate limiting
                         await asyncio.sleep(0.1)
 
-                        # Progress logging
                         if len(all_klines) % 10000 == 0:
                             print(f"    Fetched {len(all_klines):,} klines...", end='\r')
 
                 except Exception as e:
                     logger.error(f"Error fetching klines: {e}")
-                    await asyncio.sleep(1)  # Retry delay
+                    await asyncio.sleep(1)
 
-        print()  # New line after progress
+        print()
         return all_klines
 
-    async def _insert_and_enrich(
+    async def _insert_klines(
         self,
-        conn: asyncpg.Connection,
+        pool: asyncpg.Pool,
         symbol_id: int,
-        symbol: str,
-        klines: List[Dict]
+        klines: List[list],
     ) -> int:
         """
-        Insert klines and calculate indicators inline.
+        Insert klines into candles_1s table.
 
-        Args:
-            conn: Database connection
-            symbol_id: Symbol ID
-            symbol: Symbol name
-            klines: Kline data
-
-        Returns:
-            Number of NEW records inserted (excluding duplicates)
+        Sets processed=false so recalculate.py can compute indicators later.
         """
-        # Initialize indicator registry
-        import sys
-        import os
-        # Add src to path so we can import indicators module
-        src_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'src')
-        sys.path.insert(0, src_path)
-        logger.info(f"Added src to path: {src_path}")
-        
-        try:
-            from indicators.registry import IndicatorRegistry
-            from indicators.base import Indicator
-            
-            IndicatorRegistry.discover()
-            indicators = {
-                name: IndicatorRegistry.get(name)
-                for name in IndicatorRegistry.list_indicators()
-            }
-            logger.info(f"Discovered {len(indicators)} indicators: {list(indicators.keys())}")
-            print(f"  Loaded {len(indicators)} indicators for inline calculation")
-            if indicators:
-                # Show first 5 indicator names
-                indicator_names = list(indicators.keys())[:5]
-                print(f"  Indicators: {', '.join(indicator_names)}...")
-        except Exception as e:
-            logger.error(f"Failed to load indicators: {e}", exc_info=True)
-            print(f"  ⚠️  Failed to load indicators: {e}")
-            indicators = {}
-
-        # Tick window arrays (circular buffer style)
-        window_size = 200
-        prices: List[float] = []
-        volumes: List[float] = []
-        highs: List[float] = []
-        lows: List[float] = []
-
-        inserted = 0
-        skipped = 0  # Track duplicates
-        batch: List[tuple] = []
-        indicator_batch: List[tuple] = []
         batch_size = 1000
+        total_inserted = 0
 
-        for kline in klines:
-            # Parse kline [time, open, high, low, close, volume, ...]
-            tick_time = datetime.fromtimestamp(kline[0] / 1000)
-            open_price = Decimal(kline[1])
-            high_price = Decimal(kline[2])
-            low_price = Decimal(kline[3])
-            close_price = Decimal(kline[4])
-            volume = Decimal(kline[5])
-            quote_volume = Decimal(kline[7])
-
-            # Calculate price change
-            price_change = close_price - open_price
-            price_change_pct = (price_change / open_price * 100) if open_price > 0 else Decimal(0)
-
-            # Update tick window
-            prices.append(float(close_price))
-            volumes.append(float(volume))
-            highs.append(float(high_price))
-            lows.append(float(low_price))
-
-            # Maintain window size
-            if len(prices) > window_size:
-                prices.pop(0)
-                volumes.pop(0)
-                highs.pop(0)
-                lows.pop(0)
-
-            # Calculate indicators (if enough data)
-            indicator_values: Dict[str, float] = {}
-            if len(prices) >= 50 and indicators:  # Minimum data for indicators
-                np_prices = np.array(prices, dtype=np.float64)
-                np_volumes = np.array(volumes, dtype=np.float64)
-                np_highs = np.array(highs, dtype=np.float64)
-                np_lows = np.array(lows, dtype=np.float64)
-
-                for name, indicator in indicators.items():
-                    if indicator is None:
-                        continue
-                    try:
-                        result = indicator.calculate(
-                            prices=np_prices,
-                            volumes=np_volumes,
-                            highs=np_highs,
-                            lows=np_lows,
-                        )
-
-                        # Get latest value for each indicator output
-                        for key, values in result.values.items():
-                            if len(values) > 0:
-                                latest_value = values[-1]
-                                if not np.isnan(latest_value):
-                                    indicator_key = f"{name}_{key}"
-                                    indicator_values[indicator_key] = float(latest_value)
-                                    # Log first 3 indicators for first tick only (debug)
-                                    if len(prices) == 50 and len(indicator_values) <= 3:
-                                        logger.debug(f"Calculated {indicator_key}: {float(latest_value):.6f}")
-
-                    except Exception as e:
-                        logger.debug(f"Error calculating {name}: {e}")
-                        continue
-                
-                # Log indicator calculation progress (only every 1000 ticks to reduce noise)
-                if indicator_values and len(prices) % 1000 == 0:
-                    logger.info(f"Calculated {len(indicator_values)} indicators for tick {len(prices)}")
-
-            # Add to batch
-            batch.append((
-                tick_time,
-                symbol_id,
-                symbol,
-                open_price,
-                high_price,
-                low_price,
-                close_price,
-                volume,
-                quote_volume,
-                price_change,
-                price_change_pct,
-            ))
-
-            # Add indicator batch if we have indicators
-            if indicator_values:
-                indicator_batch.append((
-                    tick_time,
-                    symbol_id,
-                    close_price,
-                    volume,
-                    json.dumps(indicator_values),
-                    list(indicator_values.keys()),
-                ))
-                self._stats['indicators_calculated'] += len(indicator_values)
-
-            # Insert batch
-            if len(batch) >= batch_size:
-                new_inserted, new_skipped = await self._insert_batch(conn, batch, indicator_batch)
-                inserted += new_inserted
-                skipped += new_skipped
+        async with pool.acquire() as conn:
+            for i in range(0, len(klines), batch_size):
                 batch = []
-                indicator_batch = []
+                for kline in klines[i:i + batch_size]:
+                    # Parse kline: [time, open, high, low, close, volume,
+                    #               quote_volume, ...]
+                    batch.append((
+                        datetime.fromtimestamp(kline[0] / 1000).replace(tzinfo=None),
+                        symbol_id,
+                        Decimal(kline[1]),   # open
+                        Decimal(kline[2]),   # high
+                        Decimal(kline[3]),   # low
+                        Decimal(kline[4]),   # close
+                        Decimal(kline[5]),   # volume
+                        Decimal(kline[7]),   # quote_volume
+                    ))
 
-                if inserted % 10000 == 0:
-                    print(f"    Inserted {inserted:,}/{len(klines):,} records ({skipped:,} duplicates skipped)...", end='\r')
+                await conn.executemany(
+                    """
+                    INSERT INTO candles_1s (
+                        time, symbol_id, open, high, low, close,
+                        volume, quote_volume, processed
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false)
+                    ON CONFLICT (time, symbol_id) DO NOTHING
+                    """,
+                    batch,
+                )
 
-        # Insert remaining
-        if batch:
-            new_inserted, new_skipped = await self._insert_batch(conn, batch, indicator_batch)
-            inserted += new_inserted
-            skipped += new_skipped
+                total_inserted += len(batch)
+                if total_inserted % 10000 == 0:
+                    print(f"    Inserted {total_inserted:,}/{len(klines):,}...", end='\r')
 
-        print()  # New line after progress
-        if skipped > 0:
-            print(f"  ⏭️  Skipped {skipped:,} duplicate ticks (already in database)")
-        
-        # Log indicator summary
-        if self._stats['indicators_calculated'] > 0:
-            print(f"  📊 Calculated {self._stats['indicators_calculated']:,} indicator values")
-        
-        return inserted
-
-    async def _insert_batch(
-        self,
-        conn: asyncpg.Connection,
-        batch: List[tuple],
-        indicator_batch: List[tuple]
-    ) -> tuple[int, int]:
-        """
-        Insert batch of records.
-
-        Args:
-            conn: Database connection
-            batch: Kline records
-            indicator_batch: Indicator records
-
-        Returns:
-            Tuple of (new_records_inserted, duplicates_skipped)
-        """
-        inserted = 0
-        skipped = 0
-
-        if batch:
-            # Insert with ON CONFLICT DO NOTHING
-            result = await conn.executemany(
-                """
-                INSERT INTO ticker_24hr_stats (
-                    time, symbol_id, symbol,
-                    open_price, high_price, low_price, last_price,
-                    total_volume, total_quote_volume,
-                    price_change, price_change_pct
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-                ON CONFLICT (time, symbol_id) DO NOTHING
-                """,
-                batch
-            )
-            # Count inserted vs skipped
-            inserted = len(batch)
-            # Note: executemany doesn't return affected rows, so we track via checkpoint
-
-        if indicator_batch:
-            # Insert indicators with ON CONFLICT DO UPDATE
-            await conn.executemany(
-                """
-                INSERT INTO candle_indicators (
-                    time, symbol_id, price, volume,
-                    values, indicator_keys
-                ) VALUES ($1, $2, $3, $4, $5, $6)
-                ON CONFLICT (time, symbol_id) DO UPDATE SET
-                    values = EXCLUDED.values,
-                    indicator_keys = EXCLUDED.indicator_keys,
-                    updated_at = NOW()
-                """,
-                indicator_batch
-            )
-
-        return inserted, skipped
-
-    async def _save_checkpoint(
-        self,
-        conn: asyncpg.Connection,
-        symbol: str,
-        last_time: datetime,
-        days: int,
-        records_count: int
-    ) -> None:
-        """
-        Save checkpoint to system_config table.
-
-        Args:
-            conn: Database connection
-            symbol: Symbol name
-            last_time: Last backfilled time
-            days: Days backfilled
-            records_count: Number of records inserted
-        """
-        await conn.execute(
-            """
-            INSERT INTO system_config (key, value, description)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (key) DO UPDATE SET
-                value = EXCLUDED.value,
-                updated_at = NOW(),
-                version = system_config.version + 1
-            """,
-            f"backfill_checkpoint_{symbol}",
-            json.dumps({
-                'last_time': last_time.isoformat(timespec='seconds'),
-                'days': days,
-                'records': records_count,
-            }),
-            f"Backfill checkpoint for {symbol}",
-        )
-
-        logger.debug(f"Saved checkpoint for {symbol}: {records_count} records, {days} days")
+        print()
+        return total_inserted
 
     def _print_summary(self) -> None:
         """Print backfill summary."""
         print("=" * 60)
         print("BACKFILL SUMMARY")
         print("=" * 60)
-        print(f"Symbols processed:     {self._stats['symbols_processed']}")
-        print(f"Records inserted:      {self._stats['records_inserted']:,}")
-        print(f"Indicators calculated: {self._stats['indicators_calculated']:,}")
-        print(f"Errors:                {self._stats['errors']}")
+        print(f"Symbols processed: {self._stats['symbols_processed']}")
+        print(f"Records inserted:  {self._stats['records_inserted']:,}")
+        print(f"Errors:            {self._stats['errors']}")
         print("=" * 60)
+        print()
+        print("Next step: recalculate indicators and wide vectors:")
+        print("  python3 -m src.cli.recalculate --all --from 'YYYY-MM-DD HH:MM:SS'")
+        print()
 
         if self._stats['errors'] > 0:
-            print(f"\n⚠️  Backfill completed with {self._stats['errors']} errors")
+            print(f"Backfill completed with {self._stats['errors']} errors")
         else:
-            print("\n✅ Backfill completed successfully!")
+            print("Backfill completed successfully!")
 
 
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description='Backfill historical data from Binance',
+        description='Backfill historical data from Binance into candles_1s',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -762,44 +318,27 @@ Examples:
   python -m src.cli.backfill --days 7
 
   # Backfill specific symbol
-  python -m src.cli.backfill --days 3 --symbol BTC/USDT
+  python -m src.cli.backfill --days 3 --symbol BTC/USDC
 
   # Dry run (test without inserting)
   python -m src.cli.backfill --days 3 --dry-run
-        """
+
+After backfill, recalculate indicators:
+  python3 -m src.cli.recalculate --all --from 'YYYY-MM-DD HH:MM:SS'
+        """,
     )
 
-    parser.add_argument(
-        '--days',
-        type=int,
-        default=3,
-        help='Days to backfill (default: 3)'
-    )
-
-    parser.add_argument(
-        '--symbol',
-        type=str,
-        help='Specific symbol to backfill (e.g., BTC/USDT)'
-    )
-
-    parser.add_argument(
-        '--dry-run',
-        action='store_true',
-        help="Don't insert data, just log what would be done"
-    )
-
-    parser.add_argument(
-        '--db-url',
-        type=str,
-        default='postgresql://crypto:crypto_secret@localhost:5432/crypto_trading',
-        help='Database URL (default: postgresql://crypto:crypto_secret@localhost:5432/crypto_trading)'
-    )
-
-    parser.add_argument(
-        '-v', '--verbose',
-        action='store_true',
-        help='Enable verbose logging'
-    )
+    parser.add_argument('--days', type=int, default=3,
+                        help='Days to backfill (default: 3)')
+    parser.add_argument('--symbol', type=str,
+                        help='Specific symbol (e.g., BTC/USDC)')
+    parser.add_argument('--dry-run', action='store_true',
+                        help="Don't insert data")
+    parser.add_argument('--db-url', type=str,
+                        default='postgresql://crypto:crypto_secret@localhost:5432/crypto_trading',
+                        help='Database URL')
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help='Enable verbose logging')
 
     return parser.parse_args()
 
@@ -811,12 +350,6 @@ def main() -> None:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    logger.info("Starting Historical Backfill CLI")
-
-    if args.dry_run:
-        logger.info("DRY RUN MODE - No data will be inserted")
-
-    # Run backfill
     backfill = HistoricalBackfill(
         db_url=args.db_url,
         days=args.days,
@@ -827,7 +360,7 @@ def main() -> None:
     try:
         asyncio.run(backfill.run())
     except KeyboardInterrupt:
-        print("\n⚠️  Backfill interrupted by user")
+        print("\nBackfill interrupted by user")
         sys.exit(130)
     except Exception as e:
         logger.error(f"Backfill failed: {e}", exc_info=True)

@@ -1,3 +1,5 @@
+> **Note:** This document references the old architecture. See [CLI Reference](docs/CLI_REFERENCE.md) and [Wide Vector](docs/WIDE_VECTOR.md) for current docs.
+
 # Migration: PL/pgSQL to Python Enrichment Service
 
 **Status**: Ready for Implementation

@@ -1,3 +1,5 @@
+> **Note:** This document references the old architecture. See [CLI Reference](docs/CLI_REFERENCE.md) and [Wide Vector](docs/WIDE_VECTOR.md) for current docs.
+
 # ✅ Architecture Simplified: No Waiting, No Timeouts
 
 **Date**: March 22, 2026

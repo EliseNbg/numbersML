@@ -7,6 +7,20 @@ candle data and technical indicators. One vector is generated per second after
 all candles for that round are processed. Stored in DB for backtesting and
 ML model training.
 
+## Verified Data (2026-03-29)
+
+After full backfill + recalculation:
+
+| Symbol | Candles | Indicators | Processed |
+|--------|---------|------------|-----------|
+| ADA/USDC | 85,168 | 90,561 | 100% |
+| BTC/USDC | 85,148 | 89,971 | 100% |
+| DOGE/USDC | 85,105 | 90,818 | 100% |
+| ETH/USDC | 85,101 | 90,224 | 100% |
+| **Wide vectors** | **87,793** | **52 floats each** | |
+
+Coverage: ~23.8 hours per symbol, 0 gaps.
+
 ## Data Flow
 
 ```
@@ -34,7 +48,7 @@ Per symbol (sorted alphabetically by symbol name):
 Full vector (all symbols concatenated):
 
 ```
-[BTC/USDC_close, BTC/USDC_volume, BTC/USDC_atr, ..., ETH/USDC_close, ETH/USDC_volume, ...]
+[ADA_USDC_close, ADA_USDC_volume, ADA_USDC_atr, ..., BTC_USDC_close, BTC_USDC_volume, ..., ETH_USDC_close, ...]
 ```
 
 Example with 2 symbols, 2 indicators (rsi, sma):
@@ -243,3 +257,19 @@ def get_features(
 - Values must be **floats** (no `None`, no strings)
 - If file doesn't exist or function is missing, pipeline runs without external features
 - Called once per second during wide vector generation
+
+## Related CLI Tools
+
+| Tool | Purpose |
+|------|---------|
+| `python3 -m src.cli.backfill` | Backfill historical candles from Binance |
+| `python3 -m src.cli.gap_fill` | Detect and fill gaps in candles |
+| `python3 -m src.cli.recalculate` | Recalculate indicators + wide vectors |
+
+All backfilled/filled candles have `processed=false`. After filling, run:
+
+```bash
+python3 -m src.cli.recalculate --all --from "YYYY-MM-DD HH:MM:SS"
+```
+
+See [CLI Reference](CLI_REFERENCE.md) for full documentation.

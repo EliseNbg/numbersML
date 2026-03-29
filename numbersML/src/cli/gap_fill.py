@@ -1,355 +1,301 @@
 #!/usr/bin/env python3
 """
-Gap Filler CLI - Detect and fill gaps in historical data.
+Gap Filler CLI - Detect and fill gaps in candles_1s.
+
+Scans candles_1s for missing seconds and fills them by fetching
+1-second klines from Binance REST API.
 
 Usage:
-    # Detect gaps (dry run)
-    python -m src.cli.gap_fill --detect --dry-run
+    # Detect gaps (last 24 hours)
+    python -m src.cli.gap_fill --detect
 
     # Fill all gaps
-    python -m src.cli.gap-fill
+    python -m src.cli.gap_fill
 
     # Fill gaps for specific symbol
-    python -m src.cli.gap-fill --symbol BTC/USDT
+    python -m src.cli.gap_fill --symbol BTC/USDC
 
-    # Fill only critical gaps (>1 minute)
-    python -m src.cli.gap-fill --critical-only
+    # Dry run (preview)
+    python -m src.cli.gap_fill --dry-run
 """
 
 import asyncio
 import logging
 import sys
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from typing import Optional, List
 
 import asyncpg
 import click
+import aiohttp
 
-from src.domain.services.gap_detector import GapDetector, GapFiller, DataGap
+BINANCE_API_BASE = "https://api.binance.com/api/v3"
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
 )
 logger = logging.getLogger(__name__)
 
 
-@click.command()
-@click.option(
-    '--db-url',
-    envvar='DATABASE_URL',
-    default='postgresql://crypto:crypto@localhost:5432/crypto_trading',
-    help='Database URL'
-)
-@click.option(
-    '--binance-api-key',
-    envvar='BINANCE_API_KEY',
-    help='Binance API key (optional, increases rate limits)'
-)
-@click.option(
-    '--detect',
-    is_flag=True,
-    help='Only detect gaps, don\'t fill'
-)
-@click.option(
-    '--dry-run',
-    is_flag=True,
-    help='Show what would be done without making changes'
-)
-@click.option(
-    '--symbol',
-    help='Filter by symbol (e.g., BTC/USDT)'
-)
-@click.option(
-    '--critical-only',
-    is_flag=True,
-    help='Only fill critical gaps (>1 minute)'
-)
-@click.option(
-    '--max-concurrent',
-    default=3,
-    help='Maximum concurrent gap fills (default: 3)'
-)
-@click.option(
-    '--hours',
-    default=24,
-    help='Look for gaps in last N hours (default: 24)'
-)
-@click.option(
-    '--verbose',
-    '-v',
-    is_flag=True,
-    help='Enable verbose logging'
-)
-def main(
-    db_url: str,
-    binance_api_key: Optional[str],
-    detect: bool,
-    dry_run: bool,
-    symbol: Optional[str],
-    critical_only: bool,
-    max_concurrent: int,
-    hours: int,
-    verbose: bool,
-) -> None:
-    """
-    Detect and fill gaps in historical tick data.
+class CandleGap:
+    """Represents a gap in candles_1s data."""
 
-    Scans the database for gaps in tick data and fills them
-    by fetching historical data from Binance API.
+    def __init__(
+        self,
+        symbol_id: int,
+        symbol: str,
+        gap_start: datetime,
+        gap_end: datetime,
+        gap_seconds: int,
+    ):
+        self.symbol_id = symbol_id
+        self.symbol = symbol
+        self.gap_start = gap_start
+        self.gap_end = gap_end
+        self.gap_seconds = gap_seconds
 
-    Examples:
+    @property
+    def is_critical(self) -> bool:
+        """Gaps > 60 seconds are critical."""
+        return self.gap_seconds > 60
 
-    \b
-    # Detect gaps (last 24 hours)
-    python -m src.cli.gap_fill --detect
-
-    # Fill all gaps
-    python -m src.cli.gap-fill
-
-    # Fill only critical gaps for BTC/USDT
-    python -m src.cli.gap-fill --symbol BTC/USDT --critical-only
-
-    # Dry run (preview)
-    python -m src.cli.gap-fill --dry-run
-    """
-    if verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
-
-    logger.info("Starting Gap Filler CLI")
-
-    exit_code = asyncio.run(
-        run_gap_fill(
-            db_url=db_url,
-            binance_api_key=binance_api_key,
-            detect=detect,
-            dry_run=dry_run,
-            symbol=symbol,
-            critical_only=critical_only,
-            max_concurrent=max_concurrent,
-            hours=hours,
-        )
-    )
-
-    sys.exit(exit_code)
-
-
-async def run_gap_fill(
-    db_url: str,
-    binance_api_key: Optional[str],
-    detect: bool,
-    dry_run: bool,
-    symbol: Optional[str],
-    critical_only: bool,
-    max_concurrent: int,
-    hours: int,
-) -> int:
-    """
-    Run gap detection and filling.
-
-    Args:
-        db_url: Database URL
-        binance_api_key: Binance API key
-        detect: Only detect gaps
-        dry_run: Don't make changes
-        symbol: Filter by symbol
-        critical_only: Only critical gaps
-        max_concurrent: Max concurrent fills
-        hours: Look back hours
-
-    Returns:
-        Exit code (0 = success)
-    """
-    db_pool: Optional[asyncpg.Pool] = None
-
-    try:
-        # Connect to database
-        logger.info(f"Connecting to database...")
-        db_pool = await asyncpg.create_pool(
-            dsn=db_url,
-            min_size=2,
-            max_size=10,
-            timeout=30,
-        )
-
-        # Detect gaps
-        logger.info(f"Detecting gaps in last {hours} hours...")
-        gaps = await detect_gaps(
-            db_pool=db_pool,
-            symbol=symbol,
-            hours=hours,
-        )
-
-        if not gaps:
-            logger.info("No gaps found!")
-            return 0
-
-        logger.info(f"Found {len(gaps)} gaps")
-
-        # Filter critical gaps if requested
-        if critical_only:
-            gaps = [g for g in gaps if g.is_critical]
-            logger.info(f"After filtering: {len(gaps)} critical gaps")
-
-        # Print gap summary
-        print("\n" + "=" * 60)
-        print("GAP SUMMARY")
-        print("=" * 60)
-
-        for i, gap in enumerate(gaps[:20], 1):  # Show first 20
-            critical_marker = " [CRITICAL]" if gap.is_critical else ""
-            print(f"{i:2}. {gap.symbol} - {gap.gap_seconds:.0f}s{critical_marker}")
-
-        if len(gaps) > 20:
-            print(f"... and {len(gaps) - 20} more")
-
-        total_gap_seconds = sum(g.gap_seconds for g in gaps)
-        critical_count = sum(1 for g in gaps if g.is_critical)
-        print(f"\nTotal gap time: {total_gap_seconds:.0f}s ({total_gap_seconds/3600:.2f}h)")
-        print(f"Critical gaps: {critical_count}/{len(gaps)}")
-        print("=" * 60)
-
-        if detect or dry_run:
-            logger.info("Dry run - no gaps filled")
-            return 0
-
-        # Fill gaps
-        logger.info(f"Filling {len(gaps)} gaps...")
-
-        async with GapFiller(db_pool=db_pool, binance_api_key=binance_api_key) as filler:
-            results = await filler.fill_gaps_batch(gaps, max_concurrent=max_concurrent)
-
-        # Print results
-        successful = sum(1 for r in results if r.success)
-        failed = len(results) - successful
-        total_ticks = sum(r.ticks_filled for r in results if r.success)
-
-        print("\n" + "=" * 60)
-        print("GAP FILL RESULTS")
-        print("=" * 60)
-        print(f"Successful: {successful}")
-        print(f"Failed: {failed}")
-        print(f"Total ticks fetched: {total_ticks}")
-
-        if failed > 0:
-            print("\nFailed gaps:")
-            for r in results:
-                if not r.success:
-                    print(f"  - {r.gap.symbol}: {r.error}")
-
-        print("=" * 60)
-
-        # Get stats
-        stats = filler.get_stats()
-        logger.info(f"Stats: {stats}")
-
-        if failed > 0:
-            logger.warning(f"Gap fill completed with {failed} failures")
-            return 1
-
-        logger.info("Gap fill complete!")
-        return 0
-
-    except Exception as e:
-        logger.error(f"Gap fill failed: {e}", exc_info=True)
-        return 1
-
-    finally:
-        if db_pool:
-            await db_pool.close()
+    def __repr__(self):
+        return f"CandleGap({self.symbol}, {self.gap_seconds}s)"
 
 
 async def detect_gaps(
     db_pool: asyncpg.Pool,
-    symbol: Optional[str],
+    symbol_filter: Optional[str] = None,
     hours: int = 24,
-) -> list[DataGap]:
+) -> List[CandleGap]:
     """
-    Detect gaps in database.
+    Detect gaps in candles_1s table.
 
-    Args:
-        db_pool: Database pool
-        symbol: Filter by symbol
-        hours: Look back hours
-
-    Returns:
-        List of detected gaps
+    Looks for missing seconds between consecutive candle timestamps.
     """
     async with db_pool.acquire() as conn:
-        # Get all trades in time range
-        if symbol:
-            # Get symbol ID
-            symbol_row = await conn.fetchrow(
-                "SELECT id, symbol FROM symbols WHERE symbol = $1",
-                symbol
-            )
-            if not symbol_row:
-                logger.warning(f"Symbol not found: {symbol}")
-                return []
-
-            symbol_id = symbol_row['id']
-            symbol_str = symbol_row['symbol']
-
+        if symbol_filter:
             rows = await conn.fetch(
                 """
-                SELECT time
-                FROM trades
-                WHERE symbol_id = $1
-                AND time > NOW() - INTERVAL '%s hours'
-                ORDER BY time
-                """ % hours,
-                symbol_id,
+                SELECT c.symbol_id, s.symbol, c.time,
+                       LAG(c.time) OVER (PARTITION BY c.symbol_id ORDER BY c.time) AS prev_time
+                FROM candles_1s c
+                JOIN symbols s ON s.id = c.symbol_id
+                WHERE s.symbol = $1
+                  AND c.time > NOW() - INTERVAL '1 hour' * $2
+                ORDER BY c.symbol_id, c.time
+                """,
+                symbol_filter, hours,
             )
-
-            times = [row['time'] for row in rows]
-            gaps = []
-
-            for i in range(1, len(times)):
-                gap_seconds = (times[i] - times[i-1]).total_seconds()
-                if gap_seconds > 5:  # Gap threshold
-                    gaps.append(DataGap(
-                        symbol_id=symbol_id,
-                        symbol=symbol_str,
-                        gap_start=times[i-1],
-                        gap_end=times[i],
-                        gap_seconds=gap_seconds,
-                    ))
-
-            return gaps
-
         else:
-            # All symbols
             rows = await conn.fetch(
                 """
-                SELECT
-                    t.symbol_id,
-                    s.symbol,
-                    t.time,
-                    LAG(t.time) OVER (PARTITION BY t.symbol_id ORDER BY t.time) as prev_time
-                FROM trades t
-                JOIN symbols s ON s.id = t.symbol_id
-                WHERE t.time > NOW() - INTERVAL '%s hours'
-                ORDER BY t.symbol_id, t.time
-                """ % hours,
+                SELECT c.symbol_id, s.symbol, c.time,
+                       LAG(c.time) OVER (PARTITION BY c.symbol_id ORDER BY c.time) AS prev_time
+                FROM candles_1s c
+                JOIN symbols s ON s.id = c.symbol_id
+                WHERE s.is_active = true
+                  AND c.time > NOW() - INTERVAL '1 hour' * $1
+                ORDER BY c.symbol_id, c.time
+                """,
+                hours,
             )
 
-            gaps = []
-            for row in rows:
-                if row['prev_time'] is None:
-                    continue
+    gaps: List[CandleGap] = []
+    for row in rows:
+        if row['prev_time'] is None:
+            continue
+        gap_sec = (row['time'] - row['prev_time']).total_seconds()
+        if gap_sec > 2:  # More than 1 missing second
+            gaps.append(CandleGap(
+                symbol_id=row['symbol_id'],
+                symbol=row['symbol'],
+                gap_start=row['prev_time'],
+                gap_end=row['time'],
+                gap_seconds=int(gap_sec) - 1,
+            ))
 
-                gap_seconds = (row['time'] - row['prev_time']).total_seconds()
-                if gap_seconds > 5:  # Gap threshold
-                    gaps.append(DataGap(
-                        symbol_id=row['symbol_id'],
-                        symbol=row['symbol'],
-                        gap_start=row['prev_time'],
-                        gap_end=row['time'],
-                        gap_seconds=gap_seconds,
-                    ))
+    return gaps
 
-            return gaps
+
+async def fill_gap(
+    db_pool: asyncpg.Pool,
+    gap: CandleGap,
+) -> int:
+    """
+    Fill a single gap by fetching klines from Binance.
+
+    Returns number of candles inserted.
+    """
+    binance_symbol = gap.symbol.replace('/', '')
+    start_time = gap.gap_start + timedelta(seconds=1)
+    end_time = gap.gap_end - timedelta(seconds=1)
+
+    if start_time >= end_time:
+        return 0
+
+    all_klines = []
+    current = start_time
+
+    async with aiohttp.ClientSession() as session:
+        while current < end_time:
+            try:
+                params = {
+                    'symbol': binance_symbol,
+                    'interval': '1s',
+                    'startTime': int(current.timestamp() * 1000),
+                    'endTime': int(end_time.timestamp() * 1000),
+                    'limit': 1000,
+                }
+
+                async with session.get(
+                    f"{BINANCE_API_BASE}/klines",
+                    params=params,
+                    timeout=aiohttp.ClientTimeout(total=30),
+                ) as response:
+                    if response.status != 200:
+                        logger.error(f"Binance API error {response.status} for {gap.symbol}")
+                        break
+
+                    klines = await response.json()
+                    if not klines:
+                        break
+
+                    all_klines.extend(klines)
+                    current = datetime.fromtimestamp(klines[-1][0] / 1000 + 1)
+
+                    await asyncio.sleep(0.1)
+
+            except Exception as e:
+                logger.error(f"Error fetching klines for {gap.symbol}: {e}")
+                break
+
+    if not all_klines:
+        return 0
+
+    # Insert into candles_1s
+    records = [
+        (
+            datetime.fromtimestamp(k[0] / 1000).replace(tzinfo=None),
+            gap.symbol_id,
+            Decimal(k[1]),   # open
+            Decimal(k[2]),   # high
+            Decimal(k[3]),   # low
+            Decimal(k[4]),   # close
+            Decimal(k[5]),   # volume
+            Decimal(k[7]),   # quote_volume
+        )
+        for k in all_klines
+    ]
+
+    async with db_pool.acquire() as conn:
+        await conn.executemany(
+            """
+            INSERT INTO candles_1s (
+                time, symbol_id, open, high, low, close,
+                volume, quote_volume, processed
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false)
+            ON CONFLICT (time, symbol_id) DO NOTHING
+            """,
+            records,
+        )
+
+    return len(records)
+
+
+@click.command()
+@click.option('--db-url', envvar='DATABASE_URL',
+              default='postgresql://crypto:crypto_secret@localhost:5432/crypto_trading')
+@click.option('--detect', is_flag=True, help='Only detect gaps, do not fill')
+@click.option('--dry-run', is_flag=True, help='Show what would be done')
+@click.option('--symbol', help='Filter by symbol (e.g., BTC/USDC)')
+@click.option('--critical-only', is_flag=True, help='Only fill gaps > 60 seconds')
+@click.option('--hours', default=24, help='Look back N hours (default: 24)')
+@click.option('--verbose', '-v', is_flag=True)
+def main(
+    db_url: str,
+    detect: bool,
+    dry_run: bool,
+    symbol: Optional[str],
+    critical_only: bool,
+    hours: int,
+    verbose: bool,
+) -> None:
+    """Detect and fill gaps in candles_1s."""
+    if verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    exit_code = asyncio.run(
+        _run(db_url, detect, dry_run, symbol, critical_only, hours)
+    )
+    sys.exit(exit_code)
+
+
+async def _run(
+    db_url: str,
+    detect: bool,
+    dry_run: bool,
+    symbol: Optional[str],
+    critical_only: bool,
+    hours: int,
+) -> int:
+    """Run gap detection and filling."""
+    db_pool = await asyncpg.create_pool(db_url, min_size=2, max_size=5)
+
+    try:
+        logger.info(f"Detecting gaps in candles_1s (last {hours} hours)...")
+        gaps = await detect_gaps(db_pool, symbol, hours)
+
+        if not gaps:
+            logger.info("No gaps found")
+            return 0
+
+        if critical_only:
+            gaps = [g for g in gaps if g.is_critical]
+
+        # Summary
+        print(f"\nFound {len(gaps)} gaps:")
+        for g in gaps[:20]:
+            marker = " [CRITICAL]" if g.is_critical else ""
+            print(f"  {g.symbol}: {g.gap_seconds}s{marker}")
+        if len(gaps) > 20:
+            print(f"  ... and {len(gaps) - 20} more")
+
+        total_sec = sum(g.gap_seconds for g in gaps)
+        print(f"Total gap time: {total_sec}s ({total_sec / 3600:.2f}h)")
+
+        if detect or dry_run:
+            return 0
+
+        # Fill gaps
+        filled = 0
+        failed = 0
+        total_candles = 0
+
+        for i, gap in enumerate(gaps, 1):
+            try:
+                count = await fill_gap(db_pool, gap)
+                if count > 0:
+                    filled += 1
+                    total_candles += count
+                    logger.info(f"[{i}/{len(gaps)}] {gap.symbol}: {count} candles inserted")
+                else:
+                    filled += 1
+                    logger.info(f"[{i}/{len(gaps)}] {gap.symbol}: no data from Binance")
+            except Exception as e:
+                failed += 1
+                logger.error(f"[{i}/{len(gaps)}] {gap.symbol} failed: {e}")
+
+        print(f"\nResults: {filled} filled, {failed} failed, {total_candles} candles inserted")
+        print("Next step: recalculate indicators for filled candles:")
+        print("  python3 -m src.cli.recalculate --all --from 'YYYY-MM-DD HH:MM:SS'")
+
+        return 1 if failed > 0 else 0
+
+    finally:
+        await db_pool.close()
 
 
 if __name__ == '__main__':
