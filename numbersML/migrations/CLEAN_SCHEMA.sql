@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict zlagCEBoG0XWEbpgsKWuqjQdmHpMnFK0i1c1PZ6MzcIcCQIkrtnZC8bdlCEX7JN
+\restrict kk2Mqcjqi3tJr9k9v3li1gQn5q9BQsy9wMSFzckzbSJcbWfl4MToK62y9XrNq4G
 
 -- Dumped from database version 15.17
 -- Dumped by pg_dump version 17.9 (Ubuntu 17.9-0ubuntu0.25.10.1)
@@ -348,7 +348,8 @@ CREATE TABLE public.candles_1s (
     first_trade_id bigint DEFAULT 0 NOT NULL,
     last_trade_id bigint DEFAULT 0 NOT NULL,
     created_at timestamp without time zone DEFAULT now(),
-    updated_at timestamp without time zone DEFAULT now()
+    updated_at timestamp without time zone DEFAULT now(),
+    processed boolean DEFAULT false NOT NULL
 );
 
 
@@ -1146,6 +1147,22 @@ COMMENT ON VIEW public.v_slowest_symbols IS 'Top 20 slowest symbols for capacity
 
 
 --
+-- Name: wide_vectors; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.wide_vectors (
+    "time" timestamp with time zone NOT NULL,
+    vector jsonb NOT NULL,
+    column_names text[] NOT NULL,
+    symbols text[] NOT NULL,
+    vector_size integer NOT NULL,
+    symbol_count integer NOT NULL,
+    indicator_count integer NOT NULL,
+    created_at timestamp without time zone DEFAULT now()
+);
+
+
+--
 -- Name: config_change_log id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -1339,6 +1356,14 @@ ALTER TABLE ONLY public.trades
 
 
 --
+-- Name: wide_vectors wide_vectors_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wide_vectors
+    ADD CONSTRAINT wide_vectors_pkey PRIMARY KEY ("time");
+
+
+--
 -- Name: idx_candle_indicators_keys; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1364,6 +1389,13 @@ CREATE INDEX idx_candle_indicators_time_symbol ON public.candle_indicators USING
 --
 
 CREATE INDEX idx_candle_indicators_values ON public.candle_indicators USING gin ("values");
+
+
+--
+-- Name: idx_candles_1s_not_processed; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_candles_1s_not_processed ON public.candles_1s USING btree ("time") WHERE (processed = false);
 
 
 --
@@ -1737,5 +1769,5 @@ ALTER TABLE ONLY public.trades
 -- PostgreSQL database dump complete
 --
 
-\unrestrict zlagCEBoG0XWEbpgsKWuqjQdmHpMnFK0i1c1PZ6MzcIcCQIkrtnZC8bdlCEX7JN
+\unrestrict kk2Mqcjqi3tJr9k9v3li1gQn5q9BQsy9wMSFzckzbSJcbWfl4MToK62y9XrNq4G
 

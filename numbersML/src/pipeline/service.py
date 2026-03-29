@@ -25,6 +25,7 @@ from src.pipeline.aggregator import MultiSymbolAggregator, TradeAggregation
 from src.pipeline.recovery import RecoveryManager
 from src.pipeline.database_writer import MultiSymbolDatabaseWriter
 from src.pipeline.indicator_calculator import IndicatorCalculator
+from src.pipeline.wide_vector_service import WideVectorService
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,7 @@ class TradePipeline:
         self._aggregator = MultiSymbolAggregator(on_candle=self._on_candle)
         self._db_writer = MultiSymbolDatabaseWriter(db_pool)
         self._indicator_calculator = IndicatorCalculator(db_pool)
+        self._wide_vector_service = WideVectorService(db_pool)
         self._recovery_managers: Dict[str, RecoveryManager] = {}
         self._ws_manager: Optional[BinanceWebSocketManager] = None
         
@@ -148,6 +150,16 @@ class TradePipeline:
                 tick_time = datetime.now(timezone.utc).replace(microsecond=0)
                 await self._aggregator.tick_all(tick_time)
                 
+                # Generate wide vector after all candles + indicators are done
+                try:
+                    candle_time = tick_time - timedelta(seconds=1)
+                    result = await self._wide_vector_service.generate(candle_time)
+                    if result:
+                        self._stats['wide_vectors_generated'] = self._stats.get('wide_vectors_generated', 0) + 1
+                except Exception as e:
+                    logger.error(f"Wide vector error: {e}")
+                    self._stats['wide_vector_errors'] = self._stats.get('wide_vector_errors', 0) + 1
+                
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -214,6 +226,7 @@ class TradePipeline:
         await self._initialize_recovery_managers()
         await self._db_writer.start()
         await self._indicator_calculator.load_definitions()
+        await self._wide_vector_service.load_symbols()
         
         # Create WebSocket manager
         self._ws_manager = BinanceWebSocketManager(
