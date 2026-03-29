@@ -53,6 +53,8 @@ jobs:
           cd numbersML
           python -m py_compile src/cli/generate_wide_vector.py
           python -m py_compile src/application/services/enrichment_service.py
+          python -m py_compile src/pipeline/target_value.py
+          python -m py_compile src/pipeline/wide_vector_service.py
       
       - name: Verify imports
         run: |
@@ -153,9 +155,7 @@ jobs:
           sudo apt-get install -y redis-tools
       - name: Initialize database schema
         run: |
-          psql -h localhost -U crypto -d crypto_trading -f numbersML/migrations/001_initial_schema.sql
-          psql -h localhost -U crypto -d crypto_trading -f numbersML/migrations/002_ticker_24hr_stats.sql
-          psql -h localhost -U crypto -d crypto_trading -f numbersML/migrations/004_remove_plpgsql_indicators.sql
+          psql -h localhost -U crypto -d crypto_trading -f numbersML/migrations/CLEAN_SCHEMA.sql
         env:
           PGPASSWORD: ${{ env.POSTGRES_PASSWORD }}
       
