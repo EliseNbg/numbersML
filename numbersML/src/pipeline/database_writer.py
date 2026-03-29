@@ -176,12 +176,13 @@ class DatabaseWriter:
             
             logger.debug(f"Flushed {len(self._buffer)} candles to database")
             
-        except Exception as e:
-            logger.error(f"Failed to write batch: {e}")
-            self._stats['errors'] += 1
-        
-        finally:
+            # Only clear on success
             self._buffer.clear()
+            
+        except Exception as e:
+            logger.error(f"Failed to write batch ({len(self._buffer)} candles): {e}")
+            self._stats['errors'] += 1
+            # Buffer NOT cleared - will retry on next flush
     
     async def flush(self) -> None:
         """Flush all pending data."""

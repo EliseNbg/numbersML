@@ -30,6 +30,7 @@ from src.infrastructure.api.routes import (
     config_router,
     pipeline_router,
 )
+from src.infrastructure.api.routes.candles import router as candles_router
 from src.infrastructure.database import set_db_pool, get_db_pool, get_db_pool_async
 from src.pipeline.service import PipelineManager, set_pipeline_manager
 
@@ -133,6 +134,7 @@ Currently no authentication. Add authentication middleware for production use.
     app.include_router(indicators_router)
     app.include_router(config_router)
     app.include_router(pipeline_router)
+    app.include_router(candles_router)
     
     # Mount static files for frontend (dashboard)
     # Note: Frontend files will be created in Step 022.6

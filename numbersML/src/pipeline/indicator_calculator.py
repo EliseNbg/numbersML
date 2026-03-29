@@ -161,52 +161,18 @@ class IndicatorCalculator:
         latest_price = float(prices[-1])
         latest_volume = float(volumes[-1])
 
-        calculated = 0
-        results: Dict[str, Any] = {}
-        indicator_keys: List[str] = []
-
-        for defn in self._definitions:
-            try:
-                cls = self._get_indicator_class(defn['class_name'], defn['module_path'])
-                if cls is None:
-                    continue
-
-                indicator = cls(**defn['params'])
-                result: IndicatorResult = indicator.calculate(
-                    prices=prices,
-                    volumes=volumes,
-                    highs=highs,
-                    lows=lows,
-                    opens=opens,
-                    closes=prices,
-                )
-
-                # Extract latest value from each output
-                for key, values in result.values.items():
-                    if len(values) > 0:
-                        val = values[-1]
-                        if np.isnan(val) or np.isinf(val):
-                            continue
-                        results[key] = float(val)
-                        indicator_keys.append(key)
-
-                calculated += 1
-
-            except Exception as e:
-                logger.error(f"Error calculating {defn['name']} for {symbol}: {e}")
-
-        if results:
-            await self._write_results(
-                symbol=symbol,
-                symbol_id=symbol_id,
-                time=latest_time,
-                price=latest_price,
-                volume=latest_volume,
-                values=results,
-                indicator_keys=indicator_keys,
-            )
-
-        return calculated
+        return await self._run_indicators(
+            symbol=symbol,
+            symbol_id=symbol_id,
+            prices=prices,
+            volumes=volumes,
+            highs=highs,
+            lows=lows,
+            opens=opens,
+            latest_time=latest_time,
+            latest_price=latest_price,
+            latest_volume=latest_volume,
+        )
 
     async def calculate_with_candle(
         self,
@@ -237,7 +203,6 @@ class IndicatorCalculator:
             return 0
 
         # Append current candle to historical data
-        import numpy as np
         candles['time'].append(time)
         candles['open'] = np.append(candles['open'], open)
         candles['high'] = np.append(candles['high'], high)
@@ -254,6 +219,37 @@ class IndicatorCalculator:
         latest_price = float(prices[-1])
         latest_volume = float(volumes[-1])
 
+        return await self._run_indicators(
+            symbol=symbol,
+            symbol_id=symbol_id,
+            prices=prices,
+            volumes=volumes,
+            highs=highs,
+            lows=lows,
+            opens=opens,
+            latest_time=latest_time,
+            latest_price=latest_price,
+            latest_volume=latest_volume,
+        )
+
+    async def _run_indicators(
+        self,
+        symbol: str,
+        symbol_id: int,
+        prices: np.ndarray,
+        volumes: np.ndarray,
+        highs: np.ndarray,
+        lows: np.ndarray,
+        opens: np.ndarray,
+        latest_time: datetime,
+        latest_price: float,
+        latest_volume: float,
+    ) -> int:
+        """
+        Run all active indicators on prepared data arrays.
+        
+        Shared implementation used by both calculate() and calculate_with_candle().
+        """
         calculated = 0
         results: Dict[str, Any] = {}
         indicator_keys: List[str] = []

@@ -421,6 +421,15 @@ class PipelineManager:
         
         task = asyncio.create_task(pipeline.start())
         
+        def _task_done(t: asyncio.Task) -> None:
+            if t.cancelled():
+                return
+            exc = t.exception()
+            if exc:
+                logger.error(f"Pipeline {pipeline_id} task failed: {exc}")
+        
+        task.add_done_callback(_task_done)
+        
         self._pipelines[pipeline_id] = pipeline
         self._tasks[pipeline_id] = task
         

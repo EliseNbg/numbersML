@@ -193,8 +193,9 @@ class TradeAggregator:
                     symbol=self.symbol,
                 )
             elif window_time != self._current.time:
-                # Trade jumped to a later window - emit flat candles for gaps
-                while self._current.time < window_time:
+                # Trade jumped to a later window - emit flat candles for gaps (max 60)
+                gap_count = 0
+                while self._current.time < window_time and gap_count < 60:
                     gap_time = self._current.time + timedelta(seconds=1)
                     if self._last_close is not None:
                         flat = TradeAggregation(
@@ -212,6 +213,7 @@ class TradeAggregator:
                         self._stats['candles_emitted'] += 1
                         self._stats['last_candle_time'] = flat.time
                         await self.on_candle(flat)
+                        gap_count += 1
                     if gap_time >= window_time:
                         break
                     self._current = TradeAggregation(
@@ -360,15 +362,17 @@ class MultiSymbolAggregator:
         Returns:
             TradeAggregator instance
         """
-        if symbol not in self._aggregators:
-            # Create wrapper callback that includes symbol
-            async def on_candle_wrapper(candle: TradeAggregation) -> None:
-                await self.on_candle(symbol, candle)
-            
-            self._aggregators[symbol] = TradeAggregator(
-                symbol=symbol,
-                on_candle=on_candle_wrapper,
-            )
+        if symbol in self._aggregators:
+            return self._aggregators[symbol]
+        
+        # Create wrapper callback that includes symbol
+        async def on_candle_wrapper(candle: TradeAggregation) -> None:
+            await self.on_candle(symbol, candle)
+        
+        self._aggregators[symbol] = TradeAggregator(
+            symbol=symbol,
+            on_candle=on_candle_wrapper,
+        )
         
         return self._aggregators[symbol]
     
@@ -384,7 +388,8 @@ class MultiSymbolAggregator:
             symbol: Symbol name
             trade: Trade to add
         """
-        aggregator = self._get_aggregator(symbol)
+        async with self._lock:
+            aggregator = self._get_aggregator(symbol)
         await aggregator.add_trade(trade)
 
     async def tick_all(self, now: datetime) -> int:

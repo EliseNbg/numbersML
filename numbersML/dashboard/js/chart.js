@@ -3,8 +3,8 @@
  * 
  * Handles:
  * - TradingView Lightweight Charts integration
- * - Candlestick chart display
- * - Indicator overlays (SMA, EMA, RSI)
+ * - Candlestick chart display from /api/candles
+ * - Indicator overlays (SMA, EMA, RSI) from /api/candles/indicators
  */
 
 // API Base URL
@@ -13,31 +13,30 @@ const API_BASE = '/api';
 // Chart instance
 let chart = null;
 let candleSeries = null;
-let indicatorSeries = [];
+let indicatorSeries = {};
+
+// Time range to seconds mapping
+const RANGE_SECONDS = {
+    '1m': 60,
+    '5m': 300,
+    '15m': 900,
+    '1h': 3600,
+    '4h': 14400,
+    '1d': 86400,
+};
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Chart page initialized');
-    
-    // Initialize chart
     initChart();
-    
-    // Load symbols for dropdown
     loadSymbols();
-    
-    // Setup event handlers
     setupEventHandlers();
 });
 
-/**
- * Initialize TradingView chart
- */
 function initChart() {
     const container = document.getElementById('chart-container');
-    
     if (!container) return;
-    
-    // Create chart
+
     chart = LightweightCharts.createChart(container, {
         width: container.clientWidth,
         height: 600,
@@ -46,27 +45,20 @@ function initChart() {
             textColor: '#333',
         },
         grid: {
-            vertLines: {
-                color: '#f0f0f0',
-            },
-            horzLines: {
-                color: '#f0f0f0',
-            },
+            vertLines: { color: '#f0f0f0' },
+            horzLines: { color: '#f0f0f0' },
         },
         crosshair: {
             mode: LightweightCharts.CrosshairMode.Normal,
         },
-        rightPriceScale: {
-            borderColor: '#ccc',
-        },
+        rightPriceScale: { borderColor: '#ccc' },
         timeScale: {
             borderColor: '#ccc',
             timeVisible: true,
-            secondsVisible: false,
+            secondsVisible: true,
         },
     });
-    
-    // Create candlestick series
+
     candleSeries = chart.addCandlestickSeries({
         upColor: '#26a69a',
         downColor: '#ef5350',
@@ -74,214 +66,173 @@ function initChart() {
         wickUpColor: '#26a69a',
         wickDownColor: '#ef5350',
     });
-    
-    // Handle resize
+
     window.addEventListener('resize', () => {
         chart.resize(container.clientWidth, 600);
     });
 }
 
-/**
- * Load symbols for dropdown
- */
 async function loadSymbols() {
     try {
-        const response = await fetch(`${API_BASE}/symbols?active_only=true`);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-        
+        const response = await fetch(`${API_BASE}/symbols`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
         const symbols = await response.json();
-        
+        const activeSymbols = symbols.filter(s => s.is_active);
+
         const select = document.getElementById('chart-symbol');
         select.innerHTML = '<option value="">Select symbol...</option>' +
-            symbols.map(s => `<option value="${s.symbol}">${s.symbol}</option>`).join('');
-        
+            activeSymbols.map(s => `<option value="${s.symbol}">${s.symbol}</option>`).join('');
+
     } catch (error) {
         console.error('Failed to load symbols:', error);
     }
 }
 
-/**
- * Setup event handlers
- */
 function setupEventHandlers() {
     document.getElementById('btn-load-chart')?.addEventListener('click', loadChartData);
-    document.getElementById('btn-add-sma')?.addEventListener('click', () => addIndicator('SMA'));
-    document.getElementById('btn-add-ema')?.addEventListener('click', () => addIndicator('EMA'));
-    document.getElementById('btn-add-rsi')?.addEventListener('click', () => addIndicator('RSI'));
+    document.getElementById('chart-symbol')?.addEventListener('change', loadChartData);
+    document.getElementById('btn-add-sma')?.addEventListener('click', () => toggleIndicator('sma'));
+    document.getElementById('btn-add-ema')?.addEventListener('click', () => toggleIndicator('ema'));
+    document.getElementById('btn-add-rsi')?.addEventListener('click', () => toggleIndicator('rsi'));
 }
 
-/**
- * Load chart data
- */
 async function loadChartData() {
     const symbol = document.getElementById('chart-symbol')?.value;
     const range = document.getElementById('chart-range')?.value || '1h';
-    
+
     if (!symbol) {
-        alert('Please select a symbol');
+        candleSeries.setData([]);
+        clearIndicators();
         return;
     }
-    
-    console.log(`Loading chart for ${symbol} (${range})`);
-    
-    // TODO: Implement API endpoint for chart data
-    // For now, show sample data
-    loadSampleData();
-}
 
-/**
- * Load sample data (placeholder until API is ready)
- */
-function loadSampleData() {
-    const now = Math.floor(Date.now() / 1000);
-    const data = [];
-    
-    let price = 50000;
-    for (let i = 100; i >= 0; i--) {
-        const time = now - (i * 3600);
-        const change = (Math.random() - 0.5) * 1000;
-        
-        const open = price;
-        const close = price + change;
-        const high = Math.max(open, close) + Math.random() * 500;
-        const low = Math.min(open, close) - Math.random() * 500;
-        
-        data.push({
-            time,
-            open,
-            high,
-            low,
-            close,
-        });
-        
-        price = close;
+    const seconds = RANGE_SECONDS[range] || 3600;
+
+    try {
+        // Load candles
+        const candleResp = await fetch(`${API_BASE}/candles?symbol=${encodeURIComponent(symbol)}&seconds=${seconds}`);
+        if (!candleResp.ok) throw new Error(`HTTP ${candleResp.status}`);
+        const candles = await candleResp.json();
+
+        if (candles.length === 0) {
+            candleSeries.setData([]);
+            document.getElementById('chart-title').textContent = `${symbol} - No data yet`;
+            return;
+        }
+
+        // Convert to chart format (seconds timestamps)
+        const chartData = candles.map(c => ({
+            time: c.time,
+            open: c.open,
+            high: c.high,
+            low: c.low,
+            close: c.close,
+        }));
+
+        candleSeries.setData(chartData);
+        chart.timeScale().fitContent();
+
+        document.getElementById('chart-title').textContent = `${symbol} (${candles.length} candles, ${range})`;
+
+        // Reload indicator overlays
+        reloadIndicators(symbol, seconds);
+
+    } catch (error) {
+        console.error('Failed to load chart data:', error);
+        document.getElementById('chart-title').textContent = `Error: ${error.message}`;
     }
-    
-    candleSeries.setData(data);
-    
-    // Update title
-    document.getElementById('chart-title').textContent = 'Sample Data - Select API endpoint';
 }
 
-/**
- * Add indicator overlay
- */
-function addIndicator(type) {
-    console.log(`Adding indicator: ${type}`);
-    
-    // TODO: Calculate indicator values
-    // For now, show placeholder
-    alert(`${type} indicator - API endpoint needed for calculation`);
-    
-    // Update active indicators list
+async function reloadIndicators(symbol, seconds) {
+    try {
+        const resp = await fetch(`${API_BASE}/candles/indicators?symbol=${encodeURIComponent(symbol)}&seconds=${seconds}`);
+        if (!resp.ok) return;
+
+        const indicators = await resp.json();
+        if (indicators.length === 0) return;
+
+        // Update each active indicator overlay
+        for (const [name, series] of Object.entries(indicatorSeries)) {
+            const data = indicators
+                .filter(i => i.values[name] !== undefined && !isNaN(i.values[name]))
+                .map(i => ({ time: i.time, value: i.values[name] }));
+
+            if (data.length > 0) {
+                series.setData(data);
+            }
+        }
+
+    } catch (error) {
+        console.error('Failed to load indicators:', error);
+    }
+}
+
+function toggleIndicator(name) {
+    if (indicatorSeries[name]) {
+        // Remove
+        chart.removeSeries(indicatorSeries[name]);
+        delete indicatorSeries[name];
+    } else {
+        // Add
+        const colors = {
+            sma: '#2196F3',
+            ema: '#FF9800',
+            rsi: '#9C27B0',
+            atr: '#795548',
+            upper: '#E91E63',
+            lower: '#E91E63',
+            middle: '#E91E63',
+            std: '#607D8B',
+            macd: '#3F51B5',
+            signal: '#009688',
+            histogram: '#FF5722',
+        };
+
+        if (name === 'rsi' || name === 'atr') {
+            // These need a separate pane - add as line on main chart for now
+            indicatorSeries[name] = chart.addLineSeries({
+                color: colors[name] || '#999',
+                lineWidth: 2,
+                priceScaleId: 'right',
+                title: name.toUpperCase(),
+            });
+        } else {
+            indicatorSeries[name] = chart.addLineSeries({
+                color: colors[name] || '#999',
+                lineWidth: 2,
+                title: name.toUpperCase(),
+            });
+        }
+    }
+
+    updateIndicatorBadges();
+
+    // Reload data if symbol is selected
+    const symbol = document.getElementById('chart-symbol')?.value;
+    if (symbol) {
+        loadChartData();
+    }
+}
+
+function clearIndicators() {
+    for (const [name, series] of Object.entries(indicatorSeries)) {
+        chart.removeSeries(series);
+    }
+    indicatorSeries = {};
+    updateIndicatorBadges();
+}
+
+function updateIndicatorBadges() {
     const container = document.getElementById('active-indicators');
-    const badge = document.createElement('span');
-    badge.className = 'badge bg-primary';
-    badge.textContent = type;
-    container.innerHTML = '';
-    container.appendChild(badge);
-}
+    const names = Object.keys(indicatorSeries);
 
-/**
- * Calculate SMA
- */
-function calculateSMA(data, period) {
-    const result = [];
-    
-    for (let i = period - 1; i < data.length; i++) {
-        const sum = data.slice(i - period + 1, i + 1)
-            .reduce((acc, d) => acc + d.close, 0);
-        
-        result.push({
-            time: data[i].time,
-            value: sum / period,
-        });
+    if (names.length === 0) {
+        container.innerHTML = '<span class="text-muted">No indicators added</span>';
+        return;
     }
-    
-    return result;
-}
 
-/**
- * Calculate EMA
- */
-function calculateEMA(data, period) {
-    const result = [];
-    const k = 2 / (period + 1);
-    
-    // First EMA is SMA
-    let ema = data.slice(0, period)
-        .reduce((acc, d) => acc + d.close, 0) / period;
-    
-    result.push({
-        time: data[period - 1].time,
-        value: ema,
-    });
-    
-    // Calculate remaining EMAs
-    for (let i = period; i < data.length; i++) {
-        ema = data[i].close * k + ema * (1 - k);
-        result.push({
-            time: data[i].time,
-            value: ema,
-        });
-    }
-    
-    return result;
-}
-
-/**
- * Calculate RSI
- */
-function calculateRSI(data, period = 14) {
-    const result = [];
-    let gains = 0;
-    let losses = 0;
-    
-    // Calculate initial average gain/loss
-    for (let i = 1; i <= period; i++) {
-        const change = data[i].close - data[i - 1].close;
-        if (change > 0) {
-            gains += change;
-        } else {
-            losses -= change;
-        }
-    }
-    
-    let avgGain = gains / period;
-    let avgLoss = losses / period;
-    
-    // First RSI
-    const rs = avgGain / avgLoss;
-    const rsi = 100 - (100 / (1 + rs));
-    
-    result.push({
-        time: data[period].time,
-        value: rsi,
-    });
-    
-    // Calculate remaining RSIs
-    for (let i = period + 1; i < data.length; i++) {
-        const change = data[i].close - data[i - 1].close;
-        
-        if (change > 0) {
-            avgGain = (avgGain * (period - 1) + change) / period;
-            avgLoss = (avgLoss * (period - 1)) / period;
-        } else {
-            avgGain = (avgGain * (period - 1)) / period;
-            avgLoss = (avgLoss * (period - 1) - change) / period;
-        }
-        
-        const rs = avgGain / avgLoss;
-        const rsi = 100 - (100 / (1 + rs));
-        
-        result.push({
-            time: data[i].time,
-            value: rsi,
-        });
-    }
-    
-    return result;
+    container.innerHTML = names.map(name => 
+        `<span class="badge bg-primary" style="cursor:pointer" onclick="toggleIndicator('${name}')">${name.toUpperCase()} <i class="bi bi-x"></i></span>`
+    ).join('');
 }
