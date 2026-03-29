@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict kk2Mqcjqi3tJr9k9v3li1gQn5q9BQsy9wMSFzckzbSJcbWfl4MToK62y9XrNq4G
+\restrict 8PaGef6ILcScLp79wsyXJMEQiaJvPgwWIkgLfrWcXorwHblBGr9cAU2brLeZpdr
 
 -- Dumped from database version 15.17
 -- Dumped by pg_dump version 17.9 (Ubuntu 17.9-0ubuntu0.25.10.1)
@@ -349,7 +349,8 @@ CREATE TABLE public.candles_1s (
     last_trade_id bigint DEFAULT 0 NOT NULL,
     created_at timestamp without time zone DEFAULT now(),
     updated_at timestamp without time zone DEFAULT now(),
-    processed boolean DEFAULT false NOT NULL
+    processed boolean DEFAULT false NOT NULL,
+    target_value double precision
 );
 
 
@@ -1399,6 +1400,13 @@ CREATE INDEX idx_candles_1s_not_processed ON public.candles_1s USING btree ("tim
 
 
 --
+-- Name: idx_candles_1s_target; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_candles_1s_target ON public.candles_1s USING btree (symbol_id, "time") WHERE (target_value IS NOT NULL);
+
+
+--
 -- Name: idx_collection_config_collecting; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1769,5 +1777,5 @@ ALTER TABLE ONLY public.trades
 -- PostgreSQL database dump complete
 --
 
-\unrestrict kk2Mqcjqi3tJr9k9v3li1gQn5q9BQsy9wMSFzckzbSJcbWfl4MToK62y9XrNq4G
+\unrestrict 8PaGef6ILcScLp79wsyXJMEQiaJvPgwWIkgLfrWcXorwHblBGr9cAU2brLeZpdr
 
