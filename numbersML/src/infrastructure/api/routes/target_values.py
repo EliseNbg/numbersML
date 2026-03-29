@@ -84,12 +84,14 @@ async def calculate_target_values(
     window_size: int = Query(default=300, ge=1, le=5000),
     from_time: Optional[str] = Query(default=None, description="Start time (YYYY-MM-DD HH:MM:SS)"),
     to_time: Optional[str] = Query(default=None, description="End time (YYYY-MM-DD HH:MM:SS)"),
+    hours: Optional[int] = Query(default=None, ge=1, le=168, description="Calculate last N hours"),
 ) -> Dict[str, Any]:
     """
     Calculate and store target values in candles_1s.target_value.
 
-    Processes all candles for the symbol in the time range.
-    Uses Hanning filter with given window_size.
+    Processes candles for the symbol. The Hanning filter needs the full
+    history for correct edge values. Only candles in the time range are
+    stored with target_value.
     """
     db_pool = await get_db_pool_async()
 
@@ -100,16 +102,17 @@ async def calculate_target_values(
         if not symbol_id:
             return {'error': f'Symbol not found: {symbol}', 'updated': 0}
 
-        # Build query
-        if from_time:
-            from_dt = datetime.strptime(from_time, '%Y-%m-%d %H:%M:%S')
+        # Build time range
+        now = datetime.now(timezone.utc)
+        if hours is not None:
+            from_dt = now - timedelta(hours=hours)
+            to_dt = now
+        elif from_time:
+            from_dt = datetime.strptime(from_time, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
+            to_dt = datetime.strptime(to_time, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc) if to_time else now
         else:
-            from_dt = datetime(2020, 1, 1)
-
-        if to_time:
-            to_dt = datetime.strptime(to_time, '%Y-%m-%d %H:%M:%S')
-        else:
-            to_dt = datetime(2100, 1, 1)
+            from_dt = datetime(2020, 1, 1, tzinfo=timezone.utc)
+            to_dt = now
 
         # Load ALL candles for this symbol (need history for edges)
         rows = await conn.fetch(
