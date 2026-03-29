@@ -19,8 +19,9 @@ Architecture:
 
 import json
 import logging
+import math
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import asyncpg
 
@@ -58,6 +59,7 @@ class WideVectorService:
         self.db_pool = db_pool
         self._active_symbols: List[Tuple[int, str]] = active_symbols or []
         self._indicator_keys: List[str] = []
+        self._external_provider = self._load_external_provider()
 
     async def load_symbols(self) -> None:
         """Load active symbols from DB."""
@@ -72,6 +74,22 @@ class WideVectorService:
             self._active_symbols = [(r['id'], r['symbol']) for r in rows]
 
         logger.info(f"Loaded {len(self._active_symbols)} active symbols")
+
+    @staticmethod
+    def _load_external_provider():
+        """
+        Load external data provider function from src/external/data_provider.py.
+
+        Returns:
+            get_features(candles, candle_time) -> Dict[str, float], or None
+        """
+        try:
+            from src.external.data_provider import get_features
+            logger.info("Loaded external data provider")
+            return get_features
+        except (ImportError, AttributeError):
+            logger.debug("No external data provider found")
+            return None
 
     async def generate(
         self,
@@ -158,21 +176,45 @@ class WideVectorService:
             for sid, sname in self._active_symbols:
                 cd = candle_data.get(sname, {})
                 ind = indicator_data.get(sname, {})
+                col_sname = sname.replace('/', '_')
 
                 # Candle features
                 for feat in self.CANDLE_FEATURES:
                     vector.append(cd.get(feat, 0.0))
-                    column_names.append(f"{sname}_{feat}")
+                    column_names.append(f"{col_sname}_{feat}")
 
                 # Indicator features
                 for ikey in sorted_indicator_keys:
                     vector.append(ind.get(ikey, 0.0))
-                    column_names.append(f"{sname}_{ikey}")
+                    column_names.append(f"{col_sname}_{ikey}")
 
             if not vector:
                 return None
 
-            # 5. Store in wide_vectors
+            # 5. Call external data provider
+            external_features: Dict[str, float] = {}
+            if self._external_provider:
+                try:
+                    # Build normalized candles dict for provider (BTC_USDC, ETH_USDC, ...)
+                    provider_candles = {
+                        sname.replace('/', '_'): cd
+                        for sname, cd in candle_data.items()
+                    }
+                    external_features = self._external_provider(
+                        provider_candles, candle_time
+                    )
+                except Exception as e:
+                    logger.error(f"External provider error: {e}")
+                    external_features = {}
+
+            for key, value in external_features.items():
+                if value is not None and not (isinstance(value, float) and (
+                    math.isnan(value) or math.isinf(value)
+                )):
+                    vector.append(float(value))
+                    column_names.append(key)
+
+            # 6. Store in wide_vectors
             await conn.execute(
                 """
                 INSERT INTO wide_vectors (time, vector, column_names, symbols,

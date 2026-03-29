@@ -114,8 +114,8 @@ class TestWideVectorService:
 
         # Check column order
         assert result['column_names'] == [
-            'BTC/USDC_close', 'BTC/USDC_volume', 'BTC/USDC_rsi', 'BTC/USDC_sma',
-            'ETH/USDC_close', 'ETH/USDC_volume', 'ETH/USDC_rsi', 'ETH/USDC_sma',
+            'BTC_USDC_close', 'BTC_USDC_volume', 'BTC_USDC_rsi', 'BTC_USDC_sma',
+            'ETH_USDC_close', 'ETH_USDC_volume', 'ETH_USDC_rsi', 'ETH_USDC_sma',
         ]
 
         # Check vector values
@@ -244,3 +244,137 @@ class TestWideVectorService:
         assert result['vector'][2] == 65.0    # BTC rsi
         assert result['vector'][5] == 0.0     # ETH rsi (missing)
         assert result['vector'][3] == 3500.0  # ETH close (from candles)
+
+    @pytest.mark.asyncio
+    async def test_generate_with_external_provider(
+        self, mock_db_pool: MagicMock
+    ) -> None:
+        """Test that external provider features are appended to vector."""
+        now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=timezone.utc)
+
+        candle_rows = [
+            {'symbol_id': 58, 'symbol': 'BTC/USDC',
+             'close': Decimal('67000'), 'volume': Decimal('1.5')},
+        ]
+        indicator_rows = []
+
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(side_effect=[candle_rows, indicator_rows])
+        mock_conn.execute = AsyncMock()
+        mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
+
+        def mock_provider(candles, candle_time):
+            return {'my_feature': 42.0, 'another_feature': 3.14}
+
+        service = WideVectorService(
+            mock_db_pool,
+            [(58, 'BTC/USDC')],
+        )
+        service._external_provider = mock_provider
+
+        result = await service.generate(now)
+
+        assert result is not None
+        # [BTC_close, BTC_vol, my_feature, another_feature]
+        assert result['vector_size'] == 4
+        assert result['vector'][2] == 42.0
+        assert result['vector'][3] == 3.14
+        assert 'my_feature' in result['column_names']
+        assert 'another_feature' in result['column_names']
+
+    @pytest.mark.asyncio
+    async def test_external_provider_receives_normalized_keys(
+        self, mock_db_pool: MagicMock
+    ) -> None:
+        """Test that external provider gets BTC_USDC not BTC/USDC."""
+        now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=timezone.utc)
+
+        candle_rows = [
+            {'symbol_id': 58, 'symbol': 'BTC/USDC',
+             'close': Decimal('67000'), 'volume': Decimal('1.5')},
+        ]
+        indicator_rows = []
+
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(side_effect=[candle_rows, indicator_rows])
+        mock_conn.execute = AsyncMock()
+        mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
+
+        received_candles = {}
+
+        def mock_provider(candles, candle_time):
+            received_candles.update(candles)
+            return {}
+
+        service = WideVectorService(
+            mock_db_pool,
+            [(58, 'BTC/USDC')],
+        )
+        service._external_provider = mock_provider
+
+        await service.generate(now)
+
+        assert 'BTC_USDC' in received_candles
+        assert 'BTC/USDC' not in received_candles
+
+    @pytest.mark.asyncio
+    async def test_external_provider_error_handled(
+        self, mock_db_pool: MagicMock
+    ) -> None:
+        """Test that external provider exception does not break vector generation."""
+        now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=timezone.utc)
+
+        candle_rows = [
+            {'symbol_id': 58, 'symbol': 'BTC/USDC',
+             'close': Decimal('67000'), 'volume': Decimal('1.5')},
+        ]
+        indicator_rows = []
+
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(side_effect=[candle_rows, indicator_rows])
+        mock_conn.execute = AsyncMock()
+        mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
+
+        def bad_provider(candles, candle_time):
+            raise ValueError("External API down")
+
+        service = WideVectorService(
+            mock_db_pool,
+            [(58, 'BTC/USDC')],
+        )
+        service._external_provider = bad_provider
+
+        result = await service.generate(now)
+
+        # Should still succeed without external features
+        assert result is not None
+        assert result['vector_size'] == 2  # Only close + volume
+
+    @pytest.mark.asyncio
+    async def test_no_external_provider_works(
+        self, mock_db_pool: MagicMock
+    ) -> None:
+        """Test that None provider works normally."""
+        now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=timezone.utc)
+
+        candle_rows = [
+            {'symbol_id': 58, 'symbol': 'BTC/USDC',
+             'close': Decimal('67000'), 'volume': Decimal('1.5')},
+        ]
+        indicator_rows = []
+
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(side_effect=[candle_rows, indicator_rows])
+        mock_conn.execute = AsyncMock()
+        mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
+
+        service = WideVectorService(
+            mock_db_pool,
+            [(58, 'BTC/USDC')],
+        )
+        service._external_provider = None
+
+        result = await service.generate(now)
+
+        assert result is not None
+        assert result['vector_size'] == 2

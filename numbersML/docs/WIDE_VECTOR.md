@@ -139,7 +139,7 @@ result = await service.generate(candle_time)
 # result = {
 #     'time': datetime(...),
 #     'vector': [67000.0, 1.5, 65.0, ...],
-#     'column_names': ['BTC/USDC_close', 'BTC/USDC_volume', ...],
+#     'column_names': ['BTC_USDC_close', 'BTC_USDC_volume', ...],
 #     'symbol_count': 4,
 #     'indicator_count': 8,
 #     'vector_size': 52,
@@ -196,3 +196,50 @@ async def load_training_data(db_url, from_time, to_time):
     column_names = list(rows[0]['column_names']) if rows else []
     return np.array(vectors, dtype=np.float32), column_names
 ```
+
+## External Data Provider
+
+Add custom features to the wide vector from external sources.
+
+### 1. Edit `src/external/data_provider.py`
+
+```python
+from datetime import datetime
+from typing import Dict
+
+def get_features(
+    candles: Dict[str, Dict[str, float]],
+    candle_time: datetime,
+) -> Dict[str, float]:
+    """
+    candles = {
+        "BTC_USDC": {"close": 67000.0, "volume": 1.5},
+        "ETH_USDC": {"close": 3500.0, "volume": 10.0},
+        ...
+    }
+    """
+    # Your custom logic
+    btc = candles.get("BTC_USDC", {}).get("close", 0)
+    eth = candles.get("ETH_USDC", {}).get("close", 0)
+    ratio = btc / eth if eth > 0 else 0
+
+    return {"btc_eth_ratio": ratio}
+```
+
+### 2. Vector layout with external features
+
+```
+[BTC_USDC_close, BTC_USDC_vol, BTC_USDC_rsi, ...,
+ ETH_USDC_close, ETH_USDC_vol, ETH_USDC_rsi, ...,
+ btc_eth_ratio]
+ ^--- per-symbol features ---^  ^-- external --^
+```
+
+### 3. Notes
+
+- Function must be **sync** (no `async`/`await`)
+- Must **never raise** exceptions (catch and return `{}`)
+- Keys must be **unique** (not colliding with `{symbol}_{field}` format)
+- Values must be **floats** (no `None`, no strings)
+- If file doesn't exist or function is missing, pipeline runs without external features
+- Called once per second during wide vector generation
