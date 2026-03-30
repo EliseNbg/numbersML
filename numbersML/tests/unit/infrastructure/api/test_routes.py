@@ -16,6 +16,10 @@ from src.infrastructure.api.routes.dashboard import router as dashboard_router
 from src.infrastructure.api.routes.symbols import router as symbols_router
 from src.infrastructure.api.routes.indicators import router as indicators_router
 from src.infrastructure.api.routes.config import router as config_router
+from src.infrastructure.api.routes.ml import router as ml_router
+from src.infrastructure.api.routes.candles import router as candles_router
+from src.infrastructure.api.routes.target_values import router as target_values_router
+from src.infrastructure.api.routes.pipeline import router as pipeline_router
 
 
 class TestDashboardRoutes:
@@ -215,4 +219,142 @@ class TestConfigRoutes:
         
         # Valid limit
         response = client.get("/api/config/system_config?limit=50")
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
+
+
+class TestMLRoutes:
+    """Test ML prediction API routes."""
+    
+    @pytest.fixture
+    def app(self) -> FastAPI:
+        """Create test app with ML routes."""
+        app = FastAPI()
+        app.include_router(ml_router)
+        return app
+    
+    @pytest.fixture
+    def client(self, app: FastAPI) -> TestClient:
+        """Create test client."""
+        return TestClient(app, raise_server_exceptions=False)
+    
+    def test_routes_registered(self, client: TestClient) -> None:
+        """Test that routes are registered."""
+        response = client.get("/api/ml/models")
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
+        
+        response = client.get("/api/ml/predict?symbol=BTC/USDC")
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
+    
+    def test_predict_validation(self, client: TestClient) -> None:
+        """Test prediction endpoint validation."""
+        # Missing symbol - returns 422 (validation error)
+        response = client.get("/api/ml/predict")
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        
+        # Invalid hours (too low) - returns 422
+        response = client.get("/api/ml/predict?symbol=BTC/USDC&hours=0")
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        
+        # Invalid hours (too high) - returns 422
+        response = client.get("/api/ml/predict?symbol=BTC/USDC&hours=200")
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
+class TestCandleRoutes:
+    """Test candle API routes."""
+    
+    @pytest.fixture
+    def app(self) -> FastAPI:
+        """Create test app with candle routes."""
+        app = FastAPI()
+        app.include_router(candles_router)
+        return app
+    
+    @pytest.fixture
+    def client(self, app: FastAPI) -> TestClient:
+        """Create test client."""
+        return TestClient(app, raise_server_exceptions=False)
+    
+    def test_routes_registered(self, client: TestClient) -> None:
+        """Test that routes are registered."""
+        response = client.get("/api/candles?symbol=BTC/USDC")
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
+        
+        response = client.get("/api/candles/indicators?symbol=BTC/USDC")
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
+    
+    def test_candles_validation(self, client: TestClient) -> None:
+        """Test candles endpoint validation."""
+        # Missing symbol - returns 422 (validation error)
+        response = client.get("/api/candles")
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        
+        # Invalid seconds (too low) - returns 422
+        response = client.get("/api/candles?symbol=BTC/USDC&seconds=0")
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        
+        # Invalid seconds (too high) - returns 422
+        response = client.get("/api/candles?symbol=BTC/USDC&seconds=100000")
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
+class TestTargetValueRoutes:
+    """Test target value API routes."""
+    
+    @pytest.fixture
+    def app(self) -> FastAPI:
+        """Create test app with target value routes."""
+        app = FastAPI()
+        app.include_router(target_values_router)
+        return app
+    
+    @pytest.fixture
+    def client(self, app: FastAPI) -> TestClient:
+        """Create test client."""
+        return TestClient(app, raise_server_exceptions=False)
+    
+    def test_routes_registered(self, client: TestClient) -> None:
+        """Test that routes are registered."""
+        response = client.get("/api/target-values?symbol=BTC/USDC")
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
+    
+    def test_target_values_validation(self, client: TestClient) -> None:
+        """Test target values endpoint validation."""
+        # Missing symbol - returns 422 (validation error)
+        response = client.get("/api/target-values")
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        
+        # Invalid hours (too low) - returns 422
+        response = client.get("/api/target-values?symbol=BTC/USDC&hours=0")
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        
+        # Invalid hours (too high) - returns 422
+        response = client.get("/api/target-values?symbol=BTC/USDC&hours=2000")
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
+class TestPipelineRoutes:
+    """Test pipeline API routes."""
+    
+    @pytest.fixture
+    def app(self) -> FastAPI:
+        """Create test app with pipeline routes."""
+        app = FastAPI()
+        app.include_router(pipeline_router)
+        return app
+    
+    @pytest.fixture
+    def client(self, app: FastAPI) -> TestClient:
+        """Create test client."""
+        return TestClient(app, raise_server_exceptions=False)
+    
+    def test_routes_registered(self, client: TestClient) -> None:
+        """Test that routes are registered."""
+        response = client.get("/api/pipeline/status")
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
+        
+        response = client.get("/api/pipeline/symbols")
+        assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
+        
+        response = client.get("/api/pipeline/stats")
         assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED

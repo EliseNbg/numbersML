@@ -306,6 +306,49 @@ tensorboard --logdir ml/logs
 - Learning rate
 - Model parameters
 
+## API Server
+
+### Starting the Server
+
+**IMPORTANT:** Always use the venv Python to avoid torch import conflicts with system packages.
+
+```bash
+# Kill existing server
+pkill -f uvicorn
+
+# Start with venv Python (REQUIRED - system python3 will fail with torch errors)
+nohup .venv/bin/python -m uvicorn src.infrastructure.api.app:app --host 0.0.0.0 --port 8000 > /tmp/uvicorn.log 2>&1 &
+
+# Check server status
+curl http://localhost:8000/health
+```
+
+### Why venv Python is Required
+
+The system Python has a different version of torch installed that conflicts with the venv torch. Using `python3` instead of `.venv/bin/python` will cause this error:
+
+```
+ImportError: /lib/x86_64-linux-gnu/libtorch_cpu.so.2.6: undefined symbol: _ZN4gloo10rendezvous5StoreD2Ev
+```
+
+### API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/ml/models` | List available trained models |
+| `GET /api/ml/predict?symbol=BTC/USDC&hours=2` | Run ML prediction |
+| `GET /dashboard/prediction.html` | Prediction dashboard |
+
+### Dashboard
+
+Access the prediction dashboard at: `http://localhost:8000/dashboard/prediction.html`
+
+Features:
+- Symbol selector (BTC/USDC, ETH/USDC, etc.)
+- Model selector (best_model.pt, checkpoint.pt)
+- Time range selector (2H, 12H, 1D, 3D, 7D)
+- Chart with candlestick, target values, and ML predictions
+
 ## Troubleshooting
 
 ### Out of Memory

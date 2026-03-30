@@ -325,3 +325,179 @@ class TestOpenAPIDocs:
         
         assert response.status_code == 200
         assert "ReDoc" in response.text or "redoc" in response.text.lower()
+
+
+class TestCandleEndpoints:
+    """Test candle API endpoints."""
+    
+    @pytest.mark.asyncio
+    async def test_get_candles_missing_symbol(self, client: AsyncClient) -> None:
+        """Test getting candles without symbol parameter."""
+        response = await client.get("/api/candles")
+        
+        # Should return 422 (validation error) for missing required parameter
+        assert response.status_code == 422
+    
+    @pytest.mark.asyncio
+    async def test_get_candles_with_symbol(self, client: AsyncClient) -> None:
+        """Test getting candles for a symbol."""
+        response = await client.get("/api/candles?symbol=BTC/USDC&seconds=60")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Should return list
+        assert isinstance(data, list)
+    
+    @pytest.mark.asyncio
+    async def test_get_candles_invalid_seconds(self, client: AsyncClient) -> None:
+        """Test getting candles with invalid seconds parameter."""
+        response = await client.get("/api/candles?symbol=BTC/USDC&seconds=0")
+        
+        # Should return 422 (validation error)
+        assert response.status_code == 422
+    
+    @pytest.mark.asyncio
+    async def test_get_candles_seconds_too_high(self, client: AsyncClient) -> None:
+        """Test getting candles with seconds too high."""
+        response = await client.get("/api/candles?symbol=BTC/USDC&seconds=100000")
+        
+        # Should return 422 (validation error)
+        assert response.status_code == 422
+    
+    @pytest.mark.asyncio
+    async def test_get_candle_indicators(self, client: AsyncClient) -> None:
+        """Test getting candle indicators."""
+        response = await client.get("/api/candles/indicators?symbol=BTC/USDC&seconds=60")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Should return list
+        assert isinstance(data, list)
+
+
+class TestTargetValueEndpoints:
+    """Test target value API endpoints."""
+    
+    @pytest.mark.asyncio
+    async def test_get_target_values_missing_symbol(self, client: AsyncClient) -> None:
+        """Test getting target values without symbol parameter."""
+        response = await client.get("/api/target-values")
+        
+        # Should return 422 (validation error) for missing required parameter
+        assert response.status_code == 422
+    
+    @pytest.mark.asyncio
+    async def test_get_target_values_with_symbol(self, client: AsyncClient) -> None:
+        """Test getting target values for a symbol."""
+        response = await client.get("/api/target-values?symbol=BTC/USDC&hours=2")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Should return list
+        assert isinstance(data, list)
+    
+    @pytest.mark.asyncio
+    async def test_get_target_values_invalid_hours(self, client: AsyncClient) -> None:
+        """Test getting target values with invalid hours parameter."""
+        response = await client.get("/api/target-values?symbol=BTC/USDC&hours=0")
+        
+        # Should return 422 (validation error)
+        assert response.status_code == 422
+    
+    @pytest.mark.asyncio
+    async def test_get_target_values_hours_too_high(self, client: AsyncClient) -> None:
+        """Test getting target values with hours too high."""
+        response = await client.get("/api/target-values?symbol=BTC/USDC&hours=2000")
+        
+        # Should return 422 (validation error)
+        assert response.status_code == 422
+
+
+class TestMLEndpoints:
+    """Test ML prediction API endpoints."""
+    
+    @pytest.mark.asyncio
+    async def test_list_models(self, client: AsyncClient) -> None:
+        """Test listing available ML models."""
+        response = await client.get("/api/ml/models")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Should return list
+        assert isinstance(data, list)
+    
+    @pytest.mark.asyncio
+    async def test_predict_missing_symbol(self, client: AsyncClient) -> None:
+        """Test prediction without symbol parameter."""
+        response = await client.get("/api/ml/predict")
+        
+        # Should return 422 (validation error) for missing required parameter
+        assert response.status_code == 422
+    
+    @pytest.mark.asyncio
+    async def test_predict_with_symbol(self, client: AsyncClient) -> None:
+        """Test prediction with symbol parameter."""
+        response = await client.get("/api/ml/predict?symbol=BTC/USDC&hours=2")
+        
+        # Should return 200 or 404/500 if model not found
+        assert response.status_code in [200, 404, 500]
+    
+    @pytest.mark.asyncio
+    async def test_predict_invalid_hours(self, client: AsyncClient) -> None:
+        """Test prediction with invalid hours parameter."""
+        response = await client.get("/api/ml/predict?symbol=BTC/USDC&hours=0")
+        
+        # Should return 422 (validation error)
+        assert response.status_code == 422
+    
+    @pytest.mark.asyncio
+    async def test_predict_hours_too_high(self, client: AsyncClient) -> None:
+        """Test prediction with hours too high."""
+        response = await client.get("/api/ml/predict?symbol=BTC/USDC&hours=200")
+        
+        # Should return 422 (validation error)
+        assert response.status_code == 422
+
+
+class TestPipelineEndpoints:
+    """Test pipeline API endpoints."""
+    
+    @pytest.mark.asyncio
+    async def test_get_pipeline_status(self, client: AsyncClient) -> None:
+        """Test getting pipeline status."""
+        response = await client.get("/api/pipeline/status")
+        
+        # Pipeline manager may not be initialized in test, so 503 is acceptable
+        assert response.status_code in [200, 503]
+        if response.status_code == 200:
+            data = response.json()
+            # Should have status fields
+            assert "is_running" in data or isinstance(data, dict)
+    
+    @pytest.mark.asyncio
+    async def test_get_pipeline_symbols(self, client: AsyncClient) -> None:
+        """Test getting pipeline symbols."""
+        response = await client.get("/api/pipeline/symbols")
+        
+        # Pipeline manager may not be initialized in test, so 503 is acceptable
+        assert response.status_code in [200, 503]
+        if response.status_code == 200:
+            data = response.json()
+            # Should return list
+            assert isinstance(data, list)
+    
+    @pytest.mark.asyncio
+    async def test_get_pipeline_stats(self, client: AsyncClient) -> None:
+        """Test getting pipeline statistics."""
+        response = await client.get("/api/pipeline/stats")
+        
+        # Pipeline manager may not be initialized in test, so 503 is acceptable
+        assert response.status_code in [200, 503]
+        if response.status_code == 200:
+            data = response.json()
+            # Should have stats fields
+            assert isinstance(data, dict)

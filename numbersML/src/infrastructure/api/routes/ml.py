@@ -1,0 +1,283 @@
+"""
+ML Prediction API endpoints.
+
+Provides REST API for ML model predictions:
+- GET /api/ml/models - List available trained models
+- GET /api/ml/predict?symbol=BTC/USDC&model=best_model.pt&hours=2 - Run prediction
+"""
+
+import os
+import json
+import sys
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, HTTPException, Query
+
+from src.infrastructure.database import get_db_pool_async
+
+router = APIRouter(prefix="/api/ml", tags=["ml"])
+
+# Cache for loaded models
+_model_cache: Dict[str, Any] = {}
+
+
+def _get_torch_and_model():
+    """Lazy import torch and model modules to avoid import errors in tests."""
+    import numpy as np
+    import torch
+    from ml.config import DatabaseConfig, ModelConfig
+    from ml.model import create_model
+    return np, torch, DatabaseConfig, ModelConfig, create_model
+
+
+def _load_model(model_path: str) -> tuple:
+    """
+    Load model and normalization parameters.
+
+    Returns:
+        (model, mean, std, config, sequence_length)
+    """
+    np, torch, DatabaseConfig, ModelConfig, create_model = _get_torch_and_model()
+
+    if model_path in _model_cache:
+        return _model_cache[model_path]
+
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Model not found: {model_path}")
+
+    # Load checkpoint
+    checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
+    config = checkpoint["config"]
+
+    # Load normalization params
+    norm_path = os.path.join(os.path.dirname(model_path), "norm_params.npz")
+    if os.path.exists(norm_path):
+        norm_params = np.load(norm_path)
+        mean = norm_params["mean"]
+        std = norm_params["std"]
+    else:
+        mean = None
+        std = None
+
+    # Determine model type and input dim from state dict keys
+    state_dict = checkpoint["model_state_dict"]
+    
+    if "input_proj.0.weight" in state_dict:
+        # Full model (CryptoTargetModel or CryptoTransformerModel)
+        input_dim = state_dict["input_proj.0.weight"].shape[1]
+        model_type = "full"
+    elif any(k.startswith("network.0.linear.weight") for k in state_dict.keys()):
+        # Simple model (SimpleMLPModel)
+        input_dim = state_dict["network.0.linear.weight"].shape[1]
+        model_type = "simple"
+    else:
+        # Try to infer from first weight
+        first_key = list(state_dict.keys())[0]
+        input_dim = state_dict[first_key].shape[1]
+        model_type = "simple"
+
+    # Create model and load weights
+    model = create_model(input_dim, config.model, model_type=model_type)
+    model.load_state_dict(state_dict)
+    model.eval()
+
+    seq_length = config.data.sequence_length
+
+    # Cache the loaded model
+    _model_cache[model_path] = (model, mean, std, config, seq_length)
+
+    return model, mean, std, config, seq_length
+
+
+@router.get(
+    "/models",
+    summary="List available ML models",
+    description="List all trained model files in ml/models/",
+)
+async def list_models() -> List[Dict[str, Any]]:
+    """
+    List available ML models.
+    """
+    models_dir = "ml/models"
+    if not os.path.exists(models_dir):
+        return []
+
+    models = []
+    for filename in os.listdir(models_dir):
+        if filename.endswith(".pt") and "norm" not in filename:
+            filepath = os.path.join(models_dir, filename)
+            stat = os.stat(filepath)
+            models.append(
+                {
+                    "name": filename,
+                    "path": filepath,
+                    "size_mb": round(stat.st_size / (1024 * 1024), 2),
+                    "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                }
+            )
+
+    return sorted(models, key=lambda x: x["modified"], reverse=True)
+
+
+@router.get(
+    "/predict",
+    summary="Run ML prediction",
+    description="Load model and run prediction for a symbol",
+)
+async def predict(
+    symbol: str = Query(..., description="Symbol name (e.g., 'BTC/USDC')"),
+    model: str = Query(default="best_model.pt", description="Model filename"),
+    hours: int = Query(default=2, ge=1, le=168, description="Hours of data to load"),
+) -> Dict[str, Any]:
+    """
+    Run ML prediction for a symbol.
+
+    Returns candles, target values, and ML predictions.
+    """
+    model_path = os.path.join("ml/models", model)
+
+    try:
+        ml_model, mean, std, config, seq_length = _load_model(model_path)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load model: {e}")
+
+    db_pool = await get_db_pool_async()
+
+    async with db_pool.acquire() as conn:
+        # Get symbol_id
+        symbol_id = await conn.fetchval(
+            "SELECT id FROM symbols WHERE symbol = $1", symbol
+        )
+        if not symbol_id:
+            raise HTTPException(status_code=404, detail=f"Symbol '{symbol}' not found")
+
+        # Time range - use latest available data instead of "now"
+        # First get the latest vector time
+        latest_vector_time = await conn.fetchval(
+            "SELECT MAX(time) FROM wide_vectors"
+        )
+        if not latest_vector_time:
+            raise HTTPException(status_code=404, detail="No wide vectors available")
+        
+        now = latest_vector_time.replace(tzinfo=None)
+        start_time = now - timedelta(hours=hours)
+
+        # Load candles
+        candle_rows = await conn.fetch(
+            """
+            SELECT time, open, high, low, close, volume
+            FROM candles_1s
+            WHERE symbol_id = $1 AND time >= $2 AND time < $3
+            ORDER BY time
+            """,
+            symbol_id,
+            start_time,
+            now,
+        )
+
+        # Load wide vectors for prediction
+        vector_rows = await conn.fetch(
+            """
+            SELECT time, vector
+            FROM wide_vectors
+            WHERE time >= $1 AND time < $2
+            ORDER BY time
+            """,
+            start_time,
+            now,
+        )
+
+    # Prepare candles data
+    candles = [
+        {
+            "time": int(r["time"].timestamp()),
+            "open": float(r["open"]),
+            "high": float(r["high"]),
+            "low": float(r["low"]),
+            "close": float(r["close"]),
+            "volume": float(r["volume"]),
+        }
+        for r in candle_rows
+    ]
+
+    # Calculate target values on-the-fly from candle data
+    # This ensures correlation between candles and targets
+    from src.pipeline.target_value import batch_calculate_numpy
+    import numpy as np
+
+    if candles:
+        close_prices = np.array([c["close"] for c in candles], dtype=np.float64)
+        target_values = batch_calculate_numpy(close_prices, window_size=20)
+        targets = [
+            {"time": c["time"], "value": round(float(tv), 8)}
+            for c, tv in zip(candles, target_values)
+        ]
+    else:
+        targets = []
+
+    # Run prediction on wide vectors
+    np, torch, _, _, _ = _get_torch_and_model()
+    predictions = []
+    if len(vector_rows) >= seq_length:
+        # Parse vectors
+        vectors = []
+        timestamps = []
+        prev_size = None
+
+        for row in vector_rows:
+            vec_json = row["vector"]
+            if isinstance(vec_json, str):
+                vec = np.array(json.loads(vec_json), dtype=np.float32)
+            else:
+                vec = np.array(vec_json, dtype=np.float32)
+
+            # Handle variable length
+            if prev_size is None:
+                prev_size = len(vec)
+            elif len(vec) != prev_size:
+                if len(vec) < prev_size:
+                    vec = np.pad(vec, (0, prev_size - len(vec)))
+                else:
+                    vec = vec[:prev_size]
+
+            vectors.append(vec)
+            timestamps.append(row["time"])
+
+        # Normalize (add epsilon to std to prevent division by zero)
+        if mean is not None and std is not None:
+            epsilon = 1e-8
+            std_safe = np.where(std < epsilon, epsilon, std)
+            vectors = [(v - mean) / std_safe for v in vectors]
+
+        # Sliding window prediction
+        with torch.no_grad():
+            for i in range(seq_length - 1, len(vectors)):
+                sequence = np.stack(vectors[i - seq_length + 1 : i + 1])
+                X = torch.from_numpy(sequence).unsqueeze(0)
+                
+                # Simple model only uses last timestep, but we pass full sequence
+                # The model internally handles this
+                prediction = ml_model(X).item()
+
+                predictions.append(
+                    {
+                        "time": int(timestamps[i].timestamp()),
+                        "predicted_target": round(prediction, 8),
+                    }
+                )
+
+    return {
+        "symbol": symbol,
+        "model": model,
+        "sequence_length": seq_length,
+        "hours_loaded": hours,
+        "candles_count": len(candles),
+        "targets_count": len(targets),
+        "predictions_count": len(predictions),
+        "candles": candles,
+        "targets": targets,
+        "predictions": predictions,
+    }

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chart - Crypto Trading Dashboard</title>
+    <title>ML Predictions - Crypto Trading Dashboard</title>
     
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -40,7 +40,7 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link active" href="chart.html">
+                        <a class="nav-link" href="chart.html">
                             <i class="bi bi-bar-chart-line"></i> Chart
                         </a>
                     </li>
@@ -50,7 +50,7 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="prediction.html">
+                        <a class="nav-link active" href="prediction.html">
                             <i class="bi bi-robot"></i> Predictions
                         </a>
                     </li>
@@ -69,73 +69,117 @@
         <!-- Header -->
         <div class="row mb-4">
             <div class="col-12">
-                <h1><i class="bi bi-bar-chart-line"></i> Price Chart</h1>
-                <p class="text-muted">Candlestick chart with technical indicators</p>
+                <h1><i class="bi bi-robot"></i> ML Predictions</h1>
+                <p class="text-muted">Compare candles, target values, and ML model predictions</p>
             </div>
         </div>
 
         <!-- Controls -->
         <div class="row mb-4">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label class="form-label">Symbol</label>
-                <select class="form-select" id="chart-symbol">
+                <select class="form-select" id="prediction-symbol">
                     <option value="">Select symbol...</option>
                 </select>
             </div>
-            <div class="col-md-4">
-                <label class="form-label">Time Range</label>
-                <select class="form-select" id="chart-range">
-                    <option value="1m">1 Minute</option>
-                    <option value="5m">5 Minutes</option>
-                    <option value="15m">15 Minutes</option>
-                    <option value="1h" selected>1 Hour</option>
-                    <option value="4h">4 Hours</option>
-                    <option value="1d">1 Day</option>
+            <div class="col-md-3">
+                <label class="form-label">Model</label>
+                <select class="form-select" id="prediction-model">
+                    <option value="">Select model...</option>
                 </select>
             </div>
-            <div class="col-md-4 d-flex align-items-end">
-                <button id="btn-load-chart" class="btn btn-primary w-100">
-                    <i class="bi bi-arrow-clockwise"></i> Load Chart
+            <div class="col-md-3">
+                <label class="form-label">Time Range</label>
+                <select class="form-select" id="prediction-hours">
+                    <option value="2">2 Hours</option>
+                    <option value="12">12 Hours</option>
+                    <option value="24" selected>1 Day</option>
+                    <option value="72">3 Days</option>
+                    <option value="168">7 Days</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button class="btn btn-primary w-100" id="btn-load-prediction">
+                    <i class="bi bi-play-fill"></i> Load & Predict
                 </button>
             </div>
         </div>
 
-        <!-- Chart Container -->
+        <!-- Status -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <div id="prediction-status" class="text-muted">
+                    <i class="bi bi-info-circle"></i> Select a symbol and model, then click "Load & Predict"
+                </div>
+            </div>
+        </div>
+
+        <!-- Legend -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="d-flex gap-4">
+                    <div>
+                        <span class="badge bg-secondary"><i class="bi bi-bar-chart"></i></span>
+                        <span>Candlestick (OHLC)</span>
+                    </div>
+                    <div>
+                        <span class="badge" style="background-color: #FF9800;"><i class="bi bi-graph-up"></i></span>
+                        <span>Target Value (Hanning filter)</span>
+                    </div>
+                    <div>
+                        <span class="badge" style="background-color: #2196F3;"><i class="bi bi-cpu"></i></span>
+                        <span>ML Prediction</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chart -->
         <div class="row">
             <div class="col-12">
                 <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <span id="chart-title">Price Chart</span>
-                        <div>
-                            <button class="btn btn-sm btn-outline-secondary" id="btn-add-sma">
-                                <i class="bi bi-graph-up"></i> SMA
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary" id="btn-add-ema">
-                                <i class="bi bi-graph-up-arrow"></i> EMA
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary" id="btn-add-rsi">
-                                <i class="bi bi-activity"></i> RSI
-                            </button>
-                        </div>
+                    <div class="card-header">
+                        <i class="bi bi-graph-up"></i> Price Chart with ML Predictions
                     </div>
-                    <div class="card-body p-0">
+                    <div class="card-body">
                         <div id="chart-container" style="height: 600px;"></div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Indicator Overlays -->
+        <!-- Statistics -->
         <div class="row mt-4">
-            <div class="col-12">
+            <div class="col-md-4">
                 <div class="card">
                     <div class="card-header">
-                        <i class="bi bi-layers"></i> Active Indicators
+                        <i class="bi bi-bar-chart"></i> Candles
                     </div>
                     <div class="card-body">
-                        <div id="active-indicators" class="d-flex gap-2">
-                            <span class="text-muted">No indicators added</span>
-                        </div>
+                        <h3 id="stat-candles">-</h3>
+                        <p class="text-muted mb-0">OHLC data points</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-bullseye"></i> Target Values
+                    </div>
+                    <div class="card-body">
+                        <h3 id="stat-targets">-</h3>
+                        <p class="text-muted mb-0">Hanning-filtered values</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-robot"></i> ML Predictions
+                    </div>
+                    <div class="card-body">
+                        <h3 id="stat-predictions">-</h3>
+                        <p class="text-muted mb-0">Model predictions</p>
                     </div>
                 </div>
             </div>
@@ -146,7 +190,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <!-- TradingView Lightweight Charts -->
     <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
-    <!-- Chart JS -->
-    <script src="js/chart.js"></script>
+    <!-- Page-specific JS -->
+    <script src="js/prediction.js"></script>
 </body>
 </html>
