@@ -46,6 +46,7 @@ class WideVectorDataset(Dataset):
         end_time: datetime,
         mean: Optional[np.ndarray] = None,
         std: Optional[np.ndarray] = None,
+        feature_mask: Optional[np.ndarray] = None,
         sequence_length: int = 60,
     ):
         self.db_config = db_config
@@ -65,9 +66,23 @@ class WideVectorDataset(Dataset):
             all_vectors = np.vstack(self.vectors)
             self.mean = np.mean(all_vectors, axis=0)
             self.std = np.std(all_vectors, axis=0) + 1e-8
+            
+            # Filter out low-variance features (std < 0.01)
+            # These features provide no information for learning
+            min_std = 0.01
+            self.feature_mask = self.std >= min_std
+            n_features = self.feature_mask.sum()
+            print(f"Filtering features: {n_features}/{len(self.std)} kept (std >= {min_std})")
+            
+            # Apply mask to mean and std
+            self.mean = self.mean[self.feature_mask]
+            self.std = self.std[self.feature_mask]
+        else:
+            # If mean/std provided, use the provided feature_mask
+            self.feature_mask = feature_mask if feature_mask is not None else np.ones(len(self.mean), dtype=bool)
 
-        # Normalize vectors
-        self.vectors = [(v - self.mean) / self.std for v in self.vectors]
+        # Normalize vectors (only keep informative features)
+        self.vectors = [(v[self.feature_mask] - self.mean) / self.std for v in self.vectors]
 
         # Build valid sequence indices
         self._build_sequences()
@@ -200,12 +215,12 @@ class WideVectorDataset(Dataset):
 def create_data_loaders(
     db_config: DatabaseConfig,
     data_config: DataConfig,
-) -> Tuple[DataLoader, DataLoader, DataLoader, np.ndarray, np.ndarray]:
+) -> Tuple[DataLoader, DataLoader, DataLoader, np.ndarray, np.ndarray, np.ndarray]:
     """
     Create train, validation, and test data loaders.
 
     Returns:
-        train_loader, val_loader, test_loader, mean, std
+        train_loader, val_loader, test_loader, mean, std, feature_mask
     """
     # First, check what data is available
     conn = psycopg2.connect(
@@ -287,8 +302,9 @@ def create_data_loaders(
 
     mean = train_dataset.mean
     std = train_dataset.std
+    feature_mask = train_dataset.feature_mask
 
-    # Load val and test with training normalization
+    # Load val and test with training normalization and feature mask
     val_dataset = WideVectorDataset(
         db_config=db_config,
         data_config=data_config,
@@ -296,6 +312,7 @@ def create_data_loaders(
         end_time=val_end,
         mean=mean,
         std=std,
+        feature_mask=feature_mask,
         sequence_length=data_config.sequence_length,
     )
 
@@ -306,6 +323,7 @@ def create_data_loaders(
         end_time=test_end,
         mean=mean,
         std=std,
+        feature_mask=feature_mask,
         sequence_length=data_config.sequence_length,
     )
 
@@ -338,4 +356,4 @@ def create_data_loaders(
     print(f"Test samples:  {len(test_dataset)}")
     print(f"Feature dim:   {train_dataset.get_feature_dim()}")
 
-    return train_loader, val_loader, test_loader, mean, std
+    return train_loader, val_loader, test_loader, mean, std, feature_mask

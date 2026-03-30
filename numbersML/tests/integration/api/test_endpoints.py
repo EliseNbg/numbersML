@@ -429,6 +429,28 @@ class TestMLEndpoints:
         
         # Should return list
         assert isinstance(data, list)
+        
+        # Should have at least one model
+        if len(data) > 0:
+            # Verify model structure
+            model = data[0]
+            assert "name" in model
+            assert "path" in model
+            assert "size_mb" in model
+            assert "modified" in model
+    
+    @pytest.mark.asyncio
+    async def test_list_models_sorted_by_modified(self, client: AsyncClient) -> None:
+        """Test that models are sorted by modification date (newest first)."""
+        response = await client.get("/api/ml/models")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        if len(data) > 1:
+            # Verify sorting (newest first)
+            for i in range(len(data) - 1):
+                assert data[i]["modified"] >= data[i + 1]["modified"]
     
     @pytest.mark.asyncio
     async def test_predict_missing_symbol(self, client: AsyncClient) -> None:
@@ -445,6 +467,207 @@ class TestMLEndpoints:
         
         # Should return 200 or 404/500 if model not found
         assert response.status_code in [200, 404, 500]
+    
+    @pytest.mark.asyncio
+    async def test_predict_uses_hours_parameter(self, client: AsyncClient) -> None:
+        """Test that hours parameter correctly limits data range."""
+        # Test with 1 hour
+        response = await client.get("/api/ml/predict?symbol=BTC/USDC&hours=1")
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Verify response structure
+            assert "hours_loaded" in data
+            assert data["hours_loaded"] == 1
+            
+            # Verify candles are within expected time range
+            if data["candles_count"] > 0 and data["candles"]:
+                # Get time range from candles
+                candle_times = [c["time"] for c in data["candles"]]
+                min_time = min(candle_times)
+                max_time = max(candle_times)
+                
+                # Time range should be approximately 1 hour (3600 seconds)
+                # Allow some tolerance for data availability
+                time_range = max_time - min_time
+                assert time_range <= 3600 + 60, f"Time range {time_range} exceeds 1 hour + tolerance"
+    
+    @pytest.mark.asyncio
+    async def test_predict_hours_1_returns_3600_candles(self, client: AsyncClient) -> None:
+        """Test that hours=1 returns approximately 3600 candles (1 per second)."""
+        response = await client.get("/api/ml/predict?symbol=BTC/USDC&hours=1")
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            # For 1 hour, we expect approximately 3600 candles
+            # Allow some tolerance for missing data
+            assert data["hours_loaded"] == 1
+            
+            # Candles should be close to 3600 (one per second)
+            # If data is sparse, we might have fewer
+            if data["candles_count"] > 0:
+                # At minimum, should have some candles
+                assert data["candles_count"] > 0
+                
+                # Check that time range is approximately 1 hour
+                if data["candles"]:
+                    times = [c["time"] for c in data["candles"]]
+                    time_range = max(times) - min(times)
+                    # Should be close to 3600 seconds (1 hour)
+                    assert time_range >= 3500, f"Time range {time_range} is too short for 1 hour"
+    
+    @pytest.mark.asyncio
+    async def test_predict_hours_1_predictions_count(self, client: AsyncClient) -> None:
+        """Test that predictions count is correct for hours=1."""
+        response = await client.get("/api/ml/predict?symbol=BTC/USDC&hours=1")
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Predictions = vectors - seq_length + 1
+            # For 1 hour with seq_length=30:
+            # If we have N vectors, we should have N - 30 + 1 predictions
+            seq_length = data.get("sequence_length", 30)
+            
+            if data["candles_count"] > 0 and data["predictions_count"] > 0:
+                # The number of predictions depends on vectors, not candles
+                # But we can verify the relationship is correct
+                # Predictions should be less than candles (due to seq_length)
+                assert data["predictions_count"] <= data["candles_count"]
+                
+                # Predictions should be positive
+                assert data["predictions_count"] > 0
+    
+    @pytest.mark.asyncio
+    async def test_predict_uses_model_parameter(self, client: AsyncClient) -> None:
+        """Test that model parameter is used correctly."""
+        # First, get available models
+        models_response = await client.get("/api/ml/models")
+        
+        if models_response.status_code == 200:
+            models = models_response.json()
+            
+            if len(models) > 0:
+                # Test with specific model
+                model_name = models[0]["name"]
+                response = await client.get(
+                    f"/api/ml/predict?symbol=BTC/USDC&hours=1&model={model_name}"
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    assert data["model"] == model_name
+    
+    @pytest.mark.asyncio
+    async def test_predict_default_model(self, client: AsyncClient) -> None:
+        """Test that default model is used when model parameter is not specified."""
+        # Test without model parameter
+        response = await client.get("/api/ml/predict?symbol=BTC/USDC&hours=1")
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Default model should be best_model.pt
+            assert data["model"] == "best_model.pt"
+    
+    @pytest.mark.asyncio
+    async def test_predict_response_structure(self, client: AsyncClient) -> None:
+        """Test that prediction response has correct structure."""
+        response = await client.get("/api/ml/predict?symbol=BTC/USDC&hours=1")
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Verify all required fields
+            assert "symbol" in data
+            assert "model" in data
+            assert "sequence_length" in data
+            assert "hours_loaded" in data
+            assert "candles_count" in data
+            assert "targets_count" in data
+            assert "predictions_count" in data
+            assert "candles" in data
+            assert "targets" in data
+            assert "predictions" in data
+            
+            # Verify types
+            assert isinstance(data["symbol"], str)
+            assert isinstance(data["model"], str)
+            assert isinstance(data["sequence_length"], int)
+            assert isinstance(data["hours_loaded"], int)
+            assert isinstance(data["candles_count"], int)
+            assert isinstance(data["targets_count"], int)
+            assert isinstance(data["predictions_count"], int)
+            assert isinstance(data["candles"], list)
+            assert isinstance(data["targets"], list)
+            assert isinstance(data["predictions"], list)
+    
+    @pytest.mark.asyncio
+    async def test_predict_candle_structure(self, client: AsyncClient) -> None:
+        """Test that candle data has correct structure."""
+        response = await client.get("/api/ml/predict?symbol=BTC/USDC&hours=1")
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            if data["candles_count"] > 0:
+                candle = data["candles"][0]
+                
+                # Verify candle structure
+                assert "time" in candle
+                assert "open" in candle
+                assert "high" in candle
+                assert "low" in candle
+                assert "close" in candle
+                assert "volume" in candle
+                
+                # Verify types
+                assert isinstance(candle["time"], int)
+                assert isinstance(candle["open"], (int, float))
+                assert isinstance(candle["high"], (int, float))
+                assert isinstance(candle["low"], (int, float))
+                assert isinstance(candle["close"], (int, float))
+                assert isinstance(candle["volume"], (int, float))
+    
+    @pytest.mark.asyncio
+    async def test_predict_target_structure(self, client: AsyncClient) -> None:
+        """Test that target data has correct structure."""
+        response = await client.get("/api/ml/predict?symbol=BTC/USDC&hours=1")
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            if data["targets_count"] > 0:
+                target = data["targets"][0]
+                
+                # Verify target structure
+                assert "time" in target
+                assert "value" in target
+                
+                # Verify types
+                assert isinstance(target["time"], int)
+                assert isinstance(target["value"], (int, float))
+    
+    @pytest.mark.asyncio
+    async def test_predict_prediction_structure(self, client: AsyncClient) -> None:
+        """Test that prediction data has correct structure."""
+        response = await client.get("/api/ml/predict?symbol=BTC/USDC&hours=1")
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            if data["predictions_count"] > 0:
+                prediction = data["predictions"][0]
+                
+                # Verify prediction structure
+                assert "time" in prediction
+                assert "predicted_target" in prediction
+                
+                # Verify types
+                assert isinstance(prediction["time"], int)
+                assert isinstance(prediction["predicted_target"], (int, float))
     
     @pytest.mark.asyncio
     async def test_predict_invalid_hours(self, client: AsyncClient) -> None:

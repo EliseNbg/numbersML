@@ -84,13 +84,13 @@ class Trainer:
 
     def setup_data(self) -> Tuple[DataLoader, DataLoader, DataLoader]:
         """Create data loaders."""
-        self.train_loader, self.val_loader, self.test_loader, self.mean, self.std = (
+        self.train_loader, self.val_loader, self.test_loader, self.mean, self.std, self.feature_mask = (
             create_data_loaders(self.config.db, self.config.data)
         )
 
-        # Save normalization parameters
+        # Save normalization parameters and feature mask
         norm_path = os.path.join(self.config.training.save_dir, "norm_params.npz")
-        np.savez(norm_path, mean=self.mean, std=self.std)
+        np.savez(norm_path, mean=self.mean, std=self.std, feature_mask=self.feature_mask)
         print(f"Normalization params saved to {norm_path}")
 
         return self.train_loader, self.val_loader, self.test_loader

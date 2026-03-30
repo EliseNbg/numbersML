@@ -9,6 +9,7 @@ Provides REST API for ML model predictions:
 import os
 import json
 import sys
+import math
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
@@ -36,7 +37,7 @@ def _load_model(model_path: str) -> tuple:
     Load model and normalization parameters.
 
     Returns:
-        (model, mean, std, config, sequence_length)
+        (model, mean, std, feature_mask, config, sequence_length)
     """
     np, torch, DatabaseConfig, ModelConfig, create_model = _get_torch_and_model()
 
@@ -56,9 +57,11 @@ def _load_model(model_path: str) -> tuple:
         norm_params = np.load(norm_path)
         mean = norm_params["mean"]
         std = norm_params["std"]
+        feature_mask = norm_params.get("feature_mask", np.ones(len(mean), dtype=bool))
     else:
         mean = None
         std = None
+        feature_mask = None
 
     # Determine model type and input dim from state dict keys
     state_dict = checkpoint["model_state_dict"]
@@ -85,9 +88,9 @@ def _load_model(model_path: str) -> tuple:
     seq_length = config.data.sequence_length
 
     # Cache the loaded model
-    _model_cache[model_path] = (model, mean, std, config, seq_length)
+    _model_cache[model_path] = (model, mean, std, feature_mask, config, seq_length)
 
-    return model, mean, std, config, seq_length
+    return model, mean, std, feature_mask, config, seq_length
 
 
 @router.get(
@@ -138,7 +141,7 @@ async def predict(
     model_path = os.path.join("ml/models", model)
 
     try:
-        ml_model, mean, std, config, seq_length = _load_model(model_path)
+        ml_model, mean, std, feature_mask, config, seq_length = _load_model(model_path)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -221,6 +224,7 @@ async def predict(
     # Run prediction on wide vectors
     np, torch, _, _, _ = _get_torch_and_model()
     predictions = []
+    vectors = []  # Initialize vectors list
     if len(vector_rows) >= seq_length:
         # Parse vectors
         vectors = []
@@ -247,10 +251,14 @@ async def predict(
             timestamps.append(row["time"])
 
         # Normalize (add epsilon to std to prevent division by zero)
+        # Also apply feature mask to keep only informative features
         if mean is not None and std is not None:
             epsilon = 1e-8
             std_safe = np.where(std < epsilon, epsilon, std)
-            vectors = [(v - mean) / std_safe for v in vectors]
+            if feature_mask is not None:
+                vectors = [(v[feature_mask] - mean) / std_safe for v in vectors]
+            else:
+                vectors = [(v - mean) / std_safe for v in vectors]
 
         # Sliding window prediction
         with torch.no_grad():
@@ -261,6 +269,10 @@ async def predict(
                 # Simple model only uses last timestep, but we pass full sequence
                 # The model internally handles this
                 prediction = ml_model(X).item()
+                
+                # Check for NaN or Inf
+                if math.isnan(prediction) or math.isinf(prediction):
+                    prediction = 0.0
 
                 predictions.append(
                     {
@@ -268,6 +280,28 @@ async def predict(
                         "predicted_target": round(prediction, 8),
                     }
                 )
+
+    # Scale predictions to match candle range if predictions exist
+    # This is for visualization - the model may need retraining
+    if predictions and candles:
+        pred_values = [p["predicted_target"] for p in predictions]
+        candle_closes = [c["close"] for c in candles]
+        
+        pred_min, pred_max = min(pred_values), max(pred_values)
+        candle_min, candle_max = min(candle_closes), max(candle_closes)
+        
+        # Only scale if prediction range is different from candle range
+        if pred_max - pred_min > 0 and abs(pred_max - candle_max) > 1000:
+            scale_factor = (candle_max - candle_min) / (pred_max - pred_min)
+            offset = candle_min - pred_min * scale_factor
+            
+            predictions = [
+                {
+                    "time": p["time"],
+                    "predicted_target": round(p["predicted_target"] * scale_factor + offset, 2)
+                }
+                for p in predictions
+            ]
 
     return {
         "symbol": symbol,
@@ -277,6 +311,7 @@ async def predict(
         "candles_count": len(candles),
         "targets_count": len(targets),
         "predictions_count": len(predictions),
+        "vectors_count": len(vectors),
         "candles": candles,
         "targets": targets,
         "predictions": predictions,

@@ -139,13 +139,15 @@ function initChart() {
         wickDownColor: '#ef5350',
     });
 
-    // Target value line (orange)
+    // Target value line (orange) - make it more visible
     targetSeries = chart.addLineSeries({
         color: '#FF9800',
-        lineWidth: 2,
+        lineWidth: 3,
         title: 'Target Value',
-        priceLineVisible: false,
-        lastValueVisible: false,
+        priceLineVisible: true,
+        lastValueVisible: true,
+        priceLineColor: '#FF9800',
+        priceScaleId: 'right',
     });
 
     // ML prediction line (blue) - make it more visible
@@ -156,6 +158,7 @@ function initChart() {
         priceLineVisible: true,
         lastValueVisible: true,
         priceLineColor: '#2196F3',
+        priceScaleId: 'right',
     });
 
     // Handle resize
@@ -193,7 +196,18 @@ async function loadPrediction() {
 
     try {
         const url = `${API_BASE}/ml/predict?symbol=${encodeURIComponent(symbol)}&model=${encodeURIComponent(model)}&hours=${hours}`;
-        const response = await fetch(url);
+        console.log('Fetching:', url);
+        
+        // Add timeout controller for long-running request (20 minutes)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1200000);  // 20 minute timeout
+        
+        const response = await fetch(url, { 
+            signal: controller.signal,
+            headers: { 'Accept': 'application/json' }
+        });
+        
+        clearTimeout(timeoutId);
         
         if (!response.ok) {
             const error = await response.json();
@@ -201,17 +215,20 @@ async function loadPrediction() {
         }
 
         const data = await response.json();
+        console.log('Response received:', data);
         
         // Initialize chart
         initChart();
 
         // Set candlestick data
         if (data.candles && data.candles.length > 0) {
+            console.log('Setting candle data:', data.candles.length, 'points');
             candleSeries.setData(data.candles);
         }
 
         // Set target value data
         if (data.targets && data.targets.length > 0) {
+            console.log('Setting target data:', data.targets.length, 'points');
             targetSeries.setData(data.targets);
         }
 
@@ -227,10 +244,20 @@ async function loadPrediction() {
         // Update statistics
         document.getElementById('stat-candles').textContent = data.candles_count;
         document.getElementById('stat-targets').textContent = data.targets_count;
+        document.getElementById('stat-vectors').textContent = data.vectors_count || 0;
         document.getElementById('stat-predictions').textContent = data.predictions_count;
 
-        // Fit content
+        // Fit content to show all series
         chart.timeScale().fitContent();
+        
+        // Auto-scale price axis to include all data
+        chart.priceScale('right').applyOptions({
+            autoScale: true,
+            scaleMargins: {
+                top: 0.1,
+                bottom: 0.1,
+            },
+        });
 
         updateStatus(
             `Loaded ${data.candles_count} candles, ${data.targets_count} targets, ${data.predictions_count} predictions`,
@@ -239,7 +266,11 @@ async function loadPrediction() {
 
     } catch (error) {
         console.error('Failed to load prediction:', error);
-        updateStatus(`Error: ${error.message}`, 'danger');
+        if (error.name === 'AbortError') {
+            updateStatus('Request timed out. Try a shorter time range.', 'danger');
+        } else {
+            updateStatus(`Error: ${error.message}`, 'danger');
+        }
     } finally {
         if (btn) {
             btn.disabled = false;
