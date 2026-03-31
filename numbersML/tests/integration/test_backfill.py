@@ -12,6 +12,11 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 
+
+async def _init_utc(conn):
+    await conn.execute("SET timezone = 'UTC'")
+
+
 from src.cli.backfill import HistoricalBackfill
 
 
@@ -25,7 +30,7 @@ class TestHistoricalBackfill:
     @pytest.fixture
     async def db_pool(self) -> asyncpg.Pool:
         """Create database pool for tests."""
-        pool = await asyncpg.create_pool(DB_URL, min_size=1, max_size=5)
+        pool = await asyncpg.create_pool(DB_URL, min_size=1, max_size=5, init=_init_utc)
         yield pool
         await pool.close()
 
@@ -113,7 +118,7 @@ class TestBackfillIntegration:
     @pytest.fixture
     async def db_pool(self) -> asyncpg.Pool:
         """Create database pool for tests."""
-        pool = await asyncpg.create_pool(DB_URL, min_size=2, max_size=10)
+        pool = await asyncpg.create_pool(DB_URL, min_size=2, max_size=10, init=_init_utc)
         yield pool
         await pool.close()
 
@@ -249,7 +254,7 @@ class TestBackfillDataValidation:
     @pytest.fixture
     async def db_pool(self) -> asyncpg.Pool:
         """Create database pool for tests."""
-        pool = await asyncpg.create_pool(DB_URL, min_size=1, max_size=5)
+        pool = await asyncpg.create_pool(DB_URL, min_size=1, max_size=5, init=_init_utc)
         yield pool
         await pool.close()
 
@@ -270,7 +275,7 @@ class TestBackfillDataValidation:
         ]
 
         # Parse time
-        time = datetime.fromtimestamp(kline[0] / 1000)
+        time = datetime.fromtimestamp(kline[0] / 1000, tz=timezone.utc)
         assert time.year == 2024
 
         # Parse prices

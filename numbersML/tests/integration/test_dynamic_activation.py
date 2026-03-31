@@ -18,6 +18,11 @@ import asyncpg
 from datetime import datetime, timedelta
 from typing import Dict, Any
 
+
+async def _init_utc(conn):
+    await conn.execute("SET timezone = 'UTC'")
+
+
 from src.application.services.enrichment_service import EnrichmentService
 
 
@@ -31,7 +36,7 @@ class TestSymbolActivation:
     @pytest.fixture
     async def db_pool(self) -> asyncpg.Pool:
         """Create database pool."""
-        pool = await asyncpg.create_pool(DB_URL, min_size=1, max_size=5)
+        pool = await asyncpg.create_pool(DB_URL, min_size=1, max_size=5, init=_init_utc)
         yield pool
         await pool.close()
 
@@ -125,7 +130,7 @@ class TestIndicatorActivation:
     @pytest.fixture
     async def db_pool(self) -> asyncpg.Pool:
         """Create database pool."""
-        pool = await asyncpg.create_pool(DB_URL, min_size=1, max_size=5)
+        pool = await asyncpg.create_pool(DB_URL, min_size=1, max_size=5, init=_init_utc)
         yield pool
         await pool.close()
 
@@ -265,7 +270,7 @@ class TestPipelineMetrics:
     @pytest.fixture
     async def db_pool(self) -> asyncpg.Pool:
         """Create database pool."""
-        pool = await asyncpg.create_pool(DB_URL, min_size=1, max_size=5)
+        pool = await asyncpg.create_pool(DB_URL, min_size=1, max_size=5, init=_init_utc)
         yield pool
         await pool.close()
 
@@ -368,7 +373,7 @@ class TestDashboardViews:
     @pytest.fixture
     async def db_pool(self) -> asyncpg.Pool:
         """Create database pool."""
-        pool = await asyncpg.create_pool(DB_URL, min_size=1, max_size=5)
+        pool = await asyncpg.create_pool(DB_URL, min_size=1, max_size=5, init=_init_utc)
         yield pool
         await pool.close()
 
@@ -448,7 +453,7 @@ class TestRuntimeActivation:
     @pytest.fixture
     async def db_pool(self) -> asyncpg.Pool:
         """Create database pool."""
-        pool = await asyncpg.create_pool(DB_URL, min_size=2, max_size=10)
+        pool = await asyncpg.create_pool(DB_URL, min_size=2, max_size=10, init=_init_utc)
         yield pool
         await pool.close()
 

@@ -129,7 +129,7 @@ class TestSLAMetric:
     def test_is_compliant_true(self) -> None:
         """Test compliance check when compliant."""
         metric = SLAMetric(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             sla_violations=0,
             avg_time_ms=150.0,
         )
@@ -138,7 +138,7 @@ class TestSLAMetric:
     def test_is_compliant_false_violations(self) -> None:
         """Test compliance check with violations."""
         metric = SLAMetric(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             sla_violations=1,
             avg_time_ms=150.0,
         )
@@ -147,7 +147,7 @@ class TestSLAMetric:
     def test_is_compliant_false_slow(self) -> None:
         """Test compliance check when too slow."""
         metric = SLAMetric(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             sla_violations=0,
             avg_time_ms=1500.0,
         )
@@ -156,7 +156,7 @@ class TestSLAMetric:
     def test_compliance_pct_100(self) -> None:
         """Test compliance percentage when 100%."""
         metric = SLAMetric(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             ticks_processed=60,
             sla_violations=0,
         )
@@ -165,7 +165,7 @@ class TestSLAMetric:
     def test_compliance_pct_partial(self) -> None:
         """Test compliance percentage when partial."""
         metric = SLAMetric(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             ticks_processed=100,
             sla_violations=5,
         )
@@ -174,7 +174,7 @@ class TestSLAMetric:
     def test_compliance_pct_zero_ticks(self) -> None:
         """Test compliance percentage with zero ticks."""
         metric = SLAMetric(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             ticks_processed=0,
         )
         assert metric.compliance_pct == 100.0

@@ -133,6 +133,12 @@ async def fill_gap(
     start_time = gap.gap_start + timedelta(seconds=1)
     end_time = gap.gap_end - timedelta(seconds=1)
 
+    # Ensure both are timezone-aware UTC
+    if start_time.tzinfo is None:
+        start_time = start_time.replace(tzinfo=timezone.utc)
+    if end_time.tzinfo is None:
+        end_time = end_time.replace(tzinfo=timezone.utc)
+
     if start_time >= end_time:
         return 0
 
@@ -164,7 +170,7 @@ async def fill_gap(
                         break
 
                     all_klines.extend(klines)
-                    current = datetime.fromtimestamp(klines[-1][0] / 1000 + 1)
+                    current = datetime.fromtimestamp(klines[-1][0] / 1000 + 1, tz=timezone.utc)
 
                     await asyncio.sleep(0.1)
 
@@ -178,7 +184,7 @@ async def fill_gap(
     # Insert into candles_1s
     records = [
         (
-            datetime.fromtimestamp(k[0] / 1000).replace(tzinfo=None),
+            datetime.fromtimestamp(k[0] / 1000, tz=timezone.utc),
             gap.symbol_id,
             Decimal(k[1]),   # open
             Decimal(k[2]),   # high
@@ -242,7 +248,10 @@ async def _run(
     hours: int,
 ) -> int:
     """Run gap detection and filling."""
-    db_pool = await asyncpg.create_pool(db_url, min_size=2, max_size=5)
+    async def _set_utc(conn):
+        await conn.execute("SET timezone = 'UTC'")
+    
+    db_pool = await asyncpg.create_pool(db_url, min_size=2, max_size=5, init=_set_utc)
 
     try:
         logger.info(f"Detecting gaps in candles_1s (last {hours} hours)...")

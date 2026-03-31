@@ -108,11 +108,15 @@ class DatabaseConnection:
         logger.info(f"Connecting to PostgreSQL: {self.dsn}")
 
         try:
+            async def _set_utc(conn):
+                await conn.execute("SET timezone = 'UTC'")
+            
             self._pool = await asyncpg.create_pool(
                 dsn=self.dsn,
                 min_size=self.min_size,
                 max_size=self.max_size,
                 command_timeout=self.command_timeout,
+                init=_set_utc,
             )
 
             logger.info(

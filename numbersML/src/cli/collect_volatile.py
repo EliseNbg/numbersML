@@ -13,7 +13,7 @@ import asyncpg
 import websockets
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Dict, List, Any
 import aiohttp
@@ -61,9 +61,13 @@ async def get_volatile_symbols(limit: int = 5) -> List[str]:
     return [s['symbol'] for s in symbols[:limit]]
 
 
+async def _init_utc(conn):
+    await conn.execute("SET timezone = 'UTC'")
+
+
 async def setup_database(db_url: str, symbols: List[str]) -> Dict[str, int]:
     """Setup database and register symbols."""
-    pool = await asyncpg.create_pool(db_url, min_size=2, max_size=10)
+    pool = await asyncpg.create_pool(db_url, min_size=2, max_size=10, init=_init_utc)
     
     symbol_ids = {}
     
@@ -115,7 +119,7 @@ class DataCollector:
         logger.info(f"Starting collection for {len(self.symbols)} symbols: {self.symbols}")
         
         # Setup database
-        self.db_pool = await asyncpg.create_pool(self.db_url, min_size=5, max_size=20)
+        self.db_pool = await asyncpg.create_pool(self.db_url, min_size=5, max_size=20, init=_init_utc)
         await setup_database(self.db_url, self.symbols)
         
         # Build WebSocket URL
@@ -151,7 +155,7 @@ class DataCollector:
                             break
                     
                     trade = {
-                        'time': datetime.fromtimestamp(data['T'] / 1000),
+                        'time': datetime.fromtimestamp(data['T'] / 1000, tz=timezone.utc),
                         'symbol': symbol,
                         'trade_id': str(data['t']),
                         'price': Decimal(data['p']),

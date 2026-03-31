@@ -44,6 +44,10 @@ DATABASE_URL = "postgresql://crypto:crypto_secret@localhost:5432/crypto_trading"
 # Pipeline manager is managed in src.pipeline.service
 
 
+async def _init_utc(conn):
+    await conn.execute("SET timezone = 'UTC'")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
@@ -66,6 +70,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             min_size=2,
             max_size=10,
             timeout=30,
+            init=_init_utc,
         )
         set_db_pool(db_pool)
         

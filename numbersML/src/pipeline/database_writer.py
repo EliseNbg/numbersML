@@ -131,7 +131,7 @@ class DatabaseWriter:
                 # Prepare batch data
                 records = [
                     (
-                        candle.time.replace(tzinfo=None),
+                        candle.time,
                         self.symbol_id,
                         candle.open,
                         candle.high,

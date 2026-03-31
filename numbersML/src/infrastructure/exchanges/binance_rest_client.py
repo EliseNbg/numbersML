@@ -8,7 +8,7 @@ import asyncio
 import aiohttp
 import time
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Dict, List, Optional, Any
 
@@ -35,7 +35,7 @@ class BinanceRESTClient:
         >>> client = BinanceRESTClient()
         >>> trades = await client.get_historical_trades(
         ...     symbol='BTCUSDT',
-        ...     start_time=datetime.utcnow() - timedelta(hours=1),
+        ...     start_time=datetime.now(timezone.utc) - timedelta(hours=1),
         ...     end_time=datetime.now(timezone.utc),
         ... )
     """
@@ -228,7 +228,7 @@ class BinanceRESTClient:
             BinanceAPIError: If API request fails
         """
         data = await self._request('GET', '/time')
-        return datetime.fromtimestamp(data['serverTime'] / 1000)
+        return datetime.fromtimestamp(data['serverTime'] / 1000, tz=timezone.utc)
 
     async def _request(
         self,
@@ -353,7 +353,7 @@ def parse_trade_data(trade: Dict[str, Any]) -> Dict[str, Any]:
         'trade_id': str(trade['a']),  # Aggregate trade ID
         'price': Decimal(trade['p']),
         'quantity': Decimal(trade['q']),
-        'time': datetime.fromtimestamp(trade['T'] / 1000),
+        'time': datetime.fromtimestamp(trade['T'] / 1000, tz=timezone.utc),
         'is_buyer_maker': trade['m'],
         'side': 'SELL' if trade['m'] else 'BUY',
     }
@@ -370,8 +370,8 @@ def parse_kline_data(kline: List[Any]) -> Dict[str, Any]:
         Parsed kline dictionary
     """
     return {
-        'open_time': datetime.fromtimestamp(kline[0] / 1000),
-        'close_time': datetime.fromtimestamp(kline[6] / 1000),
+        'open_time': datetime.fromtimestamp(kline[0] / 1000, tz=timezone.utc),
+        'close_time': datetime.fromtimestamp(kline[6] / 1000, tz=timezone.utc),
         'open': Decimal(kline[1]),
         'high': Decimal(kline[2]),
         'low': Decimal(kline[3]),

@@ -2,10 +2,17 @@
 Database dependency management.
 
 Provides database pool access for dependency injection.
+All connections enforce UTC timezone for consistent datetime handling.
 """
 
 import asyncpg
 from typing import Optional
+
+
+async def _init_utc(conn: asyncpg.Connection) -> None:
+    """Initialize connection to use UTC timezone."""
+    await conn.execute("SET timezone = 'UTC'")
+
 
 # Database pool (managed by lifespan)
 _db_pool: Optional[asyncpg.Pool] = None

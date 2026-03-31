@@ -13,6 +13,10 @@ import asyncpg
 import json
 import logging
 
+
+async def _init_utc(conn):
+    await conn.execute("SET timezone = 'UTC'")
+
 from src.pipeline.service import PipelineManager
 
 logger = logging.getLogger(__name__)
@@ -28,6 +32,7 @@ async def db_pool():
         'postgresql://crypto:crypto_secret@localhost:5432/crypto_trading',
         min_size=1,
         max_size=2,
+        init=_init_utc,
     )
     yield pool
     await pool.close()
@@ -40,6 +45,7 @@ async def cleanup():
         'postgresql://crypto:crypto_secret@localhost:5432/crypto_trading',
         min_size=1,
         max_size=2,
+        init=_init_utc,
     )
     async with pool.acquire() as conn:
         await conn.execute('DELETE FROM candles_1s')

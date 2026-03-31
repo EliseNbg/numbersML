@@ -114,7 +114,7 @@ async def recalculate_indicators(
             sname = sym_row['symbol']
 
             # Load ALL candles for this symbol (including history for indicator window)
-            history_start = from_time.replace(tzinfo=None) - timedelta(seconds=300)
+            history_start = from_time - timedelta(seconds=300)
             all_candles = await conn.fetch(
                 """
                 SELECT time, open, high, low, close, volume
@@ -194,7 +194,7 @@ async def recalculate_indicators(
 
                 if results:
                     indicator_batch.append((
-                        c['time'].replace(tzinfo=None),
+                        c['time'],
                         sid,
                         float(c['close']),
                         float(c['volume']),
@@ -274,11 +274,11 @@ async def recalculate_wide_vectors(
         params: list = [symbol_ids]
         if to_time:
             time_filter = "AND ci.time >= $2 AND ci.time <= $3"
-            params.append(from_time.replace(tzinfo=None))
-            params.append(to_time.replace(tzinfo=None))
+            params.append(from_time)
+            params.append(to_time)
         else:
             time_filter = "AND ci.time >= $2"
-            params.append(from_time.replace(tzinfo=None))
+            params.append(from_time)
 
         indicator_rows = await conn.fetch(
             f"""
@@ -368,7 +368,7 @@ async def recalculate_wide_vectors(
 
         if vector:
             vector_batch.append((
-                t.replace(tzinfo=None),
+                t,
                 json.dumps(vector),
                 column_names,
                 symbol_names,
@@ -445,7 +445,10 @@ async def main() -> None:
         args.indicators = True
         args.vectors = True
 
-    pool = await asyncpg.create_pool(DB_URL, min_size=2, max_size=5)
+    async def _set_utc(conn):
+        await conn.execute("SET timezone = 'UTC'")
+
+    pool = await asyncpg.create_pool(DB_URL, min_size=2, max_size=5, init=_set_utc)
 
     async with pool.acquire() as conn:
         symbol_ids = await get_symbol_ids(conn, symbols)

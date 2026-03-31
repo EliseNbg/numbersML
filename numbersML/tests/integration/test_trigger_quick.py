@@ -10,13 +10,16 @@ from datetime import datetime
 
 DB_URL = "postgresql://crypto:crypto_secret@localhost:5432/crypto_trading"
 
+async def _init_utc(conn):
+    await conn.execute("SET timezone = 'UTC'")
+
 async def test_trigger():
     """Test that trigger calculates indicators on insert."""
     print("=" * 70)
     print("Testing DB Trigger: Indicator Calculation on INSERT")
     print("=" * 70)
     
-    pool = await asyncpg.create_pool(DB_URL, min_size=2, max_size=5)
+    pool = await asyncpg.create_pool(DB_URL, min_size=2, max_size=5, init=_init_utc)
     
     try:
         async with pool.acquire() as conn:

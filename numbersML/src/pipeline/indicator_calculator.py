@@ -320,7 +320,7 @@ class IndicatorCalculator:
                     updated_at = NOW()
                 """,
                 symbol_id,
-                time.replace(tzinfo=None),
+                time,
                 price,
                 volume,
                 json.dumps(values),

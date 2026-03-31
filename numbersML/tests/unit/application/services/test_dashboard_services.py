@@ -279,7 +279,7 @@ class TestIndicatorManager:
             'params': {'period': 14},
             'is_active': True,
             'created_at': datetime.now(timezone.utc),
-            'updated_at': datetime.utcnow(),
+            'updated_at': datetime.now(timezone.utc),
         }
         mock_conn = AsyncMock()
         mock_conn.fetch = AsyncMock(return_value=[mock_row])

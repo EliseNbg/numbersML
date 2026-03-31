@@ -36,6 +36,24 @@ cd numbersML
 
 ---
 
+## UTC Time Standard
+
+**All timestamps in this project use UTC.** This applies to:
+
+- **Database columns**: All `time` columns are `timestamp with time zone` (timestamptz). PostgreSQL stores and returns UTC values.
+- **Pipeline operations**: Candles, indicators, and wide vectors are generated with UTC timestamps.
+- **API responses**: All datetime fields in API responses are UTC.
+- **CLI tools**: Backfill, gap-fill, recalculate all operate in UTC.
+- **WebSocket data**: Binance trade timestamps are UTC.
+
+**Developer notes:**
+- Always pass timezone-aware UTC datetimes (`datetime.now(timezone.utc)`) to asyncpg queries. Never strip `tzinfo` before inserting.
+- All `asyncpg.create_pool()` calls enforce `SET timezone = 'UTC'` via the `init` parameter.
+- Use `datetime.fromtimestamp(ts, tz=timezone.utc)` when converting epoch timestamps.
+- Database joins across `candles_1s`, `candle_indicators`, and `wide_vectors` use `time` with `=` operator (all timestamptz, all UTC).
+
+---
+
 ## 📋 What is numbersML?
 
 **numbersML** is a production-ready data infrastructure that:

@@ -126,6 +126,10 @@ def main(
     sys.exit(exit_code)
 
 
+async def _init_utc(conn):
+    await conn.execute("SET timezone = 'UTC'")
+
+
 async def run_sync(
     db_url: str,
     dry_run: bool,
@@ -156,6 +160,7 @@ async def run_sync(
             min_size=2,
             max_size=5,
             timeout=30,
+            init=_init_utc,
         )
 
         # Create service

@@ -12,6 +12,11 @@ Requires: PostgreSQL running with test data
 import pytest
 import asyncpg
 
+
+async def _init_utc(conn):
+    await conn.execute("SET timezone = 'UTC'")
+
+
 from src.infrastructure.repositories.pipeline_metrics_repo import PipelineMetricsRepository
 from src.infrastructure.repositories.symbol_repo import SymbolRepository
 from src.infrastructure.repositories.indicator_repo import IndicatorRepository
@@ -27,7 +32,7 @@ class TestPipelineMetricsRepository:
     @pytest.fixture
     async def db_pool(self) -> asyncpg.Pool:
         """Create database pool."""
-        pool = await asyncpg.create_pool(DB_URL, min_size=1, max_size=5)
+        pool = await asyncpg.create_pool(DB_URL, min_size=1, max_size=5, init=_init_utc)
         yield pool
         await pool.close()
     
@@ -77,7 +82,7 @@ class TestSymbolRepository:
     @pytest.fixture
     async def db_pool(self) -> asyncpg.Pool:
         """Create database pool."""
-        pool = await asyncpg.create_pool(DB_URL, min_size=1, max_size=5)
+        pool = await asyncpg.create_pool(DB_URL, min_size=1, max_size=5, init=_init_utc)
         yield pool
         await pool.close()
     
@@ -189,7 +194,7 @@ class TestIndicatorRepository:
     @pytest.fixture
     async def db_pool(self) -> asyncpg.Pool:
         """Create database pool."""
-        pool = await asyncpg.create_pool(DB_URL, min_size=1, max_size=5)
+        pool = await asyncpg.create_pool(DB_URL, min_size=1, max_size=5, init=_init_utc)
         yield pool
         await pool.close()
     

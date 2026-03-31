@@ -156,6 +156,9 @@ class TradePipeline:
                     result = await self._wide_vector_service.generate(candle_time)
                     if result:
                         self._stats['wide_vectors_generated'] = self._stats.get('wide_vectors_generated', 0) + 1
+                        logger.debug(f"Wide vector generated for {candle_time}: {result['vector_size']} features")
+                    else:
+                        logger.debug(f"Wide vector returned None for {candle_time}")
                 except Exception as e:
                     logger.error(f"Wide vector error: {e}")
                     self._stats['wide_vector_errors'] = self._stats.get('wide_vector_errors', 0) + 1

@@ -13,7 +13,7 @@ import asyncio
 import logging
 import sys
 import socket
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 
 import asyncpg
@@ -157,6 +157,10 @@ async def run_health_checks(
         return 1
 
 
+async def _init_utc(conn):
+    await conn.execute("SET timezone = 'UTC'")
+
+
 async def check_database_health(
     db_url: str,
     timeout: int,
@@ -171,7 +175,7 @@ async def check_database_health(
     Returns:
         Health check result dictionary
     """
-    start_time = datetime.utcnow()
+    start_time = datetime.now(timezone.utc)
     db_pool: Optional[asyncpg.Pool] = None
 
     try:
@@ -182,6 +186,7 @@ async def check_database_health(
                 min_size=1,
                 max_size=2,
                 timeout=timeout,
+                init=_init_utc,
             ),
             timeout=timeout,
         )
@@ -240,7 +245,7 @@ async def check_redis_health(
     Returns:
         Health check result dictionary
     """
-    start_time = datetime.utcnow()
+    start_time = datetime.now(timezone.utc)
 
     try:
         # Import redis here to avoid dependency if not used
@@ -307,6 +312,7 @@ async def check_service_status(
             min_size=1,
             max_size=2,
             timeout=timeout,
+            init=_init_utc,
         )
 
         async with db_pool.acquire() as conn:

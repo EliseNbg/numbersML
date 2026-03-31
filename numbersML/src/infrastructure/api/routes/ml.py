@@ -165,7 +165,7 @@ async def predict(
         if not latest_vector_time:
             raise HTTPException(status_code=404, detail="No wide vectors available")
         
-        now = latest_vector_time.replace(tzinfo=None)
+        now = latest_vector_time
         start_time = now - timedelta(hours=hours)
 
         # Load candles

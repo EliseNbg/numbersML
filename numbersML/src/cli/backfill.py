@@ -44,6 +44,10 @@ logger = logging.getLogger(__name__)
 BINANCE_API_BASE = "https://api.binance.com/api/v3"
 
 
+async def _init_utc(conn):
+    await conn.execute("SET timezone = 'UTC'")
+
+
 class HistoricalBackfill:
     """
     Backfill historical data from Binance into candles_1s table.
@@ -86,6 +90,7 @@ class HistoricalBackfill:
                 min_size=2,
                 max_size=10,
                 timeout=60,
+                init=_init_utc,
             )
 
             # Get active symbols from DB
@@ -147,7 +152,7 @@ class HistoricalBackfill:
         """Backfill single symbol. Returns number of records inserted."""
         async with pool.acquire() as conn:
             # Check existing records
-            end_time = datetime.now(timezone.utc).replace(tzinfo=None)
+            end_time = datetime.now(timezone.utc)
             start_time = end_time - timedelta(days=self.days)
 
             existing_count = await conn.fetchval(
@@ -161,7 +166,7 @@ class HistoricalBackfill:
                 print(f"  Found {existing_count:,} existing records in time range")
 
         # Fetch klines from Binance
-        end_time = datetime.now(timezone.utc).replace(tzinfo=None)
+        end_time = datetime.now(timezone.utc)
         start_time = end_time - timedelta(days=self.days)
 
         print(f"  Fetching klines from {start_time.strftime('%Y-%m-%d %H:%M')} to {end_time.strftime('%H:%M')}...")
@@ -220,6 +225,7 @@ class HistoricalBackfill:
                         # Advance time
                         current_time = datetime.fromtimestamp(
                             klines[-1][0] / 1000 + 1,
+                            tz=timezone.utc,
                         )
 
                         # Rate limiting
@@ -256,7 +262,7 @@ class HistoricalBackfill:
                     # Parse kline: [time, open, high, low, close, volume,
                     #               quote_volume, ...]
                     batch.append((
-                        datetime.fromtimestamp(kline[0] / 1000).replace(tzinfo=None),
+                        datetime.fromtimestamp(kline[0] / 1000, tz=timezone.utc),
                         symbol_id,
                         Decimal(kline[1]),   # open
                         Decimal(kline[2]),   # high

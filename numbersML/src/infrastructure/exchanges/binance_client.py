@@ -10,7 +10,7 @@ import asyncpg
 import websockets
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Dict, List, Optional
 from src.domain.models.trade import Trade
@@ -177,7 +177,7 @@ class BinanceWebSocketClient:
             
             # Create trade object
             trade = Trade(
-                time=datetime.fromtimestamp(data['T'] / 1000),
+                time=datetime.fromtimestamp(data['T'] / 1000, tz=timezone.utc),
                 symbol_id=symbol_id,
                 trade_id=str(data['t']),
                 price=Decimal(data['p']),

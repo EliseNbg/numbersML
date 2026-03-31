@@ -30,6 +30,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+async def _init_utc(conn):
+    await conn.execute("SET timezone = 'UTC'")
+
+
 class WideVectorGenerator:
     """
     Generate wide vector from ticker and indicator data.
@@ -72,6 +76,7 @@ class WideVectorGenerator:
             self.db_url,
             min_size=2,
             max_size=10,
+            init=_init_utc,
         )
         await self._load_symbols()
 

@@ -244,8 +244,8 @@ def create_data_loaders(
             """)
             row = cur.fetchone()
             if row and row[0] and row[1]:
-                data_start = row[0].replace(tzinfo=None)
-                data_end = row[1].replace(tzinfo=None)
+                data_start = row[0]
+                data_end = row[1]
             else:
                 raise ValueError("No data available with target values")
     finally:

@@ -85,7 +85,7 @@ class Predictor:
 
         try:
             with conn.cursor() as cur:
-                since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(
+                since = datetime.now(timezone.utc) - timedelta(
                     hours=hours
                 )
 

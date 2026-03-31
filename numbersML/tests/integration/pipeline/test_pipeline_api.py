@@ -18,6 +18,10 @@ from src.pipeline.service import PipelineManager, set_pipeline_manager
 import asyncpg
 
 
+async def _init_utc(conn):
+    await conn.execute("SET timezone = 'UTC'")
+
+
 # Test database URL
 TEST_DB_URL = "postgresql://crypto:crypto_secret@localhost:5432/crypto_trading"
 
@@ -33,7 +37,7 @@ async def app():
 async def client(app) -> AsyncGenerator[AsyncClient, None]:
     """Create test client with database pool."""
     # Create database pool for testing
-    pool = await asyncpg.create_pool(TEST_DB_URL, min_size=1, max_size=5)
+    pool = await asyncpg.create_pool(TEST_DB_URL, min_size=1, max_size=5, init=_init_utc)
     set_db_pool(pool)
     
     # Initialize pipeline manager

@@ -34,7 +34,7 @@ async def get_target_values(
     Target values are computed on-the-fly using the Hanning filter.
     """
     db_pool = await get_db_pool_async()
-    since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=hours)
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
 
     async with db_pool.acquire() as conn:
         symbol_id = await conn.fetchval(
@@ -137,7 +137,7 @@ async def calculate_target_values(
         updated = 0
         for i in range(0, len(rows), batch_size):
             batch = [
-                (targets[j], rows[j]['time'].replace(tzinfo=None))
+                (targets[j], rows[j]['time'])
                 for j in range(i, min(i + batch_size, len(rows)))
                 if from_dt <= rows[j]['time'] <= to_dt
             ]

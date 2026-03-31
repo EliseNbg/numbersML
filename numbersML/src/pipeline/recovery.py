@@ -26,7 +26,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
-from typing import List, Optional, Dict, Any
+from typing import Any, Callable, Dict, List, Optional
 
 import aiohttp
 import asyncpg
@@ -169,7 +169,7 @@ class RecoveryManager:
         self,
         symbol: str,
         db_pool: asyncpg.Pool,
-        on_trade: callable,
+        on_trade: Callable,
     ) -> None:
         """
         Initialize recovery manager.
@@ -287,7 +287,9 @@ class RecoveryManager:
     ) -> None:
         """
         Recover missing trades via REST API.
-        
+
+        Loops in batches until the full gap is closed.
+
         Args:
             from_id: Start trade ID
             to_id: End trade ID
@@ -295,38 +297,68 @@ class RecoveryManager:
         if self._is_recovering:
             logger.warning("Recovery already in progress")
             return
-        
+
         self._is_recovering = True
         self._stats['recovery_events'] += 1
         self._stats['last_recovery_time'] = datetime.now(timezone.utc)
-        
-        logger.info(f"Starting recovery for {self.symbol}: {from_id} to {to_id}")
-        
+
+        gap_size = to_id - from_id + 1
+        logger.info(f"Starting recovery for {self.symbol}: {from_id} to {to_id} ({gap_size} trades)")
+
+        total_recovered = 0
+        current_from = from_id
+
         try:
-            # Calculate time window
-            end_time = datetime.now(timezone.utc)
-            start_time = end_time - self.MAX_RECOVERY_WINDOW
-            
-            # Fetch missing trades
-            trades = await self._rest_client.get_agg_trades(
-                symbol=self.symbol.replace('/', ''),
-                from_id=from_id,
-                start_time=start_time,
-                end_time=end_time,
-                limit=self.MAX_TRADES_PER_RECOVERY,
-            )
-            
-            # Process recovered trades
-            for trade in trades:
-                if trade.agg_trade_id <= to_id:
+            while current_from <= to_id:
+                # Calculate time window for this batch
+                end_time = datetime.now(timezone.utc)
+                start_time = end_time - self.MAX_RECOVERY_WINDOW
+
+                # Fetch missing trades
+                trades = await self._rest_client.get_agg_trades(
+                    symbol=self.symbol.replace('/', ''),
+                    from_id=current_from,
+                    start_time=start_time,
+                    end_time=end_time,
+                    limit=self.MAX_TRADES_PER_RECOVERY,
+                )
+
+                if not trades:
+                    logger.warning(f"No more trades returned from REST API at fromId={current_from}")
+                    break
+
+                # Process recovered trades
+                batch_count = 0
+                for trade in trades:
+                    if trade.agg_trade_id > to_id:
+                        break
                     await self.on_trade(trade)
                     self._stats['trades_recovered'] += 1
-            
-            logger.info(f"Recovery complete: recovered {len(trades)} trades")
-            
+                    total_recovered += 1
+                    batch_count += 1
+
+                # Advance to next batch
+                last_id_in_batch = trades[-1].agg_trade_id
+                if last_id_in_batch < current_from:
+                    # No progress, avoid infinite loop
+                    logger.warning(f"No progress in recovery: last_id={last_id_in_batch} < from={current_from}")
+                    break
+                current_from = last_id_in_batch + 1
+
+                logger.info(
+                    f"Recovery batch: {batch_count} trades processed, "
+                    f"{total_recovered}/{gap_size} total, "
+                    f"next fromId={current_from}"
+                )
+
+                # Yield control to allow other tasks (candle processing) to run
+                await asyncio.sleep(0)
+
+            logger.info(f"Recovery complete for {self.symbol}: {total_recovered} trades recovered")
+
         except Exception as e:
-            logger.error(f"Recovery failed: {e}")
-        
+            logger.error(f"Recovery failed for {self.symbol}: {e}")
+
         finally:
             self._is_recovering = False
             await self._persist_state()
@@ -406,9 +438,9 @@ class RecoveryManager:
                 """,
                 symbol_id,
                 self._last_trade_id,
-                self._last_timestamp.replace(tzinfo=None),
+                self._last_timestamp,
                 self._is_recovering,
-                self._stats['last_recovery_time'].replace(tzinfo=None) if (self._is_recovering and self._stats['last_recovery_time']) else None,
+                self._stats['last_recovery_time'] if (self._is_recovering and self._stats['last_recovery_time']) else None,
                 gaps,
                 trades,
             )

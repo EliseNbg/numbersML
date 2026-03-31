@@ -26,6 +26,10 @@ from typing import Dict, List, Any, Set
 DB_URL = "postgresql://crypto:crypto_secret@localhost:5432/crypto_trading"
 TEST_SYMBOLS = [f'ts{i}/USDC' for i in range(1, 13)]  # ts1 to ts12
 
+
+async def _init_utc(conn):
+    await conn.execute("SET timezone = 'UTC'")
+
 # Expected price patterns
 SYMBOL_PATTERNS = {
     'ts1/USDC': {'base': 100.0, 'type': 'linear_up', 'rate': 0.01},
@@ -56,7 +60,7 @@ async def wait_for_enrichment(
     Returns:
         True if all enriched, False if timeout
     """
-    start_time = datetime.utcnow()
+    start_time = datetime.now(timezone.utc)
 
     # Listen for enrichment complete notifications
     await conn.listen('enrichment_complete')
@@ -71,7 +75,7 @@ async def wait_for_enrichment(
     print(f"  Waiting for enrichment for {len(expected)} symbols (timeout: {timeout}s)...")
 
     # Wait for enrichment notifications
-    while (datetime.utcnow() - start_time).total_seconds() < timeout:
+    while (datetime.now(timezone.utc) - start_time).total_seconds() < timeout:
         try:
             notification = await asyncio.wait_for(
                 conn.notification(),
@@ -311,7 +315,7 @@ async def run_integration_test() -> Dict[str, Any]:
     print("  4. Vector validation (size, values, no NaN/Inf)")
     print("=" * 70)
 
-    pool = await asyncpg.create_pool(DB_URL, min_size=2, max_size=10)
+    pool = await asyncpg.create_pool(DB_URL, min_size=2, max_size=10, init=_init_utc)
 
     results = {
         'test_name': 'Complete Integration Test',

@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 8PaGef6ILcScLp79wsyXJMEQiaJvPgwWIkgLfrWcXorwHblBGr9cAU2brLeZpdr
+\restrict JLk58O0Syxmj2UF6I9jFhUkDNzr5uY00818aDVTbgi0KWzhrWqXoFXB3WSbvNXC
 
 -- Dumped from database version 15.17
 -- Dumped by pg_dump version 17.9 (Ubuntu 17.9-0ubuntu0.25.10.1)
@@ -298,7 +298,7 @@ CREATE VIEW public.active_symbols AS
 --
 
 CREATE TABLE public.candle_indicators (
-    "time" timestamp without time zone NOT NULL,
+    "time" timestamp with time zone NOT NULL,
     symbol_id integer NOT NULL,
     price numeric(20,10) NOT NULL,
     volume numeric(20,10) NOT NULL,
@@ -1777,5 +1777,5 @@ ALTER TABLE ONLY public.trades
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 8PaGef6ILcScLp79wsyXJMEQiaJvPgwWIkgLfrWcXorwHblBGr9cAU2brLeZpdr
+\unrestrict JLk58O0Syxmj2UF6I9jFhUkDNzr5uY00818aDVTbgi0KWzhrWqXoFXB3WSbvNXC
 
