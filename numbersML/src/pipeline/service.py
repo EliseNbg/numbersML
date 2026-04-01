@@ -16,6 +16,7 @@ Usage:
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Dict, List, Optional, Any
 
 import asyncpg
@@ -210,36 +211,134 @@ class TradePipeline:
             self._recovery_managers[symbol] = recovery
             
             logger.info(f"Initialized recovery manager for {symbol}")
+
+    async def _initial_recovery(self) -> None:
+        """
+        Run initial recovery for all symbols BEFORE connecting WebSocket.
+
+        Fetches the latest trade ID from Binance REST API and recovers
+        all missing trades since the last pipeline run. This prevents
+        the race condition where WebSocket delivers new trades while
+        recovery is running.
+        """
+        import aiohttp
+
+        rest_url = "https://api.binance.com/api/v3/aggTrades"
+
+        async with aiohttp.ClientSession() as session:
+            for symbol, recovery in self._recovery_managers.items():
+                if recovery._last_trade_id == 0:
+                    # Fresh start, no recovery needed
+                    continue
+
+                binance_symbol = symbol.replace('/', '')
+
+                try:
+                    # Get the latest trade from Binance to know current ID
+                    params = {'symbol': binance_symbol, 'limit': 1}
+                    async with session.get(rest_url, params=params) as resp:
+                        if resp.status != 200:
+                            logger.warning(f"Could not fetch latest trade for {symbol}")
+                            continue
+                        data = await resp.json()
+                        if not data:
+                            continue
+                        latest_trade_id = data[-1]['a']
+                        gap = latest_trade_id - recovery._last_trade_id
+
+                        if gap <= 0:
+                            logger.info(f"No gap for {symbol}: last_trade_id={recovery._last_trade_id}")
+                            continue
+
+                        logger.info(
+                            f"Initial recovery for {symbol}: "
+                            f"last_trade_id={recovery._last_trade_id}, "
+                            f"latest_trade_id={latest_trade_id}, "
+                            f"gap={gap} trades"
+                        )
+
+                        # Recover in batches
+                        current_from = recovery._last_trade_id + 1
+                        total_recovered = 0
+
+                        while current_from <= latest_trade_id:
+                            batch_limit = min(1000, latest_trade_id - current_from + 1)
+                            params = {
+                                'symbol': binance_symbol,
+                                'fromId': current_from,
+                                'limit': batch_limit,
+                            }
+                            async with session.get(rest_url, params=params) as batch_resp:
+                                if batch_resp.status != 200:
+                                    break
+                                trades_data = await batch_resp.json()
+                                if not trades_data:
+                                    break
+
+                                for td in trades_data:
+                                    trade = AggTrade(
+                                        event_type='aggTrade',
+                                        event_time=td.get('E', 0),
+                                        symbol=td.get('s', binance_symbol),
+                                        agg_trade_id=td['a'],
+                                        price=Decimal(td['p']),
+                                        quantity=Decimal(td['q']),
+                                        first_trade_id=td['f'],
+                                        last_trade_id=td['l'],
+                                        trade_time=td['T'],
+                                        is_buyer_maker=td['m'],
+                                    )
+                                    if trade.agg_trade_id > latest_trade_id:
+                                        break
+                                    await recovery.on_trade(trade)
+                                    total_recovered += 1
+
+                                last_id = trades_data[-1]['a']
+                                if last_id < current_from:
+                                    break
+                                current_from = last_id + 1
+
+                        logger.info(
+                            f"Initial recovery complete for {symbol}: "
+                            f"{total_recovered} trades recovered"
+                        )
+
+                except Exception as e:
+                    logger.error(f"Initial recovery failed for {symbol}: {e}")
     
     async def start(self) -> None:
         """
         Start pipeline.
-        
+
         Connects to WebSocket and starts processing trades.
         """
         if self._running:
             logger.warning("Pipeline already running")
             return
-        
+
         logger.info("Starting trade pipeline")
         self._running = True
         self._start_time = datetime.now(timezone.utc)
-        
+
         # Initialize components
         await self._initialize_recovery_managers()
         await self._db_writer.start()
         await self._indicator_calculator.load_definitions()
         await self._wide_vector_service.load_symbols()
-        
+
+        # Run initial recovery BEFORE connecting WebSocket
+        # This fills any gaps since the last pipeline run
+        await self._initial_recovery()
+
         # Create WebSocket manager
         self._ws_manager = BinanceWebSocketManager(
             symbols=self.symbols,
             on_trade=self._on_trade,
         )
-        
+
         # Start 1-second ticker for candle emission
         self._ticker_task = asyncio.create_task(self._ticker_loop())
-        
+
         # Start WebSocket (runs until stopped)
         try:
             await self._ws_manager.start()

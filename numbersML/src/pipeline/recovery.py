@@ -27,6 +27,10 @@ import logging
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from typing import Any, Callable, Dict, List, Optional
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+import logging
+import asyncio
 
 import aiohttp
 import asyncpg
@@ -240,46 +244,49 @@ class RecoveryManager:
     async def process_trade(self, trade: AggTrade) -> bool:
         """
         Process incoming trade and check for gaps.
-        
+
+        Always passes the trade to the aggregator (for candle generation).
+        If a gap is detected, recovers missing trades synchronously first.
+
         Args:
             trade: Trade to process
-        
+
         Returns:
-            True if gap detected and recovery started
+            True if trade was processed
         """
         # Check for gap
-        if self._last_trade_id > 0:
+        if self._last_trade_id > 0 and trade.agg_trade_id > self._last_trade_id + 1:
             expected_id = self._last_trade_id + 1
-            
-            if trade.agg_trade_id > expected_id:
-                # Gap detected!
-                gap_size = trade.agg_trade_id - expected_id
-                logger.warning(
-                    f"Gap detected for {self.symbol}: "
-                    f"expected {expected_id}, got {trade.agg_trade_id} "
-                    f"(gap: {gap_size} trades)"
-                )
-                
-                self._stats['gaps_detected'] += 1
-                
-                # Start recovery
-                asyncio.create_task(
-                    self._recover_gap(
-                        from_id=expected_id,
-                        to_id=trade.agg_trade_id - 1,
-                    )
-                )
-        
+            gap_size = trade.agg_trade_id - expected_id
+            logger.warning(
+                f"Gap detected for {self.symbol}: "
+                f"expected {expected_id}, got {trade.agg_trade_id} "
+                f"(gap: {gap_size} trades)"
+            )
+            self._stats['gaps_detected'] += 1
+
+            # Recover missing trades synchronously (blocks until done)
+            # Recovery calls on_trade → aggregator for each recovered trade
+            await self._recover_gap(
+                from_id=expected_id,
+                to_id=trade.agg_trade_id - 1,
+            )
+
         # Update state
         self._last_trade_id = trade.agg_trade_id
         self._last_timestamp = trade.timestamp
-        
+
         # Persist state periodically (every 100 trades)
         if self._last_trade_id % 100 == 0:
             await self._persist_state()
-        
+
+        # Always pass trade to on_trade → aggregator
+        # This ensures the aggregator always has the latest data
+        # for candle generation, regardless of recovery state
+        await self.on_trade(trade)
+
         return True
-    
+
     async def _recover_gap(
         self,
         from_id: int,
@@ -294,10 +301,6 @@ class RecoveryManager:
             from_id: Start trade ID
             to_id: End trade ID
         """
-        if self._is_recovering:
-            logger.warning("Recovery already in progress")
-            return
-
         self._is_recovering = True
         self._stats['recovery_events'] += 1
         self._stats['last_recovery_time'] = datetime.now(timezone.utc)
@@ -332,6 +335,8 @@ class RecoveryManager:
                 for trade in trades:
                     if trade.agg_trade_id > to_id:
                         break
+                    self._last_trade_id = trade.agg_trade_id
+                    self._last_timestamp = trade.timestamp
                     await self.on_trade(trade)
                     self._stats['trades_recovered'] += 1
                     total_recovered += 1
