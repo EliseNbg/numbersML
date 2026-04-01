@@ -92,3 +92,10 @@ dmypy.json
 # OS specific
 *.bak
 *~
+
+# ML models
+*.pt
+*.pth
+*.onnx
+ml/models/*/best_model.pt
+ml/models/*/norm_params.npz

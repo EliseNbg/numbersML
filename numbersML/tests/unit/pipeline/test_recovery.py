@@ -101,13 +101,13 @@ class TestRecoveryManager:
 
     @pytest.mark.asyncio
     async def test_process_trade_no_gap_first_trade(self, recovery, on_trade_callback):
-        """First trade should not trigger gap detection but should call on_trade."""
+        """First trade should not trigger gap detection."""
         trade = make_trade(100)
         result = await recovery.process_trade(trade)
         assert result is True
         assert recovery._last_trade_id == 100
-        # on_trade IS called (trade always goes to aggregator)
-        on_trade_callback.assert_called_once()
+        # on_trade is NOT called by process_trade (caller handles it)
+        on_trade_callback.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_process_trade_sequential_no_gap(self, recovery):
@@ -345,15 +345,16 @@ class TestGapFillingEndToEnd:
         recovery._rest_client = AsyncMock()
         recovery._rest_client.get_agg_trades = AsyncMock(return_value=mock_trades)
 
-        # Process trade 100 (no gap, goes to aggregator)
+        # Process trade 100 (no gap, state updated)
         await recovery.process_trade(make_trade(100))
-        assert len(processed_trades) == 1  # Trade 100 via on_trade
+        assert len(processed_trades) == 0  # on_trade NOT called by process_trade
 
-        # Process trade 110 (gap detected, recovery fills 101-109, then 110 via on_trade)
+        # Process trade 110 (gap detected, recovery fills 101-109 via on_trade)
         await recovery.process_trade(make_trade(110))
 
-        # Recovery called on_trade for 101-109, process_trade called on_trade for 110
-        assert len(processed_trades) == 11  # 100 + 101-109 + 110
+        # Recovery called on_trade for 101-109 (9 trades)
+        # Trade 110 is NOT passed to on_trade by process_trade
+        assert len(processed_trades) == 9
         assert recovery._last_trade_id == 110
 
     @pytest.mark.asyncio
@@ -421,8 +422,8 @@ class TestPipelineRestartRecovery:
         await recovery.process_trade(make_trade(1050))
         await asyncio.sleep(0.5)
 
-        # Recovery called on_trade for 1001-1049, WS trade 1050 also calls on_trade
-        assert len(recovered_trades) == 50  # 49 recovered + 1 WS trade
+        # Recovery called on_trade for 1001-1049 (49 trades)
+        assert len(recovered_trades) == 49
         assert recovery._last_trade_id == 1050
         assert recovery._stats['gaps_detected'] == 1
 
@@ -503,8 +504,8 @@ class TestPipelineRestartRecovery:
         await recovery.process_trade(make_trade(105000))
         await asyncio.sleep(1.0)
 
-        # All 4999 recovered + 1 WS triggering trade
-        assert len(recovered_trades) == 5000
+        # All 4999 recovered trades passed to on_trade
+        assert len(recovered_trades) == 4999
         assert recovery._last_trade_id == 105000
         assert recovery._rest_client.get_agg_trades.call_count >= 5
 
@@ -557,10 +558,10 @@ class TestInitialRecovery:
         assert len(recovered_trades) == 500
         assert recovery._last_trade_id == 1500
 
-        # Now WebSocket delivers 1501 - no gap, goes to aggregator
+        # Now WebSocket delivers 1501 - no gap, state updated
         await recovery.process_trade(make_trade(1501))
         assert recovery._last_trade_id == 1501
-        assert len(recovered_trades) == 501  # 500 recovered + 1 WS trade
+        assert len(recovered_trades) == 500  # on_trade NOT called by process_trade
 
     @pytest.mark.asyncio
     async def test_no_gap_after_initial_recovery(self):

@@ -232,14 +232,15 @@ class RecoveryManager:
         """
         Process incoming trade and check for gaps.
 
-        Always passes the trade to the aggregator (for candle generation).
-        If a gap is detected, recovers missing trades synchronously first.
+        The caller (_on_trade) is responsible for passing the trade
+        to the aggregator. This method only handles gap detection
+        and recovery.
 
         Args:
             trade: Trade to process
 
         Returns:
-            True if trade was processed
+            True if processed normally, False if trade was during recovery
         """
         # Check for gap
         if self._last_trade_id > 0 and trade.agg_trade_id > self._last_trade_id + 1:
@@ -253,7 +254,6 @@ class RecoveryManager:
             self._stats['gaps_detected'] += 1
 
             # Recover missing trades synchronously (blocks until done)
-            # Recovery calls on_trade → aggregator for each recovered trade
             await self._recover_gap(
                 from_id=expected_id,
                 to_id=trade.agg_trade_id - 1,
@@ -266,11 +266,6 @@ class RecoveryManager:
         # Persist state periodically (every 100 trades)
         if self._last_trade_id % 100 == 0:
             await self._persist_state()
-
-        # Always pass trade to on_trade → aggregator
-        # This ensures the aggregator always has the latest data
-        # for candle generation, regardless of recovery state
-        await self.on_trade(trade)
 
         return True
 
