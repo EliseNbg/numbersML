@@ -125,6 +125,7 @@ class WideVectorDataset(Dataset):
                     FROM wide_vectors wv
                     LEFT JOIN candles_1s c ON c.time = wv.time AND c.symbol_id = %s
                     WHERE wv.time >= %s AND wv.time < %s
+                      AND wv.vector_size >= 50
                     ORDER BY wv.time
                 """
                 cur.execute(query, (symbol_id, self.start_time, self.end_time))
@@ -253,39 +254,26 @@ def create_data_loaders(
     
     # Calculate time ranges based on available data
     data_hours = (data_end - data_start).total_seconds() / 3600
-    print(f"Available data: {data_start} to {data_end} ({data_hours:.1f} hours)")
+    print(f"Available data: {data_start} to {data_end} ({data_hours:.2f} hours)")
     
-    # If data is limited, adjust proportions
-    total_hours_needed = data_config.train_hours + data_config.val_hours + data_config.test_hours
-    if data_hours < total_hours_needed:
-        # Scale down proportionally
-        scale = data_hours / total_hours_needed
-        train_hours = int(data_config.train_hours * scale)
-        val_hours = int(data_config.val_hours * scale)
-        test_hours = int(data_config.test_hours * scale)
-        
-        # Ensure minimum hours
-        train_hours = max(train_hours, 1)
-        val_hours = max(val_hours, 1)
-        test_hours = max(test_hours, 1)
-    else:
-        train_hours = data_config.train_hours
-        val_hours = data_config.val_hours
-        test_hours = data_config.test_hours
+    # Split proportionally: 70% train, 15% val, 15% test
+    # Use actual available data, not config hours
+    train_frac, val_frac, test_frac = 0.7, 0.15, 0.15
+    
+    total_seconds = (data_end - data_start).total_seconds()
+    train_seconds = total_seconds * train_frac
+    val_seconds = total_seconds * val_frac
+    test_seconds = total_seconds * test_frac
     
     # Time ranges (going backwards from data_end)
     test_end = data_end
-    test_start = data_end - timedelta(hours=test_hours)
+    test_start = data_end - timedelta(seconds=test_seconds)
 
     val_end = test_start
-    val_start = val_end - timedelta(hours=val_hours)
+    val_start = val_end - timedelta(seconds=val_seconds)
 
     train_end = val_start
-    train_start = train_end - timedelta(hours=train_hours)
-    
-    # Ensure train_start is not before data_start
-    if train_start < data_start:
-        train_start = data_start
+    train_start = data_start  # Use all remaining data for training
 
     print(f"Train: {train_start} to {train_end}")
     print(f"Val:   {val_start} to {val_end}")

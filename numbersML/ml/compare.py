@@ -33,15 +33,24 @@ class ModelComparator:
 
     def _load_model(self, model_path: str):
         """Load a model from checkpoint."""
-        checkpoint = torch.load(model_path, map_location=self.device)
+        checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
         config = checkpoint["config"]
 
-        # Get input dim
-        first_weight = checkpoint["model_state_dict"]["input_proj.0.weight"]
+        # Detect model type from state dict keys
+        state_keys = set(checkpoint["model_state_dict"].keys())
+        if any("transformer_blocks" in k for k in state_keys):
+            model_type = "transformer"
+            first_weight = checkpoint["model_state_dict"]["input_proj.0.weight"]
+        elif any("attention_layers" in k for k in state_keys):
+            model_type = "full"
+            first_weight = checkpoint["model_state_dict"]["input_proj.0.weight"]
+        else:
+            model_type = "simple"
+            first_weight = checkpoint["model_state_dict"]["network.0.linear.weight"]
         input_dim = first_weight.shape[1]
 
         # Create and load model
-        model = create_model(input_dim, config.model, model_type="full")
+        model = create_model(input_dim, config.model, model_type=model_type)
         model.load_state_dict(checkpoint["model_state_dict"])
         model.to(self.device)
         model.eval()
@@ -51,7 +60,7 @@ class ModelComparator:
         self.models[name] = model
         self.configs[name] = config
 
-        print(f"Loaded: {name} (input_dim={input_dim})")
+        print(f"Loaded: {name} ({model_type}, input_dim={input_dim})")
 
     @torch.no_grad()
     def evaluate(
@@ -129,7 +138,7 @@ class ModelComparator:
         config.data.test_hours = test_hours
 
         # Create test loader
-        _, _, test_loader, _, _ = create_data_loaders(config.db, config.data)
+        _, _, test_loader, _, _, _ = create_data_loaders(config.db, config.data)
 
         # Evaluate
         results = self.evaluate(test_loader)

@@ -93,6 +93,20 @@ class Trainer:
         np.savez(norm_path, mean=self.mean, std=self.std, feature_mask=self.feature_mask)
         print(f"Normalization params saved to {norm_path}")
 
+        # Auto-adjust config for small datasets
+        n_train = len(self.train_loader.dataset)
+        if n_train < 200:
+            print(f"Small dataset detected ({n_train} samples). Adjusting config.")
+            # Reduce model size
+            if self.config.model.hidden_dims[0] > 128:
+                self.config.model.hidden_dims = [128, 64, 32]
+            # Reduce dropout for small data
+            if self.config.model.dropout > 0.1:
+                self.config.model.dropout = 0.1
+            # Lower learning rate
+            if self.config.training.learning_rate > 5e-4:
+                self.config.training.learning_rate = 5e-4
+
         return self.train_loader, self.val_loader, self.test_loader
 
     def setup_model(self, input_dim: int, model_type: str = "full") -> nn.Module:
@@ -115,8 +129,8 @@ class Trainer:
             weight_decay=self.config.training.weight_decay,
         )
 
-        # Loss function
-        self.criterion = nn.MSELoss()
+        # Loss function - Huber loss is more robust to outliers than MSE
+        self.criterion = nn.HuberLoss(delta=1.0)
 
         # Learning rate scheduler
         if self.config.training.scheduler == "cosine":

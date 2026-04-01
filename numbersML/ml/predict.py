@@ -41,17 +41,28 @@ class Predictor:
             norm_params = np.load(norm_path)
             self.mean = norm_params["mean"]
             self.std = norm_params["std"]
+            self.feature_mask = norm_params.get("feature_mask", None)
         else:
             print(f"Warning: No normalization params found at {norm_path}")
             self.mean = None
             self.std = None
+            self.feature_mask = None
 
-        # Determine input dim from model state dict
-        first_weight = checkpoint["model_state_dict"]["input_proj.0.weight"]
+        # Detect model type and input dim from state dict keys
+        state_keys = set(checkpoint["model_state_dict"].keys())
+        if any("transformer_blocks" in k for k in state_keys):
+            model_type = "transformer"
+            first_weight = checkpoint["model_state_dict"]["input_proj.0.weight"]
+        elif any("attention_layers" in k for k in state_keys):
+            model_type = "full"
+            first_weight = checkpoint["model_state_dict"]["input_proj.0.weight"]
+        else:
+            model_type = "simple"
+            first_weight = checkpoint["model_state_dict"]["network.0.linear.weight"]
         input_dim = first_weight.shape[1]
 
         # Create model and load weights
-        self.model = create_model(input_dim, self.config.model, model_type="full")
+        self.model = create_model(input_dim, self.config.model, model_type=model_type)
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.model.to(self.device)
         self.model.eval()

@@ -41,7 +41,7 @@ class DataConfig:
     normalize: bool = True
 
     # Minimum target_value samples required
-    min_samples: int = 1000
+    min_samples: int = 50
 
 
 @dataclass

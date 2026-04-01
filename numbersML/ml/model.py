@@ -494,10 +494,11 @@ class CryptoTargetModel(nn.Module):
 
 class SimpleMLPModel(nn.Module):
     """
-    Simple MLP baseline (no temporal modeling).
+    Simple MLP baseline with temporal pooling.
 
-    Takes the last wide_vector in the sequence and predicts target_value.
-    Useful as a baseline to compare against the full model.
+    Takes the average of the last few wide_vectors in the sequence
+    and predicts target_value via MLP. This provides a stronger baseline
+    than just using the single last vector.
     """
 
     def __init__(self, input_dim: int, config: ModelConfig):
@@ -528,8 +529,9 @@ class SimpleMLPModel(nn.Module):
         Returns:
             (batch,)
         """
-        # Take only the last time step
-        x = x[:, -1, :]
+        # Average last 10 time steps for temporal context
+        n_avg = min(10, x.shape[1])
+        x = x[:, -n_avg:, :].mean(dim=1)
         return self.network(x).squeeze(-1)
 
 
