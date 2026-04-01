@@ -2,6 +2,7 @@
   "permission": {
     "bash": {
       "git *": "allow",
+      "pg_dump *": "allow",
       "*": "allow"
     }
   }

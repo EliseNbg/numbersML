@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict JLk58O0Syxmj2UF6I9jFhUkDNzr5uY00818aDVTbgi0KWzhrWqXoFXB3WSbvNXC
+\restrict A7TQU26ELrombay1cj8mp0iaULtVsex2P2Cu7UnIDHhpfAcNMklEG2WGRgFXyir
 
 -- Dumped from database version 15.17
 -- Dumped by pg_dump version 17.9 (Ubuntu 17.9-0ubuntu0.25.10.1)
@@ -841,14 +841,14 @@ ALTER SEQUENCE public.pipeline_metrics_id_seq OWNED BY public.pipeline_metrics.i
 CREATE TABLE public.pipeline_state (
     symbol_id integer NOT NULL,
     last_trade_id bigint DEFAULT 0 NOT NULL,
-    last_timestamp timestamp without time zone DEFAULT now() NOT NULL,
+    last_timestamp timestamp with time zone DEFAULT now() NOT NULL,
     is_recovering boolean DEFAULT false NOT NULL,
-    recovery_start_time timestamp without time zone,
-    recovery_end_time timestamp without time zone,
+    recovery_start_time timestamp with time zone,
+    recovery_end_time timestamp with time zone,
     trades_processed bigint DEFAULT 0 NOT NULL,
     gaps_detected bigint DEFAULT 0 NOT NULL,
-    last_gap_time timestamp without time zone,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
+    last_gap_time timestamp with time zone,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -1777,5 +1777,5 @@ ALTER TABLE ONLY public.trades
 -- PostgreSQL database dump complete
 --
 
-\unrestrict JLk58O0Syxmj2UF6I9jFhUkDNzr5uY00818aDVTbgi0KWzhrWqXoFXB3WSbvNXC
+\unrestrict A7TQU26ELrombay1cj8mp0iaULtVsex2P2Cu7UnIDHhpfAcNMklEG2WGRgFXyir
 
