@@ -16,7 +16,6 @@ Usage:
 import asyncio
 import logging
 from datetime import datetime, timezone
-from decimal import Decimal
 from typing import List, Optional, Dict, Any
 
 import asyncpg

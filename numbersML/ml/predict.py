@@ -7,6 +7,7 @@ Usage:
 """
 
 import json
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
@@ -17,6 +18,8 @@ import psycopg2
 
 from ml.config import DatabaseConfig, ModelConfig, get_default_config
 from ml.model import create_model
+
+logger = logging.getLogger(__name__)
 
 
 class Predictor:
@@ -43,7 +46,7 @@ class Predictor:
             self.std = norm_params["std"]
             self.feature_mask = norm_params.get("feature_mask", None)
         else:
-            print(f"Warning: No normalization params found at {norm_path}")
+            logger.warning(f"No normalization params found at {norm_path}")
             self.mean = None
             self.std = None
             self.feature_mask = None
@@ -67,9 +70,9 @@ class Predictor:
         self.model.to(self.device)
         self.model.eval()
 
-        print(f"Model loaded from {model_path}")
-        print(f"Input dim: {input_dim}")
-        print(f"Sequence length: {self.config.data.sequence_length}")
+        logger.info(f"Model loaded from {model_path}")
+        logger.info(f"Input dim: {input_dim}")
+        logger.info(f"Sequence length: {self.config.data.sequence_length}")
 
     def load_recent_vectors(
         self,

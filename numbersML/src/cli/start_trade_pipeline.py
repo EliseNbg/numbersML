@@ -15,6 +15,7 @@ from typing import List
 
 import asyncpg
 
+from src.infrastructure.database import _init_utc
 from src.pipeline.service import TradePipeline
 
 # Configure logging
@@ -74,15 +75,12 @@ async def run_pipeline(symbols: List[str], db_url: str) -> None:
     # Create database pool
     logger.info(f"Connecting to database: {db_url.split('@')[-1]}")
     
-    async def _set_utc(conn):
-        await conn.execute("SET timezone = 'UTC'")
-    
     db_pool = await asyncpg.create_pool(
         db_url,
         min_size=2,
         max_size=10,
         timeout=30,
-        init=_set_utc,
+        init=_init_utc,
     )
     
     try:

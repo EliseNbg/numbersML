@@ -11,6 +11,7 @@ Features:
 - Gradient clipping
 """
 
+import logging
 import os
 import time
 from datetime import datetime
@@ -31,6 +32,8 @@ from torch.utils.tensorboard import SummaryWriter
 from ml.config import PipelineConfig, get_default_config
 from ml.dataset import create_data_loaders
 from ml.model import create_model
+
+logger = logging.getLogger(__name__)
 
 
 class EarlyStopping:
@@ -91,12 +94,12 @@ class Trainer:
         # Save normalization parameters and feature mask
         norm_path = os.path.join(self.config.training.save_dir, "norm_params.npz")
         np.savez(norm_path, mean=self.mean, std=self.std, feature_mask=self.feature_mask)
-        print(f"Normalization params saved to {norm_path}")
+        logger.info(f"Normalization params saved to {norm_path}")
 
         # Auto-adjust config for small datasets
         n_train = len(self.train_loader.dataset)
         if n_train < 200:
-            print(f"Small dataset detected ({n_train} samples). Adjusting config.")
+            logger.info(f"Small dataset detected ({n_train} samples). Adjusting config.")
             # Reduce model size
             if self.config.model.hidden_dims[0] > 128:
                 self.config.model.hidden_dims = [128, 64, 32]
@@ -119,8 +122,8 @@ class Trainer:
         trainable_params = sum(
             p.numel() for p in self.model.parameters() if p.requires_grad
         )
-        print(f"Total parameters: {total_params:,}")
-        print(f"Trainable parameters: {trainable_params:,}")
+        logger.info(f"Total parameters: {total_params:,}")
+        logger.info(f"Trainable parameters: {trainable_params:,}")
 
         # Optimizer
         self.optimizer = AdamW(
@@ -261,7 +264,7 @@ class Trainer:
         # Get input dimension
         sample_X, _ = next(iter(self.train_loader))
         input_dim = sample_X.shape[-1]
-        print(f"Input dimension: {input_dim}")
+        logger.info(f"Input dimension: {input_dim}")
 
         # Setup model
         self.setup_model(input_dim, model_type)

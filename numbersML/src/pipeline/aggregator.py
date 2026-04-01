@@ -19,7 +19,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Callable, Optional, Dict, Any, List
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from src.pipeline.websocket_manager import AggTrade
 

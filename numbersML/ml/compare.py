@@ -8,8 +8,9 @@ Usage:
 """
 
 import json
+import logging
 import os
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 import numpy as np
 import torch
@@ -18,6 +19,8 @@ from torch.utils.data import DataLoader
 from ml.config import DatabaseConfig, get_default_config
 from ml.dataset import WideVectorDataset, create_data_loaders
 from ml.model import create_model
+
+logger = logging.getLogger(__name__)
 
 
 class ModelComparator:
@@ -60,7 +63,7 @@ class ModelComparator:
         self.models[name] = model
         self.configs[name] = config
 
-        print(f"Loaded: {name} ({model_type}, input_dim={input_dim})")
+        logger.info(f"Loaded: {name} ({model_type}, input_dim={input_dim})")
 
     @torch.no_grad()
     def evaluate(

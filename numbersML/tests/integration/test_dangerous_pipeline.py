@@ -24,6 +24,8 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Set, Tuple
 
+from src.infrastructure.database import _init_utc
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -52,10 +54,7 @@ class DangerousIntegrationTest:
 
     async def setup(self):
         """Setup database connection."""
-        async def _set_utc(conn):
-            await conn.execute("SET timezone = 'UTC'")
-        
-        self.db_pool = await asyncpg.create_pool(DB_URL, min_size=5, max_size=20, init=_set_utc)
+        self.db_pool = await asyncpg.create_pool(DB_URL, min_size=5, max_size=20, init=_init_utc)
         logger.info("Database connection established")
 
     async def teardown(self):

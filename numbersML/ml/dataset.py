@@ -13,16 +13,18 @@ The dataset handles:
 """
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 import psycopg2
-from psycopg2.extras import RealDictCursor
 
 from ml.config import DatabaseConfig, DataConfig
+
+logger = logging.getLogger(__name__)
 
 
 class WideVectorDataset(Dataset):
@@ -72,7 +74,7 @@ class WideVectorDataset(Dataset):
             min_std = 0.01
             self.feature_mask = self.std >= min_std
             n_features = self.feature_mask.sum()
-            print(f"Filtering features: {n_features}/{len(self.std)} kept (std >= {min_std})")
+            logger.info(f"Filtering features: {n_features}/{len(self.std)} kept (std >= {min_std})")
             
             # Apply mask to mean and std
             self.mean = self.mean[self.feature_mask]
@@ -254,7 +256,7 @@ def create_data_loaders(
     
     # Calculate time ranges based on available data
     data_hours = (data_end - data_start).total_seconds() / 3600
-    print(f"Available data: {data_start} to {data_end} ({data_hours:.2f} hours)")
+    logger.info(f"Available data: {data_start} to {data_end} ({data_hours:.2f} hours)")
     
     # Split proportionally: 70% train, 15% val, 15% test
     # Use actual available data, not config hours
@@ -275,9 +277,9 @@ def create_data_loaders(
     train_end = val_start
     train_start = data_start  # Use all remaining data for training
 
-    print(f"Train: {train_start} to {train_end}")
-    print(f"Val:   {val_start} to {val_end}")
-    print(f"Test:  {test_start} to {test_end}")
+    logger.info(f"Train: {train_start} to {train_end}")
+    logger.info(f"Val:   {val_start} to {val_end}")
+    logger.info(f"Test:  {test_start} to {test_end}")
 
     # Load training data first to compute normalization
     train_dataset = WideVectorDataset(
@@ -339,9 +341,9 @@ def create_data_loaders(
         pin_memory=False,
     )
 
-    print(f"Train samples: {len(train_dataset)}")
-    print(f"Val samples:   {len(val_dataset)}")
-    print(f"Test samples:  {len(test_dataset)}")
-    print(f"Feature dim:   {train_dataset.get_feature_dim()}")
+    logger.info(f"Train samples: {len(train_dataset)}")
+    logger.info(f"Val samples:   {len(val_dataset)}")
+    logger.info(f"Test samples:  {len(test_dataset)}")
+    logger.info(f"Feature dim:   {train_dataset.get_feature_dim()}")
 
     return train_loader, val_loader, test_loader, mean, std, feature_mask

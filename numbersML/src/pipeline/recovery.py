@@ -1,36 +1,23 @@
 """
 Recovery Manager for gap detection and trade recovery via REST API.
 
-Features:
-- Gap detection (missing trade IDs)
-- REST API client for fetching missing trades
-- State persistence in database
-- Automatic recovery on reconnection
-
-Binance REST API:
-    GET /api/v3/aggTrades
-    
-    Parameters:
-        - symbol: BTCUSDT
-        - fromId: Start trade ID
-        - startTime: Start time (ms)
-        - endTime: End time (ms)
-        - limit: Max 1000
+Responsibilities:
+- Track last processed trade ID per symbol
+- Detect gaps in WebSocket trade stream
+- Recover missing trades from Binance REST API
+- Persist recovery state to database
 
 Usage:
-    recovery = RecoveryManager(symbol='BTC/USDT', db_pool=pool)
-    await recovery.recover_missing_trades(last_trade_id=12345)
+    recovery = RecoveryManager(symbol='BTC/USDC', db_pool=pool, on_trade=callback)
+    await recovery.initialize()
+    await recovery.process_trade(trade)  # handles gaps automatically
 """
 
 import asyncio
 import logging
-from datetime import datetime, timezone, timedelta
-from decimal import Decimal
-from typing import Any, Callable, Dict, List, Optional
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-import logging
-import asyncio
+from typing import Any, Callable, Dict, List, Optional
 
 import aiohttp
 import asyncpg
