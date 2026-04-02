@@ -199,13 +199,8 @@ class TestMultiSymbolAggregator:
     @pytest.mark.asyncio
     async def test_add_trade(self) -> None:
         """Test adding trade."""
-        candles = []
-        
-        async def on_candle(symbol: str, candle: TradeAggregation) -> None:
-            candles.append((symbol, candle))
-        
-        aggregator = MultiSymbolAggregator(on_candle=on_candle)
-        
+        aggregator = MultiSymbolAggregator()
+
         trade = AggTrade(
             event_type='aggTrade',
             event_time=123456789,
@@ -218,12 +213,9 @@ class TestMultiSymbolAggregator:
             trade_time=123456789,
             is_buyer_maker=False,
         )
-        
+
         await aggregator.add_trade('BTC/USDT', trade)
-        
-        # No candle emitted yet (same window)
-        assert len(candles) == 0
-        
+
         stats = aggregator.get_stats()
         assert stats['symbols'] == 1
 

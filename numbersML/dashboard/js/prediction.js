@@ -81,7 +81,7 @@ async function loadModels() {
         models.forEach(m => {
             const option = document.createElement('option');
             option.value = m.name;
-            option.textContent = `${m.name} (${m.size_mb} MB, ${m.modified})`;
+            option.textContent = `${m.label} (${m.size_mb} MB)`;
             select.appendChild(option);
         });
 
@@ -236,7 +236,12 @@ async function loadPrediction() {
         if (data.predictions && data.predictions.length > 0) {
             console.log('Setting prediction data:', data.predictions.length, 'points');
             console.log('First prediction:', data.predictions[0]);
-            predictionSeries.setData(data.predictions);
+            // Convert prediction format for lightweight charts
+            const predictionData = data.predictions.map(p => ({
+                time: p.time,
+                value: p.predicted_target
+            }));
+            predictionSeries.setData(predictionData);
         } else {
             console.log('No predictions to display');
         }

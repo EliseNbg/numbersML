@@ -2,14 +2,16 @@
 """
 Gap Filler CLI - Detect and fill gaps in candles_1s.
 
-Scans candles_1s for missing seconds and fills them by fetching
-1-second klines from Binance REST API.
+Uses PipelineTicket BACKFILL_STEPS {1, 2, 3}:
+  Step 1: Write candles from Binance klines
+  Step 2: Calculate indicators
+  Step 3: Generate wide vectors
 
 Usage:
     # Detect gaps (last 24 hours)
     python -m src.cli.gap_fill --detect
 
-    # Fill all gaps
+    # Fill all gaps (candles + indicators + vectors)
     python -m src.cli.gap_fill
 
     # Fill gaps for specific symbol
@@ -29,6 +31,11 @@ from typing import Optional, List
 import asyncpg
 import click
 import aiohttp
+
+from src.pipeline.ticket import PipelineStep, BACKFILL_STEPS
+from src.pipeline.indicator_calculator import IndicatorCalculator
+from src.pipeline.wide_vector_service import WideVectorService
+from src.infrastructure.database import _init_utc
 
 BINANCE_API_BASE = "https://api.binance.com/api/v3"
 
@@ -218,7 +225,8 @@ async def fill_gap(
 @click.option('--dry-run', is_flag=True, help='Show what would be done')
 @click.option('--symbol', help='Filter by symbol (e.g., BTC/USDC)')
 @click.option('--critical-only', is_flag=True, help='Only fill gaps > 60 seconds')
-@click.option('--hours', default=24, help='Look back N hours (default: 24)')
+@click.option('--hours', default=None, type=int, help='Look back N hours')
+@click.option('--days', default=None, type=int, help='Look back N days')
 @click.option('--verbose', '-v', is_flag=True)
 def main(
     db_url: str,
@@ -226,12 +234,19 @@ def main(
     dry_run: bool,
     symbol: Optional[str],
     critical_only: bool,
-    hours: int,
+    hours: Optional[int],
+    days: Optional[int],
     verbose: bool,
 ) -> None:
     """Detect and fill gaps in candles_1s."""
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
+
+    # Convert --days to hours, default to 24h
+    if days is not None:
+        hours = days * 24
+    elif hours is None:
+        hours = 24
 
     exit_code = asyncio.run(
         _run(db_url, detect, dry_run, symbol, critical_only, hours)
@@ -247,11 +262,8 @@ async def _run(
     critical_only: bool,
     hours: int,
 ) -> int:
-    """Run gap detection and filling."""
-    async def _set_utc(conn):
-        await conn.execute("SET timezone = 'UTC'")
-    
-    db_pool = await asyncpg.create_pool(db_url, min_size=2, max_size=5, init=_set_utc)
+    """Run gap detection and filling with PipelineTicket steps."""
+    db_pool = await asyncpg.create_pool(db_url, min_size=2, max_size=5, init=_init_utc)
 
     try:
         logger.info(f"Detecting gaps in candles_1s (last {hours} hours)...")
@@ -274,14 +286,16 @@ async def _run(
 
         total_sec = sum(g.gap_seconds for g in gaps)
         print(f"Total gap time: {total_sec}s ({total_sec / 3600:.2f}h)")
+        print(f"Pipeline steps: {sorted(BACKFILL_STEPS)}")
 
         if detect or dry_run:
             return 0
 
-        # Fill gaps
+        # Step 1: Fill candles
         filled = 0
         failed = 0
         total_candles = 0
+        filled_times = set()  # track candle times for steps 2+3
 
         for i, gap in enumerate(gaps, 1):
             try:
@@ -297,14 +311,64 @@ async def _run(
                 failed += 1
                 logger.error(f"[{i}/{len(gaps)}] {gap.symbol} failed: {e}")
 
-        print(f"\nResults: {filled} filled, {failed} failed, {total_candles} candles inserted")
-        print("Next step: recalculate indicators for filled candles:")
-        print("  python3 -m src.cli.recalculate --all --from 'YYYY-MM-DD HH:MM:SS'")
+        print(f"\nStep 1 (candles): {total_candles} candles inserted")
 
+        # Step 2: Calculate indicators for filled candles
+        if PipelineStep.INDICATOR in BACKFILL_STEPS and total_candles > 0:
+            indicator_calc = IndicatorCalculator(db_pool)
+            await indicator_calc.load_definitions()
+            symbols = await _get_active_symbols(db_pool)
+            indicator_count = 0
+
+            for sym_id, sym_name in symbols:
+                try:
+                    count = await indicator_calc.calculate(sym_name, sym_id)
+                    indicator_count += count
+                except Exception as e:
+                    logger.error(f"Indicator error for {sym_name}: {e}")
+
+            print(f"Step 2 (indicators): {indicator_count} indicators calculated")
+
+        # Step 3: Generate wide vectors for the time range
+        if PipelineStep.WIDE_VECTOR in BACKFILL_STEPS and total_candles > 0:
+            wvs = WideVectorService(db_pool)
+            await wvs.load_symbols()
+            vector_count = 0
+
+            # Get distinct candle times in the gap range
+            async with db_pool.acquire() as conn:
+                times = await conn.fetch(
+                    "SELECT DISTINCT time FROM candles_1s "
+                    "WHERE time > NOW() - INTERVAL '1 hour' * $1 "
+                    "AND time NOT IN (SELECT time FROM wide_vectors) "
+                    "ORDER BY time",
+                    hours,
+                )
+
+            for row in times:
+                try:
+                    result = await wvs.generate(row['time'])
+                    if result:
+                        vector_count += 1
+                except Exception as e:
+                    logger.debug(f"Vector error at {row['time']}: {e}")
+
+            print(f"Step 3 (wide vectors): {vector_count} vectors generated")
+
+        print(f"\nResults: {filled} filled, {failed} failed, {total_candles} candles inserted")
         return 1 if failed > 0 else 0
 
     finally:
         await db_pool.close()
+
+
+async def _get_active_symbols(db_pool: asyncpg.Pool) -> List[tuple]:
+    """Get active symbol IDs and names."""
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, symbol FROM symbols WHERE is_active = true ORDER BY symbol"
+        )
+    return [(r['id'], r['symbol']) for r in rows]
 
 
 if __name__ == '__main__':

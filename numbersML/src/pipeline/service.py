@@ -1,12 +1,10 @@
 """
 Real-Time Trade Pipeline Service.
 
-Orchestrates the complete pipeline:
-1. WebSocket connection to Binance
-2. Trade aggregation (1-second candles)
-3. Gap recovery via REST API
-4. Database persistence
-5. Indicator calculation trigger
+Orchestrates the complete pipeline via PipelineTicket:
+1. Trade aggregation (1-second candles)
+2. Gap recovery via REST API
+3. Step-based execution (candles, indicators, wide vectors)
 
 Usage:
     pipeline = TradePipeline(db_pool=pool, symbols=['BTC/USDT'])
@@ -17,7 +15,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, FrozenSet, Any
 
 import asyncpg
 
@@ -27,6 +25,7 @@ from src.pipeline.recovery import RecoveryManager
 from src.pipeline.database_writer import MultiSymbolDatabaseWriter
 from src.pipeline.indicator_calculator import IndicatorCalculator
 from src.pipeline.wide_vector_service import WideVectorService
+from src.pipeline.ticket import PipelineStep, PipelineTicket, LIVE_STEPS
 
 logger = logging.getLogger(__name__)
 
@@ -64,51 +63,61 @@ class TradePipeline:
         """
         self.db_pool = db_pool
         self.symbols = symbols
-        
+        self._active_steps: FrozenSet[int] = LIVE_STEPS
+
         # Components
-        self._aggregator = MultiSymbolAggregator(on_candle=self._on_candle)
+        self._aggregator = MultiSymbolAggregator()
         self._db_writer = MultiSymbolDatabaseWriter(db_pool)
         self._indicator_calculator = IndicatorCalculator(db_pool)
         self._wide_vector_service = WideVectorService(db_pool)
         self._recovery_managers: Dict[str, RecoveryManager] = {}
         self._ws_manager: Optional[BinanceWebSocketManager] = None
-        
+
         # State
         self._running = False
         self._start_time: Optional[datetime] = None
-        
+
         # Statistics
         self._stats = {
             'trades_processed': 0,
             'candles_written': 0,
             'indicators_calculated': 0,
             'indicator_errors': 0,
+            'wide_vectors_generated': 0,
+            'wide_vector_errors': 0,
             'recovery_events': 0,
             'websocket_errors': 0,
             'database_errors': 0,
         }
-    
-    async def _on_candle(
-        self,
-        symbol: str,
-        candle: TradeAggregation,
-    ) -> None:
+
+    async def _execute_ticket(self, ticket: PipelineTicket) -> None:
         """
-        Handle completed candle.
-        
+        Execute pipeline steps for a candle based on its ticket.
+
+        Steps execute in dependency order:
+            1 (candle) → 2 (indicators) → 3 (vector) → 4 (ML) → 5 (trade)
+
         Args:
-            symbol: Symbol name
-            candle: Completed candle
+            ticket: Controls which steps to run
         """
-        try:
-            # Write to database
-            await self._db_writer.write_candle(symbol, candle)
-            self._stats['candles_written'] += 1
-            
-            # Flush candle to DB so indicator calculator can read it
-            await self._db_writer.flush_symbol(symbol)
-            
-            # Calculate indicators (pass candle directly to avoid DB read timing issues)
+        if not ticket.candle:
+            return
+
+        symbol = ticket.symbol
+        candle = ticket.candle
+
+        # Step 1: Write candle to database
+        if ticket.has(PipelineStep.CANDLE):
+            try:
+                await self._db_writer.write_candle(symbol, candle)
+                await self._db_writer.flush_symbol(symbol)
+                self._stats['candles_written'] += 1
+            except Exception as e:
+                logger.error(f"Error writing candle for {symbol}: {e}")
+                self._stats['database_errors'] += 1
+
+        # Step 2: Calculate indicators
+        if ticket.has(PipelineStep.INDICATOR):
             try:
                 count = await self._indicator_calculator.calculate_with_candle(
                     symbol=symbol,
@@ -124,10 +133,9 @@ class TradePipeline:
             except Exception as e:
                 logger.error(f"Error calculating indicators for {symbol}: {e}")
                 self._stats['indicator_errors'] += 1
-            
-        except Exception as e:
-            logger.error(f"Error processing candle: {e}")
-            self._stats['database_errors'] += 1
+
+        # Step 3: Wide vector (runs once per tick, after all symbols — handled in _ticker_loop)
+        # Step 4+: Future ML/trading steps
 
     async def _ticker_loop(self) -> None:
         """
@@ -147,22 +155,30 @@ class TradePipeline:
                 if not self._running:
                     break
                 
-                # Tick all aggregators
+                # Tick all aggregators (pull model — returns emitted candles)
                 tick_time = datetime.now(timezone.utc).replace(microsecond=0)
-                await self._aggregator.tick_all(tick_time)
-                
-                # Generate wide vector after all candles + indicators are done
-                try:
-                    candle_time = tick_time - timedelta(seconds=1)
-                    result = await self._wide_vector_service.generate(candle_time)
-                    if result:
-                        self._stats['wide_vectors_generated'] = self._stats.get('wide_vectors_generated', 0) + 1
-                        logger.debug(f"Wide vector generated for {candle_time}: {result['vector_size']} features")
-                    else:
-                        logger.debug(f"Wide vector returned None for {candle_time}")
-                except Exception as e:
-                    logger.error(f"Wide vector error: {e}")
-                    self._stats['wide_vector_errors'] = self._stats.get('wide_vector_errors', 0) + 1
+                candle_time = tick_time - timedelta(seconds=1)
+                emitted = await self._aggregator.tick_all(tick_time)
+
+                # Execute per-symbol tickets (steps 1, 2)
+                for symbol, candle in emitted.items():
+                    ticket = PipelineTicket(
+                        steps=self._active_steps,
+                        symbol=symbol,
+                        candle_time=candle_time,
+                        candle=candle,
+                    )
+                    await self._execute_ticket(ticket)
+
+                # Step 3: Wide vector (cross-symbol, runs once per tick)
+                if PipelineStep.WIDE_VECTOR in self._active_steps:
+                    try:
+                        result = await self._wide_vector_service.generate(candle_time)
+                        if result:
+                            self._stats['wide_vectors_generated'] = self._stats.get('wide_vectors_generated', 0) + 1
+                    except Exception as e:
+                        logger.error(f"Wide vector error: {e}")
+                        self._stats['wide_vector_errors'] = self._stats.get('wide_vector_errors', 0) + 1
                 
             except asyncio.CancelledError:
                 break

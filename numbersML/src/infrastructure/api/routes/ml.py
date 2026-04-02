@@ -66,16 +66,20 @@ def _load_model(model_path: str) -> tuple:
     # Determine model type and input dim from state dict keys
     state_dict = checkpoint["model_state_dict"]
     
-    if "input_proj.0.weight" in state_dict:
-        # Full model (CryptoTargetModel or CryptoTransformerModel)
-        input_dim = state_dict["input_proj.0.weight"].shape[1]
-        model_type = "full"
-    elif any(k.startswith("network.0.linear.weight") for k in state_dict.keys()):
+    if any(k.startswith("network.0.linear.weight") for k in state_dict.keys()):
         # Simple model (SimpleMLPModel)
         input_dim = state_dict["network.0.linear.weight"].shape[1]
         model_type = "simple"
+    elif any(k.startswith("transformer_blocks.") for k in state_dict.keys()):
+        # Transformer model (CryptoTransformerModel)
+        input_dim = state_dict["input_proj.0.weight"].shape[1]
+        model_type = "transformer"
+    elif "input_proj.0.weight" in state_dict:
+        # Full model (CryptoTargetModel)
+        input_dim = state_dict["input_proj.0.weight"].shape[1]
+        model_type = "full"
     else:
-        # Try to infer from first weight
+        # Fallback to simple model
         first_key = list(state_dict.keys())[0]
         input_dim = state_dict[first_key].shape[1]
         model_type = "simple"
@@ -96,29 +100,44 @@ def _load_model(model_path: str) -> tuple:
 @router.get(
     "/models",
     summary="List available ML models",
-    description="List all trained model files in ml/models/",
+    description="List all trained model files in ml/models/ subdirectories",
 )
 async def list_models() -> List[Dict[str, Any]]:
     """
-    List available ML models.
+    List available ML models from subdirectories (simple/, full/, transformer/).
     """
     models_dir = "ml/models"
     if not os.path.exists(models_dir):
         return []
 
     models = []
-    for filename in os.listdir(models_dir):
-        if filename.endswith(".pt") and "norm" not in filename:
-            filepath = os.path.join(models_dir, filename)
-            stat = os.stat(filepath)
-            models.append(
-                {
-                    "name": filename,
-                    "path": filepath,
-                    "size_mb": round(stat.st_size / (1024 * 1024), 2),
-                    "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                }
-            )
+    type_labels = {
+        "simple": "Simple",
+        "full": "Full",
+        "transformer": "Transformer",
+    }
+
+    for subdir_name in sorted(os.listdir(models_dir)):
+        subdir_path = os.path.join(models_dir, subdir_name)
+        if not os.path.isdir(subdir_path):
+            continue
+        if subdir_name not in type_labels:
+            continue
+
+        for filename in os.listdir(subdir_path):
+            if filename.endswith(".pt") and "norm" not in filename:
+                filepath = os.path.join(subdir_path, filename)
+                stat = os.stat(filepath)
+                models.append(
+                    {
+                        "name": f"{subdir_name}/{filename}",
+                        "type": subdir_name,
+                        "label": type_labels[subdir_name],
+                        "path": filepath,
+                        "size_mb": round(stat.st_size / (1024 * 1024), 2),
+                        "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    }
+                )
 
     return sorted(models, key=lambda x: x["modified"], reverse=True)
 
@@ -250,6 +269,26 @@ async def predict(
             vectors.append(vec)
             timestamps.append(row["time"])
 
+        # Validate vector dimensions before normalization
+        if vectors:
+            vec_size = len(vectors[0])
+            if feature_mask is not None:
+                expected_size = len(feature_mask)
+                if vec_size != expected_size:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Vector size mismatch: vectors have {vec_size} features but model was trained on {expected_size} features. "
+                               f"The model requires vectors with indicators (ATR, EMA, MACD, RSI, SMA, Bollinger Bands). "
+                               f"Current vectors only have close/volume data. Recalculate wide vectors with indicators enabled."
+                    )
+            elif mean is not None:
+                expected_size = len(mean)
+                if vec_size != expected_size:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Vector size mismatch: vectors have {vec_size} features but model expects {expected_size} features."
+                    )
+
         # Normalize (add epsilon to std to prevent division by zero)
         # Also apply feature mask to keep only informative features
         if mean is not None and std is not None:
@@ -265,11 +304,11 @@ async def predict(
             for i in range(seq_length - 1, len(vectors)):
                 sequence = np.stack(vectors[i - seq_length + 1 : i + 1])
                 X = torch.from_numpy(sequence).unsqueeze(0)
-                
+
                 # Simple model only uses last timestep, but we pass full sequence
                 # The model internally handles this
                 prediction = ml_model(X).item()
-                
+
                 # Check for NaN or Inf
                 if math.isnan(prediction) or math.isinf(prediction):
                     prediction = 0.0
@@ -298,7 +337,7 @@ async def predict(
             predictions = [
                 {
                     "time": p["time"],
-                    "predicted_target": round(p["predicted_target"] * scale_factor + offset, 2)
+                    "predicted_target": round(p["predicted_target"] * scale_factor + offset, 8)
                 }
                 for p in predictions
             ]
