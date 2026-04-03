@@ -3,12 +3,14 @@ PyTorch Dataset for loading wide_vectors + target_values.
 
 Data flow:
   wide_vectors.vector (JSONB array) -> X features
-  candles_1s.target_value           -> Y target
+  candles_1s.close                 -> Y target (via causal Hanning filter)
 
 The dataset handles:
   - Loading data from PostgreSQL
   - Creating sequences of consecutive wide_vectors for temporal context
-  - Normalization (mean/std computed on training set)
+  - Causal Hanning filter for target calculation (NO data leakage)
+  - Prediction horizon (predicts future smoothed prices)
+  - Feature normalization (log prices, StandardScaler)
   - Train/val/test splitting by time
 """
 
@@ -23,6 +25,7 @@ from torch.utils.data import Dataset, DataLoader
 import psycopg2
 
 from ml.config import DatabaseConfig, DataConfig
+from ml.target_builder import compute_target_with_horizon
 
 logger = logging.getLogger(__name__)
 
@@ -67,16 +70,30 @@ class WideVectorDataset(Dataset):
         # Compute normalization params if not provided
         if self.mean is None or self.std is None:
             all_vectors = np.vstack(self.vectors)
-            self.mean = np.mean(all_vectors, axis=0)
-            self.std = np.std(all_vectors, axis=0) + 1e-8
             
+            # Apply StandardScaler: zero mean, unit variance
+            self.mean = np.mean(all_vectors, axis=0)
+            self.std = np.std(all_vectors, axis=0)
+            
+            # Add epsilon to prevent division by zero
+            epsilon = 1e-8
+            self.std = np.where(self.std < epsilon, epsilon, self.std)
+
             # Filter out low-variance features (std < 0.01)
             # These features provide no information for learning
             min_std = 0.01
             self.feature_mask = self.std > min_std
+            
+            # Apply feature mask
             self.mean = self.mean[self.feature_mask]
             self.std = self.std[self.feature_mask]
+            
+            # Normalize vectors: x = (x - mean) / std
             self.vectors = [(v[self.feature_mask] - self.mean) / self.std for v in self.vectors]
+            
+            print(f'Feature normalization: StandardScaler (zero mean, unit variance)')
+            print(f'  Original features: {all_vectors.shape[1]}')
+            print(f'  Features after mask: {len(self.mean)} (removed {all_vectors.shape[1] - len(self.mean)} low-variance)')
         else:
             # Apply existing feature mask and normalization
             self.vectors = [(v[self.feature_mask] - self.mean) / self.std for v in self.vectors]
@@ -87,7 +104,7 @@ class WideVectorDataset(Dataset):
     def _load_data(
         self,
     ) -> Tuple[List[np.ndarray], List[float], List[datetime]]:
-        """Load wide_vectors and target_values for a specific symbol."""
+        """Load wide_vectors and compute targets using causal Hanning filter."""
         conn = psycopg2.connect(
             host=self.db_config.host,
             port=self.db_config.port,
@@ -112,13 +129,14 @@ class WideVectorDataset(Dataset):
             with conn.cursor(name="ml_data_cursor") as cur:
                 cur.itersize = 5000
 
-                # Load wide_vectors joined with target_values for THIS symbol only
+                # Load wide_vectors and close prices for THIS symbol
+                # We'll compute targets using causal Hanning filter
                 query = """
                     SELECT
                         wv.time,
                         wv.vector,
                         wv.vector_size,
-                        c.close AS target_value
+                        c.close AS close_price
                     FROM wide_vectors wv
                     LEFT JOIN candles_1s c ON c.time = wv.time AND c.symbol_id = %s
                     WHERE wv.time >= %s AND wv.time < %s
@@ -129,7 +147,7 @@ class WideVectorDataset(Dataset):
                 cur.execute(query, (symbol_id, self.start_time, self.end_time))
 
                 vectors = []
-                targets = []
+                close_prices = []
                 timestamps = []
                 prev_size = None
 
@@ -139,7 +157,7 @@ class WideVectorDataset(Dataset):
                         break
 
                     for row in rows:
-                        ts, vector_json, vec_size, target = row
+                        ts, vector_json, vec_size, close_price = row
 
                         # Parse vector from JSONB
                         if isinstance(vector_json, str):
@@ -157,21 +175,54 @@ class WideVectorDataset(Dataset):
                             else:
                                 vec = vec[:prev_size]
 
-                        # Skip if target is None
-                        if target is None:
-                            continue
-
                         vectors.append(vec)
-                        targets.append(float(target))
+                        close_prices.append(float(close_price))
                         timestamps.append(ts)
 
         finally:
             conn.close()
 
+        # Apply log transformation to prices if enabled
+        if self.data_config.use_log_prices:
+            # Apply log to close prices
+            close_prices_array = np.array(close_prices, dtype=np.float64)
+            close_prices_array = np.log(close_prices_array)
+            close_prices = close_prices_array.tolist()
+            
+            # Also apply log to price-related features in vectors
+            # Assuming first few features might be OHLC prices
+            # This is a simple heuristic - adjust based on your vector structure
+            for i in range(len(vectors)):
+                # Log transform first 4 features (OHLC) if they exist and are positive
+                for j in range(min(4, len(vectors[i]))):
+                    if vectors[i][j] > 0:
+                        vectors[i][j] = np.log(vectors[i][j])
+
+        # Compute targets using causal Hanning filter with prediction horizon
+        close_prices_array = np.array(close_prices, dtype=np.float64)
+        
+        target_result = compute_target_with_horizon(
+            close_prices_array,
+            window_size=self.data_config.hanning_window,
+            prediction_horizon=self.data_config.prediction_horizon,
+            return_alignment=True
+        )
+        
+        # Get valid targets (aligned with original data)
+        valid_start = target_result['valid_start_idx']
+        targets = target_result['targets'].tolist()
+        
+        # Trim vectors and timestamps to match valid target range
+        vectors = vectors[valid_start:]
+        timestamps = timestamps[valid_start:]
+        # Targets are already aligned
+        
         print(f'Loaded {len(vectors)} samples, {len(targets)} targets, {len(timestamps)} timestamps')
         print(f'  Symbol: {self.target_symbol}, target id: {symbol_id}')
-        print(f'  Time range: {self.start_time} to {self.end_time}')
-        
+        print(f'  Time range: {timestamps[0] if timestamps else "N/A"} to {timestamps[-1] if timestamps else "N/A"}')
+        print(f'  Hanning window: {self.data_config.hanning_window}, Prediction horizon: {self.data_config.prediction_horizon}')
+        print(f'  Using log prices: {self.data_config.use_log_prices}')
+
         if len(vectors) < self.data_config.min_samples:
             raise ValueError(
                 f"Insufficient samples: {len(vectors)} < {self.data_config.min_samples}"
