@@ -8,6 +8,8 @@ All connections enforce UTC timezone for consistent datetime handling.
 import asyncpg
 from typing import Optional
 
+__all__ = ['_init_utc', 'set_db_pool', 'get_db_pool', 'get_db_pool_async']
+
 
 async def _init_utc(conn: asyncpg.Connection) -> None:
     """Initialize connection to use UTC timezone."""
