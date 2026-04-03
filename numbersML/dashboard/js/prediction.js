@@ -81,7 +81,7 @@ async function loadModels() {
         models.forEach(m => {
             const option = document.createElement('option');
             option.value = m.name;
-            option.textContent = `${m.label} (${m.size_mb} MB)`;
+            option.textContent = `${m.label} - ${m.name} (${m.size_mb} MB)`;
             select.appendChild(option);
         });
 

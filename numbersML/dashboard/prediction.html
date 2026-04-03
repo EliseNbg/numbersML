@@ -87,10 +87,14 @@
                 <select class="form-select" id="prediction-model">
                     <option value="">Select model...</option>
                 </select>
+                <div class="form-text">
+                    <i class="bi bi-star-fill text-warning"></i> CNN+GRU is recommended for financial time series
+                </div>
             </div>
             <div class="col-md-3">
                 <label class="form-label">Time Range</label>
                 <select class="form-select" id="prediction-hours">
+                    <option value="1">1 Hour</option>
                     <option value="2">2 Hours</option>
                     <option value="12">12 Hours</option>
                     <option value="24" selected>1 Day</option>

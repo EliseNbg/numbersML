@@ -84,6 +84,11 @@ class Trainer:
         # Training state
         self.best_val_loss = float("inf")
         self.best_model_path = None
+        
+        # Initialize attributes to avoid AttributeError
+        self.model_type = "full"  # Default, will be overridden in train()
+        self.norm_path = None  # Will be set in train()
+        self.train_loader = None  # Will be set in setup_data()
 
     def setup_data(self) -> Tuple[DataLoader, DataLoader, DataLoader]:
         """Create data loaders."""
@@ -236,11 +241,35 @@ class Trainer:
         path = os.path.join(self.config.training.save_dir, "checkpoint.pt")
         torch.save(checkpoint, path)
 
-        # Save best model
+        # Save best model to model type directory with proper naming
         if is_best:
-            best_path = os.path.join(self.config.training.save_dir, "best_model.pt")
+            # Create model type directory
+            model_dir = os.path.join(self.config.training.save_dir, self.model_type)
+            os.makedirs(model_dir, exist_ok=True)
+
+            # Generate proper filename: modelName_wideVectorDim_Symbol_Date.pt
+            timestamp = datetime.now().strftime("%Y%m%d")
+            
+            # Get input dimension from model config or sample data
+            if hasattr(self, 'train_loader') and self.train_loader and len(self.train_loader.dataset) > 0:
+                input_dim = self.train_loader.dataset[0][0].shape[-1]
+            else:
+                # Fallback: try to get from model's first layer
+                input_dim = self.config.model.hidden_dims[0] if self.config.model.hidden_dims else 128
+            
+            symbol = self.config.data.target_symbol.replace("/", "")
+            filename = f"{self.model_type}_{input_dim}_{symbol}_{timestamp}.pt"
+
+            best_path = os.path.join(model_dir, filename)
             torch.save(checkpoint, best_path)
             self.best_model_path = best_path
+
+            # Also save norm params in model directory
+            if hasattr(self, 'norm_path') and os.path.exists(self.norm_path):
+                import shutil
+                norm_dest = os.path.join(model_dir, "norm_params.npz")
+                shutil.copyfile(self.norm_path, norm_dest)
+
             print(f"New best model saved: {best_path}")
 
     def train(
@@ -258,8 +287,11 @@ class Trainer:
         Returns:
             Dictionary with final metrics
         """
+        self.model_type = model_type
+        
         # Setup data
         self.setup_data()
+        self.norm_path = os.path.join(self.config.training.save_dir, "norm_params.npz")
 
         # Get input dimension
         sample_X, _ = next(iter(self.train_loader))
@@ -433,9 +465,9 @@ def main():
     parser = argparse.ArgumentParser(description="Train ML target prediction model")
     parser.add_argument(
         "--model",
-        choices=["full", "simple", "transformer"],
-        default="full",
-        help="Model type: full (CNN+Attention), simple (MLP), transformer (state-of-the-art)",
+        choices=["full", "simple", "transformer", "cnn_gru"],
+        default="cnn_gru",
+        help="Model type: full (CNN+Attention), simple (MLP), transformer (state-of-the-art), cnn_gru (CNN+GRU - RECOMMENDED for financial time series)",
     )
     parser.add_argument(
         "--resume",

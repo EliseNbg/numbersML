@@ -680,6 +680,174 @@ class CryptoTransformerModel(nn.Module):
         return self.output(x).squeeze(-1)
 
 
+class CNN_GRUModel(nn.Module):
+    """
+    CNN + GRU architecture for financial time series prediction.
+    
+    This is the RECOMMENDED architecture for CPU-based financial ML:
+    - CNN layers extract local patterns (micro-structure, indicator patterns)
+    - GRU captures temporal dependencies and long-term relationships
+    - Efficient on CPU, works well with sequences of 1000+ timesteps
+    
+    Architecture:
+        Input (seq_len × features)
+            ↓
+        1D Convolution (32 channels, kernel=5) - captures local patterns
+            ↓
+        1D Convolution (64 channels, kernel=5) - higher-level features
+            ↓
+        Max Pooling (reduce dimensionality)
+            ↓
+        GRU (hidden=128, layers=2) - temporal dependencies
+            ↓
+        Linear (128 → 64)
+            ↓
+        Linear (64 → 1) - regression output
+    
+    Why this works better than pure RNN or Transformer:
+    - CNN: Efficient at finding local patterns (candlestick patterns, indicator crossovers)
+    - GRU: Captures time-dependent relationships without Transformer complexity
+    - Much faster on CPU than Transformer with 1000 timesteps
+    """
+
+    def __init__(self, input_dim: int, config: ModelConfig):
+        super().__init__()
+        
+        self.input_dim = input_dim
+        self.config = config
+        
+        # CNN layers for local pattern extraction
+        cnn_channels = config.cnn_channels  # [32, 64]
+        kernel_size = config.cnn_kernel_size  # 5
+        pool_size = config.cnn_pool_size  # 2
+        
+        # First CNN layer
+        self.cnn1 = nn.Conv1d(
+            in_channels=input_dim,
+            out_channels=cnn_channels[0],
+            kernel_size=kernel_size,
+            padding=kernel_size // 2  # Same padding
+        )
+        self.bn1 = nn.BatchNorm1d(cnn_channels[0])
+        
+        # Second CNN layer
+        self.cnn2 = nn.Conv1d(
+            in_channels=cnn_channels[0],
+            out_channels=cnn_channels[1] if len(cnn_channels) > 1 else cnn_channels[0],
+            kernel_size=kernel_size,
+            padding=kernel_size // 2
+        )
+        self.bn2 = nn.BatchNorm1d(cnn_channels[1] if len(cnn_channels) > 1 else cnn_channels[0])
+        
+        # Pooling
+        self.pool = nn.MaxPool1d(pool_size)
+        
+        # Calculate GRU input dimension after CNN + pooling
+        # After 2 CNN layers with same padding and 1 pooling: seq_len -> seq_len // pool_size
+        gru_input_dim = cnn_channels[1] if len(cnn_channels) > 1 else cnn_channels[0]
+        
+        # GRU layers for temporal dependencies
+        self.gru_hidden_dim = config.gru_hidden_dim
+        self.gru_num_layers = config.gru_num_layers
+        self.gru_dropout_rate = config.gru_dropout
+        
+        self.gru = nn.GRU(
+            input_size=gru_input_dim,
+            hidden_size=self.gru_hidden_dim,
+            num_layers=self.gru_num_layers,
+            batch_first=True,
+            dropout=self.gru_dropout_rate if self.gru_num_layers > 1 else 0.0
+        )
+        
+        # Dropout
+        self.dropout = nn.Dropout(config.dropout)
+        
+        # MLP head for regression
+        self.mlp = nn.Sequential(
+            nn.Linear(self.gru_hidden_dim, 64),
+            nn.GELU(),
+            nn.Dropout(config.dropout),
+            nn.Linear(64, 32),
+            nn.GELU(),
+        )
+        
+        # Output layer
+        self.output = nn.Linear(32, 1)
+        
+        # Initialize weights
+        self._init_weights()
+    
+    def _init_weights(self):
+        """Initialize weights with Xavier/Kaiming for better training."""
+        for m in self.modules():
+            if isinstance(m, nn.Conv1d):
+                nn.init.kaiming_uniform_(m.weight, nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+            elif isinstance(m, nn.BatchNorm1d):
+                nn.init.ones_(m.weight)
+                nn.init.zeros_(m.bias)
+            elif isinstance(m, nn.GRU):
+                for name, param in m.named_parameters():
+                    if 'weight_ih' in name:
+                        nn.init.xavier_uniform_(param.data)
+                    elif 'weight_hh' in name:
+                        nn.init.orthogonal_(param.data)
+                    elif 'bias' in name:
+                        nn.init.zeros_(param.data)
+            elif isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: (batch, seq_len, input_dim) - sequence of wide_vectors
+        Returns:
+            (batch,) - predicted target_value
+        """
+        batch_size, seq_len, _ = x.shape
+        
+        # CNN expects (batch, channels, seq_len)
+        # Transpose from (batch, seq_len, features) to (batch, features, seq_len)
+        x = x.transpose(1, 2)
+        
+        # CNN layer 1
+        x = self.cnn1(x)
+        x = self.bn1(x)
+        x = F.gelu(x)
+        
+        # CNN layer 2
+        x = self.cnn2(x)
+        x = self.bn2(x)
+        x = F.gelu(x)
+        
+        # Pooling (reduce sequence length)
+        x = self.pool(x)
+        
+        # Transpose back to (batch, seq_len, channels) for GRU
+        x = x.transpose(1, 2)
+        
+        # GRU layers
+        # gru_output: (batch, seq_len, hidden_dim)
+        # gru_hidden: (num_layers, batch, hidden_dim)
+        gru_output, gru_hidden = self.gru(x)
+        
+        # Take the last time step output
+        # gru_output[:, -1, :] has shape (batch, hidden_dim)
+        last_output = gru_output[:, -1, :]
+        
+        # Apply dropout
+        last_output = self.dropout(last_output)
+        
+        # MLP head
+        x = self.mlp(last_output)
+        
+        # Output
+        return self.output(x).squeeze(-1)
+
+
 def create_model(
     input_dim: int,
     config: ModelConfig,
@@ -691,10 +859,11 @@ def create_model(
     Args:
         input_dim: Dimension of input features (wide_vector size)
         config: Model configuration
-        model_type: 
+        model_type:
             - "full" (CNN + Attention + MLP)
             - "simple" (MLP only baseline)
             - "transformer" (state-of-the-art transformer)
+            - "cnn_gru" (CNN + GRU for financial time series - RECOMMENDED)
 
     Returns:
         PyTorch model
@@ -705,5 +874,7 @@ def create_model(
         return SimpleMLPModel(input_dim, config)
     elif model_type == "transformer":
         return CryptoTransformerModel(input_dim, config)
+    elif model_type == "cnn_gru":
+        return CNN_GRUModel(input_dim, config)
     else:
         raise ValueError(f"Unknown model type: {model_type}")

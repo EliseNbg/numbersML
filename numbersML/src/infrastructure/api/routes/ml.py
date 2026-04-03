@@ -65,11 +65,16 @@ def _load_model(model_path: str) -> tuple:
 
     # Determine model type and input dim from state dict keys
     state_dict = checkpoint["model_state_dict"]
-    
+
     if any(k.startswith("network.0.linear.weight") for k in state_dict.keys()):
         # Simple model (SimpleMLPModel)
         input_dim = state_dict["network.0.linear.weight"].shape[1]
         model_type = "simple"
+    elif any(k.startswith("cnn1.") for k in state_dict.keys()) and any(k.startswith("gru.") for k in state_dict.keys()):
+        # CNN+GRU model
+        # Get input dim from first CNN layer weight shape
+        input_dim = state_dict["cnn1.weight"].shape[1]
+        model_type = "cnn_gru"
     elif any(k.startswith("transformer_blocks.") for k in state_dict.keys()):
         # Transformer model (CryptoTransformerModel)
         input_dim = state_dict["input_proj.0.weight"].shape[1]
@@ -115,6 +120,7 @@ async def list_models() -> List[Dict[str, Any]]:
         "simple": "Simple",
         "full": "Full",
         "transformer": "Transformer",
+        "cnn_gru": "CNN+GRU",  # NEW: Recommended for financial time series
     }
 
     for subdir_name in sorted(os.listdir(models_dir)):

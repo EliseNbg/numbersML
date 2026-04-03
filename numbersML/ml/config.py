@@ -22,14 +22,15 @@ class DataConfig:
     """Data loading and preprocessing configuration."""
     # Target symbol for training (the symbol we predict target_value for)
     target_symbol: str = "BTC/USDC"
-    
+
     # Time range for training data (hours from now)
     train_hours: int = 168  # 7 days
     val_hours: int = 24  # 1 day for validation
     test_hours: int = 24  # 1 day for testing
 
     # Sequence length for temporal context (number of consecutive wide_vectors)
-    sequence_length: int = 60  # 60 seconds of context
+    # Recommended: 1000 for long-term patterns, 60 for short-term
+    sequence_length: int = 1000  # 1000 seconds of context
 
     # Batch size
     batch_size: int = 256
@@ -43,11 +44,20 @@ class DataConfig:
     # Minimum target_value samples required
     min_samples: int = 50
 
+    # Target calculation parameters
+    hanning_window: int = 300  # Causal Hanning filter window size
+    prediction_horizon: int = 30  # Predict smoothed price at t + prediction_horizon
+    
+    # Feature types to include in input vector
+    # Options: close, volume, returns, indicators (ATR, EMA, MACD, RSI, SMA, Bollinger)
+    use_indicators: bool = True  # Include technical indicators in features
+    use_log_prices: bool = True  # Use log(prices) instead of raw prices
+
 
 @dataclass
 class ModelConfig:
     """Model architecture configuration."""
-    # Hidden layer dimensions
+    # Hidden layer dimensions (for MLP models)
     hidden_dims: List[int] = field(default_factory=lambda: [512, 256, 128])
 
     # Dropout rate
@@ -72,6 +82,19 @@ class ModelConfig:
     use_rope: bool = True  # Use Rotary Positional Embeddings
     use_swiglu: bool = True  # Use SwiGLU activation in FFN
     max_seq_len: int = 2048  # Maximum sequence length for RoPE
+    
+    # CNN+GRU architecture (recommended for financial time series)
+    model_arch: str = "cnn_gru"  # mlp, cnn_gru, transformer
+    
+    # GRU settings
+    gru_hidden_dim: int = 128  # GRU hidden size
+    gru_num_layers: int = 2  # Number of GRU layers
+    gru_dropout: float = 0.2  # Dropout between GRU layers
+    
+    # CNN settings
+    cnn_channels: List[int] = field(default_factory=lambda: [32, 64])  # Channels for each CNN layer
+    cnn_kernel_size: int = 5  # Kernel size for 1D convolutions
+    cnn_pool_size: int = 2  # Pool size after CNN layers
 
 
 @dataclass

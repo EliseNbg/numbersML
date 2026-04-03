@@ -58,6 +58,7 @@ class WideVectorDataset(Dataset):
         self.sequence_length = sequence_length
         self.mean = mean
         self.std = std
+        self.feature_mask = feature_mask
         self.target_symbol = data_config.target_symbol
 
         # Load data
@@ -72,19 +73,13 @@ class WideVectorDataset(Dataset):
             # Filter out low-variance features (std < 0.01)
             # These features provide no information for learning
             min_std = 0.01
-            self.feature_mask = self.std >= min_std
-            n_features = self.feature_mask.sum()
-            logger.info(f"Filtering features: {n_features}/{len(self.std)} kept (std >= {min_std})")
-            
-            # Apply mask to mean and std
+            self.feature_mask = self.std > min_std
             self.mean = self.mean[self.feature_mask]
             self.std = self.std[self.feature_mask]
+            self.vectors = [(v[self.feature_mask] - self.mean) / self.std for v in self.vectors]
         else:
-            # If mean/std provided, use the provided feature_mask
-            self.feature_mask = feature_mask if feature_mask is not None else np.ones(len(self.mean), dtype=bool)
-
-        # Normalize vectors (only keep informative features)
-        self.vectors = [(v[self.feature_mask] - self.mean) / self.std for v in self.vectors]
+            # Apply existing feature mask and normalization
+            self.vectors = [(v[self.feature_mask] - self.mean) / self.std for v in self.vectors]
 
         # Build valid sequence indices
         self._build_sequences()
@@ -123,11 +118,12 @@ class WideVectorDataset(Dataset):
                         wv.time,
                         wv.vector,
                         wv.vector_size,
-                        c.target_value
+                        c.close AS target_value
                     FROM wide_vectors wv
                     LEFT JOIN candles_1s c ON c.time = wv.time AND c.symbol_id = %s
                     WHERE wv.time >= %s AND wv.time < %s
                       AND wv.vector_size >= 50
+                      AND c.close IS NOT NULL
                     ORDER BY wv.time
                 """
                 cur.execute(query, (symbol_id, self.start_time, self.end_time))
@@ -172,6 +168,10 @@ class WideVectorDataset(Dataset):
         finally:
             conn.close()
 
+        print(f'Loaded {len(vectors)} samples, {len(targets)} targets, {len(timestamps)} timestamps')
+        print(f'  Symbol: {self.target_symbol}, target id: {symbol_id}')
+        print(f'  Time range: {self.start_time} to {self.end_time}')
+        
         if len(vectors) < self.data_config.min_samples:
             raise ValueError(
                 f"Insufficient samples: {len(vectors)} < {self.data_config.min_samples}"
@@ -242,9 +242,11 @@ def create_data_loaders(
                     MIN(wv.time) as earliest,
                     MAX(wv.time) as latest
                 FROM wide_vectors wv
-                JOIN candles_1s c ON c.time = wv.time
-                WHERE c.target_value IS NOT NULL
-            """)
+                INNER JOIN candles_1s c ON c.time = wv.time AND c.symbol_id = (
+                    SELECT id FROM symbols WHERE symbol = %s
+                )
+                WHERE c.close IS NOT NULL
+            """, (data_config.target_symbol,))
             row = cur.fetchone()
             if row and row[0] and row[1]:
                 data_start = row[0]
