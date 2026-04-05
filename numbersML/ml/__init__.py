@@ -29,6 +29,5 @@ from ml.model import CryptoTargetModel, SimpleMLPModel, CNN_GRUModel, create_mod
 from ml.train import Trainer, run_optuna_tuning
 from ml.predict import Predictor
 from ml.compare import ModelComparator
-from ml.target_builder import causal_hanning_filter, compute_target_with_horizon
 
 __version__ = "0.2.0"

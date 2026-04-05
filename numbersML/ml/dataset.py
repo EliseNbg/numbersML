@@ -2,15 +2,15 @@
 PyTorch Dataset for loading wide_vectors + target_values.
 
 Data flow:
-  wide_vectors.vector (JSONB array) -> X features
-  candles_1s.close                 -> Y target (via causal Hanning filter)
+  wide_vectors were calculated and stored in DB.
+  candles_1s.target_value (JSONB) contains 'normalized_value' (0 to 1).
+  We load this pre-calculated target directly.
 
 The dataset handles:
   - Loading data from PostgreSQL
-  - Creating sequences of consecutive wide_vectors for temporal context
-  - Causal Hanning filter for target calculation (NO data leakage)
-  - Prediction horizon (predicts future smoothed prices)
-  - Feature normalization (log prices, StandardScaler)
+  - Loading pre-calculated normalized targets (0-1) from DB
+  - Aligning X (wide vectors) with Y (future normalized value)
+  - Feature normalization (StandardScaler)
   - Train/val/test splitting by time
 """
 
@@ -25,7 +25,6 @@ from torch.utils.data import Dataset, DataLoader
 import psycopg2
 
 from ml.config import DatabaseConfig, DataConfig
-from ml.target_builder import compute_target_with_horizon
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +103,7 @@ class WideVectorDataset(Dataset):
     def _load_data(
         self,
     ) -> Tuple[List[np.ndarray], List[float], List[datetime]]:
-        """Load wide_vectors and compute targets using causal Hanning filter."""
+        """Load wide_vectors and targets directly from DB."""
         conn = psycopg2.connect(
             host=self.db_config.host,
             port=self.db_config.port,
@@ -129,25 +128,26 @@ class WideVectorDataset(Dataset):
             with conn.cursor(name="ml_data_cursor") as cur:
                 cur.itersize = 5000
 
-                # Load wide_vectors and close prices for THIS symbol
-                # We'll compute targets using causal Hanning filter
+                # Load wide_vectors and pre-calculated normalized targets
+                # We extract normalized_value from candles_1s.target_value (JSONB)
                 query = """
                     SELECT
                         wv.time,
                         wv.vector,
                         wv.vector_size,
-                        c.close AS close_price
+                        (c.target_value->>'normalized_value')::float AS target
                     FROM wide_vectors wv
-                    LEFT JOIN candles_1s c ON c.time = wv.time AND c.symbol_id = %s
+                    JOIN candles_1s c ON c.time = wv.time AND c.symbol_id = %s
                     WHERE wv.time >= %s AND wv.time < %s
                       AND wv.vector_size >= 50
-                      AND c.close IS NOT NULL
+                      AND c.target_value IS NOT NULL
+                      AND (c.target_value->>'normalized_value') IS NOT NULL
                     ORDER BY wv.time
                 """
                 cur.execute(query, (symbol_id, self.start_time, self.end_time))
 
                 vectors = []
-                close_prices = []
+                targets = []
                 timestamps = []
                 prev_size = None
 
@@ -157,7 +157,7 @@ class WideVectorDataset(Dataset):
                         break
 
                     for row in rows:
-                        ts, vector_json, vec_size, close_price = row
+                        ts, vector_json, vec_size, target = row
 
                         # Parse vector from JSONB
                         if isinstance(vector_json, str):
@@ -176,52 +176,25 @@ class WideVectorDataset(Dataset):
                                 vec = vec[:prev_size]
 
                         vectors.append(vec)
-                        close_prices.append(float(close_price))
+                        targets.append(float(target))
                         timestamps.append(ts)
 
         finally:
             conn.close()
 
-        # Apply log transformation to prices if enabled
-        if self.data_config.use_log_prices:
-            # Apply log to close prices
-            close_prices_array = np.array(close_prices, dtype=np.float64)
-            close_prices_array = np.log(close_prices_array)
-            close_prices = close_prices_array.tolist()
-            
-            # Also apply log to price-related features in vectors
-            # Assuming first few features might be OHLC prices
-            # This is a simple heuristic - adjust based on your vector structure
-            for i in range(len(vectors)):
-                # Log transform first 4 features (OHLC) if they exist and are positive
-                for j in range(min(4, len(vectors[i]))):
-                    if vectors[i][j] > 0:
-                        vectors[i][j] = np.log(vectors[i][j])
+        # Align X (wide vectors at time t) with Y (target at time t + horizon)
+        horizon = self.data_config.prediction_horizon
+        if len(targets) > horizon:
+            targets = targets[horizon:]
+            vectors = vectors[:-horizon]
+            timestamps = timestamps[:-horizon]
+        else:
+            raise ValueError(f"Not enough data for prediction horizon {horizon}")
 
-        # Compute targets using causal Hanning filter with prediction horizon
-        close_prices_array = np.array(close_prices, dtype=np.float64)
-        
-        target_result = compute_target_with_horizon(
-            close_prices_array,
-            window_size=self.data_config.hanning_window,
-            prediction_horizon=self.data_config.prediction_horizon,
-            return_alignment=True
-        )
-        
-        # Get valid targets (aligned with original data)
-        valid_start = target_result['valid_start_idx']
-        targets = target_result['targets'].tolist()
-        
-        # Trim vectors and timestamps to match valid target range
-        vectors = vectors[valid_start:]
-        timestamps = timestamps[valid_start:]
-        # Targets are already aligned
-        
         print(f'Loaded {len(vectors)} samples, {len(targets)} targets, {len(timestamps)} timestamps')
         print(f'  Symbol: {self.target_symbol}, target id: {symbol_id}')
         print(f'  Time range: {timestamps[0] if timestamps else "N/A"} to {timestamps[-1] if timestamps else "N/A"}')
-        print(f'  Hanning window: {self.data_config.hanning_window}, Prediction horizon: {self.data_config.prediction_horizon}')
-        print(f'  Using log prices: {self.data_config.use_log_prices}')
+        print(f'  Prediction horizon: {horizon}')
 
         if len(vectors) < self.data_config.min_samples:
             raise ValueError(
