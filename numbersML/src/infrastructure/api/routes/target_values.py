@@ -175,8 +175,8 @@ async def calculate_target_values(
 
         # Cleanup edge artifacts
         # The filter produces artifacts at the start and end of the series
-        # We remove these to prevent confusing the ML model
-        edge_count = int(response_time / 2)
+        # We remove the full window_size from edges to ensure clean ML targets
+        edge_count = int(response_time)
         if edge_count > 0:
             # Update start edge
             await conn.execute(
