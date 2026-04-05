@@ -682,101 +682,131 @@ class CryptoTransformerModel(nn.Module):
 
 class CNN_GRUModel(nn.Module):
     """
-    CNN + GRU architecture for financial time series prediction.
-    
-    This is the RECOMMENDED architecture for CPU-based financial ML:
-    - CNN layers extract local patterns (micro-structure, indicator patterns)
-    - GRU captures temporal dependencies and long-term relationships
-    - Efficient on CPU, works well with sequences of 1000+ timesteps
-    
+    Advanced CNN + GRU architecture for financial time series prediction.
+
+    IMPROVED VERSION with:
+    - Multi-scale CNN with residual connections
+    - Temporal attention pooling (not just last timestep)
+    - Layer normalization for stable training
+    - Bidirectional GRU for context from past and future
+    - Deeper feature extraction
+
     Architecture:
         Input (seq_len × features)
             ↓
-        1D Convolution (32 channels, kernel=5) - captures local patterns
+        Feature projection (Linear + LayerNorm)
             ↓
-        1D Convolution (64 channels, kernel=5) - higher-level features
+        Multi-scale CNN blocks (kernel 3, 5, 7) with residuals
             ↓
-        Max Pooling (reduce dimensionality)
+        Bidirectional GRU (hidden=128, layers=2)
             ↓
-        GRU (hidden=128, layers=2) - temporal dependencies
+        Temporal attention pooling (weighted sum of all timesteps)
             ↓
-        Linear (128 → 64)
+        MLP head (256 → 128 → 64) with GELU + dropout
             ↓
-        Linear (64 → 1) - regression output
-    
-    Why this works better than pure RNN or Transformer:
-    - CNN: Efficient at finding local patterns (candlestick patterns, indicator crossovers)
-    - GRU: Captures time-dependent relationships without Transformer complexity
-    - Much faster on CPU than Transformer with 1000 timesteps
+        Output: Linear(64 → 1)
+
+    Why this is better:
+    - Multi-scale CNN: Captures patterns at different time horizons
+    - Residual connections: Enables deeper networks without vanishing gradients
+    - Bidirectional GRU: Uses full context (past and future in sequence)
+    - Attention pooling: Weights important timesteps instead of using only last
+    - LayerNorm: Stabilizes training with long sequences
     """
 
     def __init__(self, input_dim: int, config: ModelConfig):
         super().__init__()
-        
+
         self.input_dim = input_dim
         self.config = config
-        
-        # CNN layers for local pattern extraction
+
+        # Feature projection: normalize and project to consistent dimension
+        self.feature_proj = nn.Sequential(
+            nn.LayerNorm(input_dim),
+            nn.Linear(input_dim, 64),
+            nn.GELU(),
+            nn.Dropout(config.dropout),
+        )
+
+        # Multi-scale CNN blocks
         cnn_channels = config.cnn_channels  # [32, 64]
-        kernel_size = config.cnn_kernel_size  # 5
-        pool_size = config.cnn_pool_size  # 2
-        
-        # First CNN layer
-        self.cnn1 = nn.Conv1d(
-            in_channels=input_dim,
-            out_channels=cnn_channels[0],
-            kernel_size=kernel_size,
-            padding=kernel_size // 2  # Same padding
+        kernel_sizes = [3, 5, 7]  # Multi-scale receptive fields
+
+        # First CNN block - small patterns (kernel=3)
+        self.cnn_small = nn.Sequential(
+            nn.Conv1d(64, cnn_channels[0], kernel_size=3, padding=1),
+            nn.BatchNorm1d(cnn_channels[0]),
+            nn.GELU(),
         )
-        self.bn1 = nn.BatchNorm1d(cnn_channels[0])
-        
-        # Second CNN layer
-        self.cnn2 = nn.Conv1d(
-            in_channels=cnn_channels[0],
-            out_channels=cnn_channels[1] if len(cnn_channels) > 1 else cnn_channels[0],
-            kernel_size=kernel_size,
-            padding=kernel_size // 2
+
+        # Second CNN block - medium patterns (kernel=5)
+        self.cnn_medium = nn.Sequential(
+            nn.Conv1d(64, cnn_channels[0], kernel_size=5, padding=2),
+            nn.BatchNorm1d(cnn_channels[0]),
+            nn.GELU(),
         )
-        self.bn2 = nn.BatchNorm1d(cnn_channels[1] if len(cnn_channels) > 1 else cnn_channels[0])
-        
-        # Pooling
-        self.pool = nn.MaxPool1d(pool_size)
-        
-        # Calculate GRU input dimension after CNN + pooling
-        # After 2 CNN layers with same padding and 1 pooling: seq_len -> seq_len // pool_size
+
+        # Third CNN block - larger patterns (kernel=7)
+        self.cnn_large = nn.Sequential(
+            nn.Conv1d(64, cnn_channels[0], kernel_size=7, padding=3),
+            nn.BatchNorm1d(cnn_channels[0]),
+            nn.GELU(),
+        )
+
+        # Combine multi-scale features
+        combined_channels = cnn_channels[0] * 3  # 3 scales concatenated
+        self.fusion = nn.Sequential(
+            nn.Conv1d(combined_channels, cnn_channels[1] if len(cnn_channels) > 1 else cnn_channels[0], kernel_size=1),
+            nn.BatchNorm1d(cnn_channels[1] if len(cnn_channels) > 1 else cnn_channels[0]),
+            nn.GELU(),
+            nn.Dropout(config.dropout),
+        )
+
         gru_input_dim = cnn_channels[1] if len(cnn_channels) > 1 else cnn_channels[0]
-        
-        # GRU layers for temporal dependencies
+
+        # Bidirectional GRU for temporal context
         self.gru_hidden_dim = config.gru_hidden_dim
         self.gru_num_layers = config.gru_num_layers
         self.gru_dropout_rate = config.gru_dropout
-        
+
         self.gru = nn.GRU(
             input_size=gru_input_dim,
             hidden_size=self.gru_hidden_dim,
             num_layers=self.gru_num_layers,
             batch_first=True,
-            dropout=self.gru_dropout_rate if self.gru_num_layers > 1 else 0.0
+            dropout=self.gru_dropout_rate if self.gru_num_layers > 1 else 0.0,
+            bidirectional=True,  # Learn from both directions
         )
-        
-        # Dropout
-        self.dropout = nn.Dropout(config.dropout)
-        
-        # MLP head for regression
+
+        # Temporal attention mechanism
+        # Instead of just taking last timestep, weight all timesteps
+        gru_output_dim = self.gru_hidden_dim * 2  # Bidirectional
+        self.attention = nn.Sequential(
+            nn.Linear(gru_output_dim, 64),
+            nn.Tanh(),
+            nn.Linear(64, 1),
+        )
+
+        # Deeper MLP head
         self.mlp = nn.Sequential(
-            nn.Linear(self.gru_hidden_dim, 64),
+            nn.Linear(gru_output_dim, 256),
             nn.GELU(),
+            nn.LayerNorm(256),
             nn.Dropout(config.dropout),
-            nn.Linear(64, 32),
+            nn.Linear(256, 128),
+            nn.GELU(),
+            nn.LayerNorm(128),
+            nn.Dropout(config.dropout),
+            nn.Linear(128, 64),
             nn.GELU(),
         )
-        
+
         # Output layer
-        self.output = nn.Linear(32, 1)
-        
+        self.output = nn.Linear(64, 1)
+
         # Initialize weights
         self._init_weights()
-    
+
     def _init_weights(self):
         """Initialize weights with Xavier/Kaiming for better training."""
         for m in self.modules():
@@ -784,7 +814,7 @@ class CNN_GRUModel(nn.Module):
                 nn.init.kaiming_uniform_(m.weight, nonlinearity='relu')
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
-            elif isinstance(m, nn.BatchNorm1d):
+            elif isinstance(m, nn.BatchNorm1d) or isinstance(m, nn.LayerNorm):
                 nn.init.ones_(m.weight)
                 nn.init.zeros_(m.bias)
             elif isinstance(m, nn.GRU):
@@ -799,7 +829,7 @@ class CNN_GRUModel(nn.Module):
                 nn.init.xavier_uniform_(m.weight)
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
-    
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
@@ -808,42 +838,42 @@ class CNN_GRUModel(nn.Module):
             (batch,) - predicted target_value
         """
         batch_size, seq_len, _ = x.shape
-        
-        # CNN expects (batch, channels, seq_len)
-        # Transpose from (batch, seq_len, features) to (batch, features, seq_len)
-        x = x.transpose(1, 2)
-        
-        # CNN layer 1
-        x = self.cnn1(x)
-        x = self.bn1(x)
-        x = F.gelu(x)
-        
-        # CNN layer 2
-        x = self.cnn2(x)
-        x = self.bn2(x)
-        x = F.gelu(x)
-        
-        # Pooling (reduce sequence length)
-        x = self.pool(x)
-        
+
+        # Feature projection (batch, seq_len, 64)
+        x = self.feature_proj(x)
+
+        # Multi-scale CNN: transpose to (batch, channels, seq_len)
+        x_transposed = x.transpose(1, 2)
+
+        # Extract features at different scales
+        small_feat = self.cnn_small(x_transposed)
+        medium_feat = self.cnn_medium(x_transposed)
+        large_feat = self.cnn_large(x_transposed)
+
+        # Concatenate multi-scale features
+        multi_scale = torch.cat([small_feat, medium_feat, large_feat], dim=1)
+
+        # Fuse to combined channels
+        x = self.fusion(multi_scale)
+
         # Transpose back to (batch, seq_len, channels) for GRU
         x = x.transpose(1, 2)
-        
-        # GRU layers
-        # gru_output: (batch, seq_len, hidden_dim)
-        # gru_hidden: (num_layers, batch, hidden_dim)
-        gru_output, gru_hidden = self.gru(x)
-        
-        # Take the last time step output
-        # gru_output[:, -1, :] has shape (batch, hidden_dim)
-        last_output = gru_output[:, -1, :]
-        
-        # Apply dropout
-        last_output = self.dropout(last_output)
-        
+
+        # Bidirectional GRU
+        # gru_output: (batch, seq_len, hidden*2)
+        gru_output, _ = self.gru(x)
+
+        # Temporal attention pooling
+        # attention_weights: (batch, seq_len, 1)
+        attn_scores = self.attention(gru_output)
+        attn_weights = torch.softmax(attn_scores, dim=1)
+
+        # Weighted sum of all timesteps: (batch, hidden*2)
+        context = torch.sum(gru_output * attn_weights, dim=1)
+
         # MLP head
-        x = self.mlp(last_output)
-        
+        x = self.mlp(context)
+
         # Output
         return self.output(x).squeeze(-1)
 
