@@ -125,7 +125,7 @@ function setupEventHandlers() {
 
 async function loadChartData() {
     const symbol = document.getElementById('target-symbol')?.value;
-    const hours = document.getElementById('target-range')?.value || '2';
+    const hours = document.getElementById('target-range')?.value || '24';
     const responseTime = document.getElementById('target-window')?.value || '600';
     const method = document.getElementById('target-method')?.value || 'savgol';
     const useFuture = document.getElementById('use-future')?.checked || false;
@@ -202,7 +202,7 @@ async function loadChartData() {
 
 async function calculateTargetValues() {
     const symbol = document.getElementById('target-symbol')?.value;
-    const hours = document.getElementById('target-range')?.value || '2';
+    const hours = document.getElementById('target-range')?.value || '24';
     const responseTime = document.getElementById('target-window')?.value || '600';
     const method = document.getElementById('target-method')?.value || 'savgol';
     const useFuture = document.getElementById('use-future')?.checked || false;
