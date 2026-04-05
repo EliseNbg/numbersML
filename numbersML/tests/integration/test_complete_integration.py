@@ -106,12 +106,12 @@ async def _get_latest_ticks(
     conn: asyncpg.Connection,
     symbol_ids: List[int]
 ) -> Set[tuple]:
-    """Get latest tick time for each symbol."""
+    """Get latest candle time for each symbol."""
     rows = await conn.fetch(
         """
         SELECT DISTINCT ON (symbol_id)
             symbol_id, time
-        FROM ticker_24hr_stats
+        FROM candles_1s
         WHERE symbol_id = ANY($1)
         ORDER BY symbol_id, time DESC
         """,
@@ -125,25 +125,24 @@ async def generate_wide_vector(conn: asyncpg.Connection) -> Dict[str, Any]:
     """
     Generate wide vector from all test symbols.
 
-    This function queries ticker_24hr_stats and candle_indicators tables
+    This function queries candles_1s and candle_indicators tables
     and combines them into a single flat vector for LLM consumption.
     """
 
-    # Get latest ticker and indicators for each symbol
+    # Get latest candles and indicators for each symbol
     rows = await conn.fetch("""
         SELECT
             s.symbol,
-            t.last_price, t.open_price, t.high_price, t.low_price,
-            t.volume, t.quote_volume,
-            t.price_change, t.price_change_pct,
+            c.close, c.open, c.high, c.low,
+            c.volume, c.quote_volume,
             ti.values as indicators,
             ti.indicator_keys
         FROM symbols s
-        JOIN ticker_24hr_stats t ON t.symbol_id = s.id
-        LEFT JOIN candle_indicators ti ON ti.symbol_id = t.symbol_id AND ti.time = t.time
+        JOIN candles_1s c ON c.symbol_id = s.id
+        LEFT JOIN candle_indicators ti ON ti.symbol_id = c.symbol_id AND ti.time = c.time
         WHERE s.is_test = true
-        AND t.time = (
-            SELECT MAX(time) FROM ticker_24hr_stats WHERE symbol_id = t.symbol_id
+        AND c.time = (
+            SELECT MAX(time) FROM candles_1s WHERE symbol_id = c.symbol_id
         )
         ORDER BY s.symbol
     """)
@@ -155,19 +154,17 @@ async def generate_wide_vector(conn: asyncpg.Connection) -> Dict[str, Any]:
     for row in rows:
         symbol = row['symbol']
 
-        # Ticker features (8 features per symbol)
-        ticker_features = [
-            ('last_price', float(row['last_price']) if row['last_price'] else 0.0),
-            ('open_price', float(row['open_price']) if row['open_price'] else 0.0),
-            ('high_price', float(row['high_price']) if row['high_price'] else 0.0),
-            ('low_price', float(row['low_price']) if row['low_price'] else 0.0),
+        # Candle features (6 features per symbol)
+        candle_features = [
+            ('close', float(row['close']) if row['close'] else 0.0),
+            ('open', float(row['open']) if row['open'] else 0.0),
+            ('high', float(row['high']) if row['high'] else 0.0),
+            ('low', float(row['low']) if row['low'] else 0.0),
             ('volume', float(row['volume']) if row['volume'] else 0.0),
             ('quote_volume', float(row['quote_volume']) if row['quote_volume'] else 0.0),
-            ('price_change', float(row['price_change']) if row['price_change'] else 0.0),
-            ('price_change_pct', float(row['price_change_pct']) if row['price_change_pct'] else 0.0),
         ]
 
-        for feat_name, feat_val in ticker_features:
+        for feat_name, feat_val in candle_features:
             columns.append(f"{symbol}_{feat_name}")
             values.append(feat_val)
 
@@ -309,7 +306,7 @@ async def run_integration_test() -> Dict[str, Any]:
     print("=" * 70)
     print()
     print("This test verifies:")
-    print("  1. Ticker data inserted into ticker_24hr_stats")
+    print("  1. Candle data inserted into candles_1s")
     print("  2. Python EnrichmentService calculates indicators (async)")
     print("  3. Wide vector generated with all indicators")
     print("  4. Vector validation (size, values, no NaN/Inf)")
@@ -346,23 +343,23 @@ async def run_integration_test() -> Dict[str, Any]:
             symbol_id_map = {s['symbol']: idx for idx, s in enumerate(symbols)}
 
             # Step 2: Check ticker data
-            print("\n[Step 2] Checking ticker data...")
-            tickers = await conn.fetch(
+            print("\n[Step 2] Checking candle data...")
+            candles = await conn.fetch(
                 """
                 SELECT s.symbol, COUNT(*) as count
-                FROM ticker_24hr_stats t
-                JOIN symbols s ON s.id = t.symbol_id
+                FROM candles_1s c
+                JOIN symbols s ON s.id = c.symbol_id
                 WHERE s.is_test = true
                 GROUP BY s.symbol
                 ORDER BY s.symbol
                 """
             )
-            results['steps']['ticker_data'] = {s['symbol']: s['count'] for s in tickers}
-            print(f"  ✓ Found ticker data for {len(tickers)} symbols")
+            results['steps']['candle_data'] = {s['symbol']: s['count'] for s in candles}
+            print(f"  ✓ Found candle data for {len(candles)} symbols")
 
-            if not tickers:
-                print("  ⚠ No ticker data found! Insert ticker data first.")
-                results['error'] = "No ticker data found"
+            if not candles:
+                print("  ⚠ No candle data found! Insert candle data first.")
+                results['error'] = "No candle data found"
                 return results
 
             # Step 3: Wait for enrichment

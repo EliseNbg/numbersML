@@ -309,10 +309,10 @@ async def test_03_db_insert_triggers_notification() -> TestResult:
         
         # Insert test data (use NOW() for timezone-safe timestamp)
         await conn.execute("""
-            INSERT INTO ticker_24hr_stats (symbol_id, symbol, time, last_price, open_price, high_price, low_price, total_volume, total_quote_volume, price_change, price_change_pct)
-            VALUES ($1, $2, NOW(), $3, $4, $5, $6, $7, $8, $9, $10)
-        """, symbol_id, symbol_name, Decimal('100.0'), Decimal('99.0'), Decimal('101.0'), 
-            Decimal('98.0'), Decimal('1000.0'), Decimal('100000.0'), Decimal('1.0'), Decimal('1.0'))
+            INSERT INTO candles_1s (symbol_id, time, open, high, low, close, volume, quote_volume, trade_count)
+            VALUES ($1, NOW(), $2, $3, $4, $2, $5, $6, 10)
+        """, symbol_id, Decimal('99.0'), Decimal('101.0'),
+            Decimal('98.0'), Decimal('100.0'), Decimal('1000.0'))
         
         # Wait for notification
         try:
@@ -532,21 +532,21 @@ async def test_06_complete_pipeline() -> TestResult:
         symbol_id = symbol_row['id']
         symbol_name = symbol_row['symbol']
         
-        # Insert fresh ticker data (use NOW() for timezone-safe timestamp)
+        # Insert fresh candle data (use NOW() for timezone-safe timestamp)
         await conn.execute("""
-            INSERT INTO ticker_24hr_stats (symbol_id, symbol, time, last_price, open_price, high_price, low_price, total_volume, total_quote_volume, price_change, price_change_pct)
-            VALUES ($1, $2, NOW(), $3, $4, $5, $6, $7, $8, $9, $10)
-        """, symbol_id, symbol_name, Decimal('50000.0'), Decimal('49900.0'), Decimal('50100.0'), 
-            Decimal('49800.0'), Decimal('1000.0'), Decimal('50000000.0'), Decimal('100.0'), Decimal('0.2'))
-        
-        result.details['ticker_inserted'] = True
-        
+            INSERT INTO candles_1s (symbol_id, time, open, high, low, close, volume, quote_volume, trade_count)
+            VALUES ($1, NOW(), $2, $3, $4, $5, $6, $7, 10)
+        """, symbol_id, Decimal('49900.0'), Decimal('50100.0'),
+            Decimal('49800.0'), Decimal('50000.0'), Decimal('1000.0'), Decimal('50000000.0'))
+
+        result.details['candle_inserted'] = True
+
         # Wait a bit for enrichment
         await asyncio.sleep(2.0)
 
         # Get the time we just inserted
         latest_time = await conn.fetchval("""
-            SELECT MAX(time) FROM ticker_24hr_stats WHERE symbol_id = $1
+            SELECT MAX(time) FROM candles_1s WHERE symbol_id = $1
         """, symbol_id)
 
         # Check if indicators were calculated

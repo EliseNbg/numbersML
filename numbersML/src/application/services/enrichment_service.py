@@ -1,7 +1,7 @@
 """
 Real-time indicator enrichment service.
 
-Listens to incoming ticks from ticker_24hr_stats and calculates indicators in real-time.
+Listens to incoming ticks from candles_1s and calculates indicators in real-time.
 
 Architecture:
     Uses IIndicatorProvider for indicator loading (dependency injection).
@@ -28,14 +28,14 @@ class EnrichmentService:
     """
     Real-time indicator enrichment service.
 
-    Listens to new ticks via PostgreSQL NOTIFY/LISTEN from ticker_24hr_stats,
+    Listens to new ticks via PostgreSQL NOTIFY/LISTEN from candles_1s,
     calculates all configured indicators using Python/NumPy, and stores
     enriched data in candle_indicators table.
 
     Flow:
-    1. ticker_24hr_stats INSERT fires NOTIFY new_tick
+    1. candles_1s INSERT fires NOTIFY new_tick
     2. This service receives notification
-    3. Loads recent tick history (last 200 ticks)
+    3. Loads recent tick history (last 200 candles)
     4. Calculates all indicators (15+)
     5. Stores in candle_indicators table
     6. Fires NOTIFY enrichment_complete for synchronization
@@ -43,14 +43,14 @@ class EnrichmentService:
     Attributes:
         db_pool: PostgreSQL connection pool
         redis_pool: Redis connection pool (optional)
-        window_size: Number of ticks to load for calculations
+        window_size: Number of candles to load for calculations
         indicator_names: List of indicator names to calculate
 
     Example:
         # Production (load from database)
         provider = DatabaseIndicatorProvider(db_pool)
         service = EnrichmentService(db_pool, provider)
-        
+
         # Tests (explicit registration)
         provider = PythonIndicatorProvider({'rsi_14': RSIIndicator})
         service = EnrichmentService(db_pool, provider)
@@ -153,7 +153,7 @@ class EnrichmentService:
         """
         Listen for new ticks via PostgreSQL NOTIFY.
 
-        Listens to 'new_tick' channel which is fired when ticker_24hr_stats receives INSERT.
+        Listens to 'new_tick' channel which is fired when candles_1s receives INSERT.
         """
         async with self.db_pool.acquire() as conn:
             await conn.listen('new_tick')
@@ -178,7 +178,7 @@ class EnrichmentService:
 
     async def _process_notification(self, notification: Any) -> None:
         """
-        Process tick notification from ticker_24hr_stats.
+        Process tick notification from candles_1s.
 
         Flow:
         1. Parse notification payload (symbol_id, time)
@@ -277,21 +277,22 @@ class EnrichmentService:
         limit: int = 200
     ) -> List[Dict[str, Any]]:
         """
-        Load recent tick history for symbol from ticker_24hr_stats.
+        Load recent tick history for symbol from candles_1s.
 
         Args:
             symbol_id: Symbol ID to load history for
-            limit: Number of ticks to load (default: 200)
+            limit: Number of candles to load (default: 200)
 
         Returns:
-            List of tick dictionaries, ordered by time ascending
+            List of candle dictionaries, ordered by time ascending
         """
         async with self.db_pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT time, last_price, open_price, high_price, low_price,
-                       volume, quote_volume, price_change, price_change_pct
-                FROM ticker_24hr_stats
+                SELECT time, close as last_price, open as open_price,
+                       high as high_price, low as low_price,
+                       volume, quote_volume
+                FROM candles_1s
                 WHERE symbol_id = $1
                 ORDER BY time ASC
                 LIMIT $2
