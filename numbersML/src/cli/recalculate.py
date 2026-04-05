@@ -131,8 +131,10 @@ async def recalculate_indicators(
 
             logger.info(f"Processing {sname}: {len(all_candles)} candles")
 
-            # Sliding window arrays (max 200)
-            window_size = 200
+            # Sliding window arrays (large enough for max period indicators)
+            # We set this to 5000 to support indicators like EMA_2000, MACD_860, BB_900.
+            # 5000 candles is ~1.4 hours of 1-second data.
+            window_size = 5000
             prices: List[float] = []
             volumes: List[float] = []
             highs: List[float] = []

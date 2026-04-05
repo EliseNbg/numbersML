@@ -62,7 +62,7 @@ class EnrichmentService:
         db_pool: asyncpg.Pool,
         indicator_provider: IIndicatorProvider,
         redis_pool: Optional[Any] = None,
-        window_size: int = 200,
+        window_size: int = 5000,
         min_ticks_for_calc: int = 50,
     ) -> None:
         """
@@ -72,7 +72,7 @@ class EnrichmentService:
             db_pool: PostgreSQL connection pool
             indicator_provider: Provider for loading indicators (dependency injection)
             redis_pool: Redis connection pool (optional, for pub/sub to strategies)
-            window_size: Number of ticks to load for calculations (default: 200)
+            window_size: Number of ticks to load for calculations (default: 5000)
             min_ticks_for_calc: Minimum ticks required before calculating (default: 50)
         
         Example:
