@@ -76,22 +76,22 @@
 
         <!-- Controls -->
         <div class="row mb-4">
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label">Symbol</label>
                 <select class="form-select" id="prediction-symbol">
                     <option value="">Select symbol...</option>
                 </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label">Model</label>
                 <select class="form-select" id="prediction-model">
                     <option value="">Select model...</option>
                 </select>
                 <div class="form-text">
-                    <i class="bi bi-star-fill text-warning"></i> CNN+GRU is recommended for financial time series
+                    <i class="bi bi-star-fill text-warning"></i> CNN+GRU recommended
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label">Time Range</label>
                 <select class="form-select" id="prediction-hours">
                     <option value="1">1 Hour</option>
@@ -102,7 +102,12 @@
                     <option value="168">7 Days</option>
                 </select>
             </div>
-            <div class="col-md-3 d-flex align-items-end">
+            <div class="col-md-2">
+                <label class="form-label">Ensemble Size</label>
+                <input type="number" class="form-control" id="ensemble-size" value="5" min="1" max="20">
+                <div class="form-text">Average last N predictions (1=raw, 5=smooth)</div>
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
                 <button class="btn btn-primary w-100" id="btn-load-prediction">
                     <i class="bi bi-play-fill"></i> Load & Predict
                 </button>

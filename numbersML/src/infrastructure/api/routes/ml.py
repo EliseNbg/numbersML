@@ -157,11 +157,13 @@ async def predict(
     symbol: str = Query(..., description="Symbol name (e.g., 'BTC/USDC')"),
     model: str = Query(default="best_model.pt", description="Model filename"),
     hours: int = Query(default=2, ge=1, le=168, description="Hours of data to load"),
+    ensemble_size: int = Query(default=5, ge=1, le=20, description="Average last N predictions for smoothing"),
 ) -> Dict[str, Any]:
     """
     Run ML prediction for a symbol.
 
     Returns candles, target values, and ML predictions.
+    Uses ensemble averaging (last N predictions) to reduce noise.
     """
     model_path = os.path.join("ml/models", model)
 
@@ -331,15 +333,15 @@ async def predict(
     if predictions and candles:
         pred_values = [p["predicted_target"] for p in predictions]
         candle_closes = [c["close"] for c in candles]
-        
+
         pred_min, pred_max = min(pred_values), max(pred_values)
         candle_min, candle_max = min(candle_closes), max(candle_closes)
-        
+
         # Only scale if prediction range is different from candle range
         if pred_max - pred_min > 0 and abs(pred_max - candle_max) > 1000:
             scale_factor = (candle_max - candle_min) / (pred_max - pred_min)
             offset = candle_min - pred_min * scale_factor
-            
+
             predictions = [
                 {
                     "time": p["time"],
@@ -347,6 +349,26 @@ async def predict(
                 }
                 for p in predictions
             ]
+
+        # Apply ensemble averaging (smooth predictions by averaging last N)
+        if ensemble_size > 1 and len(predictions) >= ensemble_size:
+            smoothed_predictions = []
+            for i in range(len(predictions)):
+                if i < ensemble_size - 1:
+                    # Not enough history, use available values
+                    window_start = max(0, i - ensemble_size + 1)
+                    window = predictions[window_start:i + 1]
+                else:
+                    # Full window
+                    window = predictions[i - ensemble_size + 1:i + 1]
+
+                avg_value = sum(p["predicted_target"] for p in window) / len(window)
+                smoothed_predictions.append({
+                    "time": predictions[i]["time"],
+                    "predicted_target": round(avg_value, 8),
+                })
+
+            predictions = smoothed_predictions
 
     return {
         "symbol": symbol,
