@@ -518,8 +518,31 @@ def batch_calculate_target_data(
     elif method == 'savgol':
         causal = not use_future  # If use_future=True, causal=False
         filtered = savgol_filter_prices(prices_arr, window_length=int(response_time), causal=causal)
-    else:  # hanning or legacy
-        filtered = prices_arr  # Simplified for hanning
+    elif method == 'hanning':
+        # Causal Hanning Filter
+        # Uses a sliding window of past data with Hanning weights
+        window_length = int(response_time)
+        if window_length < 2 or len(prices_arr) < window_length:
+            filtered = prices_arr.copy()
+        else:
+            # Create and normalize Hanning window
+            hann = np.hanning(window_length)
+            hann = hann / hann.sum()
+            
+            # Convolve prices with Hanning window
+            # 'valid' convolution gives us the result where the window fully overlaps
+            valid_conv = np.convolve(prices_arr, hann, mode='valid')
+            
+            # 'valid' convolution result length is len(prices_arr) - window_length + 1
+            # The result at index i corresponds to the window ending at i + window_length - 1
+            # We want the result to be aligned with the END of the window (current time)
+            # So we pad the beginning with original values
+            
+            filtered = np.empty_like(prices_arr)
+            filtered[:window_length-1] = prices_arr[:window_length-1] # Not enough history for full window
+            filtered[window_length-1:] = valid_conv
+    else:  # legacy fallback
+        filtered = prices_arr  # Simplified
 
     # Calculate normalization
     n = len(filtered)
