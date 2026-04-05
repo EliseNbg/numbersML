@@ -80,14 +80,7 @@ function initChart() {
         priceScaleId: 'left',
     });
 
-    targetSeries = chart.addLineSeries({
-        color: '#FF9800',
-        lineWidth: 3,
-        title: 'Target Value (Filtered)',
-        priceScaleId: 'right',
-    });
-
-    // Normalized value series (0-1 range)
+    // Normalized value series (0-1 range) on right scale
     normalizedSeries = chart.addLineSeries({
         color: '#4CAF50',
         lineWidth: 2,
@@ -132,7 +125,6 @@ async function loadChartData() {
 
     if (!symbol) {
         candleSeries.setData([]);
-        targetSeries.setData([]);
         if (normalizedSeries) normalizedSeries.setData([]);
         return;
     }
@@ -145,7 +137,6 @@ async function loadChartData() {
 
         if (data.length === 0) {
             candleSeries.setData([]);
-            targetSeries.setData([]);
             if (normalizedSeries) normalizedSeries.setData([]);
             document.getElementById('chart-title').textContent = `${symbol} - No data`;
             return;
@@ -161,19 +152,7 @@ async function loadChartData() {
         }));
         candleSeries.setData(candleData);
 
-        // Target value line - use filtered_value for WAVES (smooth trend)
-        const targetData = data
-            .filter(c => c.target_value !== null && c.target_value.filtered_value !== null)
-            .map(c => ({
-                time: c.time,
-                value: c.target_value.filtered_value,
-                trend: c.target_value.trend,
-                diff: c.target_value.diff,
-                velocity: c.target_value.velocity,
-            }));
-        targetSeries.setData(targetData);
-
-        // Normalized value line (0-1 range)
+        // Normalized value line (0-1 range) - shows position in trend cycle
         const normalizedData = data
             .filter(c => c.target_value !== null && c.target_value.normalized_value !== null)
             .map(c => ({
@@ -186,7 +165,11 @@ async function loadChartData() {
 
         // Count trends for display
         const trendCounts = { up: 0, down: 0, flat: 0 };
-        targetData.forEach(t => { if (trendCounts[t.trend] !== undefined) trendCounts[t.trend]++; });
+        data.forEach(c => {
+            if (c.target_value && trendCounts[c.target_value.trend] !== undefined) {
+                trendCounts[c.target_value.trend]++;
+            }
+        });
 
         document.getElementById('chart-title').textContent =
             `${symbol} - ${data.length} candles | ` +
