@@ -1,10 +1,10 @@
 /**
  * ML Prediction Chart Page
- * 
+ *
  * Displays candlestick chart with:
- * - OHLC candlestick data
- * - Target values (orange line)
- * - ML predictions (blue line)
+ * - OHLC candlestick data (left price scale)
+ * - Target values (orange line, right price scale)
+ * - ML predictions (blue line, right price scale)
  */
 
 const API_BASE = '/api';
@@ -120,8 +120,21 @@ function initChart() {
         crosshair: {
             mode: LightweightCharts.CrosshairMode.Normal,
         },
-        rightPriceScale: {
+        leftPriceScale: {
             borderColor: '#ccc',
+            visible: true,
+            scaleMargins: {
+                top: 0.1,
+                bottom: 0.1,
+            },
+        },
+        rightPriceScale: {
+            borderColor: '#FF9800',
+            visible: true,
+            scaleMargins: {
+                top: 0.1,
+                bottom: 0.1,
+            },
         },
         timeScale: {
             borderColor: '#ccc',
@@ -130,27 +143,28 @@ function initChart() {
         },
     });
 
-    // Candlestick series
+    // Candlestick series (left price scale)
     candleSeries = chart.addCandlestickSeries({
         upColor: '#26a69a',
         downColor: '#ef5350',
         borderVisible: false,
         wickUpColor: '#26a69a',
         wickDownColor: '#ef5350',
+        priceScaleId: 'left',
     });
 
-    // Target value line (orange) - make it more visible
+    // Target value line (orange, right price scale)
     targetSeries = chart.addLineSeries({
         color: '#FF9800',
         lineWidth: 3,
-        title: 'Target Value',
+        title: 'Target Value (Kalman)',
         priceLineVisible: true,
         lastValueVisible: true,
         priceLineColor: '#FF9800',
         priceScaleId: 'right',
     });
 
-    // ML prediction line (blue) - make it more visible
+    // ML prediction line (blue, right price scale)
     predictionSeries = chart.addLineSeries({
         color: '#2196F3',
         lineWidth: 3,

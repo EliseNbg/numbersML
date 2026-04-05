@@ -6,7 +6,7 @@
  * - Time range selection
  * - Response time configuration (Kalman Filter)
  * - Target value calculation trigger
- * - Candlestick + target value chart display
+ * - Candlestick + target value chart display with dual price scales
  */
 
 const API_BASE = '/api';
@@ -47,7 +47,22 @@ function initChart() {
         crosshair: {
             mode: LightweightCharts.CrosshairMode.Normal,
         },
-        rightPriceScale: { borderColor: '#ccc' },
+        leftPriceScale: {
+            borderColor: '#ccc',
+            visible: true,
+            scaleMargins: {
+                top: 0.1,
+                bottom: 0.1,
+            },
+        },
+        rightPriceScale: {
+            borderColor: '#FF9800',
+            visible: true,
+            scaleMargins: {
+                top: 0.1,
+                bottom: 0.1,
+            },
+        },
         timeScale: {
             borderColor: '#ccc',
             timeVisible: true,
@@ -61,12 +76,14 @@ function initChart() {
         borderVisible: false,
         wickUpColor: '#26a69a',
         wickDownColor: '#ef5350',
+        priceScaleId: 'left',
     });
 
     targetSeries = chart.addLineSeries({
         color: '#FF9800',
         lineWidth: 3,
-        title: 'Target Value (Kalman Filter)',
+        title: 'Target Value (Kalman)',
+        priceScaleId: 'right',
     });
 
     window.addEventListener('resize', () => {

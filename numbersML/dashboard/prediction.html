@@ -124,15 +124,15 @@
                 <div class="d-flex gap-4">
                     <div>
                         <span class="badge bg-secondary"><i class="bi bi-bar-chart"></i></span>
-                        <span>Candlestick (OHLC)</span>
+                        <span>Candlestick (Left Scale)</span>
                     </div>
                     <div>
                         <span class="badge" style="background-color: #FF9800;"><i class="bi bi-graph-up"></i></span>
-                        <span>Target Value (Hanning filter)</span>
+                        <span>Target Value (Right Scale, Kalman)</span>
                     </div>
                     <div>
                         <span class="badge" style="background-color: #2196F3;"><i class="bi bi-cpu"></i></span>
-                        <span>ML Prediction</span>
+                        <span>ML Prediction (Right Scale)</span>
                     </div>
                 </div>
             </div>
@@ -172,7 +172,7 @@
                     </div>
                     <div class="card-body">
                         <h3 id="stat-targets">-</h3>
-                        <p class="text-muted mb-0">Hanning-filtered values</p>
+                        <p class="text-muted mb-0">Kalman-filtered diff values</p>
                     </div>
                 </div>
             </div>

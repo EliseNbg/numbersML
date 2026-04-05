@@ -238,7 +238,7 @@ async def predict(
 
     if candles:
         close_prices = np.array([c["close"] for c in candles], dtype=np.float64)
-        target_values = batch_calculate_numpy(close_prices, window_size=20)
+        target_values = batch_calculate_numpy(close_prices, response_time=200.0, use_kalman=True)
         targets = [
             {"time": c["time"], "value": round(float(tv), 8)}
             for c, tv in zip(candles, target_values)
