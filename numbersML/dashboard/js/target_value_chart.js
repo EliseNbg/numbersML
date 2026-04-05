@@ -14,6 +14,7 @@ const API_BASE = '/api';
 let chart = null;
 let candleSeries = null;
 let targetSeries = null;
+let normalizedSeries = null;
 
 const RANGE_HOURS = {
     '2': 2,
@@ -82,7 +83,15 @@ function initChart() {
     targetSeries = chart.addLineSeries({
         color: '#FF9800',
         lineWidth: 3,
-        title: 'Target Value (Kalman)',
+        title: 'Target Value (Filtered)',
+        priceScaleId: 'right',
+    });
+
+    // Normalized value series (0-1 range)
+    normalizedSeries = chart.addLineSeries({
+        color: '#4CAF50',
+        lineWidth: 2,
+        title: 'Normalized (0-1)',
         priceScaleId: 'right',
     });
 
@@ -116,18 +125,20 @@ function setupEventHandlers() {
 async function loadChartData() {
     const symbol = document.getElementById('target-symbol')?.value;
     const hours = document.getElementById('target-range')?.value || '2';
-    const responseTime = document.getElementById('target-window')?.value || '200';
+    const responseTime = document.getElementById('target-window')?.value || '600';
     const method = document.getElementById('target-method')?.value || 'savgol';
     const useFuture = document.getElementById('use-future')?.checked || false;
+    const normWindow = document.getElementById('norm-window')?.value || '600';
 
     if (!symbol) {
         candleSeries.setData([]);
         targetSeries.setData([]);
+        if (normalizedSeries) normalizedSeries.setData([]);
         return;
     }
 
     try {
-        const url = `${API_BASE}/target-values?symbol=${encodeURIComponent(symbol)}&hours=${hours}&response_time=${responseTime}&method=${method}&use_future=${useFuture}`;
+        const url = `${API_BASE}/target-values?symbol=${encodeURIComponent(symbol)}&hours=${hours}&response_time=${responseTime}&method=${method}&use_future=${useFuture}&norm_window=${normWindow}`;
         const resp = await fetch(url);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
@@ -135,6 +146,7 @@ async function loadChartData() {
         if (data.length === 0) {
             candleSeries.setData([]);
             targetSeries.setData([]);
+            if (normalizedSeries) normalizedSeries.setData([]);
             document.getElementById('chart-title').textContent = `${symbol} - No data`;
             return;
         }
@@ -161,6 +173,15 @@ async function loadChartData() {
             }));
         targetSeries.setData(targetData);
 
+        // Normalized value line (0-1 range)
+        const normalizedData = data
+            .filter(c => c.target_value !== null && c.target_value.normalized_value !== null)
+            .map(c => ({
+                time: c.time,
+                value: c.target_value.normalized_value,
+            }));
+        normalizedSeries.setData(normalizedData);
+
         chart.timeScale().fitContent();
 
         // Count trends for display
@@ -170,7 +191,8 @@ async function loadChartData() {
         document.getElementById('chart-title').textContent =
             `${symbol} - ${data.length} candles | ` +
             `↑${trendCounts.up} ↓${trendCounts.down} →${trendCounts.flat} | ` +
-            `${method}${useFuture ? ' + future' : ''} window=${responseTime}`;
+            `${method}${useFuture ? ' + future' : ''} window=${responseTime} | ` +
+            `norm=${normWindow}`;
 
     } catch (error) {
         console.error('Failed to load chart data:', error);
@@ -181,9 +203,10 @@ async function loadChartData() {
 async function calculateTargetValues() {
     const symbol = document.getElementById('target-symbol')?.value;
     const hours = document.getElementById('target-range')?.value || '2';
-    const responseTime = document.getElementById('target-window')?.value || '200';
+    const responseTime = document.getElementById('target-window')?.value || '600';
     const method = document.getElementById('target-method')?.value || 'savgol';
     const useFuture = document.getElementById('use-future')?.checked || false;
+    const normWindow = document.getElementById('norm-window')?.value || '600';
     const status = document.getElementById('calculate-status');
 
     if (!symbol) {
@@ -196,12 +219,12 @@ async function calculateTargetValues() {
     status.className = 'text-warning';
 
     try {
-        const url = `${API_BASE}/target-values/calculate?symbol=${encodeURIComponent(symbol)}&response_time=${responseTime}&method=${method}&use_future=${useFuture}&hours=${hours}`;
+        const url = `${API_BASE}/target-values/calculate?symbol=${encodeURIComponent(symbol)}&response_time=${responseTime}&method=${method}&use_future=${useFuture}&norm_window=${normWindow}&hours=${hours}`;
         const resp = await fetch(url, { method: 'POST' });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const result = await resp.json();
 
-        status.textContent = `Done: ${result.updated} candles updated (${result.time_range_candles} in range, ${method}${useFuture ? ' + future' : ''} window=${responseTime})`;
+        status.textContent = `Done: ${result.updated} candles updated (${result.time_range_candles} in range, ${method}${useFuture ? ' + future' : ''} window=${responseTime}, norm=${normWindow})`;
         status.className = 'text-success';
 
         // Reload chart

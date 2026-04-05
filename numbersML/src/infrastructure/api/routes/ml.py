@@ -240,7 +240,7 @@ async def predict(
 
     if candles:
         close_prices = [c["close"] for c in candles]
-        target_data_list = batch_calculate_target_data(close_prices, response_time=200.0, use_kalman=True)
+        target_data_list = batch_calculate_target_data(close_prices, response_time=600.0, method='savgol', norm_window=600)
         targets = [
             {"time": c["time"], "value": td["filtered_value"]}
             for c, td in zip(candles, target_data_list)

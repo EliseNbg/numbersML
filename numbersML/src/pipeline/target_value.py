@@ -480,9 +480,10 @@ def savgol_filter_prices(
 
 def batch_calculate_target_data(
     prices: List[float],
-    response_time: float = 200.0,
+    response_time: float = 600.0,
     method: str = 'savgol',
     use_future: bool = False,  # For ML training only!
+    norm_window: int = 600,    # Window for normalization (0-1 range)
     use_kalman: bool = True,  # Deprecated, kept for backward compatibility
 ) -> List[Optional[Dict[str, Any]]]:
     """
@@ -492,9 +493,10 @@ def batch_calculate_target_data(
 
     Args:
         prices: List of close prices
-        response_time: Window size for smoothing (default: 200)
+        response_time: Window size for smoothing (default: 600)
         method: Smoothing method: 'kalman', 'savgol', 'hanning'
         use_future: If True, Savitzky-Golay uses centered window (ML training ONLY!)
+        norm_window: Window size for rolling min/max normalization (default: 600)
         use_kalman: Deprecated - use method='kalman' instead
 
     Returns:
@@ -521,11 +523,37 @@ def batch_calculate_target_data(
     else:  # hanning or legacy
         filtered = prices_arr  # Simplified for hanning
 
+    # Calculate rolling min/max for normalization
+    n = len(filtered)
+    rolling_min = np.zeros(n)
+    rolling_max = np.zeros(n)
+
+    for i in range(n):
+        start = max(0, i - norm_window + 1)
+        window = filtered[start:i+1]
+        rolling_min[i] = np.min(window)
+        rolling_max[i] = np.max(window)
+
+    # Normalize to 0-1 range
+    normalized = np.zeros(n)
+    for i in range(n):
+        range_val = rolling_max[i] - rolling_min[i]
+        if range_val > 1e-10:  # Avoid division by zero
+            normalized[i] = (filtered[i] - rolling_min[i]) / range_val
+        else:
+            normalized[i] = 0.5  # Middle if no range
+
+    # Clamp to 0-1
+    normalized = np.clip(normalized, 0.0, 1.0)
+
     results = []
     for i in range(len(prices_arr)):
         current_price = float(prices_arr[i])
         filtered_value = float(filtered[i])
         diff = current_price - filtered_value
+        norm_val = float(normalized[i])
+        norm_min = float(rolling_min[i])
+        norm_max = float(rolling_max[i])
 
         # Velocity (rate of change)
         if i > 0:
@@ -547,6 +575,9 @@ def batch_calculate_target_data(
             'diff': round(diff, 8),
             'trend': trend,
             'velocity': round(velocity, 8),
+            'normalized_value': round(norm_val, 8),
+            'norm_min': round(norm_min, 8),
+            'norm_max': round(norm_max, 8),
             'method': method,
             'use_future': use_future if method == 'savgol' else False,
         })
