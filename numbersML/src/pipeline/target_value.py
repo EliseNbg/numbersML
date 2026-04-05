@@ -25,7 +25,7 @@ Usage:
 import math
 import numpy as np
 from typing import List, Optional, Tuple, Dict, Any
-from scipy.signal import savgol_filter
+from scipy.signal import savgol_filter, find_peaks
 
 
 class KalmanFilter1D:
@@ -534,17 +534,80 @@ def batch_calculate_target_data(
         rolling_min[i] = np.min(window)
         rolling_max[i] = np.max(window)
 
-    # Normalize to 0-1 range
+    # Normalize to 0-1 range using cycle detection (peaks and valleys)
+    # Find local maxima and minima
     normalized = np.zeros(n)
-    for i in range(n):
-        range_val = rolling_max[i] - rolling_min[i]
-        if range_val > 1e-10:  # Avoid division by zero
-            normalized[i] = (filtered[i] - rolling_min[i]) / range_val
-        else:
-            normalized[i] = 0.5  # Middle if no range
+    norm_min = np.zeros(n)
+    norm_max = np.zeros(n)
 
-    # Clamp to 0-1
-    normalized = np.clip(normalized, 0.0, 1.0)
+    if n > 10:  # Need enough data for peak detection
+        try:
+            # Find peaks (maxima)
+            peaks, _ = find_peaks(filtered, distance=10)
+            # Find valleys (minima) by inverting signal
+            valleys, _ = find_peaks(-filtered, distance=10)
+
+            # Merge and sort all extrema points
+            all_extrema = np.sort(np.concatenate([peaks, valleys]))
+
+            # Add boundaries
+            if len(all_extrema) == 0 or all_extrema[0] > 0:
+                all_extrema = np.concatenate([[0], all_extrema])
+            if all_extrema[-1] < n - 1:
+                all_extrema = np.concatenate([all_extrema, [n - 1]])
+
+            # Normalize each segment between extrema
+            for seg_idx in range(len(all_extrema) - 1):
+                start_idx = all_extrema[seg_idx]
+                end_idx = all_extrema[seg_idx + 1]
+
+                start_val = filtered[start_idx]
+                end_val = filtered[end_idx]
+
+                # Determine direction: valley→peak (0→1) or peak→valley (1→0)
+                if end_val > start_val:
+                    # Rising: valley to peak, normalize 0→1
+                    segment_range = end_val - start_val
+                    for i in range(int(start_idx), int(end_idx) + 1):
+                        if segment_range > 1e-10:
+                            normalized[i] = (filtered[i] - start_val) / segment_range
+                        else:
+                            normalized[i] = 0.5
+                        norm_min[i] = start_val
+                        norm_max[i] = end_val
+                else:
+                    # Falling: peak to valley, normalize 1→0
+                    segment_range = start_val - end_val
+                    for i in range(int(start_idx), int(end_idx) + 1):
+                        if segment_range > 1e-10:
+                            normalized[i] = (start_val - filtered[i]) / segment_range
+                        else:
+                            normalized[i] = 0.5
+                        norm_min[i] = end_val
+                        norm_max[i] = start_val
+
+            # Clamp to 0-1
+            normalized = np.clip(normalized, 0.0, 1.0)
+        except Exception:
+            # Fallback: use rolling min/max
+            for i in range(n):
+                range_val = rolling_max[i] - rolling_min[i]
+                if range_val > 1e-10:
+                    normalized[i] = (filtered[i] - rolling_min[i]) / range_val
+                else:
+                    normalized[i] = 0.5
+                norm_min[i] = rolling_min[i]
+                norm_max[i] = rolling_max[i]
+    else:
+        # Not enough data for peak detection, use rolling min/max
+        for i in range(n):
+            range_val = rolling_max[i] - rolling_min[i]
+            if range_val > 1e-10:
+                normalized[i] = (filtered[i] - rolling_min[i]) / range_val
+            else:
+                normalized[i] = 0.5
+            norm_min[i] = rolling_min[i]
+            norm_max[i] = rolling_max[i]
 
     results = []
     for i in range(len(prices_arr)):

@@ -13,7 +13,7 @@ const API_BASE = '/api';
 
 let chart = null;
 let candleSeries = null;
-let targetSeries = null;
+let filteredSeries = null;
 let normalizedSeries = null;
 
 const RANGE_HOURS = {
@@ -80,6 +80,14 @@ function initChart() {
         priceScaleId: 'left',
     });
 
+    // Filtered value line (smooth trend, same scale as candles)
+    filteredSeries = chart.addLineSeries({
+        color: '#FF9800',
+        lineWidth: 3,
+        title: 'Filtered Trend',
+        priceScaleId: 'left',
+    });
+
     // Normalized value series (0-1 range) on right scale
     normalizedSeries = chart.addLineSeries({
         color: '#4CAF50',
@@ -125,6 +133,7 @@ async function loadChartData() {
 
     if (!symbol) {
         candleSeries.setData([]);
+        if (filteredSeries) filteredSeries.setData([]);
         if (normalizedSeries) normalizedSeries.setData([]);
         return;
     }
@@ -137,6 +146,7 @@ async function loadChartData() {
 
         if (data.length === 0) {
             candleSeries.setData([]);
+            if (filteredSeries) filteredSeries.setData([]);
             if (normalizedSeries) normalizedSeries.setData([]);
             document.getElementById('chart-title').textContent = `${symbol} - No data`;
             return;
@@ -151,6 +161,15 @@ async function loadChartData() {
             close: c.close,
         }));
         candleSeries.setData(candleData);
+
+        // Filtered value line (smooth trend, same scale as candles)
+        const filteredData = data
+            .filter(c => c.target_value !== null && c.target_value.filtered_value !== null)
+            .map(c => ({
+                time: c.time,
+                value: c.target_value.filtered_value,
+            }));
+        filteredSeries.setData(filteredData);
 
         // Normalized value line (0-1 range) - shows position in trend cycle
         const normalizedData = data
