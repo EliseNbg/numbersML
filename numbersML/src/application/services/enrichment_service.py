@@ -361,12 +361,8 @@ class EnrichmentService:
                     if len(values) > 0:
                         latest_value = values[-1]
                         if not np.isnan(latest_value):
-                            # Generate clean key
-                            if key == indicator_class_name:
-                                full_key = name
-                            else:
-                                full_key = f"{name}_{key}"
-                            indicator_values[full_key] = float(latest_value)
+                            # Use just the indicator name as the key
+                            indicator_values[name] = float(latest_value)
 
             except Exception as e:
                 logger.error(f"Error calculating indicator {name}: {e}", exc_info=True)

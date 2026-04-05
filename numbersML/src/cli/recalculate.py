@@ -192,13 +192,11 @@ async def recalculate_indicators(
                             if len(values) > 0:
                                 val = values[-1]
                                 if not np.isnan(val) and not np.isinf(val):
-                                    # Remove redundant suffix if it matches the indicator type
-                                    if key == indicator_class_name:
-                                        full_key = prefix
-                                    else:
-                                        full_key = f"{prefix}_{key}"
+                                    # Use just the indicator name as the key
+                                    full_key = prefix
                                     results[full_key] = float(val)
-                                    indicator_keys.append(full_key)
+                                    if full_key not in indicator_keys:
+                                        indicator_keys.append(full_key)
                     except Exception:
                         continue
 

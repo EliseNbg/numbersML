@@ -294,12 +294,7 @@ class RecalculationService:
         async with self.db_pool.acquire() as conn:
             # Build all records first
             records = []
-            
-            # Determine clean key prefix
             prefix = result.name
-            indicator_class_name = ""
-            if indicator:
-                indicator_class_name = type(indicator).__name__.lower().replace('indicator', '')
 
             for i, tick in enumerate(ticks):
                 # Get indicator values for this tick
@@ -307,12 +302,8 @@ class RecalculationService:
 
                 for key, values in result.values.items():
                     if i < len(values) and not np.isnan(values[i]):
-                        # Generate clean key
-                        if key == indicator_class_name:
-                            full_key = prefix
-                        else:
-                            full_key = f"{prefix}_{key}"
-                        indicator_values[full_key] = float(values[i])
+                        # Use just the indicator name as the key
+                        indicator_values[prefix] = float(values[i])
 
                 if indicator_values:
                     records.append((
