@@ -588,8 +588,8 @@ def batch_calculate_target_data(
         filtered_value = float(filtered[i])
         diff = current_price - filtered_value
         norm_val = float(normalized[i])
-        norm_min = float(rolling_min[i])
-        norm_max = float(rolling_max[i])
+        n_min = float(norm_min[i])
+        n_max = float(norm_max[i])
 
         # Velocity (rate of change)
         if i > 0:
@@ -612,8 +612,8 @@ def batch_calculate_target_data(
             'trend': trend,
             'velocity': round(velocity, 8),
             'normalized_value': round(norm_val, 8),
-            'norm_min': round(norm_min, 8),
-            'norm_max': round(norm_max, 8),
+            'norm_min': round(n_min, 8),
+            'norm_max': round(n_max, 8),
             'method': method,
             'use_future': use_future if method == 'savgol' else False,
         })
