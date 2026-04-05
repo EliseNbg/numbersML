@@ -248,12 +248,15 @@ async def recalculate_wide_vectors(
     symbol_ids: List[int],
     from_time: datetime,
     to_time: Optional[datetime],
+    batch_hours: int = 1,
 ) -> int:
     """
     Regenerate wide vectors for unprocessed candles.
 
-    Batch-processes: loads all indicator data into memory, groups by time,
-    builds one wide vector per time point.
+    Uses time-batched processing to avoid OOM:
+    - Processes data in batch_hours chunks (default: 1 hour)
+    - Loads only current batch into memory
+    - Builds and inserts wide vectors per batch
     """
     from src.pipeline.wide_vector_service import WideVectorService
 
@@ -267,155 +270,171 @@ async def recalculate_wide_vectors(
     symbol_id_set = {sid for sid, _ in active_symbols}
     symbol_names = [sname for _, sname in active_symbols]
 
-    # Load ALL indicator data at once
-    logger.info("Loading all indicator data...")
-    async with db_pool.acquire() as conn:
-        time_filter = ""
-        params: list = [symbol_ids]
-        if to_time:
-            time_filter = "AND ci.time >= $2 AND ci.time <= $3"
-            params.append(from_time)
-            params.append(to_time)
-        else:
-            time_filter = "AND ci.time >= $2"
-            params.append(from_time)
+    # Determine time range
+    if to_time is None:
+        to_time = datetime.now(timezone.utc)
 
-        indicator_rows = await conn.fetch(
-            f"""
-            SELECT ci.symbol_id, s.symbol, ci.time, ci.values, ci.indicator_keys
-            FROM candle_indicators ci
-            JOIN symbols s ON s.id = ci.symbol_id
-            WHERE ci.symbol_id = ANY($1) {time_filter}
-            ORDER BY ci.time, ci.symbol_id
-            """,
-            *params,
-        )
+    # Process in batch_hours chunks to avoid OOM
+    batch_size = timedelta(hours=batch_hours)
+    current_start = from_time
+    total_count = 0
 
-    logger.info(f"Loaded {len(indicator_rows)} indicator rows")
+    logger.info(f"Processing wide vectors in {batch_hours}h batches from {from_time} to {to_time}")
 
-    # Group by time
-    by_time: dict = {}
-    all_keys: set = set()
-    for r in indicator_rows:
-        t = r['time']
-        if t not in by_time:
-            by_time[t] = {}
-        values_raw = r['values']
-        if isinstance(values_raw, str):
-            values = json.loads(values_raw)
-        elif isinstance(values_raw, dict):
-            values = values_raw
-        else:
-            values = {}
-        by_time[t][r['symbol']] = values
-        if r['indicator_keys']:
-            all_keys.update(r['indicator_keys'])
+    while current_start < to_time:
+        current_end = min(current_start + batch_size, to_time)
+        logger.info(f"Processing batch: {current_start} to {current_end}")
 
-    sorted_indicator_keys = sorted(all_keys)
-
-    # Load candle data for OHLCV
-    logger.info("Loading candle data...")
-    async with db_pool.acquire() as conn:
-        candle_filter = time_filter.replace('ci.time', 'c.time')
-        candle_rows = await conn.fetch(
-            f"""
-            SELECT c.symbol_id, s.symbol, c.time, c.close, c.volume
-            FROM candles_1s c
-            JOIN symbols s ON s.id = c.symbol_id
-            WHERE c.symbol_id = ANY($1) {candle_filter}
-            ORDER BY c.time, c.symbol_id
-            """,
-            *params,
-        )
-
-    candle_by_time: dict = {}
-    for r in candle_rows:
-        t = r['time']
-        if t not in candle_by_time:
-            candle_by_time[t] = {}
-        candle_by_time[t][r['symbol']] = {
-            'close': float(r['close']),
-            'volume': float(r['volume']),
-        }
-
-    logger.info(f"Found {len(by_time)} time points with indicator data")
-
-    # Build and insert wide vectors
-    vector_batch = []
-    count = 0
-
-    for t in sorted(by_time.keys()):
-        ind_data = by_time[t]
-        cd_data = candle_by_time.get(t, {})
-
-        vector = []
-        column_names = []
-
-        for sid, sname in active_symbols:
-            cd = cd_data.get(sname, {})
-            ind = ind_data.get(sname, {})
-            col_sname = sname.replace('/', '_')
-
-            # Candle features
-            for feat in ['close', 'volume']:
-                vector.append(cd.get(feat, 0.0))
-                column_names.append(f"{col_sname}_{feat}")
-
-            # Indicator features
-            for ikey in sorted_indicator_keys:
-                vector.append(ind.get(ikey, 0.0))
-                column_names.append(f"{col_sname}_{ikey}")
-
-        if vector:
-            vector_batch.append((
-                t,
-                json.dumps(vector),
-                column_names,
-                symbol_names,
-                len(vector),
-                len(active_symbols),
-                len(sorted_indicator_keys),
-            ))
-            count += 1
-
-            if len(vector_batch) >= 5000:
-                async with db_pool.acquire() as conn:
-                    await conn.executemany(
-                        """
-                        INSERT INTO wide_vectors (time, vector, column_names, symbols,
-                            vector_size, symbol_count, indicator_count)
-                        VALUES ($1, $2::jsonb, $3, $4, $5, $6, $7)
-                        ON CONFLICT (time) DO NOTHING
-                        """,
-                        vector_batch,
-                    )
-                logger.info(f"  {count} wide vectors written...")
-                vector_batch = []
-
-    # Insert remaining
-    if vector_batch:
+        # Load indicator data for this batch only
         async with db_pool.acquire() as conn:
-            await conn.executemany(
+            indicator_rows = await conn.fetch(
                 """
-                INSERT INTO wide_vectors (time, vector, column_names, symbols,
-                    vector_size, symbol_count, indicator_count)
-                VALUES ($1, $2::jsonb, $3, $4, $5, $6, $7)
-                ON CONFLICT (time) DO NOTHING
+                SELECT ci.symbol_id, s.symbol, ci.time, ci.values, ci.indicator_keys
+                FROM candle_indicators ci
+                JOIN symbols s ON s.id = ci.symbol_id
+                WHERE ci.symbol_id = ANY($1) AND ci.time >= $2 AND ci.time < $3
+                ORDER BY ci.time, ci.symbol_id
                 """,
-                vector_batch,
+                symbol_ids, current_start, current_end,
             )
 
-    # Set processed flag
+        if not indicator_rows:
+            logger.warning(f"No indicator data in {current_start} - {current_end}, skipping")
+            current_start = current_end
+            continue
+
+        # Group by time (only for this batch)
+        by_time: dict = {}
+        all_keys: set = set()
+        for r in indicator_rows:
+            t = r['time']
+            if t not in by_time:
+                by_time[t] = {}
+            values_raw = r['values']
+            if isinstance(values_raw, str):
+                values = json.loads(values_raw)
+            elif isinstance(values_raw, dict):
+                values = values_raw
+            else:
+                values = {}
+            by_time[t][r['symbol']] = values
+            if r['indicator_keys']:
+                all_keys.update(r['indicator_keys'])
+
+        sorted_indicator_keys = sorted(all_keys)
+        logger.info(f"  Found {len(by_time)} time points with indicators")
+
+        # Load candle data for this batch only
+        async with db_pool.acquire() as conn:
+            candle_rows = await conn.fetch(
+                """
+                SELECT c.symbol_id, s.symbol, c.time, c.close, c.volume
+                FROM candles_1s c
+                JOIN symbols s ON s.id = c.symbol_id
+                WHERE c.symbol_id = ANY($1) AND c.time >= $2 AND c.time < $3
+                ORDER BY c.time, c.symbol_id
+                """,
+                symbol_ids, current_start, current_end,
+            )
+
+        candle_by_time: dict = {}
+        for r in candle_rows:
+            t = r['time']
+            if t not in candle_by_time:
+                candle_by_time[t] = {}
+            candle_by_time[t][r['symbol']] = {
+                'close': float(r['close']),
+                'volume': float(r['volume']),
+            }
+
+        # Build and insert wide vectors for this batch
+        vector_batch = []
+        batch_count = 0
+
+        for t in sorted(by_time.keys()):
+            ind_data = by_time[t]
+            cd_data = candle_by_time.get(t, {})
+
+            vector = []
+            column_names = []
+
+            for sid, sname in active_symbols:
+                cd = cd_data.get(sname, {})
+                ind = ind_data.get(sname, {})
+                col_sname = sname.replace('/', '_')
+
+                # Candle features
+                for feat in ['close', 'volume']:
+                    vector.append(cd.get(feat, 0.0))
+                    column_names.append(f"{col_sname}_{feat}")
+
+                # Indicator features
+                for ikey in sorted_indicator_keys:
+                    vector.append(ind.get(ikey, 0.0))
+                    column_names.append(f"{col_sname}_{ikey}")
+
+            if vector:
+                vector_batch.append((
+                    t,
+                    json.dumps(vector),
+                    column_names,
+                    symbol_names,
+                    len(vector),
+                    len(active_symbols),
+                    len(sorted_indicator_keys),
+                ))
+                batch_count += 1
+
+                # Insert every 5000 vectors
+                if len(vector_batch) >= 5000:
+                    async with db_pool.acquire() as conn:
+                        await conn.executemany(
+                            """
+                            INSERT INTO wide_vectors (time, vector, column_names, symbols,
+                                vector_size, symbol_count, indicator_count)
+                            VALUES ($1, $2::jsonb, $3, $4, $5, $6, $7)
+                            ON CONFLICT (time) DO NOTHING
+                            """,
+                            vector_batch,
+                        )
+                    logger.info(f"  {batch_count} wide vectors written...")
+                    vector_batch = []
+
+        # Insert remaining vectors for this batch
+        if vector_batch:
+            async with db_pool.acquire() as conn:
+                await conn.executemany(
+                    """
+                    INSERT INTO wide_vectors (time, vector, column_names, symbols,
+                        vector_size, symbol_count, indicator_count)
+                    VALUES ($1, $2::jsonb, $3, $4, $5, $6, $7)
+                    ON CONFLICT (time) DO NOTHING
+                    """,
+                    vector_batch,
+                )
+
+        total_count += batch_count
+        logger.info(f"  Batch complete: {batch_count} vectors (total: {total_count})")
+
+        # Clear memory
+        del by_time
+        del candle_by_time
+        del indicator_rows
+        del candle_rows
+
+        current_start = current_end
+
+    # Set processed flag for all symbols
     async with db_pool.acquire() as conn:
         await conn.execute(
             """
             UPDATE candles_1s SET processed = true
-            WHERE symbol_id = ANY($1)
+            WHERE symbol_id = ANY($1) AND time >= $2 AND time <= $3
             """,
-            symbol_ids,
+            symbol_ids, from_time, to_time,
         )
 
-    return count
+    return total_count
 
 
 async def main() -> None:
@@ -424,12 +443,16 @@ async def main() -> None:
     parser.add_argument('--indicators', action='store_true', help='Recalculate indicators')
     parser.add_argument('--vectors', action='store_true', help='Recalculate wide vectors')
     parser.add_argument('--all', action='store_true', help='Reset + indicators + vectors')
+    parser.add_argument('--vectors-only', action='store_true', 
+                        help='Recalculate wide vectors only (skip indicators, assumes they exist)')
     parser.add_argument('--from', dest='from_time', required=True,
                         help='Start time (YYYY-MM-DD HH:MM:SS)')
     parser.add_argument('--to', dest='to_time', default=None,
                         help='End time (YYYY-MM-DD HH:MM:SS)')
     parser.add_argument('--symbols', dest='symbols', default=None,
                         help='Comma-separated symbol list (e.g., BTC/USDC,ETH/USDC)')
+    parser.add_argument('--batch-hours', dest='batch_hours', type=int, default=1,
+                        help='Batch size in hours for wide vector processing (default: 1)')
 
     args = parser.parse_args()
 
@@ -443,6 +466,9 @@ async def main() -> None:
     if args.all:
         args.reset = True
         args.indicators = True
+        args.vectors = True
+
+    if args.vectors_only:
         args.vectors = True
 
     async def _set_utc(conn):
@@ -466,11 +492,12 @@ async def main() -> None:
 
     if args.vectors:
         logger.info("Recalculating wide vectors...")
-        count = await recalculate_wide_vectors(pool, symbol_ids, from_time, to_time)
+        count = await recalculate_wide_vectors(pool, symbol_ids, from_time, to_time, 
+                                              batch_hours=args.batch_hours)
         logger.info(f"Generated {count} wide vectors")
 
     if not args.reset and not args.indicators and not args.vectors:
-        logger.error("No action specified. Use --reset, --indicators, --vectors, or --all")
+        logger.error("No action specified. Use --reset, --indicators, --vectors, --all, or --vectors-only")
         sys.exit(1)
 
     await pool.close()

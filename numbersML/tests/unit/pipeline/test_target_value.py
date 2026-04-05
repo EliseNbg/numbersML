@@ -55,23 +55,23 @@ class TestCalculateTargetValue:
     """Test single target value calculation."""
 
     def test_constant_prices(self) -> None:
-        """Constant prices return same value."""
+        """Constant prices return zero (no deviation from trend)."""
         prices = np.array([100.0] * 100, dtype=np.float64)
         target = calculate_target_value(prices, center=50, window_size=20)
-        assert abs(target - 100.0) < 1e-6
+        assert abs(target - 0.0) < 1e-6
 
     def test_increasing_prices(self) -> None:
-        """Increasing prices return weighted average near center."""
+        """Increasing prices return positive deviation (above trend)."""
         prices = np.arange(0.0, 100.0, dtype=np.float64)
         target = calculate_target_value(prices, center=50, window_size=20)
-        # Target should be close to 50 (center of range)
-        assert 40 < target < 60
+        # Target should be positive (current price above past trend)
+        assert target > 0
 
     def test_single_price(self) -> None:
-        """Single price returns that price."""
+        """Single price returns 0 (no history)."""
         prices = np.array([42.0], dtype=np.float64)
         target = calculate_target_value(prices, center=0, window_size=300)
-        assert abs(target - 42.0) < 1e-6
+        assert abs(target - 0.0) < 1e-6
 
     def test_empty_prices(self) -> None:
         """Empty prices returns 0."""
@@ -82,20 +82,21 @@ class TestCalculateTargetValue:
     def test_edge_center(self) -> None:
         """Center at edge uses partial window."""
         prices = np.array([100.0, 200.0, 300.0], dtype=np.float64)
-        target = calculate_target_value(prices, center=0, window_size=10)
-        assert 100 <= target <= 200
+        target = calculate_target_value(prices, center=2, window_size=10)
+        # At index 2, smoothed should be avg of [100, 200], target = 300 - 150 = 150
+        assert target > 0
 
 
 class TestBatchCalculate:
     """Test batch target value calculation."""
 
     def test_constant_series(self) -> None:
-        """Constant series returns all same values."""
+        """Constant series returns all zeros (no deviation)."""
         prices = [50.0] * 500
         targets = batch_calculate(prices, window_size=300)
         assert len(targets) == 500
         for t in targets:
-            assert abs(t - 50.0) < 1e-6
+            assert abs(t - 0.0) < 1e-6
 
     def test_empty_input(self) -> None:
         """Empty input returns empty list."""
@@ -103,26 +104,29 @@ class TestBatchCalculate:
         assert targets == []
 
     def test_single_element(self) -> None:
-        """Single element returns single value."""
+        """Single element returns 0 (no history)."""
         targets = batch_calculate([42.0], window_size=300)
         assert len(targets) == 1
-        assert abs(targets[0] - 42.0) < 1e-6
+        assert abs(targets[0] - 0.0) < 1e-6
 
     def test_ramp_signal(self) -> None:
-        """Ramp signal produces smooth output."""
+        """Ramp signal produces positive deviations after warmup."""
         prices = list(range(1000))
         targets = batch_calculate(prices, window_size=100)
         assert len(targets) == 1000
-        # Targets should be monotonically increasing
-        for i in range(1, len(targets)):
-            assert targets[i] >= targets[i - 1] - 1e-6
+        # After warmup, targets should be positive (current > past average)
+        later_targets = targets[200:]
+        assert all(t > 0 for t in later_targets)
 
     def test_window_size_1(self) -> None:
-        """Window size 1 returns raw prices."""
+        """Window size 1: target = current - smoothed = current - current = 0."""
         prices = [10.0, 20.0, 30.0]
         targets = batch_calculate(prices, window_size=1)
-        for p, t in zip(prices, targets):
-            assert abs(p - t) < 1e-6
+        # With window_size=1, smoothed=price[i-1], target = price[i] - price[i-1]
+        assert len(targets) == 3
+        assert targets[0] == 0.0  # No history
+        assert abs(targets[1] - 10.0) < 1e-6  # 20 - 10
+        assert abs(targets[2] - 10.0) < 1e-6  # 30 - 20
 
 
 class TestBatchCalculateNumpy:
@@ -146,8 +150,8 @@ class TestBatchCalculateNumpy:
         assert len(result) == 0
 
     def test_constant_series(self) -> None:
-        """Constant series returns all same values."""
+        """Constant series returns all zeros."""
         prices = np.full(500, 100.0)
         targets = batch_calculate_numpy(prices, window_size=300)
         for t in targets:
-            assert abs(t - 100.0) < 1e-6
+            assert abs(t - 0.0) < 1e-6

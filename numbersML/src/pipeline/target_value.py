@@ -1,15 +1,20 @@
 """
 ML Target Value Calculator.
 
-Calculates target values for ML model training using a Hanning filter
-applied to candle close prices.
+Calculates target values for ML model training as the deviation from a
+causal Hanning filter (no data leakage).
 
-The target value at each candle is the Hanning-filtered weighted average
-of close prices in a window centered on that candle.
+The target value at each candle is:
+    target[t] = close[t] - hanning_smoothed[t]
+
+where hanning_smoothed uses ONLY past data (causal filter).
+
+This represents the price deviation from the smoothed trend, which is
+what the model should predict.
 
 Usage:
     >>> from src.pipeline.target_value import calculate_target_value, batch_calculate
-    >>> value = calculate_target_value(prices, center=150, window_size=300)
+    >>> target = calculate_target_value(prices, center=150, window_size=300)
     >>> targets = batch_calculate(prices, window_size=300)
 """
 
@@ -34,6 +39,12 @@ def hanning_window(window_size: int) -> np.ndarray:
     if window_size < 1:
         return np.array([1.0])
 
+    if window_size == 1:
+        return np.array([1.0])
+
+    if window_size == 2:
+        return np.array([0.5, 0.5])
+
     window = np.hanning(window_size)
     return window / window.sum()
 
@@ -44,18 +55,18 @@ def calculate_target_value(
     window_size: int = 300,
 ) -> float:
     """
-    Calculate the Hanning-filtered target value for a single candle.
+    Calculate the target value for a single candle as deviation from causal Hanning filter.
 
-    Uses prices[center - window_size//2 : center + window_size//2] weighted
-    by a Hanning window. The target is the weighted average of these prices.
+    Uses ONLY past data (causal): prices[center - window_size : center]
+    Target = close[center] - hanning_smoothed
 
     Args:
         prices: Array of close prices (numpy float64)
         center: Index of the current candle
-        window_size: Window size in candles (default: 300 = 5 minutes)
+        window_size: Window size in candles for Hanning filter (default: 300 = 5 minutes)
 
     Returns:
-        Hanning-filtered target value (float)
+        Target value (close - smoothed_trend), positive = above trend, negative = below
 
     Raises:
         ValueError: If center is outside valid range
@@ -63,21 +74,25 @@ def calculate_target_value(
     if len(prices) == 0:
         return 0.0
 
-    half = window_size // 2
-    start = max(0, center - half)
-    end = min(len(prices), center + half + 1)
+    # Causal window: only use past data up to (but not including) current candle
+    start = max(0, center - window_size)
+    end = center  # Exclusive, so we use prices[start:end] which is past data only
 
-    # Use available data (partial window at edges)
+    # If not enough history, use what we have
+    if end <= start:
+        return 0.0  # No history to smooth against
+
     window = prices[start:end]
-
-    if len(window) == 0:
-        return float(prices[center]) if center < len(prices) else 0.0
 
     # Generate matching Hanning window
     hanning = hanning_window(len(window))
 
-    # Weighted average
-    target = float(np.dot(window, hanning))
+    # Smoothed trend (weighted average of past prices)
+    smoothed = float(np.dot(window, hanning))
+
+    # Target = current price - smoothed trend
+    current_price = float(prices[center]) if center < len(prices) else 0.0
+    target = current_price - smoothed
 
     return target
 
@@ -89,12 +104,14 @@ def batch_calculate(
     """
     Calculate target values for all candles in a price series.
 
-    For each candle at index i, computes the Hanning-filtered weighted
-    average of prices in [i - half, i + half].
+    For each candle at index i, computes:
+        target[i] = close[i] - hanning_smoothed[i]
+
+    where hanning_smoothed uses only past data (causal).
 
     Args:
         prices: List of close prices
-        window_size: Window size (default: 300)
+        window_size: Window size for Hanning filter (default: 300)
 
     Returns:
         List of target values (same length as prices)
@@ -113,12 +130,14 @@ def batch_calculate_numpy(
     """
     Vectorized target value calculation using numpy convolution.
 
-    For each candle at index i, computes the Hanning-filtered weighted
-    average of prices in [i - half, i + half].
+    For each candle at index i, computes:
+        target[i] = close[i] - hanning_smoothed[i]
+
+    Uses causal filtering (only past data) to prevent data leakage.
 
     Args:
         prices: Numpy array of close prices
-        window_size: Window size (default: 300)
+        window_size: Window size for Hanning filter (default: 300)
 
     Returns:
         Numpy array of target values (same length as input)
@@ -127,24 +146,44 @@ def batch_calculate_numpy(
     if n == 0:
         return np.array([])
 
-    half = window_size // 2
+    if n == 1:
+        return np.array([0.0])
 
-    # Compute Hanning filter directly for each position (handles edges properly)
-    targets = np.empty(n, dtype=np.float64)
+    # For proper Hanning window behavior, we need at least 2 points
+    # Use variable window size at the beginning
+    targets = np.zeros(n, dtype=np.float64)
 
-    for i in range(n):
-        start = max(0, i - half)
-        end = min(n, i + half + 1)
-        size = end - start
+    # For positions with enough history, use full convolution
+    if n >= window_size:
+        hanning = hanning_window(window_size)
+        # Convolve: result[i] uses prices[i:i+window_size]
+        smoothed_with_current = np.convolve(prices, hanning, mode='valid')
 
-        if size < 1:
-            targets[i] = float(prices[i])
-            continue
+        # smoothed_with_current[i] = weighted avg of prices[i:i+window_size]
+        # We want smoothed[i] = weighted avg of prices[i-window_size:i] (past only)
+        # So smoothed_trend[i] = smoothed_with_current[i-window_size] for i >= window_size
+        # And for i < window_size, we use partial windows
 
-        # Generate Hanning window of exact size needed
-        window = np.hanning(size)
-        window = window / window.sum()
+        # For simplicity, start using full window from index window_size
+        for i in range(window_size, n):
+            smoothed = smoothed_with_current[i - window_size]
+            targets[i] = prices[i] - smoothed
 
-        targets[i] = float(np.dot(prices[start:end], window))
+        # For early positions (i < window_size), use variable window
+        for i in range(1, min(window_size, n)):
+            window = prices[0:i]
+            if len(window) >= 2:
+                hann = hanning_window(len(window))
+                smoothed = float(np.dot(window, hann))
+                targets[i] = prices[i] - smoothed
+            # else: leave as 0.0 (not enough data)
+    else:
+        # Not enough data for full window, use all available data
+        for i in range(1, n):
+            window = prices[0:i]
+            if len(window) >= 2:
+                hann = hanning_window(len(window))
+                smoothed = float(np.dot(window, hann))
+                targets[i] = prices[i] - smoothed
 
     return targets
