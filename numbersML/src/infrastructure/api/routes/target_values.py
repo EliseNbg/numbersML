@@ -25,7 +25,7 @@ router = APIRouter(prefix="/api/target-values", tags=["target-values"])
 async def get_target_values(
     symbol: str = Query(..., description="Symbol name (e.g., 'BTC/USDC')"),
     hours: int = Query(default=24, ge=1, le=168),
-    response_time: float = Query(default=600.0, ge=1.0, le=1000.0),
+    response_time: float = Query(default=600.0, ge=1.0, le=20000.0),
     method: str = Query(default='savgol', regex='^(savgol|kalman|hanning)$'),
     use_future: bool = Query(default=False, description="Use future data for Savitzky-Golay (ML training ONLY!)"),
 ) -> List[Dict[str, Any]]:
@@ -90,7 +90,7 @@ async def get_target_values(
 )
 async def calculate_target_values(
     symbol: str = Query(..., description="Symbol name"),
-    response_time: float = Query(default=600.0, ge=1.0, le=1000.0),
+    response_time: float = Query(default=600.0, ge=1.0, le=20000.0),
     method: str = Query(default='savgol', regex='^(savgol|kalman|hanning)$'),
     use_future: bool = Query(default=False, description="Use future data for Savitzky-Golay (ML training ONLY!)"),
     from_time: Optional[str] = Query(default=None, description="Start time (YYYY-MM-DD HH:MM:SS)"),
