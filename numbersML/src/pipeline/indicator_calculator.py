@@ -270,24 +270,23 @@ class IndicatorCalculator:
                     closes=prices,
                 )
 
-                # Use full indicator name as the key (e.g. 'macd_12_26_9')
-                prefix = result.name
+                # Use the name from the indicator definition (e.g. 'rsi_14', 'macd_12_26_9')
+                # instead of the generated class name.
+                full_key = defn['name']
 
+                # Get the last valid value from the result
+                val_to_store = None
                 for key, values in result.values.items():
                     if len(values) > 0:
                         val = values[-1]
-                        if np.isnan(val) or np.isinf(val):
-                            continue
-                        
-                        # Use just the indicator name as the key
-                        full_key = prefix
-                        
-                        # Store value (warning: overwrites if indicator has multiple outputs)
-                        results[full_key] = float(val)
-                        
-                        # Add to keys list (ensure uniqueness)
-                        if full_key not in indicator_keys:
-                            indicator_keys.append(full_key)
+                        if not np.isnan(val) and not np.isinf(val):
+                            val_to_store = float(val)
+
+                if val_to_store is not None:
+                    results[full_key] = val_to_store
+                    # Ensure uniqueness in keys list
+                    if full_key not in indicator_keys:
+                        indicator_keys.append(full_key)
 
                 calculated += 1
 

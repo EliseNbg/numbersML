@@ -184,19 +184,21 @@ async def recalculate_indicators(
                             opens=np_opens, closes=np_prices,
                         )
                         
-                        prefix = result.name
-                        # Extract clean class name (e.g. 'macdindicator' -> 'macd')
-                        indicator_class_name = cls.__name__.lower().replace('indicator', '')
+                        # Use the name from the indicator definition (e.g. 'rsi_14')
+                        full_key = defn['name']
                         
+                        # Get the last valid value from the result
+                        val_to_store = None
                         for key, values in result.values.items():
                             if len(values) > 0:
                                 val = values[-1]
                                 if not np.isnan(val) and not np.isinf(val):
-                                    # Use just the indicator name as the key
-                                    full_key = prefix
-                                    results[full_key] = float(val)
-                                    if full_key not in indicator_keys:
-                                        indicator_keys.append(full_key)
+                                    val_to_store = float(val)
+                        
+                        if val_to_store is not None:
+                            results[full_key] = val_to_store
+                            if full_key not in indicator_keys:
+                                indicator_keys.append(full_key)
                     except Exception:
                         continue
 
