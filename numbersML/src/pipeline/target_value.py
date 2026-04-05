@@ -178,8 +178,33 @@ def estimate_kalman_params(
     return process_noise, measurement_noise
 
 
+def response_time_to_noise_ratio(response_time: float) -> float:
+    """
+    Convert desired response time to Kalman noise ratio.
+
+    Maps intuitive "response time" (in samples) to the Q/R noise ratio.
+
+    Args:
+        response_time: Number of samples to react to a step change
+                      - 10 = very fast (reacts in 10 samples)
+                      - 50 = moderate (default)
+                      - 100+ = slow (very smooth)
+
+    Returns:
+        Noise ratio λ = Q/R for Kalman Filter
+    """
+    # Relationship: response_time ≈ 1/λ
+    # So: λ ≈ 1/response_time
+    if response_time <= 0:
+        return 1.0  # Maximum responsiveness
+    
+    return 1.0 / response_time
+
+
 def kalman_filter_prices(
     prices: np.ndarray,
+    response_time: float = 50.0,
+    auto_tune: bool = True,
     process_noise: Optional[float] = None,
     measurement_noise: Optional[float] = None,
 ) -> np.ndarray:
@@ -188,11 +213,29 @@ def kalman_filter_prices(
 
     Args:
         prices: Array of close prices
-        process_noise: Q parameter (auto-estimated if None)
-        measurement_noise: R parameter (auto-estimated if None)
+        response_time: Samples to react to step change (default: 50)
+                      - Small (10-20): Fast response, less smoothing
+                      - Medium (30-100): Balanced (default 50)
+                      - Large (100+): Slow response, more smoothing
+        auto_tune: Auto-estimate base noise levels from data (default: True)
+                  If True, uses response_time to set Q/R ratio but scales
+                  to actual price volatility
+                  If False, uses fixed process_noise/measurement_noise
+        process_noise: Fixed Q (ignored if auto_tune=True)
+        measurement_noise: Fixed R (ignored if auto_tune=True)
 
     Returns:
         Array of filtered price estimates
+
+    Examples:
+        >>> # Fast response (like EMA with α=0.1)
+        >>> filtered = kalman_filter_prices(prices, response_time=10)
+        >>>
+        >>> # Balanced (default)
+        >>> filtered = kalman_filter_prices(prices, response_time=50)
+        >>>
+        >>> # Smooth (like Hanning with window=100)
+        >>> filtered = kalman_filter_prices(prices, response_time=100)
     """
     n = len(prices)
     if n == 0:
@@ -201,13 +244,29 @@ def kalman_filter_prices(
     if n == 1:
         return prices.copy()
 
-    # Auto-estimate parameters if not provided
-    if process_noise is None or measurement_noise is None:
-        q_est, r_est = estimate_kalman_params(prices)
+    if auto_tune:
+        # Auto-estimate base noise levels from data
+        q_base, r_base = estimate_kalman_params(prices)
+        
+        # Apply response_time to set Q/R ratio
+        noise_ratio = response_time_to_noise_ratio(response_time)
+        
+        # Scale: keep base levels but adjust ratio
+        # Q/R = noise_ratio, so Q = noise_ratio * R
+        # Use geometric mean to preserve overall noise level
+        target_ratio = noise_ratio
+        current_ratio = q_base / r_base if r_base > 0 else 1.0
+        
+        # Adjust to match target ratio
+        scale_factor = np.sqrt(target_ratio / current_ratio) if current_ratio > 0 else 1.0
+        process_noise = q_base * scale_factor
+        measurement_noise = r_base / scale_factor
+    else:
+        # Use fixed parameters
         if process_noise is None:
-            process_noise = q_est
+            process_noise = 0.01
         if measurement_noise is None:
-            measurement_noise = r_est
+            measurement_noise = 1.0
 
     # Create and run filter
     kf = KalmanFilter1D(
@@ -248,6 +307,7 @@ def calculate_target_value(
     prices: np.ndarray,
     center: int,
     window_size: int = 300,
+    response_time: float = 50.0,
     use_kalman: bool = True,
 ) -> float:
     """
@@ -260,6 +320,10 @@ def calculate_target_value(
         prices: Array of close prices (numpy float64)
         center: Index of the current candle
         window_size: Window size for Hanning filter (ignored if use_kalman=True)
+        response_time: Kalman response time in samples (default: 50)
+                      - Small (10-20): Fast response, tracks price closely
+                      - Medium (30-100): Balanced (default 50)
+                      - Large (100+): Slow response, smoother targets
         use_kalman: Use Kalman Filter (True, default) or Hanning (False)
 
     Returns:
@@ -277,7 +341,7 @@ def calculate_target_value(
         if len(history) < 2:
             return 0.0
 
-        filtered = kalman_filter_prices(history)
+        filtered = kalman_filter_prices(history, response_time=response_time)
         current_price = float(prices[center])
         trend = float(filtered[-1])
         target = current_price - trend
@@ -302,6 +366,7 @@ def calculate_target_value(
 def batch_calculate(
     prices: List[float],
     window_size: int = 300,
+    response_time: float = 50.0,
     use_kalman: bool = True,
 ) -> List[float]:
     """
@@ -312,6 +377,7 @@ def batch_calculate(
     Args:
         prices: List of close prices
         window_size: Window size for Hanning filter (ignored if use_kalman=True)
+        response_time: Kalman response time in samples (default: 50)
         use_kalman: Use Kalman Filter (True, default) or Hanning (False)
 
     Returns:
@@ -322,13 +388,14 @@ def batch_calculate(
 
     prices_arr = np.array(prices, dtype=np.float64)
     return batch_calculate_numpy(
-        prices_arr, window_size, use_kalman
+        prices_arr, window_size, response_time, use_kalman
     ).tolist()
 
 
 def batch_calculate_numpy(
     prices: np.ndarray,
     window_size: int = 300,
+    response_time: float = 50.0,
     use_kalman: bool = True,
 ) -> np.ndarray:
     """
@@ -340,6 +407,10 @@ def batch_calculate_numpy(
     Args:
         prices: Numpy array of close prices
         window_size: Window size for Hanning filter (ignored if use_kalman=True)
+        response_time: Kalman response time in samples (default: 50)
+                      - Small (10-20): Fast response, tracks price closely
+                      - Medium (30-100): Balanced (default 50)
+                      - Large (100+): Slow response, smoother targets
         use_kalman: Use Kalman Filter (True, default) or Hanning (False)
 
     Returns:
@@ -354,7 +425,7 @@ def batch_calculate_numpy(
 
     if use_kalman:
         # Kalman Filter: target = price - filtered
-        filtered = kalman_filter_prices(prices)
+        filtered = kalman_filter_prices(prices, response_time=response_time)
         targets = prices - filtered
         targets[0] = 0.0  # First candle has no target
         return targets
