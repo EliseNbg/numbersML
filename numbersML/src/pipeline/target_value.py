@@ -2,33 +2,228 @@
 ML Target Value Calculator.
 
 Calculates target values for ML model training as the deviation from a
-causal Hanning filter (no data leakage).
+Kalman Filter estimate (optimal smoothing with minimal lag).
 
 The target value at each candle is:
-    target[t] = close[t] - hanning_smoothed[t]
+    target[t] = close[t] - kalman_filtered[t]
 
-where hanning_smoothed uses ONLY past data (causal filter).
+where kalman_filtered uses optimal state estimation that adapts to
+market volatility and has minimal lag compared to fixed-window filters.
 
-This represents the price deviation from the smoothed trend, which is
-what the model should predict.
+Advantages over Hanning:
+    - Minimal lag (reacts faster to trend changes)
+    - Adapts to volatility (auto-tunes smoothing)
+    - Optimal in the mean-square error sense
+    - No arbitrary window size (uses process/measurement noise)
 
 Usage:
     >>> from src.pipeline.target_value import calculate_target_value, batch_calculate
-    >>> target = calculate_target_value(prices, center=150, window_size=300)
-    >>> targets = batch_calculate(prices, window_size=300)
+    >>> target = calculate_target_value(prices, center=150)
+    >>> targets = batch_calculate(prices)
 """
 
 import math
 import numpy as np
-from typing import List, Optional
+from typing import List, Optional, Tuple
+
+
+class KalmanFilter1D:
+    """
+    1D Kalman Filter for price trend estimation.
+
+    State: [position, velocity] (price and rate of change)
+    Model: Constant velocity with process noise
+
+    This provides optimal smoothing with minimal lag by tracking
+    both the price level and its momentum.
+    """
+
+    def __init__(
+        self,
+        process_noise: float = 0.01,
+        measurement_noise: float = 1.0,
+        initial_state: Optional[np.ndarray] = None,
+    ) -> None:
+        """
+        Initialize Kalman Filter.
+
+        Args:
+            process_noise: Q - How much we expect the trend to change
+            measurement_noise: R - How noisy our price measurements are
+            initial_state: [position, velocity] initial state
+        """
+        # State: [position (price), velocity (rate of change)]
+        if initial_state is not None:
+            self.x = initial_state.copy()
+        else:
+            self.x = np.array([0.0, 0.0])
+
+        # State covariance (uncertainty)
+        self.P = np.eye(2) * 10.0
+
+        # Process noise covariance (how much trend can change)
+        self.Q = np.array([
+            [process_noise * 0.25, process_noise * 0.5],
+            [process_noise * 0.5, process_noise]
+        ])
+
+        # Measurement noise (price noise)
+        self.R = measurement_noise
+
+        # State transition matrix (constant velocity model)
+        self.F = np.array([
+            [1.0, 1.0],
+            [0.0, 1.0]
+        ])
+
+        # Measurement matrix (we observe position only)
+        self.H = np.array([[1.0, 0.0]])
+
+    def predict(self) -> None:
+        """Predict next state (time update)."""
+        self.x = self.F @ self.x
+        self.P = self.F @ self.P @ self.F.T + self.Q
+
+    def update(self, measurement: float) -> float:
+        """
+        Update state with new measurement and return filtered value.
+
+        Args:
+            measurement: Observed price
+
+        Returns:
+            Filtered price estimate
+        """
+        z = np.array([measurement])
+
+        # Innovation
+        y = z - self.H @ self.x
+
+        # Innovation covariance
+        S = self.H @ self.P @ self.H.T + self.R
+
+        # Kalman gain
+        K = self.P @ self.H.T @ np.linalg.inv(S)
+
+        # Update state
+        self.x = self.x + K @ y
+
+        # Update covariance
+        I = np.eye(2)
+        self.P = (I - K @ self.H) @ self.P
+
+        return self.x[0]
+
+    def filter(self, measurements: np.ndarray) -> np.ndarray:
+        """
+        Filter entire measurement series.
+
+        Args:
+            measurements: Array of price observations
+
+        Returns:
+            Array of filtered values (same length)
+        """
+        n = len(measurements)
+        filtered = np.zeros(n)
+
+        # Initialize with first measurement
+        if n > 0:
+            self.x[0] = measurements[0]
+            filtered[0] = measurements[0]
+
+        for i in range(1, n):
+            self.predict()
+            filtered[i] = self.update(measurements[i])
+
+        return filtered
+
+
+def estimate_kalman_params(
+    prices: np.ndarray,
+    lookback: int = 100,
+) -> Tuple[float, float]:
+    """
+    Estimate optimal Kalman filter parameters from recent price data.
+
+    Uses the variance of price changes to estimate measurement noise,
+    and the variance of velocity changes to estimate process noise.
+
+    Args:
+        prices: Recent price data
+        lookback: Number of samples to use
+
+    Returns:
+        (process_noise, measurement_noise)
+    """
+    if len(prices) < 10:
+        return 0.01, 1.0
+
+    # Use recent data
+    prices = prices[-lookback:]
+
+    # Price changes (velocity)
+    diff = np.diff(prices)
+
+    # Measurement noise: variance of price
+    measurement_noise = max(np.var(prices) * 0.01, 0.1)
+
+    # Process noise: variance of velocity changes
+    if len(diff) > 1:
+        velocity_changes = np.diff(diff)
+        process_noise = max(np.var(velocity_changes) * 0.1, 0.001)
+    else:
+        process_noise = 0.01
+
+    return process_noise, measurement_noise
+
+
+def kalman_filter_prices(
+    prices: np.ndarray,
+    process_noise: Optional[float] = None,
+    measurement_noise: Optional[float] = None,
+) -> np.ndarray:
+    """
+    Apply Kalman Filter to price series.
+
+    Args:
+        prices: Array of close prices
+        process_noise: Q parameter (auto-estimated if None)
+        measurement_noise: R parameter (auto-estimated if None)
+
+    Returns:
+        Array of filtered price estimates
+    """
+    n = len(prices)
+    if n == 0:
+        return np.array([])
+
+    if n == 1:
+        return prices.copy()
+
+    # Auto-estimate parameters if not provided
+    if process_noise is None or measurement_noise is None:
+        q_est, r_est = estimate_kalman_params(prices)
+        if process_noise is None:
+            process_noise = q_est
+        if measurement_noise is None:
+            measurement_noise = r_est
+
+    # Create and run filter
+    kf = KalmanFilter1D(
+        process_noise=process_noise,
+        measurement_noise=measurement_noise,
+    )
+
+    return kf.filter(prices)
 
 
 def hanning_window(window_size: int) -> np.ndarray:
     """
     Generate a Hanning window of given size.
 
-    The Hanning window is a bell-shaped weighting function:
-        w(n) = 0.5 * (1 - cos(2 * pi * n / (N - 1)))
+    DEPRECATED: Use Kalman Filter instead for better performance.
+    Kept for backward compatibility.
 
     Args:
         window_size: Number of samples in the window
@@ -53,46 +248,53 @@ def calculate_target_value(
     prices: np.ndarray,
     center: int,
     window_size: int = 300,
+    use_kalman: bool = True,
 ) -> float:
     """
-    Calculate the target value for a single candle as deviation from causal Hanning filter.
+    Calculate the target value for a single candle as deviation from trend.
 
-    Uses ONLY past data (causal): prices[center - window_size : center]
-    Target = close[center] - hanning_smoothed
+    Uses Kalman Filter by default (minimal lag, adaptive smoothing).
+    Falls back to Hanning filter if use_kalman=False.
 
     Args:
         prices: Array of close prices (numpy float64)
         center: Index of the current candle
-        window_size: Window size in candles for Hanning filter (default: 300 = 5 minutes)
+        window_size: Window size for Hanning filter (ignored if use_kalman=True)
+        use_kalman: Use Kalman Filter (True, default) or Hanning (False)
 
     Returns:
-        Target value (close - smoothed_trend), positive = above trend, negative = below
-
-    Raises:
-        ValueError: If center is outside valid range
+        Target value (close - trend), positive = above trend, negative = below
     """
     if len(prices) == 0:
         return 0.0
 
-    # Causal window: only use past data up to (but not including) current candle
-    start = max(0, center - window_size)
-    end = center  # Exclusive, so we use prices[start:end] which is past data only
+    if center >= len(prices):
+        return 0.0
 
-    # If not enough history, use what we have
-    if end <= start:
-        return 0.0  # No history to smooth against
+    if use_kalman:
+        # Use Kalman Filter up to current candle
+        history = prices[:center + 1]
+        if len(history) < 2:
+            return 0.0
 
-    window = prices[start:end]
+        filtered = kalman_filter_prices(history)
+        current_price = float(prices[center])
+        trend = float(filtered[-1])
+        target = current_price - trend
+    else:
+        # Legacy Hanning filter (causal)
+        start = max(0, center - window_size)
+        end = center
 
-    # Generate matching Hanning window
-    hanning = hanning_window(len(window))
+        if end <= start:
+            return 0.0
 
-    # Smoothed trend (weighted average of past prices)
-    smoothed = float(np.dot(window, hanning))
+        window = prices[start:end]
+        hanning = hanning_window(len(window))
+        smoothed = float(np.dot(window, hanning))
 
-    # Target = current price - smoothed trend
-    current_price = float(prices[center]) if center < len(prices) else 0.0
-    target = current_price - smoothed
+        current_price = float(prices[center]) if center < len(prices) else 0.0
+        target = current_price - smoothed
 
     return target
 
@@ -100,18 +302,17 @@ def calculate_target_value(
 def batch_calculate(
     prices: List[float],
     window_size: int = 300,
+    use_kalman: bool = True,
 ) -> List[float]:
     """
     Calculate target values for all candles in a price series.
 
-    For each candle at index i, computes:
-        target[i] = close[i] - hanning_smoothed[i]
-
-    where hanning_smoothed uses only past data (causal).
+    Uses Kalman Filter by default (minimal lag, adaptive smoothing).
 
     Args:
         prices: List of close prices
-        window_size: Window size for Hanning filter (default: 300)
+        window_size: Window size for Hanning filter (ignored if use_kalman=True)
+        use_kalman: Use Kalman Filter (True, default) or Hanning (False)
 
     Returns:
         List of target values (same length as prices)
@@ -120,24 +321,26 @@ def batch_calculate(
         return []
 
     prices_arr = np.array(prices, dtype=np.float64)
-    return batch_calculate_numpy(prices_arr, window_size).tolist()
+    return batch_calculate_numpy(
+        prices_arr, window_size, use_kalman
+    ).tolist()
 
 
 def batch_calculate_numpy(
     prices: np.ndarray,
     window_size: int = 300,
+    use_kalman: bool = True,
 ) -> np.ndarray:
     """
-    Vectorized target value calculation using numpy convolution.
+    Vectorized target value calculation.
 
-    For each candle at index i, computes:
-        target[i] = close[i] - hanning_smoothed[i]
-
-    Uses causal filtering (only past data) to prevent data leakage.
+    Uses Kalman Filter by default (minimal lag, adaptive smoothing).
+    Falls back to Hanning filter if use_kalman=False.
 
     Args:
         prices: Numpy array of close prices
-        window_size: Window size for Hanning filter (default: 300)
+        window_size: Window size for Hanning filter (ignored if use_kalman=True)
+        use_kalman: Use Kalman Filter (True, default) or Hanning (False)
 
     Returns:
         Numpy array of target values (same length as input)
@@ -149,41 +352,36 @@ def batch_calculate_numpy(
     if n == 1:
         return np.array([0.0])
 
-    # For proper Hanning window behavior, we need at least 2 points
-    # Use variable window size at the beginning
-    targets = np.zeros(n, dtype=np.float64)
-
-    # For positions with enough history, use full convolution
-    if n >= window_size:
-        hanning = hanning_window(window_size)
-        # Convolve: result[i] uses prices[i:i+window_size]
-        smoothed_with_current = np.convolve(prices, hanning, mode='valid')
-
-        # smoothed_with_current[i] = weighted avg of prices[i:i+window_size]
-        # We want smoothed[i] = weighted avg of prices[i-window_size:i] (past only)
-        # So smoothed_trend[i] = smoothed_with_current[i-window_size] for i >= window_size
-        # And for i < window_size, we use partial windows
-
-        # For simplicity, start using full window from index window_size
-        for i in range(window_size, n):
-            smoothed = smoothed_with_current[i - window_size]
-            targets[i] = prices[i] - smoothed
-
-        # For early positions (i < window_size), use variable window
-        for i in range(1, min(window_size, n)):
-            window = prices[0:i]
-            if len(window) >= 2:
-                hann = hanning_window(len(window))
-                smoothed = float(np.dot(window, hann))
-                targets[i] = prices[i] - smoothed
-            # else: leave as 0.0 (not enough data)
+    if use_kalman:
+        # Kalman Filter: target = price - filtered
+        filtered = kalman_filter_prices(prices)
+        targets = prices - filtered
+        targets[0] = 0.0  # First candle has no target
+        return targets
     else:
-        # Not enough data for full window, use all available data
-        for i in range(1, n):
-            window = prices[0:i]
-            if len(window) >= 2:
-                hann = hanning_window(len(window))
-                smoothed = float(np.dot(window, hann))
+        # Legacy Hanning filter
+        targets = np.zeros(n, dtype=np.float64)
+
+        if n >= window_size:
+            hanning = hanning_window(window_size)
+            smoothed_with_current = np.convolve(prices, hanning, mode='valid')
+
+            for i in range(window_size, n):
+                smoothed = smoothed_with_current[i - window_size]
                 targets[i] = prices[i] - smoothed
 
-    return targets
+            for i in range(1, min(window_size, n)):
+                window = prices[0:i]
+                if len(window) >= 2:
+                    hann = hanning_window(len(window))
+                    smoothed = float(np.dot(window, hann))
+                    targets[i] = prices[i] - smoothed
+        else:
+            for i in range(1, n):
+                window = prices[0:i]
+                if len(window) >= 2:
+                    hann = hanning_window(len(window))
+                    smoothed = float(np.dot(window, hann))
+                    targets[i] = prices[i] - smoothed
+
+        return targets
