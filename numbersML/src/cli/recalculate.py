@@ -88,12 +88,10 @@ async def recalculate_indicators(
     to_time: Optional[datetime],
 ) -> int:
     """
-    Recalculate indicators for unprocessed candles.
-
-    Uses sliding window approach: loads all candles per symbol into memory,
-    maintains a 200-candle window, and calculates indicators for each candle
-    without repeated DB queries.
+    Recalculate indicators for all candles.
+    Optimized: Uses vectorized calculation (Numpy) instead of row-by-row loops.
     """
+    import json
     import numpy as np
     from src.pipeline.indicator_calculator import IndicatorCalculator
 
@@ -103,7 +101,6 @@ async def recalculate_indicators(
     total_count = 0
 
     async with db_pool.acquire() as conn:
-        # Get symbol info
         sym_rows = await conn.fetch(
             "SELECT id, symbol FROM symbols WHERE id = ANY($1) ORDER BY id",
             symbol_ids,
@@ -112,127 +109,145 @@ async def recalculate_indicators(
         for sym_row in sym_rows:
             sid = sym_row['id']
             sname = sym_row['symbol']
+            logger.info(f"Processing {sname}...")
 
-            # Load ALL candles for this symbol (including history for indicator window)
-            history_start = from_time - timedelta(seconds=300)
-            all_candles = await conn.fetch(
-                """
+            # 1. Load ALL candles + sufficient history for long indicators (e.g. EMA 2000)
+            # We use a 2-hour buffer to ensure long-period indicators stabilize.
+            buffer_time = from_time - timedelta(hours=2)
+            
+            query = """
                 SELECT time, open, high, low, close, volume
                 FROM candles_1s
                 WHERE symbol_id = $1 AND time >= $2
                 ORDER BY time
-                """,
-                sid, history_start,
-            )
+            """
+            params = [sid, buffer_time]
+            
+            if to_time:
+                query += " AND time <= $3"
+                params.append(to_time)
+                
+            all_candles = await conn.fetch(query, *params)
 
             if not all_candles:
                 logger.warning(f"No candles for {sname}")
                 continue
 
-            logger.info(f"Processing {sname}: {len(all_candles)} candles")
+            num_candles = len(all_candles)
+            logger.info(f"Loaded {num_candles} candles for {sname}")
 
-            # Sliding window arrays (large enough for max period indicators)
-            # We set this to 5000 to support indicators like EMA_2000, MACD_860, BB_900.
-            # 5000 candles is ~1.4 hours of 1-second data.
-            window_size = 5000
-            prices: List[float] = []
-            volumes: List[float] = []
-            highs: List[float] = []
-            lows: List[float] = []
-            opens: List[float] = []
+            # 2. Convert to Numpy arrays for vectorization
+            logger.info(f"Converting to numpy arrays...")
+            np_opens = np.array([float(c['open']) for c in all_candles], dtype=np.float64)
+            np_highs = np.array([float(c['high']) for c in all_candles], dtype=np.float64)
+            np_lows = np.array([float(c['low']) for c in all_candles], dtype=np.float64)
+            np_closes = np.array([float(c['close']) for c in all_candles], dtype=np.float64)
+            np_volumes = np.array([float(c['volume']) for c in all_candles], dtype=np.float64)
 
-            indicator_batch: List[tuple] = []
-            count = 0
+            # 3. Calculate indicators in bulk (one call per indicator type)
+            logger.info(f"Calculating indicators for {num_candles} candles...")
+            bulk_results = {}  # key -> numpy array of results
 
-            for c in all_candles:
-                # Add to window
-                prices.append(float(c['close']))
-                volumes.append(float(c['volume']))
-                highs.append(float(c['high']))
-                lows.append(float(c['low']))
-                opens.append(float(c['open']))
-
-                # Trim window
-                if len(prices) > window_size:
-                    prices.pop(0)
-                    volumes.pop(0)
-                    highs.pop(0)
-                    lows.pop(0)
-                    opens.pop(0)
-
-                # Need at least 50 data points for indicators
-                if len(prices) < 50:
-                    continue
-
-                # Calculate all indicators using in-memory data
-                np_prices = np.array(prices, dtype=np.float64)
-                np_volumes = np.array(volumes, dtype=np.float64)
-                np_highs = np.array(highs, dtype=np.float64)
-                np_lows = np.array(lows, dtype=np.float64)
-                np_opens = np.array(opens, dtype=np.float64)
-
-                results: dict = {}
-                indicator_keys: list = []
-
-                for defn in calc._definitions:
-                    try:
-                        cls = calc._get_indicator_class(defn['class_name'], defn['module_path'])
-                        if cls is None:
-                            continue
-                        indicator = cls(**defn['params'])
-                        result = indicator.calculate(
-                            prices=np_prices, volumes=np_volumes,
-                            highs=np_highs, lows=np_lows,
-                            opens=np_opens, closes=np_prices,
-                        )
-                        
-                        # Use the name from the indicator definition (e.g. 'rsi_14')
-                        full_key = defn['name']
-                        
-                        # Get the last valid value from the result
-                        val_to_store = None
-                        for key, values in result.values.items():
-                            if len(values) > 0:
-                                val = values[-1]
-                                if not np.isnan(val) and not np.isinf(val):
-                                    val_to_store = float(val)
-                        
-                        # Always store the key to ensure we match the definitions count.
-                        # Use None (null in JSON) if no valid value found (e.g. warmup period).
-                        results[full_key] = val_to_store
-                        if full_key not in indicator_keys:
-                            indicator_keys.append(full_key)
-                    except Exception:
+            for defn in calc._definitions:
+                ind_name = defn.get('name', 'unknown')
+                try:
+                    cls = calc._get_indicator_class(defn['class_name'], defn['module_path'])
+                    if cls is None:
                         continue
 
-                if results:
+                    indicator = cls(**defn['params'])
+                    
+                    # Calculate for the ENTIRE array at once
+                    result = indicator.calculate(
+                        prices=np_closes,
+                        volumes=np_volumes,
+                        highs=np_highs,
+                        lows=np_lows,
+                        opens=np_opens,
+                        closes=np_closes,
+                    )
+
+                    # We want to store ONE value per indicator definition.
+                    # Indicators often return multiple arrays (e.g., MACD returns macd, signal, hist).
+                    # We take the last valid one found in result.values.
+                    
+                    values_to_store = None
+                    for key, vals in result.values.items():
+                        if len(vals) > 0:
+                            values_to_store = vals
+
+                    if values_to_store is not None:
+                        # Ensure array matches length
+                        if len(values_to_store) < num_candles:
+                            padding = num_candles - len(values_to_store)
+                            values_to_store = np.concatenate([np.full(padding, np.nan), values_to_store])
+                        
+                        # Use the definition name as the key (e.g., 'macd_12_26_9')
+                        bulk_results[ind_name] = values_to_store
+                        logger.debug(f"  Calculated {ind_name}")
+                except Exception as e:
+                    logger.error(f"Error calculating {ind_name}: {e}")
+
+            # 4. Prepare batches for insertion
+            logger.info(f"Building result batches...")
+            indicator_batch = []
+            batch_size = 5000
+            count = 0
+            
+            # Collect all valid keys
+            all_keys = sorted(list(bulk_results.keys()))
+            logger.info(f"Total valid indicator keys found: {len(all_keys)}")
+
+            for i in range(num_candles):
+                candle = all_candles[i]
+                
+                # Skip history buffer rows (only insert from 'from_time' onwards)
+                if from_time and candle['time'] < from_time:
+                    continue
+
+                # Logging progress
+                if count > 0 and count % 10000 == 0:
+                    logger.info(f"  Progress: {count} candles processed...")
+
+                row_values = {}
+                row_keys = []
+
+                # Extract values for this row from the bulk arrays
+                for key in all_keys:
+                    arr = bulk_results[key]
+                    if i < len(arr):
+                        val = arr[i]
+                        if not np.isnan(val) and not np.isinf(val):
+                            row_values[key] = float(val)
+                            row_keys.append(key)
+
+                if row_values:
                     indicator_batch.append((
-                        c['time'],
+                        candle['time'],
                         sid,
-                        float(c['close']),
-                        float(c['volume']),
-                        json.dumps(results),
-                        indicator_keys,
+                        float(candle['close']),
+                        float(candle['volume']),
+                        json.dumps(row_values),
+                        row_keys,
                     ))
                     count += 1
 
-                # Batch insert every 5000
-                if len(indicator_batch) >= 5000:
-                    await conn.executemany(
-                        """
-                        INSERT INTO candle_indicators (time, symbol_id, price, volume, values, indicator_keys)
-                        VALUES ($1, $2, $3, $4, $5::jsonb, $6)
-                        ON CONFLICT (symbol_id, time) DO UPDATE SET
-                            price = EXCLUDED.price,
-                            volume = EXCLUDED.volume,
-                            values = EXCLUDED.values,
-                            indicator_keys = EXCLUDED.indicator_keys,
-                            updated_at = NOW()
-                        """,
-                        indicator_batch,
-                    )
-                    logger.info(f"  {sname}: {count} indicators written...")
-                    indicator_batch = []
+                    if len(indicator_batch) >= batch_size:
+                        await conn.executemany(
+                            """
+                            INSERT INTO candle_indicators (time, symbol_id, price, volume, values, indicator_keys)
+                            VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+                            ON CONFLICT (symbol_id, time) DO UPDATE SET
+                                price = EXCLUDED.price,
+                                volume = EXCLUDED.volume,
+                                values = EXCLUDED.values,
+                                indicator_keys = EXCLUDED.indicator_keys,
+                                updated_at = NOW()
+                            """,
+                            indicator_batch,
+                        )
+                        logger.info(f"  Batch saved: {count} indicators written so far...")
+                        indicator_batch = []
 
             # Insert remaining
             if indicator_batch:
@@ -250,7 +265,7 @@ async def recalculate_indicators(
                     indicator_batch,
                 )
 
-            logger.info(f"  {sname}: {count} total indicators")
+            logger.info(f"  {sname}: {count} total indicators processed")
             total_count += count
 
     return total_count
