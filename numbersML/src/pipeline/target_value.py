@@ -580,7 +580,7 @@ def batch_calculate_target_data(
                     segment_range = start_val - end_val
                     for i in range(int(start_idx), int(end_idx) + 1):
                         if segment_range > 1e-10:
-                            normalized[i] = (start_val - filtered[i]) / segment_range
+                            normalized[i] = (filtered[i] - end_val) / segment_range
                         else:
                             normalized[i] = 0.5
                         norm_min[i] = end_val
