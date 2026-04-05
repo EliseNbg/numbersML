@@ -270,15 +270,25 @@ class IndicatorCalculator:
                     closes=prices,
                 )
 
-                # Use the full indicator name (e.g. 'macd_12_26_9') as a prefix for keys
+                # Use full indicator name (e.g. 'macd_12_26_9')
                 prefix = result.name
+                
+                # Generate clean keys: remove redundant suffix if it matches the indicator type
+                # e.g. 'macd' in 'macd_12_26_9_macd' -> 'macd_12_26_9'
+                #      'upper' in 'bb_20_2_upper' -> 'bb_20_2_upper' (keep it)
+                indicator_class_name = type(indicator).__name__.lower().replace('indicator', '')
 
                 for key, values in result.values.items():
                     if len(values) > 0:
                         val = values[-1]
                         if np.isnan(val) or np.isinf(val):
                             continue
-                        full_key = f"{prefix}_{key}"
+                        
+                        if key == indicator_class_name:
+                            full_key = prefix
+                        else:
+                            full_key = f"{prefix}_{key}"
+                            
                         results[full_key] = float(val)
                         indicator_keys.append(full_key)
 

@@ -353,13 +353,20 @@ class EnrichmentService:
                     highs=highs,
                     lows=lows,
                 )
+                
+                indicator_class_name = type(indicator).__name__.lower().replace('indicator', '')
 
                 # Get latest value for each indicator output
                 for key, values in result.values.items():
                     if len(values) > 0:
                         latest_value = values[-1]
                         if not np.isnan(latest_value):
-                            indicator_values[f"{name}_{key}"] = float(latest_value)
+                            # Generate clean key
+                            if key == indicator_class_name:
+                                full_key = name
+                            else:
+                                full_key = f"{name}_{key}"
+                            indicator_values[full_key] = float(latest_value)
 
             except Exception as e:
                 logger.error(f"Error calculating indicator {name}: {e}", exc_info=True)

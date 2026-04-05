@@ -183,13 +183,20 @@ async def recalculate_indicators(
                             highs=np_highs, lows=np_lows,
                             opens=np_opens, closes=np_prices,
                         )
-                        # Use full indicator name as prefix
+                        
                         prefix = result.name
+                        # Extract clean class name (e.g. 'macdindicator' -> 'macd')
+                        indicator_class_name = cls.__name__.lower().replace('indicator', '')
+                        
                         for key, values in result.values.items():
                             if len(values) > 0:
                                 val = values[-1]
                                 if not np.isnan(val) and not np.isinf(val):
-                                    full_key = f"{prefix}_{key}"
+                                    # Remove redundant suffix if it matches the indicator type
+                                    if key == indicator_class_name:
+                                        full_key = prefix
+                                    else:
+                                        full_key = f"{prefix}_{key}"
                                     results[full_key] = float(val)
                                     indicator_keys.append(full_key)
                     except Exception:
