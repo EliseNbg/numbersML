@@ -2,7 +2,7 @@
 Target Value API endpoints.
 
 Provides REST API for ML target value calculation and retrieval:
-- GET /api/target-values?symbol=BTC/USDC&hours=2&window_size=300 - Get target values
+- GET /api/target-values?symbol=BTC/USDC&hours=2&response_time=200 - Get target values
 - POST /api/target-values/calculate - Trigger batch calculation
 """
 
@@ -25,13 +25,14 @@ router = APIRouter(prefix="/api/target-values", tags=["target-values"])
 async def get_target_values(
     symbol: str = Query(..., description="Symbol name (e.g., 'BTC/USDC')"),
     hours: int = Query(default=2, ge=1, le=168),
-    window_size: int = Query(default=300, ge=1, le=5000),
+    response_time: float = Query(default=200.0, ge=1.0, le=1000.0),
+    use_kalman: bool = Query(default=True, description="Use Kalman Filter (True) or Hanning (False)"),
 ) -> List[Dict[str, Any]]:
     """
     Get candle data with target values.
 
     Returns candles with close price and calculated target value.
-    Target values are computed on-the-fly using the Hanning filter.
+    Target values are computed on-the-fly using Kalman Filter (default).
     """
     db_pool = await get_db_pool_async()
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
@@ -58,7 +59,7 @@ async def get_target_values(
 
     # Extract prices and compute target values
     prices = [float(r['close']) for r in rows]
-    targets = batch_calculate_numpy(prices, window_size)
+    targets = batch_calculate_numpy(prices, response_time=response_time, use_kalman=use_kalman)
 
     return [
         {
@@ -69,6 +70,8 @@ async def get_target_values(
             'close': float(r['close']),
             'volume': float(r['volume']),
             'target_value': round(float(targets[i]), 8) if i < len(targets) else None,
+            'filter': 'kalman' if use_kalman else 'hanning',
+            'response_time': response_time if use_kalman else None,
         }
         for i, r in enumerate(rows)
     ]
@@ -81,7 +84,8 @@ async def get_target_values(
 )
 async def calculate_target_values(
     symbol: str = Query(..., description="Symbol name"),
-    window_size: int = Query(default=300, ge=1, le=5000),
+    response_time: float = Query(default=200.0, ge=1.0, le=1000.0),
+    use_kalman: bool = Query(default=True, description="Use Kalman Filter (True) or Hanning (False)"),
     from_time: Optional[str] = Query(default=None, description="Start time (YYYY-MM-DD HH:MM:SS)"),
     to_time: Optional[str] = Query(default=None, description="End time (YYYY-MM-DD HH:MM:SS)"),
     hours: Optional[int] = Query(default=None, ge=1, le=168, description="Calculate last N hours"),
@@ -89,8 +93,8 @@ async def calculate_target_values(
     """
     Calculate and store target values in candles_1s.target_value.
 
-    Processes candles for the symbol. The Hanning filter needs the full
-    history for correct edge values. Only candles in the time range are
+    Processes candles for the symbol. Kalman Filter (default) needs the full
+    history for optimal smoothing. Only candles in the time range are
     stored with target_value.
     """
     db_pool = await get_db_pool_async()
@@ -114,7 +118,7 @@ async def calculate_target_values(
             from_dt = datetime(2020, 1, 1, tzinfo=timezone.utc)
             to_dt = now
 
-        # Load ALL candles for this symbol (need history for edges)
+        # Load ALL candles for this symbol (need history for Kalman)
         rows = await conn.fetch(
             """
             SELECT time, close
@@ -130,7 +134,7 @@ async def calculate_target_values(
 
         # Calculate target values
         prices = [float(r['close']) for r in rows]
-        targets = batch_calculate_numpy(prices, window_size)
+        targets = batch_calculate_numpy(prices, response_time=response_time, use_kalman=use_kalman)
 
         # Update in batches
         batch_size = 5000
@@ -153,7 +157,8 @@ async def calculate_target_values(
 
         return {
             'symbol': symbol,
-            'window_size': window_size,
+            'filter': 'kalman' if use_kalman else 'hanning',
+            'response_time': response_time if use_kalman else None,
             'updated': updated,
             'total_candles': len(rows),
         }

@@ -1,10 +1,10 @@
 /**
  * Target Value Chart JavaScript
- * 
+ *
  * Handles:
  * - Symbol selection from active symbols
  * - Time range selection
- * - Window size configuration
+ * - Response time configuration (Kalman Filter)
  * - Target value calculation trigger
  * - Candlestick + target value chart display
  */
@@ -66,7 +66,7 @@ function initChart() {
     targetSeries = chart.addLineSeries({
         color: '#FF9800',
         lineWidth: 3,
-        title: 'Target Value (Hanning)',
+        title: 'Target Value (Kalman Filter)',
     });
 
     window.addEventListener('resize', () => {
@@ -99,7 +99,7 @@ function setupEventHandlers() {
 async function loadChartData() {
     const symbol = document.getElementById('target-symbol')?.value;
     const hours = document.getElementById('target-range')?.value || '2';
-    const windowSize = document.getElementById('target-window')?.value || '300';
+    const responseTime = document.getElementById('target-window')?.value || '200';
 
     if (!symbol) {
         candleSeries.setData([]);
@@ -108,7 +108,7 @@ async function loadChartData() {
     }
 
     try {
-        const url = `${API_BASE}/target-values?symbol=${encodeURIComponent(symbol)}&hours=${hours}&window_size=${windowSize}`;
+        const url = `${API_BASE}/target-values?symbol=${encodeURIComponent(symbol)}&hours=${hours}&response_time=${responseTime}&use_kalman=true`;
         const resp = await fetch(url);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
@@ -139,7 +139,7 @@ async function loadChartData() {
         chart.timeScale().fitContent();
 
         document.getElementById('chart-title').textContent =
-            `${symbol} - ${data.length} candles, window=${windowSize}`;
+            `${symbol} - ${data.length} candles, Kalman response_time=${responseTime}`;
 
     } catch (error) {
         console.error('Failed to load chart data:', error);
@@ -149,7 +149,7 @@ async function loadChartData() {
 
 async function calculateTargetValues() {
     const symbol = document.getElementById('target-symbol')?.value;
-    const windowSize = document.getElementById('target-window')?.value || '300';
+    const responseTime = document.getElementById('target-window')?.value || '200';
     const status = document.getElementById('calculate-status');
 
     if (!symbol) {
@@ -162,12 +162,12 @@ async function calculateTargetValues() {
     status.className = 'text-warning';
 
     try {
-        const url = `${API_BASE}/target-values/calculate?symbol=${encodeURIComponent(symbol)}&window_size=${windowSize}`;
+        const url = `${API_BASE}/target-values/calculate?symbol=${encodeURIComponent(symbol)}&response_time=${responseTime}&use_kalman=true`;
         const resp = await fetch(url, { method: 'POST' });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const result = await resp.json();
 
-        status.textContent = `Done: ${result.updated} candles updated`;
+        status.textContent = `Done: ${result.updated} candles updated (Kalman response_time=${responseTime})`;
         status.className = 'text-success';
 
         // Reload chart

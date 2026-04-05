@@ -44,8 +44,9 @@
                 </select>
             </div>
             <div class="col-md-2">
-                <label class="form-label">Window Size</label>
-                <input type="number" class="form-control" id="target-window" value="300" min="1" max="5000">
+                <label class="form-label">Response Time (Kalman)</label>
+                <input type="number" class="form-control" id="target-window" value="200" min="1" max="1000" step="10">
+                <small class="text-muted">Samples (default: 200)</small>
             </div>
             <div class="col-md-3 d-flex align-items-end gap-2">
                 <button class="btn btn-primary" id="btn-load-chart">
