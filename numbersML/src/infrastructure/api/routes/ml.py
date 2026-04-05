@@ -233,18 +233,27 @@ async def predict(
         for r in candle_rows
     ]
 
-    # Calculate target values on-the-fly from candle data
-    # This ensures correlation between candles and targets
-    from src.pipeline.target_value import batch_calculate_target_data
-    import numpy as np
-
+    # Get target values (normalized_value) from database
+    # These are the actual targets the model was trained on (0-1 normalized waves)
     if candles:
-        close_prices = [c["close"] for c in candles]
-        target_data_list = batch_calculate_target_data(close_prices, response_time=2000.0, method='hanning')
+        async with db_pool.acquire() as conn:
+            target_rows = await conn.fetch(
+                """
+                SELECT time, (target_value->>'normalized_value')::float AS target
+                FROM candles_1s
+                WHERE symbol_id = $1 AND time >= $2 AND time < $3
+                  AND target_value IS NOT NULL
+                  AND target_value->>'normalized_value' IS NOT NULL
+                ORDER BY time
+                """,
+                symbol_id, start_time, now
+            )
+            
+        target_map = {row['time']: row['target'] for row in target_rows}
         targets = [
-            {"time": c["time"], "value": td["filtered_value"]}
-            for c, td in zip(candles, target_data_list)
-            if td is not None
+            {"time": c["time"], "value": target_map.get(c["time"])}
+            for c in candles
+            if c["time"] in target_map
         ]
     else:
         targets = []
