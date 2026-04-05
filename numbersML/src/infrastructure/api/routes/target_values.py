@@ -7,6 +7,7 @@ Provides REST API for ML target value calculation and retrieval:
 """
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Query
 from typing import Any, Dict, List, Optional
@@ -15,6 +16,7 @@ from src.infrastructure.database import get_db_pool_async
 from src.pipeline.target_value import batch_calculate_target_data
 
 router = APIRouter(prefix="/api/target-values", tags=["target-values"])
+logger = logging.getLogger(__name__)
 
 
 @router.get(
@@ -170,6 +172,29 @@ async def calculate_target_values(
                     [(b[0], symbol_id, b[1]) for b in batch],
                 )
                 updated += len(batch)
+
+        # Cleanup edge artifacts
+        # The filter produces artifacts at the start and end of the series
+        # We remove these to prevent confusing the ML model
+        edge_count = int(response_time / 2)
+        if 0 < edge_count * 2 < len(rows):
+            await conn.execute(
+                """
+                WITH edges AS (
+                    SELECT time FROM candles_1s
+                    WHERE symbol_id = $1
+                    ORDER BY time ASC LIMIT $2
+                    UNION ALL
+                    SELECT time FROM candles_1s
+                    WHERE symbol_id = $1
+                    ORDER BY time DESC LIMIT $2
+                )
+                UPDATE candles_1s SET target_value = NULL
+                WHERE symbol_id = $1 AND time IN (SELECT time FROM edges)
+                """,
+                symbol_id, edge_count
+            )
+            logger.info(f"Cleaned {edge_count * 2} edge rows for {symbol}")
 
         return {
             'symbol': symbol,
