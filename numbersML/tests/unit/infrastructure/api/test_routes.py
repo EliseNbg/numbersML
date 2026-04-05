@@ -256,7 +256,7 @@ class TestMLRoutes:
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
         
         # Invalid hours (too high) - returns 422
-        response = client.get("/api/ml/predict?symbol=BTC/USDC&hours=200")
+        response = client.get("/api/ml/predict?symbol=BTC/USDC&hours=1441")
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
 
