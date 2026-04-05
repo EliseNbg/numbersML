@@ -270,13 +270,17 @@ class IndicatorCalculator:
                     closes=prices,
                 )
 
+                # Use the full indicator name (e.g. 'macd_12_26_9') as a prefix for keys
+                prefix = result.name
+
                 for key, values in result.values.items():
                     if len(values) > 0:
                         val = values[-1]
                         if np.isnan(val) or np.isinf(val):
                             continue
-                        results[key] = float(val)
-                        indicator_keys.append(key)
+                        full_key = f"{prefix}_{key}"
+                        results[full_key] = float(val)
+                        indicator_keys.append(full_key)
 
                 calculated += 1
 
