@@ -521,8 +521,8 @@ def batch_calculate_target_data(
     else:  # hanning or legacy
         filtered = prices_arr  # Simplified for hanning
 
-    # Normalize to 0-1 range using cycle detection (peaks and valleys)
-    # Find local maxima and minima
+    # Calculate normalization
+    n = len(filtered)
     normalized = np.zeros(n)
     norm_min = np.zeros(n)
     norm_max = np.zeros(n)
