@@ -438,60 +438,62 @@ async def test_05_wide_vector_reads_indicators() -> TestResult:
     - Generates valid vector (no NaN/Inf)
     """
     result = TestResult("Test 5: WIDE Vector Reads Indicators")
-    
+
+    pool = None
     try:
-        from src.cli.generate_wide_vector import WideVectorGenerator
+        from src.pipeline.wide_vector_service import WideVectorService
+        from src.infrastructure.database import get_db_pool_async
+
+        pool = await get_db_pool_async()
+
+        service = WideVectorService(pool)
+        await service.load_symbols()
         
-        generator = WideVectorGenerator(
-            db_url=DB_URL,
-            symbols=None,  # All active symbols
-            include_indicators=True,
-        )
-        
-        await generator.connect()
-        
-        if len(generator._symbol_list) == 0:
-            result.fail("No symbols loaded")
-            await generator.disconnect()
+        if not service._active_symbols:
+            result.fail("No active symbols loaded")
+            if pool: await pool.close()
             return result
-        
-        result.details['symbols_loaded'] = len(generator._symbol_list)
-        
-        # Generate vector
+
+        result.details['symbols_loaded'] = len(service._active_symbols)
+
+        # Generate vector for current time (service handles finding latest data)
         start_time = time.time()
-        vector_data = await generator.generate_wide_vector()
+        vector_data = await service.generate(datetime.now(timezone.utc))
         generation_time = (time.time() - start_time) * 1000
-        
-        await generator.disconnect()
-        
+
+        if pool: await pool.close()
+
         if not vector_data:
             result.fail("Vector generation returned None")
             return result
-        
+
         result.details['generation_time_ms'] = round(generation_time, 2)
-        result.details['vector_size'] = len(vector_data['vector'])
-        result.details['total_columns'] = vector_data['metadata']['total_columns']
-        result.details['indicators_found'] = vector_data['metadata']['indicators_found']
-        
+        result.details['vector_size'] = vector_data.get('vector_size', 0)
+        result.details['total_columns'] = vector_data.get('vector_size', 0)
+        result.details['indicators_found'] = vector_data.get('indicator_count', 0)
+
         # Check for NaN/Inf
         import numpy as np
-        vector = vector_data['vector']
-        
+        vector = vector_data.get('vector', [])
+        if isinstance(vector, list):
+            vector = np.array(vector)
+
         has_nan = np.isnan(vector).any()
         has_inf = np.isinf(vector).any()
-        
+
         if has_nan:
             result.fail("Vector contains NaN values")
-        
+
         if has_inf:
             result.fail("Vector contains Inf values")
-        
-        logger.info(f"✓ Vector generated: {vector_data['metadata']['total_columns']} columns in {generation_time:.2f}ms")
-        
+
+        logger.info(f"✓ Vector generated: {vector_data.get('vector_size', 0)} columns in {generation_time:.2f}ms")
+
     except Exception as e:
         result.fail(f"Error generating vector: {e}")
         import traceback
         traceback.print_exc()
+        if pool: await pool.close()
     
     return result
 
@@ -568,18 +570,20 @@ async def test_06_complete_pipeline() -> TestResult:
             result.warn("No indicators calculated (EnrichmentService may not be running)")
         
         # Generate WIDE vector
-        from src.cli.generate_wide_vector import WideVectorGenerator
+        from src.pipeline.wide_vector_service import WideVectorService
+        from src.infrastructure.database import get_db_pool_async
         
-        generator = WideVectorGenerator(db_url=DB_URL, include_indicators=True)
-        await generator.connect()
+        pool = await get_db_pool_async()
+        service = WideVectorService(pool)
+        await service.load_symbols()
         
-        vector_data = await generator.generate_wide_vector()
-        await generator.disconnect()
-        
+        vector_data = await service.generate(latest_time)
+        await pool.close()
+
         if vector_data:
             result.details['vector_generated'] = True
-            result.details['vector_columns'] = vector_data['metadata']['total_columns']
-            logger.info(f"✓ WIDE vector generated: {vector_data['metadata']['total_columns']} columns")
+            result.details['vector_columns'] = vector_data.get('vector_size', 0)
+            logger.info(f"✓ WIDE vector generated: {vector_data.get('vector_size', 0)} columns")
         
     except Exception as e:
         result.fail(f"Error in pipeline test: {e}")
