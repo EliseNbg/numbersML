@@ -93,18 +93,23 @@ async def calculate_target_values(
     """
     Calculate and store target values in candles_1s.target_value as JSONB.
 
-    Processes candles for the symbol. Kalman Filter (default) needs the full
-    history for optimal smoothing. Only candles in the time range are
-    stored with target_value.
+    IMPORTANT: For accurate Kalman filtering, this endpoint:
+    1. Loads ALL historical candles (needed for Kalman state)
+    2. Calculates target data for ALL candles (continuous filter state)
+    3. Only UPDATES candles in the specified time range
 
-    Stores JSONB structure:
-    {
-        "filtered_value": 105.5,  // Smooth Kalman trend (WAVES)
-        "close": 103.2,           // Current candle close
-        "diff": -2.3,             // Deviation from trend
-        "trend": "up",            // or "down", "flat"
-        "velocity": 0.15          // Rate of change
-    }
+    This ensures the Kalman filter has proper historical context,
+    while only modifying candles in your requested range.
+
+    Parameters:
+    - hours: Update only the last N hours (but uses full history for Kalman)
+    - from_time/to_time: Update specific time range (uses full history)
+    - If neither: Updates ALL candles
+
+    Response includes:
+    - total_candles: Total candles loaded for Kalman history
+    - time_range_candles: Candles in the specified time range
+    - updated: Candles actually updated in the database
     """
     db_pool = await get_db_pool_async()
 
@@ -115,7 +120,7 @@ async def calculate_target_values(
         if not symbol_id:
             return {'error': f'Symbol not found: {symbol}', 'updated': 0}
 
-        # Build time range
+        # Build time range for updates
         now = datetime.now(timezone.utc)
         if hours is not None:
             from_dt = now - timedelta(hours=hours)
@@ -127,7 +132,7 @@ async def calculate_target_values(
             from_dt = datetime(2020, 1, 1, tzinfo=timezone.utc)
             to_dt = now
 
-        # Load ALL candles for this symbol (need history for Kalman)
+        # Load ALL candles for this symbol (need full history for Kalman accuracy)
         rows = await conn.fetch(
             """
             SELECT time, close
@@ -141,7 +146,10 @@ async def calculate_target_values(
         if not rows:
             return {'error': 'No candles found', 'updated': 0}
 
-        # Calculate target data (JSON structures)
+        # Count candles in the specified time range
+        time_range_count = sum(1 for r in rows if from_dt <= r['time'] <= to_dt)
+
+        # Calculate target data for ALL candles (Kalman needs continuous history)
         prices = [float(r['close']) for r in rows]
         target_data_list = batch_calculate_target_data(prices, response_time=response_time, use_kalman=use_kalman)
 
@@ -168,6 +176,12 @@ async def calculate_target_values(
             'symbol': symbol,
             'filter': 'kalman' if use_kalman else 'hanning',
             'response_time': response_time if use_kalman else None,
-            'updated': updated,
             'total_candles': len(rows),
+            'time_range_candles': time_range_count,
+            'updated': updated,
+            'time_range': {
+                'from': from_dt.isoformat(),
+                'to': to_dt.isoformat(),
+            },
+            'note': 'Loaded all history for Kalman accuracy, updated only candles in time range',
         }
