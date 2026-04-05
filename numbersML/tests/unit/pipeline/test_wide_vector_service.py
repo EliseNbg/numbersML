@@ -105,6 +105,7 @@ class TestWideVectorService:
             mock_db_pool,
             [(58, 'BTC/USDC'), (59, 'ETH/USDC')],
         )
+        service._external_provider = None  # Disable external features for this test
         result = await service.generate(now)
 
         assert result is not None
@@ -237,10 +238,12 @@ class TestWideVectorService:
             mock_db_pool,
             [(58, 'BTC/USDC'), (59, 'ETH/USDC')],
         )
+        service._external_provider = None  # Disable external features for this test
         result = await service.generate(now)
 
         assert result is not None
         # Layout: [BTC_close, BTC_vol, BTC_rsi, ETH_close, ETH_vol, ETH_rsi]
+        assert result['vector'][0] == 67000.0 # BTC close
         assert result['vector'][2] == 65.0    # BTC rsi
         assert result['vector'][5] == 0.0     # ETH rsi (missing)
         assert result['vector'][3] == 3500.0  # ETH close (from candles)
