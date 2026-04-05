@@ -42,7 +42,7 @@ class SMAIndicator(Indicator):
                 "period": {
                     "type": "integer",
                     "minimum": 2,
-                    "maximum": 500,
+                    "maximum": 3000,
                     "default": 50
                 }
             },
@@ -101,7 +101,7 @@ class EMAIndicator(Indicator):
                 "period": {
                     "type": "integer",
                     "minimum": 2,
-                    "maximum": 500,
+                    "maximum": 3000,
                     "default": 20
                 }
             },
@@ -175,19 +175,19 @@ class MACDIndicator(Indicator):
                 "fast_period": {
                     "type": "integer",
                     "minimum": 2,
-                    "maximum": 100,
+                    "maximum": 600,
                     "default": 12
                 },
                 "slow_period": {
                     "type": "integer",
                     "minimum": 2,
-                    "maximum": 200,
+                    "maximum": 860,
                     "default": 26
                 },
                 "signal_period": {
                     "type": "integer",
                     "minimum": 2,
-                    "maximum": 100,
+                    "maximum": 300,
                     "default": 9
                 }
             },

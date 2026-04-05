@@ -48,7 +48,7 @@ class BollingerBandsIndicator(Indicator):
                 "period": {
                     "type": "integer",
                     "minimum": 2,
-                    "maximum": 200,
+                    "maximum": 900,
                     "default": 20
                 },
                 "std_dev": {
@@ -136,7 +136,7 @@ class ATRIndicator(Indicator):
                 "period": {
                     "type": "integer",
                     "minimum": 2,
-                    "maximum": 100,
+                    "maximum": 1000,
                     "default": 14
                 }
             },
@@ -332,7 +332,7 @@ class MFIIndicator(Indicator):
                 "period": {
                     "type": "integer",
                     "minimum": 2,
-                    "maximum": 100,
+                    "maximum": 1000,
                     "default": 14
                 }
             },
