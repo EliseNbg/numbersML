@@ -179,6 +179,7 @@ async function loadChartData() {
 
 async function calculateTargetValues() {
     const symbol = document.getElementById('target-symbol')?.value;
+    const hours = document.getElementById('target-range')?.value || '2';
     const responseTime = document.getElementById('target-window')?.value || '200';
     const status = document.getElementById('calculate-status');
 
@@ -188,16 +189,16 @@ async function calculateTargetValues() {
         return;
     }
 
-    status.textContent = 'Calculating...';
+    status.textContent = `Calculating last ${hours} hours...`;
     status.className = 'text-warning';
 
     try {
-        const url = `${API_BASE}/target-values/calculate?symbol=${encodeURIComponent(symbol)}&response_time=${responseTime}&use_kalman=true`;
+        const url = `${API_BASE}/target-values/calculate?symbol=${encodeURIComponent(symbol)}&response_time=${responseTime}&use_kalman=true&hours=${hours}`;
         const resp = await fetch(url, { method: 'POST' });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const result = await resp.json();
 
-        status.textContent = `Done: ${result.updated} candles updated (Kalman response_time=${responseTime})`;
+        status.textContent = `Done: ${result.updated} candles updated (${result.time_range_candles} in range, Kalman response_time=${responseTime})`;
         status.className = 'text-success';
 
         // Reload chart
