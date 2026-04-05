@@ -131,7 +131,7 @@ class TestBackfillIntegration:
                 """
                 INSERT INTO symbols (symbol, base_asset, quote_asset, is_active, is_allowed)
                 VALUES ($1, $2, $3, true, true)
-                ON CONFLICT (symbol) DO UPDATE SET is_active = true
+                ON CONFLICT (symbol) DO UPDATE SET is_active = true, is_allowed = true
                 RETURNING id
                 """,
                 'TEST/USDT', 'TEST', 'USDT'
@@ -141,6 +141,14 @@ class TestBackfillIntegration:
             # Cleanup: Remove checkpoint
             await conn.execute(
                 "DELETE FROM system_config WHERE key = 'backfill_checkpoint_TESTUSDT'"
+            )
+            
+            # Disable and disallow the test symbol after test
+            await conn.execute(
+                """
+                UPDATE symbols SET is_active = false, is_allowed = false
+                WHERE symbol = 'TEST/USDT'
+                """
             )
 
     @pytest.mark.asyncio
