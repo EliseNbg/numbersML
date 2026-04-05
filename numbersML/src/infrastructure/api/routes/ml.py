@@ -156,7 +156,7 @@ async def list_models() -> List[Dict[str, Any]]:
 async def predict(
     symbol: str = Query(..., description="Symbol name (e.g., 'BTC/USDC')"),
     model: str = Query(default="best_model.pt", description="Model filename"),
-    hours: int = Query(default=2, ge=1, le=168, description="Hours of data to load"),
+    hours: int = Query(default=24, ge=1, le=168, description="Hours of data to load"),
     ensemble_size: int = Query(default=5, ge=1, le=20, description="Average last N predictions for smoothing"),
 ) -> Dict[str, Any]:
     """
