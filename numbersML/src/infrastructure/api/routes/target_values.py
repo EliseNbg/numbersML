@@ -177,20 +177,24 @@ async def calculate_target_values(
         # The filter produces artifacts at the start and end of the series
         # We remove these to prevent confusing the ML model
         edge_count = int(response_time / 2)
-        if 0 < edge_count * 2 < len(rows):
+        if edge_count > 0:
+            # Update start edge
             await conn.execute(
                 """
-                WITH edges AS (
-                    SELECT time FROM candles_1s
-                    WHERE symbol_id = $1
-                    ORDER BY time ASC LIMIT $2
-                    UNION ALL
-                    SELECT time FROM candles_1s
-                    WHERE symbol_id = $1
-                    ORDER BY time DESC LIMIT $2
-                )
                 UPDATE candles_1s SET target_value = NULL
-                WHERE symbol_id = $1 AND time IN (SELECT time FROM edges)
+                WHERE symbol_id = $1 AND time IN (
+                    SELECT time FROM candles_1s WHERE symbol_id = $1 ORDER BY time ASC LIMIT $2
+                )
+                """,
+                symbol_id, edge_count
+            )
+            # Update end edge
+            await conn.execute(
+                """
+                UPDATE candles_1s SET target_value = NULL
+                WHERE symbol_id = $1 AND time IN (
+                    SELECT time FROM candles_1s WHERE symbol_id = $1 ORDER BY time DESC LIMIT $2
+                )
                 """,
                 symbol_id, edge_count
             )
