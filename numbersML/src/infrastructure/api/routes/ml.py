@@ -235,15 +235,16 @@ async def predict(
 
     # Calculate target values on-the-fly from candle data
     # This ensures correlation between candles and targets
-    from src.pipeline.target_value import batch_calculate_numpy
+    from src.pipeline.target_value import batch_calculate_target_data
     import numpy as np
 
     if candles:
-        close_prices = np.array([c["close"] for c in candles], dtype=np.float64)
-        target_values = batch_calculate_numpy(close_prices, response_time=200.0, use_kalman=True)
+        close_prices = [c["close"] for c in candles]
+        target_data_list = batch_calculate_target_data(close_prices, response_time=200.0, use_kalman=True)
         targets = [
-            {"time": c["time"], "value": round(float(tv), 8)}
-            for c, tv in zip(candles, target_values)
+            {"time": c["time"], "value": td["filtered_value"]}
+            for c, td in zip(candles, target_data_list)
+            if td is not None
         ]
     else:
         targets = []

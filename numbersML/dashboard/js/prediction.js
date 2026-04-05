@@ -244,6 +244,7 @@ async function loadPrediction() {
         // Set target value data
         if (data.targets && data.targets.length > 0) {
             console.log('Setting target data:', data.targets.length, 'points');
+            // Use filtered_value for WAVES visualization
             targetSeries.setData(data.targets);
         }
 

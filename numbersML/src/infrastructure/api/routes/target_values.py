@@ -2,7 +2,7 @@
 Target Value API endpoints.
 
 Provides REST API for ML target value calculation and retrieval:
-- GET /api/target-values?symbol=BTC/USDC&hours=2&response_time=200 - Get target values
+- GET /api/target-values?symbol=BTC/USDC&hours=2&response_time=200 - Get target data
 - POST /api/target-values/calculate - Trigger batch calculation
 """
 
@@ -12,7 +12,7 @@ from fastapi import APIRouter, Query
 from typing import Any, Dict, List, Optional
 
 from src.infrastructure.database import get_db_pool_async
-from src.pipeline.target_value import batch_calculate_numpy
+from src.pipeline.target_value import batch_calculate_target_data
 
 router = APIRouter(prefix="/api/target-values", tags=["target-values"])
 
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api/target-values", tags=["target-values"])
 @router.get(
     "",
     summary="Get target values",
-    description="Get candle close prices and calculated target values for a symbol",
+    description="Get candle data with filtered trends and market state",
 )
 async def get_target_values(
     symbol: str = Query(..., description="Symbol name (e.g., 'BTC/USDC')"),
@@ -31,8 +31,8 @@ async def get_target_values(
     """
     Get candle data with target values.
 
-    Returns candles with close price and calculated target value.
-    Target values are computed on-the-fly using Kalman Filter (default).
+    Returns candles with close price and calculated market state.
+    Target data includes filtered_value (smooth wave), diff, trend direction, velocity.
     """
     db_pool = await get_db_pool_async()
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
@@ -57,9 +57,9 @@ async def get_target_values(
     if not rows:
         return []
 
-    # Extract prices and compute target values
+    # Extract prices and compute target data
     prices = [float(r['close']) for r in rows]
-    targets = batch_calculate_numpy(prices, response_time=response_time, use_kalman=use_kalman)
+    target_data_list = batch_calculate_target_data(prices, response_time=response_time, use_kalman=use_kalman)
 
     return [
         {
@@ -69,7 +69,7 @@ async def get_target_values(
             'low': float(r['low']),
             'close': float(r['close']),
             'volume': float(r['volume']),
-            'target_value': round(float(targets[i]), 8) if i < len(targets) else None,
+            'target_value': target_data_list[i] if i < len(target_data_list) else None,
             'filter': 'kalman' if use_kalman else 'hanning',
             'response_time': response_time if use_kalman else None,
         }
@@ -80,7 +80,7 @@ async def get_target_values(
 @router.post(
     "/calculate",
     summary="Calculate and store target values",
-    description="Batch calculate target values for a symbol and store in candles_1s",
+    description="Batch calculate target data for a symbol and store in candles_1s as JSONB",
 )
 async def calculate_target_values(
     symbol: str = Query(..., description="Symbol name"),
@@ -91,11 +91,20 @@ async def calculate_target_values(
     hours: Optional[int] = Query(default=None, ge=1, le=168, description="Calculate last N hours"),
 ) -> Dict[str, Any]:
     """
-    Calculate and store target values in candles_1s.target_value.
+    Calculate and store target values in candles_1s.target_value as JSONB.
 
     Processes candles for the symbol. Kalman Filter (default) needs the full
     history for optimal smoothing. Only candles in the time range are
     stored with target_value.
+
+    Stores JSONB structure:
+    {
+        "filtered_value": 105.5,  // Smooth Kalman trend (WAVES)
+        "close": 103.2,           // Current candle close
+        "diff": -2.3,             // Deviation from trend
+        "trend": "up",            // or "down", "flat"
+        "velocity": 0.15          // Rate of change
+    }
     """
     db_pool = await get_db_pool_async()
 
@@ -132,23 +141,23 @@ async def calculate_target_values(
         if not rows:
             return {'error': 'No candles found', 'updated': 0}
 
-        # Calculate target values
+        # Calculate target data (JSON structures)
         prices = [float(r['close']) for r in rows]
-        targets = batch_calculate_numpy(prices, response_time=response_time, use_kalman=use_kalman)
+        target_data_list = batch_calculate_target_data(prices, response_time=response_time, use_kalman=use_kalman)
 
         # Update in batches
         batch_size = 5000
         updated = 0
         for i in range(0, len(rows), batch_size):
             batch = [
-                (targets[j], rows[j]['time'])
+                (json.dumps(target_data_list[j]), rows[j]['time'])
                 for j in range(i, min(i + batch_size, len(rows)))
-                if from_dt <= rows[j]['time'] <= to_dt
+                if from_dt <= rows[j]['time'] <= to_dt and target_data_list[j] is not None
             ]
             if batch:
                 await conn.executemany(
                     """
-                    UPDATE candles_1s SET target_value = $1
+                    UPDATE candles_1s SET target_value = $1::jsonb
                     WHERE symbol_id = $2 AND time = $3
                     """,
                     [(b[0], symbol_id, b[1]) for b in batch],

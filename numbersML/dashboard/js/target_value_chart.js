@@ -147,16 +147,29 @@ async function loadChartData() {
         }));
         candleSeries.setData(candleData);
 
-        // Target value line
+        // Target value line - use filtered_value for WAVES (smooth trend)
+        // Color by trend direction
         const targetData = data
-            .filter(c => c.target_value !== null && !isNaN(c.target_value))
-            .map(c => ({ time: c.time, value: c.target_value }));
+            .filter(c => c.target_value !== null && c.target_value.filtered_value !== null)
+            .map(c => ({
+                time: c.time,
+                value: c.target_value.filtered_value,  // WAVES: smooth filtered value
+                trend: c.target_value.trend,           // For coloring
+                diff: c.target_value.diff,             // Deviation
+                velocity: c.target_value.velocity,     // Strength
+            }));
         targetSeries.setData(targetData);
 
         chart.timeScale().fitContent();
 
+        // Count trends for display
+        const trendCounts = { up: 0, down: 0, flat: 0 };
+        targetData.forEach(t => { if (trendCounts[t.trend] !== undefined) trendCounts[t.trend]++; });
+
         document.getElementById('chart-title').textContent =
-            `${symbol} - ${data.length} candles, Kalman response_time=${responseTime}`;
+            `${symbol} - ${data.length} candles | ` +
+            `↑${trendCounts.up} ↓${trendCounts.down} →${trendCounts.flat} | ` +
+            `Kalman response_time=${responseTime}`;
 
     } catch (error) {
         console.error('Failed to load chart data:', error);

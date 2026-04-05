@@ -24,7 +24,7 @@ Usage:
 
 import math
 import numpy as np
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 
 
 class KalmanFilter1D:
@@ -301,6 +301,153 @@ def hanning_window(window_size: int) -> np.ndarray:
 
     window = np.hanning(window_size)
     return window / window.sum()
+
+
+def calculate_target_data(
+    prices: np.ndarray,
+    center: int,
+    response_time: float = 200.0,
+    use_kalman: bool = True,
+) -> Optional[Dict[str, Any]]:
+    """
+    Calculate complete market state for a single candle as JSON-serializable dict.
+
+    Returns rich market information instead of just a single number:
+    - filtered_value: Smooth Kalman trend (WAVES visualization)
+    - close: Current candle close price
+    - diff: Deviation from trend (close - filtered)
+    - trend: 'up' or 'down' (trend direction)
+    - velocity: Rate of change (trend strength)
+
+    Args:
+        prices: Array of close prices
+        center: Index of the current candle
+        response_time: Kalman response time in samples (default: 200)
+        use_kalman: Use Kalman Filter (True, default) or Hanning (False)
+
+    Returns:
+        Dictionary with market state, or None if insufficient data
+    """
+    if len(prices) == 0 or center >= len(prices):
+        return None
+
+    current_price = float(prices[center])
+
+    if center < 1:
+        return {
+            'filtered_value': current_price,
+            'close': current_price,
+            'diff': 0.0,
+            'trend': 'flat',
+            'velocity': 0.0,
+        }
+
+    if use_kalman:
+        # Use Kalman Filter
+        history = prices[:center + 1]
+        if len(history) < 2:
+            return None
+
+        filtered = kalman_filter_prices(history, response_time=response_time)
+        filtered_value = float(filtered[-1])
+
+        # Calculate velocity (rate of change of filtered trend)
+        if len(filtered) >= 2:
+            velocity = filtered_value - float(filtered[-2])
+        else:
+            velocity = 0.0
+    else:
+        # Legacy Hanning filter (for backward compatibility)
+        filtered_value = current_price  # Simplified
+        velocity = 0.0
+
+    # Calculate deviation
+    diff = current_price - filtered_value
+
+    # Determine trend direction
+    if velocity > 0.01:
+        trend = 'up'
+    elif velocity < -0.01:
+        trend = 'down'
+    else:
+        trend = 'flat'
+
+    return {
+        'filtered_value': round(filtered_value, 8),
+        'close': current_price,
+        'diff': round(diff, 8),
+        'trend': trend,
+        'velocity': round(velocity, 8),
+    }
+
+
+def batch_calculate_target_data(
+    prices: List[float],
+    response_time: float = 200.0,
+    use_kalman: bool = True,
+) -> List[Optional[Dict[str, Any]]]:
+    """
+    Calculate market state for all candles in a price series.
+
+    Returns list of dicts with filtered_value, close, diff, trend, velocity.
+
+    Args:
+        prices: List of close prices
+        response_time: Kalman response time in samples (default: 200)
+        use_kalman: Use Kalman Filter (True, default) or Hanning (False)
+
+    Returns:
+        List of dicts with market state (same length as prices)
+    """
+    if not prices:
+        return []
+
+    prices_arr = np.array(prices, dtype=np.float64)
+    results = []
+
+    if use_kalman:
+        # Calculate Kalman filter once for all prices
+        filtered = kalman_filter_prices(prices_arr, response_time=response_time)
+
+        for i in range(len(prices_arr)):
+            current_price = float(prices_arr[i])
+            filtered_value = float(filtered[i])
+            diff = current_price - filtered_value
+
+            # Velocity (rate of change)
+            if i > 0:
+                velocity = filtered_value - float(filtered[i-1])
+            else:
+                velocity = 0.0
+
+            # Trend direction
+            if velocity > 0.01:
+                trend = 'up'
+            elif velocity < -0.01:
+                trend = 'down'
+            else:
+                trend = 'flat'
+
+            results.append({
+                'filtered_value': round(filtered_value, 8),
+                'close': current_price,
+                'diff': round(diff, 8),
+                'trend': trend,
+                'velocity': round(velocity, 8),
+            })
+    else:
+        # Legacy mode - simplified
+        for i in range(len(prices_arr)):
+            current_price = float(prices_arr[i])
+            results.append({
+                'filtered_value': current_price,
+                'close': current_price,
+                'diff': 0.0,
+                'trend': 'flat',
+                'velocity': 0.0,
+            })
+
+    return results
 
 
 def calculate_target_value(
