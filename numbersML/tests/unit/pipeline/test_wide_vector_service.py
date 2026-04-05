@@ -249,7 +249,7 @@ class TestWideVectorService:
     async def test_generate_with_external_provider(
         self, mock_db_pool: MagicMock
     ) -> None:
-        """Test that external provider features are appended to vector."""
+        """Test that external provider features are prepended to vector."""
         now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=timezone.utc)
 
         candle_rows = [
@@ -263,7 +263,7 @@ class TestWideVectorService:
         mock_conn.execute = AsyncMock()
         mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
 
-        def mock_provider(candles, candle_time):
+        def mock_provider(candles, indicators, candle_time):
             return {'my_feature': 42.0, 'another_feature': 3.14}
 
         service = WideVectorService(
@@ -275,10 +275,12 @@ class TestWideVectorService:
         result = await service.generate(now)
 
         assert result is not None
-        # [BTC_close, BTC_vol, my_feature, another_feature]
+        # [my_feature, another_feature, BTC_close, BTC_vol]
         assert result['vector_size'] == 4
-        assert result['vector'][2] == 42.0
-        assert result['vector'][3] == 3.14
+        assert result['vector'][0] == 42.0
+        assert result['vector'][1] == 3.14
+        assert result['vector'][2] == 67000.0
+        assert result['vector'][3] == 1.5
         assert 'my_feature' in result['column_names']
         assert 'another_feature' in result['column_names']
 
@@ -302,7 +304,7 @@ class TestWideVectorService:
 
         received_candles = {}
 
-        def mock_provider(candles, candle_time):
+        def mock_provider(candles, indicators, candle_time):
             received_candles.update(candles)
             return {}
 
@@ -335,7 +337,7 @@ class TestWideVectorService:
         mock_conn.execute = AsyncMock()
         mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
 
-        def bad_provider(candles, candle_time):
+        def bad_provider(candles, indicators, candle_time):
             raise ValueError("External API down")
 
         service = WideVectorService(

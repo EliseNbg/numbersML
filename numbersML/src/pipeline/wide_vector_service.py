@@ -81,14 +81,14 @@ class WideVectorService:
         Load external data provider function from src/external/data_provider.py.
 
         Returns:
-            get_features(candles, candle_time) -> Dict[str, float], or None
+            get_features(candles, indicators, candle_time) -> Dict[str, float], or None
         """
         try:
             from src.external.data_provider import get_features
             logger.info("Loaded external data provider")
             return get_features
         except (ImportError, AttributeError):
-            logger.debug("No external data provider found")
+            logger.debug("No external data provider found or function missing")
             return None
 
     async def generate(
@@ -192,6 +192,7 @@ class WideVectorService:
                 return None
 
             # 5. Call external data provider
+            # Pass both candles and indicators to the provider
             external_features: Dict[str, float] = {}
             if self._external_provider:
                 try:
@@ -201,18 +202,21 @@ class WideVectorService:
                         for sname, cd in candle_data.items()
                     }
                     external_features = self._external_provider(
-                        provider_candles, candle_time
+                        provider_candles, indicator_data, candle_time
                     )
                 except Exception as e:
                     logger.error(f"External provider error: {e}")
                     external_features = {}
 
-            for key, value in external_features.items():
-                if value is not None and not (isinstance(value, float) and (
-                    math.isnan(value) or math.isinf(value)
-                )):
-                    vector.append(float(value))
-                    column_names.append(key)
+            # Prepend external features to the vector (at the beginning)
+            # This ensures they are always at fixed indices
+            if external_features:
+                for key, value in sorted(external_features.items()):
+                    if value is not None and not (isinstance(value, float) and (
+                        math.isnan(value) or math.isinf(value)
+                    )):
+                        vector.insert(0, float(value))
+                        column_names.insert(0, key)
 
             # 6. Store in wide_vectors
             await conn.execute(

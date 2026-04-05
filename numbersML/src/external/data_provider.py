@@ -1,58 +1,47 @@
 """
-External data provider for wide vector.
+External Data Provider for Wide Vector Generation.
 
-Implement get_features() to add custom features to the wide vector.
-Called once per second during wide vector generation.
+This module allows you to inject external data (like BTC Dominance, 
+Macro Index, Weather, etc.) into the Wide Vector.
 
-Example:
-    >>> from src.external.data_provider import get_features
-    >>> features = get_features(candles={"BTC_USDC": {"close": 67000, "volume": 1.5}}, candle_time=now)
-    >>> features
-    {"fear_greed_index": 72.5, "btc_dominance": 55.3}
+The function `get_features` is called once per wide vector generation.
+The returned features are prepended to the wide vector.
+
+Usage:
+    1. Edit this function to fetch your data.
+    2. Return a dictionary {"feature_name": value_float}.
+    3. The wide vector generator will automatically include these.
 """
 
+from typing import Dict, Any, Optional
 from datetime import datetime
-from typing import Dict
 
 
 def get_features(
     candles: Dict[str, Dict[str, float]],
+    indicators: Dict[str, Dict[str, float]],
     candle_time: datetime,
 ) -> Dict[str, float]:
     """
-    Compute external features for the wide vector.
+    Calculate external features to be added to the wide vector.
 
     Args:
-        candles: Per-symbol candle data with normalized keys (BTC_USDC, ETH_USDC, ...):
-            {
-                "BTC_USDC": {"close": 67000.0, "volume": 1.5},
-                "ETH_USDC": {"close": 3500.0, "volume": 10.0},
-                ...
-            }
-        candle_time: Current candle timestamp (second-aligned)
+        candles: Dict mapping symbol (e.g. 'BTC/USDC') to OHLCV data.
+                 Example: {'BTC/USDC': {'close': 50000.0, 'volume': 100.0}, ...}
+        indicators: Dict mapping symbol to its indicator values.
+                    Example: {'BTC/USDC': {'rsi_14': 60.0, 'macd': ...}, ...}
+        candle_time: The timestamp of the current candle being processed.
 
     Returns:
-        Feature dict to append to wide vector:
-            {"fear_greed_index": 72.5, "btc_dominance": 55.3}
-
-    Notes:
-        - Must be synchronous (no await)
-        - Must not raise exceptions (catch and return empty dict)
-        - Column names should be unique (not colliding with {symbol}_{field} format)
-        - Values must be floats (no None, no strings)
+        Dictionary of feature names to float values.
+        Example: {'btc_dominance': 52.5, 'market_cap': 1.2e12}
     """
-    try:
-        # === YOUR CODE HERE ===
-        # Example: fetch from external API, compute cross-symbol metrics, etc.
-        #
-        # btc_close = candles.get("BTC_USDC", {}).get("close", 0)
-        # eth_close = candles.get("ETH_USDC", {}).get("close", 0)
-        # ratio = btc_close / eth_close if eth_close > 0 else 0
-        #
-        # return {"btc_eth_ratio": ratio}
+    features = {}
 
-        return {}
+    # --- YOUR CODE HERE ---
+    # Example: Access candles data
+    # if 'BTC_USDC' in candles:
+    #     btc_close = candles['BTC_USDC']['close']
+    #     features['btc_price_normalized'] = btc_close / 100000.0
 
-    except Exception:
-        # Never raise - return empty dict on error
-        return {}
+    return features
