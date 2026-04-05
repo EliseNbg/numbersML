@@ -386,17 +386,13 @@ def savgol_filter_prices(
     prices: np.ndarray,
     window_length: int = 200,
     polyorder: int = 3,
+    causal: bool = True,
 ) -> np.ndarray:
     """
-    Apply Savitzky-Golay filter to price series (causal, no future data).
+    Apply Savitzky-Golay filter to price series.
 
     Savitzky-Golay fits a polynomial to a sliding window of data,
     producing very smooth output that preserves the shape of trends.
-
-    CAUSAL implementation:
-    - For each point t, uses prices[t-window_length : t]
-    - No future data leakage
-    - Very smooth output with minimal lag
 
     Args:
         prices: Array of close prices
@@ -404,6 +400,9 @@ def savgol_filter_prices(
                       Larger = smoother, but more lag
         polyorder: Polynomial order (default: 3 = cubic)
                   Higher = more flexible, lower = smoother
+        causal: If True, uses only past data (t-window : t)
+               If False, uses centered window (t-window/2 : t+window/2)
+                      For ML training only - NOT for live indicators!
 
     Returns:
         Array of filtered price estimates
@@ -430,7 +429,7 @@ def savgol_filter_prices(
         return prices.copy()
 
     try:
-        # Apply savgol_filter with causal mode
+        # Apply savgol_filter
         # Use mode='nearest' to handle edges properly
         filtered = savgol_filter(
             prices,
@@ -439,32 +438,41 @@ def savgol_filter_prices(
             mode='nearest',
         )
 
-        # For causal: shift by half window to avoid future leakage
-        # This makes smoothed[t] depend on prices[t-window : t]
-        shift = actual_window // 2
-        filtered = np.roll(filtered, shift)
+        if causal:
+            # Causal: shift by half window to avoid future leakage
+            # This makes smoothed[t] depend on prices[t-window : t]
+            shift = actual_window // 2
+            filtered = np.roll(filtered, shift)
 
-        # Handle the first 'shift' points with partial windows
-        for i in range(1, min(shift + 1, n)):
-            window = prices[0:i+1]
-            if len(window) > actual_polyorder:
-                try:
-                    win_len = len(window) if len(window) % 2 == 1 else len(window) - 1
-                    win_len = max(win_len, actual_polyorder + 1)
-                    win_poly = min(actual_polyorder, win_len - 1)
-                    filtered[i] = savgol_filter(
-                        window,
-                        window_length=win_len,
-                        polyorder=win_poly,
-                        mode='nearest',
-                    )[-1]
-                except:
-                    pass  # Keep the rolled value
+            # Handle the first 'shift' points with partial windows
+            for i in range(1, min(shift + 1, n)):
+                window = prices[0:i+1]
+                if len(window) > actual_polyorder:
+                    try:
+                        win_len = len(window) if len(window) % 2 == 1 else len(window) - 1
+                        win_len = max(win_len, actual_polyorder + 1)
+                        win_poly = min(actual_polyorder, win_len - 1)
+                        filtered[i] = savgol_filter(
+                            window,
+                            window_length=win_len,
+                            polyorder=win_poly,
+                            mode='nearest',
+                        )[-1]
+                    except:
+                        pass  # Keep the rolled value
+        # else: non-causal (centered window) - no shift needed
+        # savgol_filter already uses centered window by default
+
     except Exception:
         # Fallback: use simple moving average if savgol fails
         filtered = np.zeros(n)
         for i in range(n):
-            start = max(0, i - actual_window + 1)
+            if causal:
+                start = max(0, i - actual_window + 1)
+            else:
+                half = actual_window // 2
+                start = max(0, i - half)
+                end = min(n, i + half + 1)
             filtered[i] = np.mean(prices[start:i+1])
 
     return filtered
@@ -474,6 +482,7 @@ def batch_calculate_target_data(
     prices: List[float],
     response_time: float = 200.0,
     method: str = 'savgol',
+    use_future: bool = False,  # For ML training only!
     use_kalman: bool = True,  # Deprecated, kept for backward compatibility
 ) -> List[Optional[Dict[str, Any]]]:
     """
@@ -485,6 +494,7 @@ def batch_calculate_target_data(
         prices: List of close prices
         response_time: Window size for smoothing (default: 200)
         method: Smoothing method: 'kalman', 'savgol', 'hanning'
+        use_future: If True, Savitzky-Golay uses centered window (ML training ONLY!)
         use_kalman: Deprecated - use method='kalman' instead
 
     Returns:
@@ -506,7 +516,8 @@ def batch_calculate_target_data(
     if method == 'kalman':
         filtered = kalman_filter_prices(prices_arr, response_time=response_time)
     elif method == 'savgol':
-        filtered = savgol_filter_prices(prices_arr, window_length=int(response_time))
+        causal = not use_future  # If use_future=True, causal=False
+        filtered = savgol_filter_prices(prices_arr, window_length=int(response_time), causal=causal)
     else:  # hanning or legacy
         filtered = prices_arr  # Simplified for hanning
 
@@ -537,6 +548,7 @@ def batch_calculate_target_data(
             'trend': trend,
             'velocity': round(velocity, 8),
             'method': method,
+            'use_future': use_future if method == 'savgol' else False,
         })
 
     return results

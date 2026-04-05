@@ -27,6 +27,7 @@ async def get_target_values(
     hours: int = Query(default=2, ge=1, le=168),
     response_time: float = Query(default=200.0, ge=1.0, le=1000.0),
     method: str = Query(default='savgol', regex='^(savgol|kalman|hanning)$'),
+    use_future: bool = Query(default=False, description="Use future data for Savitzky-Golay (ML training ONLY!)"),
 ) -> List[Dict[str, Any]]:
     """
     Get candle data with target values.
@@ -64,7 +65,7 @@ async def get_target_values(
 
     # Extract prices and compute target data
     prices = [float(r['close']) for r in rows]
-    target_data_list = batch_calculate_target_data(prices, response_time=response_time, method=method)
+    target_data_list = batch_calculate_target_data(prices, response_time=response_time, method=method, use_future=use_future)
 
     return [
         {
@@ -91,6 +92,7 @@ async def calculate_target_values(
     symbol: str = Query(..., description="Symbol name"),
     response_time: float = Query(default=200.0, ge=1.0, le=1000.0),
     method: str = Query(default='savgol', regex='^(savgol|kalman|hanning)$'),
+    use_future: bool = Query(default=False, description="Use future data for Savitzky-Golay (ML training ONLY!)"),
     from_time: Optional[str] = Query(default=None, description="Start time (YYYY-MM-DD HH:MM:SS)"),
     to_time: Optional[str] = Query(default=None, description="End time (YYYY-MM-DD HH:MM:SS)"),
     hours: Optional[int] = Query(default=None, ge=1, le=168, description="Calculate last N hours"),
@@ -146,9 +148,9 @@ async def calculate_target_values(
         # Count candles in the specified time range
         time_range_count = sum(1 for r in rows if from_dt <= r['time'] <= to_dt)
 
-        # Calculate target data for ALL candles (Kalman needs continuous history)
+        # Calculate target data for ALL candles (needs continuous history)
         prices = [float(r['close']) for r in rows]
-        target_data_list = batch_calculate_target_data(prices, response_time=response_time, method=method)
+        target_data_list = batch_calculate_target_data(prices, response_time=response_time, method=method, use_future=use_future)
 
         # Update in batches
         batch_size = 5000
