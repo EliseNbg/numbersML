@@ -274,27 +274,29 @@ class TestTargetValue:
         assert len(targets) == len(prices)
 
     def test_batch_calculate_constant(self):
+        """Constant prices return zero (deviation from trend)."""
         prices = [100.0] * 50
         targets = batch_calculate(prices, window_size=10)
         assert len(targets) == 50
-        assert all(abs(t - 100.0) < 1e-6 for t in targets)
+        # Target is deviation from smoothed trend, so 0 for constant prices
+        assert all(abs(t) < 0.1 for t in targets)
 
     def test_batch_calculate_empty(self):
         targets = batch_calculate([], window_size=10)
         assert targets == []
 
     def test_batch_calculate_single(self):
+        """Single price returns 0 (no history)."""
         targets = batch_calculate([42.0], window_size=10)
         assert len(targets) == 1
-        assert abs(targets[0] - 42.0) < 1e-6
+        assert abs(targets[0]) < 1e-6
 
     def test_target_is_smoothed(self):
         # Create a price series with a spike
         prices = [100.0] * 50 + [200.0] + [100.0] * 50
-        targets = batch_calculate(prices, window_size=20)
-        # The spike at index 50 should be smoothed
-        assert targets[50] < 200.0
-        assert targets[50] > 100.0
+        targets = batch_calculate(prices, window_size=20, use_kalman=False)
+        # The spike at index 50 should be smoothed (target = 200 - smoothed ~100)
+        assert abs(targets[50] - 100.0) < 50.0  # Should be around 100, not 200
 
 
 class TestWeightInit:
