@@ -480,9 +480,9 @@ def savgol_filter_prices(
 
 def batch_calculate_target_data(
     prices: List[float],
-    response_time: float = 600.0,
-    method: str = 'savgol',
-    use_future: bool = False,  # For ML training only!
+    response_time: float = 2000.0,
+    method: str = 'hanning',
+    use_future: bool = True,  # For ML training only!
     use_kalman: bool = True,  # Deprecated, kept for backward compatibility
 ) -> List[Optional[Dict[str, Any]]]:
     """

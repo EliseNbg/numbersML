@@ -24,10 +24,10 @@ router = APIRouter(prefix="/api/target-values", tags=["target-values"])
 )
 async def get_target_values(
     symbol: str = Query(..., description="Symbol name (e.g., 'BTC/USDC')"),
-    hours: int = Query(default=24, ge=1, le=168),
-    response_time: float = Query(default=600.0, ge=1.0, le=20000.0),
-    method: str = Query(default='savgol', regex='^(savgol|kalman|hanning)$'),
-    use_future: bool = Query(default=False, description="Use future data for Savitzky-Golay (ML training ONLY!)"),
+    hours: int = Query(default=720, ge=1, le=1440),
+    response_time: float = Query(default=2000.0, ge=1.0, le=20000.0),
+    method: str = Query(default='hanning', regex='^(savgol|kalman|hanning)$'),
+    use_future: bool = Query(default=True, description="Use future data for Savitzky-Golay (ML training ONLY!)"),
 ) -> List[Dict[str, Any]]:
     """
     Get candle data with target values.
@@ -90,12 +90,12 @@ async def get_target_values(
 )
 async def calculate_target_values(
     symbol: str = Query(..., description="Symbol name"),
-    response_time: float = Query(default=600.0, ge=1.0, le=20000.0),
-    method: str = Query(default='savgol', regex='^(savgol|kalman|hanning)$'),
-    use_future: bool = Query(default=False, description="Use future data for Savitzky-Golay (ML training ONLY!)"),
+    response_time: float = Query(default=2000.0, ge=1.0, le=20000.0),
+    method: str = Query(default='hanning', regex='^(savgol|kalman|hanning)$'),
+    use_future: bool = Query(default=True, description="Use future data for Savitzky-Golay (ML training ONLY!)"),
     from_time: Optional[str] = Query(default=None, description="Start time (YYYY-MM-DD HH:MM:SS)"),
     to_time: Optional[str] = Query(default=None, description="End time (YYYY-MM-DD HH:MM:SS)"),
-    hours: Optional[int] = Query(default=None, ge=1, le=168, description="Calculate last N hours"),
+    hours: Optional[int] = Query(default=None, ge=1, le=1440, description="Calculate last N hours"),
 ) -> Dict[str, Any]:
     """
     Calculate and store target values in candles_1s.target_value as JSONB.

@@ -156,7 +156,7 @@ async def list_models() -> List[Dict[str, Any]]:
 async def predict(
     symbol: str = Query(..., description="Symbol name (e.g., 'BTC/USDC')"),
     model: str = Query(default="best_model.pt", description="Model filename"),
-    hours: int = Query(default=24, ge=1, le=168, description="Hours of data to load"),
+    hours: int = Query(default=720, ge=1, le=1440, description="Hours of data to load"),
     ensemble_size: int = Query(default=5, ge=1, le=20, description="Average last N predictions for smoothing"),
 ) -> Dict[str, Any]:
     """
@@ -240,7 +240,7 @@ async def predict(
 
     if candles:
         close_prices = [c["close"] for c in candles]
-        target_data_list = batch_calculate_target_data(close_prices, response_time=600.0, method='savgol')
+        target_data_list = batch_calculate_target_data(close_prices, response_time=2000.0, method='hanning')
         targets = [
             {"time": c["time"], "value": td["filtered_value"]}
             for c, td in zip(candles, target_data_list)
