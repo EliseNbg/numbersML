@@ -28,7 +28,6 @@ async def get_target_values(
     response_time: float = Query(default=600.0, ge=1.0, le=1000.0),
     method: str = Query(default='savgol', regex='^(savgol|kalman|hanning)$'),
     use_future: bool = Query(default=False, description="Use future data for Savitzky-Golay (ML training ONLY!)"),
-    norm_window: int = Query(default=600, ge=10, le=10000, description="Window for 0-1 normalization"),
 ) -> List[Dict[str, Any]]:
     """
     Get candle data with target values.
@@ -66,7 +65,7 @@ async def get_target_values(
 
     # Extract prices and compute target data
     prices = [float(r['close']) for r in rows]
-    target_data_list = batch_calculate_target_data(prices, response_time=response_time, method=method, use_future=use_future, norm_window=norm_window)
+    target_data_list = batch_calculate_target_data(prices, response_time=response_time, method=method, use_future=use_future)
 
     return [
         {
@@ -94,7 +93,6 @@ async def calculate_target_values(
     response_time: float = Query(default=600.0, ge=1.0, le=1000.0),
     method: str = Query(default='savgol', regex='^(savgol|kalman|hanning)$'),
     use_future: bool = Query(default=False, description="Use future data for Savitzky-Golay (ML training ONLY!)"),
-    norm_window: int = Query(default=600, ge=10, le=10000, description="Window for 0-1 normalization"),
     from_time: Optional[str] = Query(default=None, description="Start time (YYYY-MM-DD HH:MM:SS)"),
     to_time: Optional[str] = Query(default=None, description="End time (YYYY-MM-DD HH:MM:SS)"),
     hours: Optional[int] = Query(default=None, ge=1, le=168, description="Calculate last N hours"),
@@ -152,7 +150,7 @@ async def calculate_target_values(
 
         # Calculate target data for ALL candles (needs continuous history)
         prices = [float(r['close']) for r in rows]
-        target_data_list = batch_calculate_target_data(prices, response_time=response_time, method=method, use_future=use_future, norm_window=norm_window)
+        target_data_list = batch_calculate_target_data(prices, response_time=response_time, method=method, use_future=use_future)
 
         # Update in batches
         batch_size = 5000

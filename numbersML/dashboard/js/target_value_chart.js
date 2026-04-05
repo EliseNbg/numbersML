@@ -129,7 +129,6 @@ async function loadChartData() {
     const responseTime = document.getElementById('target-window')?.value || '600';
     const method = document.getElementById('target-method')?.value || 'savgol';
     const useFuture = document.getElementById('use-future')?.checked || false;
-    const normWindow = document.getElementById('norm-window')?.value || '600';
 
     if (!symbol) {
         candleSeries.setData([]);
@@ -139,7 +138,7 @@ async function loadChartData() {
     }
 
     try {
-        const url = `${API_BASE}/target-values?symbol=${encodeURIComponent(symbol)}&hours=${hours}&response_time=${responseTime}&method=${method}&use_future=${useFuture}&norm_window=${normWindow}`;
+        const url = `${API_BASE}/target-values?symbol=${encodeURIComponent(symbol)}&hours=${hours}&response_time=${responseTime}&method=${method}&use_future=${useFuture}`;
         const resp = await fetch(url);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
@@ -193,8 +192,7 @@ async function loadChartData() {
         document.getElementById('chart-title').textContent =
             `${symbol} - ${data.length} candles | ` +
             `↑${trendCounts.up} ↓${trendCounts.down} →${trendCounts.flat} | ` +
-            `${method}${useFuture ? ' + future' : ''} window=${responseTime} | ` +
-            `norm=${normWindow}`;
+            `${method}${useFuture ? ' + future' : ''} window=${responseTime}`;
 
     } catch (error) {
         console.error('Failed to load chart data:', error);
@@ -208,7 +206,6 @@ async function calculateTargetValues() {
     const responseTime = document.getElementById('target-window')?.value || '600';
     const method = document.getElementById('target-method')?.value || 'savgol';
     const useFuture = document.getElementById('use-future')?.checked || false;
-    const normWindow = document.getElementById('norm-window')?.value || '600';
     const status = document.getElementById('calculate-status');
 
     if (!symbol) {
@@ -221,12 +218,12 @@ async function calculateTargetValues() {
     status.className = 'text-warning';
 
     try {
-        const url = `${API_BASE}/target-values/calculate?symbol=${encodeURIComponent(symbol)}&response_time=${responseTime}&method=${method}&use_future=${useFuture}&norm_window=${normWindow}&hours=${hours}`;
+        const url = `${API_BASE}/target-values/calculate?symbol=${encodeURIComponent(symbol)}&response_time=${responseTime}&method=${method}&use_future=${useFuture}&hours=${hours}`;
         const resp = await fetch(url, { method: 'POST' });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const result = await resp.json();
 
-        status.textContent = `Done: ${result.updated} candles updated (${result.time_range_candles} in range, ${method}${useFuture ? ' + future' : ''} window=${responseTime}, norm=${normWindow})`;
+        status.textContent = `Done: ${result.updated} candles updated (${result.time_range_candles} in range, ${method}${useFuture ? ' + future' : ''} window=${responseTime})`;
         status.className = 'text-success';
 
         // Reload chart
