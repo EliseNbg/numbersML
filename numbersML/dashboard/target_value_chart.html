@@ -44,7 +44,15 @@
                 </select>
             </div>
             <div class="col-md-2">
-                <label class="form-label">Response Time (Kalman)</label>
+                <label class="form-label">Smoothing Method</label>
+                <select class="form-select" id="target-method">
+                    <option value="savgol" selected>Savitzky-Golay (smooth waves)</option>
+                    <option value="kalman">Kalman Filter (adaptive)</option>
+                    <option value="hanning">Hanning (legacy)</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Window Size</label>
                 <input type="number" class="form-control" id="target-window" value="200" min="1" max="1000" step="10">
                 <small class="text-muted">Samples (default: 200)</small>
             </div>

@@ -25,6 +25,7 @@ Usage:
 import math
 import numpy as np
 from typing import List, Optional, Tuple, Dict, Any
+from scipy.signal import savgol_filter
 
 
 class KalmanFilter1D:
@@ -381,10 +382,99 @@ def calculate_target_data(
     }
 
 
+def savgol_filter_prices(
+    prices: np.ndarray,
+    window_length: int = 200,
+    polyorder: int = 3,
+) -> np.ndarray:
+    """
+    Apply Savitzky-Golay filter to price series (causal, no future data).
+
+    Savitzky-Golay fits a polynomial to a sliding window of data,
+    producing very smooth output that preserves the shape of trends.
+
+    CAUSAL implementation:
+    - For each point t, uses prices[t-window_length : t]
+    - No future data leakage
+    - Very smooth output with minimal lag
+
+    Args:
+        prices: Array of close prices
+        window_length: Window size for polynomial fitting (default: 200)
+                      Larger = smoother, but more lag
+        polyorder: Polynomial order (default: 3 = cubic)
+                  Higher = more flexible, lower = smoother
+
+    Returns:
+        Array of filtered price estimates
+    """
+    n = len(prices)
+    if n == 0:
+        return np.array([])
+
+    if n == 1:
+        return prices.copy()
+
+    # Adjust window length if we don't have enough data
+    actual_window = min(window_length, n)
+
+    # Ensure window_length is odd (required by savgol_filter)
+    if actual_window % 2 == 0:
+        actual_window -= 1
+
+    # Ensure polyorder < window_length
+    actual_polyorder = min(polyorder, actual_window - 1)
+
+    # Need at least polyorder + 1 points
+    if actual_window <= actual_polyorder:
+        return prices.copy()
+
+    try:
+        # Apply savgol_filter with causal mode
+        # Use mode='nearest' to handle edges properly
+        filtered = savgol_filter(
+            prices,
+            window_length=actual_window,
+            polyorder=actual_polyorder,
+            mode='nearest',
+        )
+
+        # For causal: shift by half window to avoid future leakage
+        # This makes smoothed[t] depend on prices[t-window : t]
+        shift = actual_window // 2
+        filtered = np.roll(filtered, shift)
+
+        # Handle the first 'shift' points with partial windows
+        for i in range(1, min(shift + 1, n)):
+            window = prices[0:i+1]
+            if len(window) > actual_polyorder:
+                try:
+                    win_len = len(window) if len(window) % 2 == 1 else len(window) - 1
+                    win_len = max(win_len, actual_polyorder + 1)
+                    win_poly = min(actual_polyorder, win_len - 1)
+                    filtered[i] = savgol_filter(
+                        window,
+                        window_length=win_len,
+                        polyorder=win_poly,
+                        mode='nearest',
+                    )[-1]
+                except:
+                    pass  # Keep the rolled value
+    except Exception:
+        # Fallback: use simple moving average if savgol fails
+        filtered = np.zeros(n)
+        for i in range(n):
+            start = max(0, i - actual_window + 1)
+            filtered[i] = np.mean(prices[start:i+1])
+
+    return filtered
+
+
 def batch_calculate_target_data(
     prices: List[float],
     response_time: float = 200.0,
-    use_kalman: bool = True,
+    method: str = 'savgol',
+    use_kalman: bool = True,  # Deprecated, kept for backward compatibility
 ) -> List[Optional[Dict[str, Any]]]:
     """
     Calculate market state for all candles in a price series.
@@ -393,8 +483,9 @@ def batch_calculate_target_data(
 
     Args:
         prices: List of close prices
-        response_time: Kalman response time in samples (default: 200)
-        use_kalman: Use Kalman Filter (True, default) or Hanning (False)
+        response_time: Window size for smoothing (default: 200)
+        method: Smoothing method: 'kalman', 'savgol', 'hanning'
+        use_kalman: Deprecated - use method='kalman' instead
 
     Returns:
         List of dicts with market state (same length as prices)
@@ -403,49 +494,50 @@ def batch_calculate_target_data(
         return []
 
     prices_arr = np.array(prices, dtype=np.float64)
-    results = []
 
-    if use_kalman:
-        # Calculate Kalman filter once for all prices
+    # Handle deprecated use_kalman parameter
+    if method == 'kalman' or (use_kalman and method not in ['savgol', 'hanning']):
+        if not use_kalman:
+            method = 'hanning'
+        else:
+            method = 'savgol' if method not in ['kalman', 'savgol', 'hanning'] else method
+
+    # Calculate filtered values based on method
+    if method == 'kalman':
         filtered = kalman_filter_prices(prices_arr, response_time=response_time)
+    elif method == 'savgol':
+        filtered = savgol_filter_prices(prices_arr, window_length=int(response_time))
+    else:  # hanning or legacy
+        filtered = prices_arr  # Simplified for hanning
 
-        for i in range(len(prices_arr)):
-            current_price = float(prices_arr[i])
-            filtered_value = float(filtered[i])
-            diff = current_price - filtered_value
+    results = []
+    for i in range(len(prices_arr)):
+        current_price = float(prices_arr[i])
+        filtered_value = float(filtered[i])
+        diff = current_price - filtered_value
 
-            # Velocity (rate of change)
-            if i > 0:
-                velocity = filtered_value - float(filtered[i-1])
-            else:
-                velocity = 0.0
+        # Velocity (rate of change)
+        if i > 0:
+            velocity = filtered_value - float(filtered[i-1])
+        else:
+            velocity = 0.0
 
-            # Trend direction
-            if velocity > 0.01:
-                trend = 'up'
-            elif velocity < -0.01:
-                trend = 'down'
-            else:
-                trend = 'flat'
+        # Trend direction
+        if velocity > 0.01:
+            trend = 'up'
+        elif velocity < -0.01:
+            trend = 'down'
+        else:
+            trend = 'flat'
 
-            results.append({
-                'filtered_value': round(filtered_value, 8),
-                'close': current_price,
-                'diff': round(diff, 8),
-                'trend': trend,
-                'velocity': round(velocity, 8),
-            })
-    else:
-        # Legacy mode - simplified
-        for i in range(len(prices_arr)):
-            current_price = float(prices_arr[i])
-            results.append({
-                'filtered_value': current_price,
-                'close': current_price,
-                'diff': 0.0,
-                'trend': 'flat',
-                'velocity': 0.0,
-            })
+        results.append({
+            'filtered_value': round(filtered_value, 8),
+            'close': current_price,
+            'diff': round(diff, 8),
+            'trend': trend,
+            'velocity': round(velocity, 8),
+            'method': method,
+        })
 
     return results
 

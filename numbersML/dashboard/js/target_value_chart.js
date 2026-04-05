@@ -117,6 +117,7 @@ async function loadChartData() {
     const symbol = document.getElementById('target-symbol')?.value;
     const hours = document.getElementById('target-range')?.value || '2';
     const responseTime = document.getElementById('target-window')?.value || '200';
+    const method = document.getElementById('target-method')?.value || 'savgol';
 
     if (!symbol) {
         candleSeries.setData([]);
@@ -125,7 +126,7 @@ async function loadChartData() {
     }
 
     try {
-        const url = `${API_BASE}/target-values?symbol=${encodeURIComponent(symbol)}&hours=${hours}&response_time=${responseTime}&use_kalman=true`;
+        const url = `${API_BASE}/target-values?symbol=${encodeURIComponent(symbol)}&hours=${hours}&response_time=${responseTime}&method=${method}`;
         const resp = await fetch(url);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
@@ -148,15 +149,14 @@ async function loadChartData() {
         candleSeries.setData(candleData);
 
         // Target value line - use filtered_value for WAVES (smooth trend)
-        // Color by trend direction
         const targetData = data
             .filter(c => c.target_value !== null && c.target_value.filtered_value !== null)
             .map(c => ({
                 time: c.time,
-                value: c.target_value.filtered_value,  // WAVES: smooth filtered value
-                trend: c.target_value.trend,           // For coloring
-                diff: c.target_value.diff,             // Deviation
-                velocity: c.target_value.velocity,     // Strength
+                value: c.target_value.filtered_value,
+                trend: c.target_value.trend,
+                diff: c.target_value.diff,
+                velocity: c.target_value.velocity,
             }));
         targetSeries.setData(targetData);
 
@@ -169,7 +169,7 @@ async function loadChartData() {
         document.getElementById('chart-title').textContent =
             `${symbol} - ${data.length} candles | ` +
             `↑${trendCounts.up} ↓${trendCounts.down} →${trendCounts.flat} | ` +
-            `Kalman response_time=${responseTime}`;
+            `${method} window=${responseTime}`;
 
     } catch (error) {
         console.error('Failed to load chart data:', error);
@@ -181,6 +181,7 @@ async function calculateTargetValues() {
     const symbol = document.getElementById('target-symbol')?.value;
     const hours = document.getElementById('target-range')?.value || '2';
     const responseTime = document.getElementById('target-window')?.value || '200';
+    const method = document.getElementById('target-method')?.value || 'savgol';
     const status = document.getElementById('calculate-status');
 
     if (!symbol) {
@@ -189,16 +190,16 @@ async function calculateTargetValues() {
         return;
     }
 
-    status.textContent = `Calculating last ${hours} hours...`;
+    status.textContent = `Calculating last ${hours} hours (${method})...`;
     status.className = 'text-warning';
 
     try {
-        const url = `${API_BASE}/target-values/calculate?symbol=${encodeURIComponent(symbol)}&response_time=${responseTime}&use_kalman=true&hours=${hours}`;
+        const url = `${API_BASE}/target-values/calculate?symbol=${encodeURIComponent(symbol)}&response_time=${responseTime}&method=${method}&hours=${hours}`;
         const resp = await fetch(url, { method: 'POST' });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const result = await resp.json();
 
-        status.textContent = `Done: ${result.updated} candles updated (${result.time_range_candles} in range, Kalman response_time=${responseTime})`;
+        status.textContent = `Done: ${result.updated} candles updated (${result.time_range_candles} in range, ${method} window=${responseTime})`;
         status.className = 'text-success';
 
         // Reload chart

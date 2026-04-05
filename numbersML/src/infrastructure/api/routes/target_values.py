@@ -26,13 +26,18 @@ async def get_target_values(
     symbol: str = Query(..., description="Symbol name (e.g., 'BTC/USDC')"),
     hours: int = Query(default=2, ge=1, le=168),
     response_time: float = Query(default=200.0, ge=1.0, le=1000.0),
-    use_kalman: bool = Query(default=True, description="Use Kalman Filter (True) or Hanning (False)"),
+    method: str = Query(default='savgol', regex='^(savgol|kalman|hanning)$'),
 ) -> List[Dict[str, Any]]:
     """
     Get candle data with target values.
 
     Returns candles with close price and calculated market state.
     Target data includes filtered_value (smooth wave), diff, trend direction, velocity.
+    
+    Methods:
+    - savgol: Savitzky-Golay filter (very smooth waves, default)
+    - kalman: Kalman filter (adaptive, less smooth)
+    - hanning: Hanning window (legacy)
     """
     db_pool = await get_db_pool_async()
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
@@ -59,7 +64,7 @@ async def get_target_values(
 
     # Extract prices and compute target data
     prices = [float(r['close']) for r in rows]
-    target_data_list = batch_calculate_target_data(prices, response_time=response_time, use_kalman=use_kalman)
+    target_data_list = batch_calculate_target_data(prices, response_time=response_time, method=method)
 
     return [
         {
@@ -70,8 +75,8 @@ async def get_target_values(
             'close': float(r['close']),
             'volume': float(r['volume']),
             'target_value': target_data_list[i] if i < len(target_data_list) else None,
-            'filter': 'kalman' if use_kalman else 'hanning',
-            'response_time': response_time if use_kalman else None,
+            'method': method,
+            'response_time': response_time,
         }
         for i, r in enumerate(rows)
     ]
@@ -85,7 +90,7 @@ async def get_target_values(
 async def calculate_target_values(
     symbol: str = Query(..., description="Symbol name"),
     response_time: float = Query(default=200.0, ge=1.0, le=1000.0),
-    use_kalman: bool = Query(default=True, description="Use Kalman Filter (True) or Hanning (False)"),
+    method: str = Query(default='savgol', regex='^(savgol|kalman|hanning)$'),
     from_time: Optional[str] = Query(default=None, description="Start time (YYYY-MM-DD HH:MM:SS)"),
     to_time: Optional[str] = Query(default=None, description="End time (YYYY-MM-DD HH:MM:SS)"),
     hours: Optional[int] = Query(default=None, ge=1, le=168, description="Calculate last N hours"),
@@ -93,23 +98,15 @@ async def calculate_target_values(
     """
     Calculate and store target values in candles_1s.target_value as JSONB.
 
-    IMPORTANT: For accurate Kalman filtering, this endpoint:
-    1. Loads ALL historical candles (needed for Kalman state)
-    2. Calculates target data for ALL candles (continuous filter state)
+    IMPORTANT: For accurate filtering, this endpoint:
+    1. Loads ALL historical candles (needed for filter state)
+    2. Calculates target data for ALL candles (continuous state)
     3. Only UPDATES candles in the specified time range
 
-    This ensures the Kalman filter has proper historical context,
-    while only modifying candles in your requested range.
-
-    Parameters:
-    - hours: Update only the last N hours (but uses full history for Kalman)
-    - from_time/to_time: Update specific time range (uses full history)
-    - If neither: Updates ALL candles
-
-    Response includes:
-    - total_candles: Total candles loaded for Kalman history
-    - time_range_candles: Candles in the specified time range
-    - updated: Candles actually updated in the database
+    Methods:
+    - savgol: Savitzky-Golay filter (very smooth waves, default)
+    - kalman: Kalman filter (adaptive, less smooth)
+    - hanning: Hanning window (legacy)
     """
     db_pool = await get_db_pool_async()
 
@@ -151,7 +148,7 @@ async def calculate_target_values(
 
         # Calculate target data for ALL candles (Kalman needs continuous history)
         prices = [float(r['close']) for r in rows]
-        target_data_list = batch_calculate_target_data(prices, response_time=response_time, use_kalman=use_kalman)
+        target_data_list = batch_calculate_target_data(prices, response_time=response_time, method=method)
 
         # Update in batches
         batch_size = 5000
@@ -174,8 +171,8 @@ async def calculate_target_values(
 
         return {
             'symbol': symbol,
-            'filter': 'kalman' if use_kalman else 'hanning',
-            'response_time': response_time if use_kalman else None,
+            'method': method,
+            'response_time': response_time,
             'total_candles': len(rows),
             'time_range_candles': time_range_count,
             'updated': updated,
@@ -183,5 +180,5 @@ async def calculate_target_values(
                 'from': from_dt.isoformat(),
                 'to': to_dt.isoformat(),
             },
-            'note': 'Loaded all history for Kalman accuracy, updated only candles in time range',
+            'note': f'Loaded all history for {method} accuracy, updated only candles in time range',
         }
