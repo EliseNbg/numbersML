@@ -195,10 +195,11 @@ async def recalculate_indicators(
                                 if not np.isnan(val) and not np.isinf(val):
                                     val_to_store = float(val)
                         
-                        if val_to_store is not None:
-                            results[full_key] = val_to_store
-                            if full_key not in indicator_keys:
-                                indicator_keys.append(full_key)
+                        # Always store the key to ensure we match the definitions count.
+                        # Use None (null in JSON) if no valid value found (e.g. warmup period).
+                        results[full_key] = val_to_store
+                        if full_key not in indicator_keys:
+                            indicator_keys.append(full_key)
                     except Exception:
                         continue
 

@@ -357,12 +357,17 @@ class EnrichmentService:
                 indicator_class_name = type(indicator).__name__.lower().replace('indicator', '')
 
                 # Get latest value for each indicator output
+                # Find the last valid value across all outputs
+                val_to_store = None
                 for key, values in result.values.items():
                     if len(values) > 0:
                         latest_value = values[-1]
-                        if not np.isnan(latest_value):
-                            # Use just the indicator name as the key
-                            indicator_values[name] = float(latest_value)
+                        if not np.isnan(latest_value) and not np.isinf(latest_value):
+                            val_to_store = float(latest_value)
+
+                # Always store the key, even if value is None (warmup period)
+                # Use the indicator name (e.g. 'rsi_14') as the key
+                indicator_values[name] = val_to_store
 
             except Exception as e:
                 logger.error(f"Error calculating indicator {name}: {e}", exc_info=True)

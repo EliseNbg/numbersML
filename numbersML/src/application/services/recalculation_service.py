@@ -299,11 +299,17 @@ class RecalculationService:
             for i, tick in enumerate(ticks):
                 # Get indicator values for this tick
                 indicator_values = {}
-
+                val_to_store = None
+                
+                # Find valid value for this tick index (take last valid found, like calculator)
                 for key, values in result.values.items():
-                    if i < len(values) and not np.isnan(values[i]):
-                        # Use just the indicator name as the key
-                        indicator_values[prefix] = float(values[i])
+                    if i < len(values):
+                        val = values[i]
+                        if not np.isnan(val) and not np.isinf(val):
+                            val_to_store = float(val)
+
+                # Always store the key, even if value is None (warmup period)
+                indicator_values[prefix] = val_to_store
 
                 if indicator_values:
                     records.append((
