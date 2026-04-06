@@ -549,17 +549,18 @@ def batch_calculate_target_data(
     else:  # legacy fallback
         filtered = prices_arr  # Simplified
 
-    # Calculate normalization
+    # Calculate normalized value
+    # normalized_value = filtered_value (raw smoothed price)
+    # norm_min/norm_max track rolling min/max for reference and dashboard scaling
     n = len(filtered)
-    normalized = np.zeros(n)
+    normalized = filtered.copy()  # Use filtered price directly
     norm_min = np.zeros(n)
     norm_max = np.zeros(n)
 
-    if n > 10:  # Need enough data for peak detection
+    if n > 10:
         try:
-            # Find peaks (maxima)
+            # Find peaks (maxima) and valleys (minima)
             peaks, _ = find_peaks(filtered, distance=10)
-            # Find valleys (minima) by inverting signal
             valleys, _ = find_peaks(-filtered, distance=10)
 
             # Merge and sort all extrema points
@@ -571,48 +572,28 @@ def batch_calculate_target_data(
             if all_extrema[-1] < n - 1:
                 all_extrema = np.concatenate([all_extrema, [n - 1]])
 
-            # Normalize each segment between extrema to [-1, 1]
-            # Rising: valley→peak maps to [-1, 1]
-            # Falling: peak→valley maps to [1, -1]
+            # For each segment between extrema, store the min/max range
             for seg_idx in range(len(all_extrema) - 1):
-                start_idx = all_extrema[seg_idx]
-                end_idx = all_extrema[seg_idx + 1]
+                start_idx = int(all_extrema[seg_idx])
+                end_idx = int(all_extrema[seg_idx + 1])
 
-                start_val = filtered[start_idx]
-                end_val = filtered[end_idx]
+                segment_min = float(filtered[start_idx:end_idx+1].min())
+                segment_max = float(filtered[start_idx:end_idx+1].max())
 
-                # Determine direction: valley→peak or peak→valley
-                if end_val > start_val:
-                    # Rising: valley to peak, normalize -1→1
-                    segment_range = end_val - start_val
-                    for i in range(int(start_idx), int(end_idx) + 1):
-                        if segment_range > 1e-10:
-                            # Map [start_val, end_val] → [-1, 1]
-                            normalized[i] = 2.0 * (filtered[i] - start_val) / segment_range - 1.0
-                        else:
-                            normalized[i] = 0.0
-                        norm_min[i] = start_val
-                        norm_max[i] = end_val
-                else:
-                    # Falling: peak to valley, normalize 1→-1
-                    segment_range = start_val - end_val
-                    for i in range(int(start_idx), int(end_idx) + 1):
-                        if segment_range > 1e-10:
-                            # Map [end_val, start_val] → [-1, 1] (inverted)
-                            normalized[i] = 1.0 - 2.0 * (filtered[i] - end_val) / segment_range
-                        else:
-                            normalized[i] = 0.0
-                        norm_min[i] = end_val
-                        norm_max[i] = start_val
-
-            # Clamp to [-1, 1]
-            normalized = np.clip(normalized, -1.0, 1.0)
+                norm_min[start_idx:end_idx+1] = segment_min
+                norm_max[start_idx:end_idx+1] = segment_max
         except Exception:
-            # Fallback: use simple 0.0 if peak detection fails
-            normalized.fill(0.0)
+            # Fallback: use running window min/max
+            window = 60
+            for i in range(n):
+                start = max(0, i - window)
+                end = min(n, i + 1)
+                norm_min[i] = filtered[start:end].min()
+                norm_max[i] = filtered[start:end].max()
     else:
-        # Not enough data for peak detection, use 0.0
-        normalized.fill(0.0)
+        # Not enough data, use flat values
+        norm_min.fill(filtered.min() if n > 0 else 0.0)
+        norm_max.fill(filtered.max() if n > 0 else 0.0)
 
     results = []
     for i in range(len(prices_arr)):
