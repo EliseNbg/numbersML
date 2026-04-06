@@ -153,11 +153,11 @@ function initChart() {
         priceScaleId: 'left',
     });
 
-    // Target value line (orange, right price scale)
+    // Normalized target value line (orange, right price scale)
     targetSeries = chart.addLineSeries({
         color: '#FF9800',
         lineWidth: 3,
-        title: 'Target (Normalized 0-1)',
+        title: 'Normalized Target (0-1)',
         priceLineVisible: true,
         lastValueVisible: true,
         priceLineColor: '#FF9800',

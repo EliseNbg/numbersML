@@ -255,8 +255,9 @@ async def predict(
                 """,
                 symbol_id, start_time, now
             )
-            
-        target_map = {row['time']: row['target'] for row in target_rows}
+
+        # Convert datetime keys to integer timestamps to match candle time format
+        target_map = {int(row['time'].timestamp()): row['target'] for row in target_rows}
         targets = [
             {"time": c["time"], "value": target_map.get(c["time"])}
             for c in candles
