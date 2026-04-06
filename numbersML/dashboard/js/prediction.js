@@ -157,7 +157,7 @@ function initChart() {
     targetSeries = chart.addLineSeries({
         color: '#FF9800',
         lineWidth: 3,
-        title: 'Normalized Target (0-1)',
+        title: 'Normalized Target (-1 to 1)',
         priceLineVisible: true,
         lastValueVisible: true,
         priceLineColor: '#FF9800',
@@ -168,7 +168,7 @@ function initChart() {
     predictionSeries = chart.addLineSeries({
         color: '#2196F3',
         lineWidth: 3,
-        title: 'ML Prediction (0-1)',
+        title: 'ML Prediction (-1 to 1)',
         priceLineVisible: true,
         lastValueVisible: true,
         priceLineColor: '#2196F3',

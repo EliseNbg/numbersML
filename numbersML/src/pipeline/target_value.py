@@ -571,7 +571,9 @@ def batch_calculate_target_data(
             if all_extrema[-1] < n - 1:
                 all_extrema = np.concatenate([all_extrema, [n - 1]])
 
-            # Normalize each segment between extrema
+            # Normalize each segment between extrema to [-1, 1]
+            # Rising: valley→peak maps to [-1, 1]
+            # Falling: peak→valley maps to [1, -1]
             for seg_idx in range(len(all_extrema) - 1):
                 start_idx = all_extrema[seg_idx]
                 end_idx = all_extrema[seg_idx + 1]
@@ -579,36 +581,38 @@ def batch_calculate_target_data(
                 start_val = filtered[start_idx]
                 end_val = filtered[end_idx]
 
-                # Determine direction: valley→peak (0→1) or peak→valley (1→0)
+                # Determine direction: valley→peak or peak→valley
                 if end_val > start_val:
-                    # Rising: valley to peak, normalize 0→1
+                    # Rising: valley to peak, normalize -1→1
                     segment_range = end_val - start_val
                     for i in range(int(start_idx), int(end_idx) + 1):
                         if segment_range > 1e-10:
-                            normalized[i] = (filtered[i] - start_val) / segment_range
+                            # Map [start_val, end_val] → [-1, 1]
+                            normalized[i] = 2.0 * (filtered[i] - start_val) / segment_range - 1.0
                         else:
-                            normalized[i] = 0.5
+                            normalized[i] = 0.0
                         norm_min[i] = start_val
                         norm_max[i] = end_val
                 else:
-                    # Falling: peak to valley, normalize 1→0
+                    # Falling: peak to valley, normalize 1→-1
                     segment_range = start_val - end_val
                     for i in range(int(start_idx), int(end_idx) + 1):
                         if segment_range > 1e-10:
-                            normalized[i] = (filtered[i] - end_val) / segment_range
+                            # Map [end_val, start_val] → [-1, 1] (inverted)
+                            normalized[i] = 1.0 - 2.0 * (filtered[i] - end_val) / segment_range
                         else:
-                            normalized[i] = 0.5
+                            normalized[i] = 0.0
                         norm_min[i] = end_val
                         norm_max[i] = start_val
 
-            # Clamp to 0-1
-            normalized = np.clip(normalized, 0.0, 1.0)
+            # Clamp to [-1, 1]
+            normalized = np.clip(normalized, -1.0, 1.0)
         except Exception:
-            # Fallback: use simple 0.5 if peak detection fails
-            normalized.fill(0.5)
+            # Fallback: use simple 0.0 if peak detection fails
+            normalized.fill(0.0)
     else:
-        # Not enough data for peak detection, use 0.5
-        normalized.fill(0.5)
+        # Not enough data for peak detection, use 0.0
+        normalized.fill(0.0)
 
     results = []
     for i in range(len(prices_arr)):
