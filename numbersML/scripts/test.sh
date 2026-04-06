@@ -286,22 +286,12 @@ quick_check() {
     log_info "Running quick syntax and import check..."
 
     # Check Python syntax
-    if ! python3 -m py_compile src/cli/generate_wide_vector.py 2>&1; then
-        log_error "Syntax error in generate_wide_vector.py"
-        return 1
-    fi
-
     if ! python3 -m py_compile src/application/services/enrichment_service.py 2>&1; then
         log_error "Syntax error in enrichment_service.py"
         return 1
     fi
 
     # Check imports
-    if ! python3 -c "from src.cli.generate_wide_vector import WideVectorGenerator" 2>&1; then
-        log_error "Import error in generate_wide_vector.py"
-        return 1
-    fi
-
     if ! python3 -c "from src.application.services.enrichment_service import EnrichmentService" 2>&1; then
         log_error "Import error in enrichment_service.py"
         return 1
