@@ -78,9 +78,10 @@ class WideVectorDataset(Dataset):
             epsilon = 1e-8
             self.std = np.where(self.std < epsilon, epsilon, self.std)
 
-            # Filter out low-variance features (std < 0.01)
-            # These features provide no information for learning
-            min_std = 0.01 #1e-6 
+            # Filter out low-variance features (std < 1e-6)
+            # Using a lower threshold to keep valid features for low-priced assets (like ADA, DOGE)
+            # and small indicator values that were previously being removed.
+            min_std = 1e-6
             self.feature_mask = self.std > min_std
             
             # Apply feature mask
