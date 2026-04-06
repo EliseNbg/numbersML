@@ -241,11 +241,19 @@ async function loadPrediction() {
             candleSeries.setData(data.candles);
         }
 
-        // Set target value data
+        // Set target value data (normalized 0-1)
         if (data.targets && data.targets.length > 0) {
             console.log('Setting target data:', data.targets.length, 'points');
-            // Use filtered_value for WAVES visualization
-            targetSeries.setData(data.targets);
+            console.log('Sample target:', data.targets[0]);
+            
+            // Ensure targets are properly formatted for lightweight charts
+            const targetData = data.targets.map(t => ({
+                time: t.time,
+                value: t.value
+            }));
+            targetSeries.setData(targetData);
+        } else {
+            console.log('No target values to display');
         }
 
         // Set prediction data
