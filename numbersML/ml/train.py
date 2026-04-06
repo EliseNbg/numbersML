@@ -117,6 +117,39 @@ class Trainer:
 
         return self.train_loader, self.val_loader, self.test_loader
 
+    def compute_baselines(self) -> Dict:
+        """
+        Compute naive baselines on validation data.
+        
+        Returns dict with:
+        - persistence_mae: MAE of y_pred = y_{t-1}
+        - moving_avg_mae: MAE of y_pred = mean(y_{t-30:t})
+        """
+        import numpy as np
+        
+        val_dataset = self.val_loader.dataset
+        targets = val_dataset.targets
+        
+        # 1. Persistence Baseline: y_pred = target_{t-1}
+        persistence_errors = []
+        for i in range(1, len(targets)):
+            pred = targets[i-1]
+            actual = targets[i]
+            persistence_errors.append(abs(actual - pred))
+        
+        # 2. Moving Average Baseline: y_pred = mean(target_{t-30:t})
+        ma_window = 30
+        ma_errors = []
+        for i in range(ma_window, len(targets)):
+            pred = np.mean(targets[i-ma_window:i])
+            actual = targets[i]
+            ma_errors.append(abs(actual - pred))
+        
+        return {
+            "persistence_mae": np.mean(persistence_errors) if persistence_errors else float('nan'),
+            "moving_avg_mae": np.mean(ma_errors) if ma_errors else float('nan'),
+        }
+
     def setup_model(self, input_dim: int, model_type: str = "full") -> nn.Module:
         """Create model and optimizer."""
         self.model = create_model(input_dim, self.config.model, model_type)
@@ -293,6 +326,16 @@ class Trainer:
         self.setup_data()
         self.norm_path = os.path.join(self.config.training.save_dir, "norm_params.npz")
 
+        # Compute baselines on validation set
+        baselines = self.compute_baselines()
+        print(f"\n{'='*60}")
+        print(f"Baseline Metrics (Validation Set)")
+        print(f"{'='*60}")
+        print(f"  Persistence MAE (y_pred = y_{{t-1}}):    {baselines['persistence_mae']:.6f}")
+        print(f"  Moving Avg MAE (window=30):              {baselines['moving_avg_mae']:.6f}")
+        print(f"{'='*60}")
+        print()
+
         # Get input dimension
         sample_X, _ = next(iter(self.train_loader))
         input_dim = sample_X.shape[-1]
@@ -356,21 +399,37 @@ class Trainer:
             self.writer.add_scalar("val/mae", val_metrics["mae"], epoch)
             self.writer.add_scalar("learning_rate", current_lr, epoch)
 
-            # Print progress
+            # Print progress with baseline comparison
             epoch_time = time.time() - epoch_start
             is_best = val_metrics["loss"] < self.best_val_loss
 
             if is_best:
                 self.best_val_loss = val_metrics["loss"]
 
+            # Check if model beats baselines
+            model_mae = val_metrics["mae"]
+            beats_persistence = model_mae < baselines["persistence_mae"]
+            beats_ma = model_mae < baselines["moving_avg_mae"]
+
+            baseline_indicator = ""
+            if beats_persistence and beats_ma:
+                baseline_indicator = " [BEATS BASELINES ✓]"
+            elif not beats_persistence:
+                baseline_indicator = f" [WORSE than persistence ({baselines['persistence_mae']:.4f})]"
+            elif not beats_ma:
+                baseline_indicator = f" [WORSE than MA({baselines['moving_avg_mae']:.4f})]"
+
             print(
                 f"Epoch {epoch + 1:3d}/{self.config.training.epochs} | "
                 f"Train Loss: {train_metrics['loss']:.6f} | "
                 f"Val Loss: {val_metrics['loss']:.6f} | "
-                f"Val MAE: {val_metrics['mae']:.6f} | "
+                f"Val MAE: {model_mae:.6f} | "
+                f"Baseline Persistence: {baselines['persistence_mae']:.6f} | "
+                f"Baseline MA(30): {baselines['moving_avg_mae']:.6f} | "
                 f"LR: {current_lr:.2e} | "
                 f"Time: {epoch_time:.1f}s"
                 + (" [BEST]" if is_best else "")
+                + baseline_indicator
             )
 
             # Save checkpoint
