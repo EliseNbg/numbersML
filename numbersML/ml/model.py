@@ -709,7 +709,7 @@ class CNN_GRUModel(nn.Module):
     Why this is better:
     - Multi-scale CNN: Captures patterns at different time horizons
     - Residual connections: Enables deeper networks without vanishing gradients
-    - Bidirectional GRU: Uses full context (past and future in sequence)
+    - Unidirectional GRU: Only uses past context (no future leakage)
     - Attention pooling: Weights important timesteps instead of using only last
     - LayerNorm: Stabilizes training with long sequences
     """
@@ -764,7 +764,7 @@ class CNN_GRUModel(nn.Module):
 
         gru_input_dim = cnn_channels[1] if len(cnn_channels) > 1 else cnn_channels[0]
 
-        # Bidirectional GRU for temporal context
+        # Unidirectional GRU (no future leakage - only past context)
         self.gru_hidden_dim = config.gru_hidden_dim
         self.gru_num_layers = config.gru_num_layers
         self.gru_dropout_rate = config.gru_dropout
@@ -775,30 +775,28 @@ class CNN_GRUModel(nn.Module):
             num_layers=self.gru_num_layers,
             batch_first=True,
             dropout=self.gru_dropout_rate if self.gru_num_layers > 1 else 0.0,
-            bidirectional=True,  # Learn from both directions
+            bidirectional=False,  # Past-only context (no future leakage)
         )
 
         # Temporal attention mechanism
         # Instead of just taking last timestep, weight all timesteps
-        gru_output_dim = self.gru_hidden_dim * 2  # Bidirectional
+        gru_output_dim = self.gru_hidden_dim  # Unidirectional
         self.attention = nn.Sequential(
             nn.Linear(gru_output_dim, 64),
             nn.Tanh(),
             nn.Linear(64, 1),
         )
 
-        # Deeper MLP head
+        # Deeper MLP head with increased regularization
         self.mlp = nn.Sequential(
-            nn.Linear(gru_output_dim, 256),
-            nn.GELU(),
-            nn.LayerNorm(256),
-            nn.Dropout(config.dropout),
-            nn.Linear(256, 128),
+            nn.Linear(gru_output_dim, 128),
             nn.GELU(),
             nn.LayerNorm(128),
-            nn.Dropout(config.dropout),
+            nn.Dropout(config.dropout * 1.5),  # Extra dropout for regularization
             nn.Linear(128, 64),
             nn.GELU(),
+            nn.LayerNorm(64),
+            nn.Dropout(config.dropout),
         )
 
         # Output layer

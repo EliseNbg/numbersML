@@ -305,6 +305,21 @@ class Trainer:
         start_epoch = 0
         if resume_from and os.path.exists(resume_from):
             checkpoint = torch.load(resume_from, map_location=self.device, weights_only=False)
+            
+            # Check if feature dimensions match
+            saved_input_dim = checkpoint["model_state_dict"]["feature_proj.1.weight"].shape[1]
+            if saved_input_dim != input_dim:
+                logger.warning(
+                    f"Feature dimension mismatch: checkpoint has {saved_input_dim}, current data has {input_dim}. "
+                    f"Using saved feature mask from checkpoint."
+                )
+                # TODO: Restore feature mask from checkpoint and reload datasets
+                # For now, this will fail if feature dimensions don't match
+                raise RuntimeError(
+                    f"Cannot resume: feature dimension mismatch ({saved_input_dim} vs {input_dim}). "
+                    f"Train from scratch or use same data window."
+                )
+            
             self.model.load_state_dict(checkpoint["model_state_dict"])
             self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
             start_epoch = checkpoint["epoch"] + 1
@@ -507,8 +522,8 @@ def main():
     parser.add_argument(
         "--seq-length",
         type=int,
-        default=60,
-        help="Sequence length in seconds (default: 60)",
+        default=120,
+        help="Sequence length in seconds (default: 120)",
     )
     parser.add_argument(
         "--train-hours",
