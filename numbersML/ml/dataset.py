@@ -81,7 +81,7 @@ class WideVectorDataset(Dataset):
             # Filter out low-variance features (std < 1e-6)
             # Using a lower threshold to keep valid features for low-priced assets (like ADA, DOGE)
             # and small indicator values that were previously being removed.
-            min_std = 1e-6
+            min_std = 0.01 #1e-6
             self.feature_mask = self.std > min_std
             
             # Apply feature mask
@@ -100,6 +100,86 @@ class WideVectorDataset(Dataset):
 
         # Build valid sequence indices
         self._build_sequences()
+
+    def _validate_temporal_consistency(self, timestamps: List[datetime], vectors: List[np.ndarray]):
+        """
+        DATA QUALITY VALIDATION:
+        Ensures that:
+        1. Each timestamp has exactly one wide_vector (no duplicates)
+        2. Timestamps grow by exactly +1 second (consecutive 1-second intervals)
+        
+        Logs warnings if any violations are found (does not break training).
+        """
+        if len(timestamps) == 0:
+            return
+        
+        logger.info(f"Validating temporal consistency for {len(timestamps)} samples...")
+        
+        # Check 1: Ensure no duplicate timestamps (each time has exactly one wide_vector)
+        seen_timestamps = {}
+        duplicate_count = 0
+        first_duplicate_ts = None
+        for i, ts in enumerate(timestamps):
+            if ts in seen_timestamps:
+                duplicate_count += 1
+                if first_duplicate_ts is None:
+                    first_duplicate_ts = ts
+                if duplicate_count <= 5:  # Log first 5 duplicates for debugging
+                    logger.warning(
+                        f"⚠ DUPLICATE TIMESTAMP: {ts} appears at indices {seen_timestamps[ts]} and {i}"
+                    )
+            else:
+                seen_timestamps[ts] = i
+        
+        if duplicate_count > 0:
+            logger.warning(
+                f"⚠ DATA QUALITY WARNING: Found {duplicate_count} duplicate timestamps "
+                f"(first duplicate: {first_duplicate_ts}). "
+                f"Each time should have exactly one wide_vector. Training will continue but results may be affected."
+            )
+        
+        # Check 2: Ensure timestamps grow by exactly +1 second
+        gap_violations = []
+        max_violations_to_log = 10
+        
+        for i in range(1, len(timestamps)):
+            prev_ts = timestamps[i - 1]
+            curr_ts = timestamps[i]
+            time_diff = (curr_ts - prev_ts).total_seconds()
+            
+            if time_diff != 1.0:
+                gap_violations.append({
+                    'index': i,
+                    'prev_time': prev_ts,
+                    'curr_time': curr_ts,
+                    'diff_seconds': time_diff
+                })
+                
+                if len(gap_violations) <= max_violations_to_log:
+                    logger.warning(
+                        f"⚠ TEMPORAL GAP at index {i}: "
+                        f"{prev_ts} -> {curr_ts} (diff={time_diff}s, expected=1.0s)"
+                    )
+        
+        if gap_violations:
+            # Summarize all violations
+            diff_counts = {}
+            for v in gap_violations:
+                diff = v['diff_seconds']
+                diff_counts[diff] = diff_counts.get(diff, 0) + 1
+            
+            violation_summary = ", ".join([
+                f"{diff}s: {count} times" for diff, count in sorted(diff_counts.items())
+            ])
+            
+            logger.warning(
+                f"⚠ DATA QUALITY WARNING: Found {len(gap_violations)} temporal gaps not exactly +1 second. "
+                f"Violations: {violation_summary}. "
+                f"Database state may be inconsistent. Training will continue but results may be affected."
+            )
+        
+        if duplicate_count == 0 and len(gap_violations) == 0:
+            logger.info("✓ Temporal consistency validated: All timestamps are unique and grow by exactly +1 second")
 
     def _load_data(
         self,
@@ -182,6 +262,9 @@ class WideVectorDataset(Dataset):
 
         finally:
             conn.close()
+
+        # DATA QUALITY VALIDATION: Ensure exact +1 second intervals and unique timestamps
+        self._validate_temporal_consistency(timestamps, vectors)
 
         # Align X (wide vectors at time t) with Y (target at time t + horizon)
         horizon = self.data_config.prediction_horizon
