@@ -53,16 +53,34 @@ class Predictor:
 
         # Detect model type and input dim from state dict keys
         state_keys = set(checkpoint["model_state_dict"].keys())
+        
         if any("transformer_blocks" in k for k in state_keys):
             model_type = "transformer"
             first_weight = checkpoint["model_state_dict"]["input_proj.0.weight"]
         elif any("attention_layers" in k for k in state_keys):
             model_type = "full"
             first_weight = checkpoint["model_state_dict"]["input_proj.0.weight"]
-        else:
+        elif any("feature_proj" in k for k in state_keys):
+            # CNN_GRU model: feature_proj is LayerNorm (0) + Linear (1)
+            model_type = "simple"
+            first_weight = checkpoint["model_state_dict"]["feature_proj.1.weight"]
+        elif any("network" in k for k in state_keys):
+            # Old SimpleMLP model
             model_type = "simple"
             first_weight = checkpoint["model_state_dict"]["network.0.linear.weight"]
-        input_dim = first_weight.shape[1]
+        else:
+            raise ValueError(
+                f"Unknown model type. State dict keys: {list(state_keys)[:10]}"
+            )
+        
+        # Handle weight tensors that might have unexpected shapes
+        weight_shape = first_weight.shape
+        if len(weight_shape) >= 2:
+            input_dim = weight_shape[1]
+        else:
+            raise ValueError(
+                f"Unexpected weight shape {weight_shape}, expected at least 2D"
+            )
 
         # Create model and load weights
         self.model = create_model(input_dim, self.config.model, model_type=model_type)

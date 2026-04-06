@@ -70,9 +70,12 @@ def _load_model(model_path: str) -> tuple:
         # Simple model (SimpleMLPModel)
         input_dim = state_dict["network.0.linear.weight"].shape[1]
         model_type = "simple"
+    elif any(k.startswith("feature_proj.") for k in state_dict.keys()):
+        # CNN_GRU model (feature_proj = LayerNorm + Linear)
+        input_dim = state_dict["feature_proj.1.weight"].shape[1]
+        model_type = "cnn_gru"
     elif any(k.startswith("cnn1.") for k in state_dict.keys()) and any(k.startswith("gru.") for k in state_dict.keys()):
-        # CNN+GRU model
-        # Get input dim from first CNN layer weight shape
+        # Old CNN+GRU model
         input_dim = state_dict["cnn1.weight"].shape[1]
         model_type = "cnn_gru"
     elif any(k.startswith("transformer_blocks.") for k in state_dict.keys()):
@@ -86,7 +89,11 @@ def _load_model(model_path: str) -> tuple:
     else:
         # Fallback to simple model
         first_key = list(state_dict.keys())[0]
-        input_dim = state_dict[first_key].shape[1]
+        weight_shape = state_dict[first_key].shape
+        if len(weight_shape) >= 2:
+            input_dim = weight_shape[1]
+        else:
+            raise ValueError(f"Unexpected weight shape {weight_shape} for key {first_key}")
         model_type = "simple"
 
     # Create model and load weights
