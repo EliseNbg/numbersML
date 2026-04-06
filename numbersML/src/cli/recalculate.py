@@ -379,6 +379,15 @@ async def recalculate_wide_vectors(
         vector_batch = []
         batch_count = 0
 
+        # Try to load external data provider
+        external_provider = None
+        try:
+            from src.external.data_provider import get_features
+            external_provider = get_features
+            logger.info("External data provider loaded for recalculation")
+        except (ImportError, AttributeError):
+            pass
+
         for t in sorted(by_time.keys()):
             ind_data = by_time[t]
             cd_data = candle_by_time.get(t, {})
@@ -402,6 +411,25 @@ async def recalculate_wide_vectors(
                     column_names.append(f"{col_sname}_{ikey}")
 
             if vector:
+                # Call external provider if available
+                if external_provider:
+                    try:
+                        # Prepare candles with normalized keys
+                        provider_candles = {
+                            sname.replace('/', '_'): cd
+                            for sname, cd in cd_data.items()
+                        }
+                        ext_features = external_provider(provider_candles, ind_data, t)
+                        
+                        # Prepend external features (reverse sorted order to maintain alphabetical at start)
+                        if ext_features:
+                            for key, value in sorted(ext_features.items()):
+                                if value is not None:
+                                    vector.insert(0, float(value))
+                                    column_names.insert(0, key)
+                    except Exception as e:
+                        logger.warning(f"External provider error at {t}: {e}")
+
                 vector_batch.append((
                     t,
                     json.dumps(vector),

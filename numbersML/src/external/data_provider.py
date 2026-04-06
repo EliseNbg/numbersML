@@ -36,7 +36,7 @@ def get_features(
         Dictionary of feature names to float values.
         Example: {'btc_dominance': 52.5, 'market_cap': 1.2e12}
     """
-    features = {'btc_dominance': 52.5, 'market_cap': 1.2e12} #{}
+    features = {}
 
     # --- YOUR CODE HERE ---
     # Example: Access candles data

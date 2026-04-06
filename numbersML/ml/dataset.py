@@ -80,7 +80,7 @@ class WideVectorDataset(Dataset):
 
             # Filter out low-variance features (std < 0.01)
             # These features provide no information for learning
-            min_std = 0.01
+            min_std = 0.01 #1e-6 
             self.feature_mask = self.std > min_std
             
             # Apply feature mask
@@ -280,19 +280,45 @@ def create_data_loaders(
     finally:
         conn.close()
     
-    # Calculate time ranges based on available data
+    # Calculate time ranges based on available data and user request
     data_hours = (data_end - data_start).total_seconds() / 3600
     logger.info(f"Available data: {data_start} to {data_end} ({data_hours:.2f} hours)")
+
+    # Check if user requested a specific time window (train_hours)
+    # If train_hours is set and smaller than available data, we respect it
+    # by shifting the end time to 'now' (or data_end) and start time backwards.
     
-    # Split proportionally: 70% train, 15% val, 15% test
-    # Use actual available data, not config hours
+    # Default split: 70% train, 15% val, 15% test
     train_frac, val_frac, test_frac = 0.7, 0.15, 0.15
+
+    # Determine the effective time window
+    # If train_hours is defined in config (and > 0), we use it to limit the range
+    requested_hours = data_config.train_hours
     
-    total_seconds = (data_end - data_start).total_seconds()
+    if requested_hours > 0:
+        # Use the requested hours starting from the latest data point
+        total_requested_seconds = requested_hours * 3600
+        
+        # Ensure we don't go beyond available data
+        effective_start = max(data_start, data_end - timedelta(seconds=total_requested_seconds))
+        
+        # If the requested window is larger than available data, use all data
+        if (data_end - effective_start).total_seconds() <= 0:
+            effective_start = data_start
+            
+        total_seconds = (data_end - effective_start).total_seconds()
+        logger.info(f"Using requested window: {requested_hours} hours (Effective: {total_seconds/3600:.2f}h)")
+    else:
+        # Use all available data
+        total_seconds = (data_end - data_start).total_seconds()
+        effective_start = data_start
+        logger.info(f"Using all available data: {total_seconds/3600:.2f} hours")
+
+    # Calculate split durations
     train_seconds = total_seconds * train_frac
     val_seconds = total_seconds * val_frac
     test_seconds = total_seconds * test_frac
-    
+
     # Time ranges (going backwards from data_end)
     test_end = data_end
     test_start = data_end - timedelta(seconds=test_seconds)
@@ -301,7 +327,7 @@ def create_data_loaders(
     val_start = val_end - timedelta(seconds=val_seconds)
 
     train_end = val_start
-    train_start = data_start  # Use all remaining data for training
+    train_start = effective_start  # Start from the effective beginning
 
     logger.info(f"Train: {train_start} to {train_end}")
     logger.info(f"Val:   {val_start} to {val_end}")
