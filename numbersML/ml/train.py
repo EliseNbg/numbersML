@@ -121,26 +121,30 @@ class Trainer:
         """
         Compute naive baselines on validation data.
         
+        Accounts for prediction_horizon: model predicts y_{t+horizon}.
+        
         Returns dict with:
-        - persistence_mae: MAE of y_pred = y_{t-1}
+        - persistence_mae: MAE of y_pred = y_{t-horizon} (same horizon)
         - moving_avg_mae: MAE of y_pred = mean(y_{t-30:t})
         """
         import numpy as np
         
         val_dataset = self.val_loader.dataset
         targets = val_dataset.targets
+        horizon = self.config.data.prediction_horizon
         
-        # 1. Persistence Baseline: y_pred = target_{t-1}
+        # 1. Persistence Baseline: y_pred = y_{t-horizon}
+        #    Same horizon as model predicts
         persistence_errors = []
-        for i in range(1, len(targets)):
-            pred = targets[i-1]
+        for i in range(horizon, len(targets)):
+            pred = targets[i-horizon]
             actual = targets[i]
             persistence_errors.append(abs(actual - pred))
         
-        # 2. Moving Average Baseline: y_pred = mean(target_{t-30:t})
+        # 2. Moving Average Baseline: y_pred = mean(y_{t-30:t})
         ma_window = 30
         ma_errors = []
-        for i in range(ma_window, len(targets)):
+        for i in range(max(ma_window, horizon), len(targets)):
             pred = np.mean(targets[i-ma_window:i])
             actual = targets[i]
             ma_errors.append(abs(actual - pred))
