@@ -380,8 +380,6 @@ def export_training_data_to_excel(
             col_row = cur.fetchone()
             column_names = col_row[0] if col_row else []
         
-        # Build column headers
-        headers = ["time"] + list(column_names) + ["target_value"]
         n_features = len(column_names)
         
         # Load data
@@ -427,6 +425,33 @@ def export_training_data_to_excel(
     finally:
         conn.close()
     
+    # Apply prediction_horizon shift (same as training does in _load_data)
+    # Training does: targets = targets[horizon:]; vectors = vectors[:-horizon]
+    # So vector at index i pairs with target at index (i + horizon)
+    # 
+    # In our export, each row is [time, vec..., target_at_same_time]
+    # After shift: row i has vector at time[i] and target at time[i+horizon]
+    # We truncate to vectors[:-horizon] rows with targets[horizon:]
+    horizon = data_config.prediction_horizon
+    if len(rows) > horizon * 2:
+        # Keep vectors[:-horizon] and targets[horizon:]
+        # This means: drop last 'horizon' rows, and shift target column up by 'horizon'
+        n = len(rows)
+        n_out = n - horizon  # Same as vectors[:-horizon]
+        
+        shifted_rows = []
+        for i in range(n_out):
+            # vector at time[i], target at time[i+horizon]
+            time_val = rows[i][0]
+            vec_data = rows[i][1:-1]  # everything between time and target
+            shifted_target = rows[i + horizon][-1]  # target from row[i+horizon]
+            shifted_rows.append([time_val] + vec_data + [shifted_target])
+        
+        rows = shifted_rows[:max_rows]
+    else:
+        print("  Not enough data for prediction horizon, skipping export")
+        return
+    
     if not rows:
         print("  No data to export")
         return
@@ -436,20 +461,28 @@ def export_training_data_to_excel(
     ws = wb.active
     ws.title = "Training Data"
     
+    # Add info row above headers
+    ws['A1'] = f"Training data for {data_config.target_symbol}"
+    ws['A2'] = f"Prediction horizon: +{horizon}s | vector at time t → target at time t+{horizon}"
+    ws['A3'] = f"Each row: wide_vector at time t with target_value from time t+{horizon}s"
+    for r in range(1, 4):
+        ws.cell(row=r, column=1).font = Font(italic=True, size=9)
+    
     # Header styling
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color="2F5496", end_color="2F5496", fill_type="solid")
     header_alignment = Alignment(horizontal="center", wrap_text=True)
     
-    # Write headers
+    # Write headers (start at row 5)
+    headers = ["time"] + list(column_names) + [f"target_value (t+{horizon}s)"]
     for col_idx, header in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell = ws.cell(row=5, column=col_idx, value=header)
         cell.font = header_font
         cell.fill = header_fill
         cell.alignment = header_alignment
     
-    # Write data
-    for row_idx, row_data in enumerate(rows, 2):
+    # Write data (start at row 6)
+    for row_idx, row_data in enumerate(rows, 6):
         for col_idx, value in enumerate(row_data, 1):
             ws.cell(row=row_idx, column=col_idx, value=value)
     
@@ -459,10 +492,10 @@ def export_training_data_to_excel(
         ws.column_dimensions[get_column_letter(col_idx)].width = 14
     
     # Freeze header row
-    ws.freeze_panes = 'A2'
+    ws.freeze_panes = 'A6'
     
     # Auto-filter
-    ws.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{len(rows) + 1}"
+    ws.auto_filter.ref = f"A5:{get_column_letter(len(headers))}{len(rows) + 5}"
     
     wb.save(output_path)
     print(f"  ✓ Exported {len(rows)} rows × {len(headers)} columns to {output_path}")
