@@ -16,6 +16,7 @@ The dataset handles:
 
 import json
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 
@@ -23,6 +24,14 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 import psycopg2
+
+try:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill
+    from openpyxl.utils import get_column_letter
+    HAS_EXCEL = True
+except ImportError:
+    HAS_EXCEL = False
 
 from ml.config import DatabaseConfig, DataConfig
 
@@ -322,6 +331,144 @@ class WideVectorDataset(Dataset):
         return len(self.vectors[0]) if self.vectors else 0
 
 
+def export_training_data_to_excel(
+    db_config: DatabaseConfig,
+    data_config: DataConfig,
+    start_time: datetime,
+    end_time: datetime,
+    output_path: str = "ml/data_export/training_data.xlsx",
+    max_rows: int = 3000,
+):
+    """
+    Export raw training data (wide vectors + target values) to Excel file.
+    Creates one row per timestamp with all features as columns plus target value.
+    
+    Useful for manual inspection, feature analysis, and debugging.
+    """
+    if not HAS_EXCEL:
+        logger.warning("openpyxl not available, skipping Excel export")
+        return
+    
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    logger.info(f"Exporting training data to Excel: {output_path}")
+    print(f"\nExporting first {max_rows} rows of training data to {output_path}...")
+    
+    conn = psycopg2.connect(
+        host=db_config.host,
+        port=db_config.port,
+        dbname=db_config.dbname,
+        user=db_config.user,
+        password=db_config.password,
+    )
+    
+    try:
+        # Get symbol_id and column_names
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM symbols WHERE symbol = %s",
+                (data_config.target_symbol,)
+            )
+            symbol_row = cur.fetchone()
+            symbol_id = symbol_row[0] if symbol_row else None
+        
+        # Load column_names from first wide_vector
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT column_names FROM wide_vectors WHERE time >= %s AND time < %s AND vector_size >= 50 LIMIT 1",
+                (start_time, end_time)
+            )
+            col_row = cur.fetchone()
+            column_names = col_row[0] if col_row else []
+        
+        # Build column headers
+        headers = ["time"] + list(column_names) + ["target_value"]
+        n_features = len(column_names)
+        
+        # Load data
+        with conn.cursor(name="export_cursor") as cur:
+            cur.itersize = 5000
+            query = """
+                SELECT
+                    wv.time,
+                    wv.vector,
+                    (c.target_value->>'normalized_value')::float AS target
+                FROM wide_vectors wv
+                JOIN candles_1s c ON c.time = wv.time AND c.symbol_id = %s
+                WHERE wv.time >= %s AND wv.time < %s
+                  AND wv.vector_size >= 50
+                  AND c.target_value IS NOT NULL
+                  AND (c.target_value->>'normalized_value') IS NOT NULL
+                ORDER BY wv.time
+            """
+            cur.execute(query, (symbol_id, start_time, end_time))
+            
+            rows = []
+            row_count = 0
+            while row_count < max_rows:
+                batch = cur.fetchmany(min(5000, max_rows - row_count))
+                if not batch:
+                    break
+                for row in batch:
+                    ts, vector_json, target = row
+                    # Parse vector
+                    if isinstance(vector_json, str):
+                        vec = json.loads(vector_json)
+                    else:
+                        vec = list(vector_json)
+                    # Pad/truncate to match column_names
+                    if len(vec) < n_features:
+                        vec = vec + [0.0] * (n_features - len(vec))
+                    elif len(vec) > n_features:
+                        vec = vec[:n_features]
+                    rows.append([ts] + vec + [target])
+                    row_count += 1
+                    if row_count >= max_rows:
+                        break
+    finally:
+        conn.close()
+    
+    if not rows:
+        print("  No data to export")
+        return
+    
+    # Create workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Training Data"
+    
+    # Header styling
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="2F5496", end_color="2F5496", fill_type="solid")
+    header_alignment = Alignment(horizontal="center", wrap_text=True)
+    
+    # Write headers
+    for col_idx, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+    
+    # Write data
+    for row_idx, row_data in enumerate(rows, 2):
+        for col_idx, value in enumerate(row_data, 1):
+            ws.cell(row=row_idx, column=col_idx, value=value)
+    
+    # Column widths
+    ws.column_dimensions['A'].width = 25  # Time column
+    for col_idx in range(2, len(headers) + 1):
+        ws.column_dimensions[get_column_letter(col_idx)].width = 14
+    
+    # Freeze header row
+    ws.freeze_panes = 'A2'
+    
+    # Auto-filter
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{len(rows) + 1}"
+    
+    wb.save(output_path)
+    print(f"  ✓ Exported {len(rows)} rows × {len(headers)} columns to {output_path}")
+    logger.info(f"Exported {len(rows)} rows to {output_path}")
+
+
 def create_data_loaders(
     db_config: DatabaseConfig,
     data_config: DataConfig,
@@ -428,6 +575,16 @@ def create_data_loaders(
     mean = train_dataset.mean
     std = train_dataset.std
     feature_mask = train_dataset.feature_mask
+
+    # Export training data to Excel (first 3000 rows)
+    export_training_data_to_excel(
+        db_config=db_config,
+        data_config=data_config,
+        start_time=train_start,
+        end_time=train_end,
+        output_path=os.path.join("ml", "data_export", "training_data.xlsx"),
+        max_rows=3000,
+    )
 
     # Load val and test with training normalization and feature mask
     val_dataset = WideVectorDataset(
