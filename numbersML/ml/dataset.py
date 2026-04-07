@@ -217,36 +217,39 @@ class WideVectorDataset(Dataset):
             with conn.cursor(name="ml_data_cursor") as cur:
                 cur.itersize = 5000
 
-                # Load wide_vectors and pre-calculated normalized targets
-                # We extract normalized_value from candles_1s.target_value (JSONB)
+                # Load wide_vectors with close price and target
+                # Target will be converted to relative change: (target[t+h] - close[t]) / close[t]
                 query = """
                     SELECT
                         wv.time,
                         wv.vector,
                         wv.vector_size,
-                        (c.target_value->>'normalized_value')::float AS target
+                        (c.target_value->>'normalized_value')::float AS target,
+                        c.close
                     FROM wide_vectors wv
                     JOIN candles_1s c ON c.time = wv.time AND c.symbol_id = %s
                     WHERE wv.time >= %s AND wv.time < %s
                       AND wv.vector_size >= 50
                       AND c.target_value IS NOT NULL
                       AND (c.target_value->>'normalized_value') IS NOT NULL
+                      AND c.close IS NOT NULL
                     ORDER BY wv.time
                 """
                 cur.execute(query, (symbol_id, self.start_time, self.end_time))
 
                 vectors = []
                 targets = []
+                closes = []
                 timestamps = []
                 prev_size = None
 
                 while True:
-                    rows = cur.fetchmany(5000)
-                    if not rows:
+                    batch = cur.fetchmany(5000)
+                    if not batch:
                         break
 
-                    for row in rows:
-                        ts, vector_json, vec_size, target = row
+                    for row in batch:
+                        ts, vector_json, vec_size, target, close = row
 
                         # Parse vector from JSONB
                         if isinstance(vector_json, str):
@@ -266,6 +269,7 @@ class WideVectorDataset(Dataset):
 
                         vectors.append(vec)
                         targets.append(float(target))
+                        closes.append(float(close))
                         timestamps.append(ts)
 
         finally:
@@ -274,19 +278,34 @@ class WideVectorDataset(Dataset):
         # DATA QUALITY VALIDATION: Ensure exact +1 second intervals and unique timestamps
         self._validate_temporal_consistency(timestamps, vectors)
 
-        # Align X (wide vectors at time t) with Y (target at time t + horizon)
+        # Convert absolute targets to relative changes
+        # relative_target[i] = (target[t+i+horizon] - close[t+i]) / close[t+i]
+        # This makes the target scale-invariant and learnable
         horizon = self.data_config.prediction_horizon
         if len(targets) > horizon:
-            targets = targets[horizon:]
-            vectors = vectors[:-horizon]
-            timestamps = timestamps[:-horizon]
+            # Apply horizon shift
+            shifted_targets = targets[horizon:]
+            shifted_vectors = vectors[:-horizon]
+            shifted_timestamps = timestamps[:-horizon]
+            shifted_closes = closes[:-horizon]
+            
+            # Compute relative change: (future_target - current_close) / current_close
+            relative_targets = [
+                (ft - c) / c if c != 0 else 0.0
+                for ft, c in zip(shifted_targets, shifted_closes)
+            ]
+            
+            targets = relative_targets
+            vectors = shifted_vectors
+            timestamps = shifted_timestamps
         else:
             raise ValueError(f"Not enough data for prediction horizon {horizon}")
 
         print(f'Loaded {len(vectors)} samples, {len(targets)} targets, {len(timestamps)} timestamps')
         print(f'  Symbol: {self.target_symbol}, target id: {symbol_id}')
         print(f'  Time range: {timestamps[0] if timestamps else "N/A"} to {timestamps[-1] if timestamps else "N/A"}')
-        print(f'  Prediction horizon: {horizon}')
+        print(f'  Prediction horizon: {horizon}s (relative change from close)')
+        print(f'  Target stats: mean={np.mean(targets):.6f}, std={np.std(targets):.6f}')
 
         if len(vectors) < self.data_config.min_samples:
             raise ValueError(
@@ -362,7 +381,7 @@ def export_training_data_to_excel(
     )
     
     try:
-        # Get symbol_id and column_names
+        # Get symbol_id
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT id FROM symbols WHERE symbol = %s",
@@ -389,25 +408,31 @@ def export_training_data_to_excel(
                 SELECT
                     wv.time,
                     wv.vector,
-                    (c.target_value->>'normalized_value')::float AS target
+                    (c.target_value->>'normalized_value')::float AS target,
+                    c.close
                 FROM wide_vectors wv
                 JOIN candles_1s c ON c.time = wv.time AND c.symbol_id = %s
                 WHERE wv.time >= %s AND wv.time < %s
                   AND wv.vector_size >= 50
                   AND c.target_value IS NOT NULL
                   AND (c.target_value->>'normalized_value') IS NOT NULL
+                  AND c.close IS NOT NULL
                 ORDER BY wv.time
             """
             cur.execute(query, (symbol_id, start_time, end_time))
-            
+
             rows = []
+            closes = []
             row_count = 0
             while row_count < max_rows:
                 batch = cur.fetchmany(min(5000, max_rows - row_count))
                 if not batch:
                     break
                 for row in batch:
-                    ts, vector_json, target = row
+                    ts, vector_json, target, close = row
+                    # Strip timezone for Excel compatibility
+                    if ts.tzinfo is not None:
+                        ts = ts.replace(tzinfo=None)
                     # Parse vector
                     if isinstance(vector_json, str):
                         vec = json.loads(vector_json)
@@ -418,34 +443,37 @@ def export_training_data_to_excel(
                         vec = vec + [0.0] * (n_features - len(vec))
                     elif len(vec) > n_features:
                         vec = vec[:n_features]
-                    rows.append([ts] + vec + [target])
+                    rows.append([ts] + vec + [target, close])
+                    closes.append(float(close))
                     row_count += 1
                     if row_count >= max_rows:
                         break
     finally:
         conn.close()
     
-    # Apply prediction_horizon shift (same as training does in _load_data)
-    # Training does: targets = targets[horizon:]; vectors = vectors[:-horizon]
-    # So vector at index i pairs with target at index (i + horizon)
-    # 
-    # In our export, each row is [time, vec..., target_at_same_time]
-    # After shift: row i has vector at time[i] and target at time[i+horizon]
-    # We truncate to vectors[:-horizon] rows with targets[horizon:]
+    # Apply prediction_horizon shift (same as training)
+    # row[i] = [time, vec..., target, close]
+    # After shift: vector at time t → target at time t+horizon
+    # Compute relative target: (target[t+h] - close[t]) / close[t]
     horizon = data_config.prediction_horizon
     if len(rows) > horizon * 2:
-        # Keep vectors[:-horizon] and targets[horizon:]
-        # This means: drop last 'horizon' rows, and shift target column up by 'horizon'
         n = len(rows)
-        n_out = n - horizon  # Same as vectors[:-horizon]
+        n_out = n - horizon
         
         shifted_rows = []
         for i in range(n_out):
-            # vector at time[i], target at time[i+horizon]
             time_val = rows[i][0]
-            vec_data = rows[i][1:-1]  # everything between time and target
-            shifted_target = rows[i + horizon][-1]  # target from row[i+horizon]
-            shifted_rows.append([time_val] + vec_data + [shifted_target])
+            vec_data = rows[i][1:-2]  # everything between time and target/close
+            future_target = rows[i + horizon][-2]  # target from row[i+horizon]
+            current_close = rows[i][-1]  # close at time t
+            
+            # Relative change
+            if current_close != 0:
+                relative_target = (future_target - current_close) / current_close
+            else:
+                relative_target = 0.0
+            
+            shifted_rows.append([time_val] + vec_data + [relative_target])
         
         rows = shifted_rows[:max_rows]
     else:
@@ -463,8 +491,8 @@ def export_training_data_to_excel(
     
     # Add info row above headers
     ws['A1'] = f"Training data for {data_config.target_symbol}"
-    ws['A2'] = f"Prediction horizon: +{horizon}s | vector at time t → target at time t+{horizon}"
-    ws['A3'] = f"Each row: wide_vector at time t with target_value from time t+{horizon}s"
+    ws['A2'] = f"Prediction horizon: +{horizon}s | relative target = (future_target - close) / close"
+    ws['A3'] = f"Each row: wide_vector at time t with relative target from time t+{horizon}s (percentage)"
     for r in range(1, 4):
         ws.cell(row=r, column=1).font = Font(italic=True, size=9)
     
@@ -474,7 +502,7 @@ def export_training_data_to_excel(
     header_alignment = Alignment(horizontal="center", wrap_text=True)
     
     # Write headers (start at row 5)
-    headers = ["time"] + list(column_names) + [f"target_value (t+{horizon}s)"]
+    headers = ["time"] + list(column_names) + [f"rel_target (t+{horizon}s, %)"]
     for col_idx, header in enumerate(headers, 1):
         cell = ws.cell(row=5, column=col_idx, value=header)
         cell.font = header_font
