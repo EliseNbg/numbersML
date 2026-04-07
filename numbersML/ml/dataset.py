@@ -16,7 +16,6 @@ The dataset handles:
 
 import json
 import logging
-import os
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 
@@ -24,14 +23,6 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 import psycopg2
-
-try:
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, Alignment, PatternFill
-    from openpyxl.utils import get_column_letter
-    HAS_EXCEL = True
-except ImportError:
-    HAS_EXCEL = False
 
 from ml.config import DatabaseConfig, DataConfig
 
@@ -89,7 +80,7 @@ class WideVectorDataset(Dataset):
 
             # Filter out low-variance features to prevent overfitting
             # Higher threshold = fewer features = less overfitting
-            min_std = 0.05  # Keep only top features with meaningful variance
+            min_std = 1e-6  # Keep all features except truly constant ones
             self.feature_mask = self.std > min_std
             
             # Apply feature mask
@@ -290,8 +281,9 @@ class WideVectorDataset(Dataset):
             shifted_closes = closes[:-horizon]
             
             # Compute relative change: (future_target - current_close) / current_close
+            # Multiply by 10000 for visibility (basis points * 10)
             relative_targets = [
-                (ft - c) / c if c != 0 else 0.0
+                (ft - c) / c * 10000.0 if c != 0 else 0.0
                 for ft, c in zip(shifted_targets, shifted_closes)
             ]
             
@@ -348,186 +340,6 @@ class WideVectorDataset(Dataset):
     def get_feature_dim(self) -> int:
         """Get the feature dimension of the vectors."""
         return len(self.vectors[0]) if self.vectors else 0
-
-
-def export_training_data_to_excel(
-    db_config: DatabaseConfig,
-    data_config: DataConfig,
-    start_time: datetime,
-    end_time: datetime,
-    output_path: str = "ml/data_export/training_data.xlsx",
-    max_rows: int = 3000,
-):
-    """
-    Export raw training data (wide vectors + target values) to Excel file.
-    Creates one row per timestamp with all features as columns plus target value.
-    
-    Useful for manual inspection, feature analysis, and debugging.
-    """
-    if not HAS_EXCEL:
-        logger.warning("openpyxl not available, skipping Excel export")
-        return
-    
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    logger.info(f"Exporting training data to Excel: {output_path}")
-    print(f"\nExporting first {max_rows} rows of training data to {output_path}...")
-    
-    conn = psycopg2.connect(
-        host=db_config.host,
-        port=db_config.port,
-        dbname=db_config.dbname,
-        user=db_config.user,
-        password=db_config.password,
-    )
-    
-    try:
-        # Get symbol_id
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id FROM symbols WHERE symbol = %s",
-                (data_config.target_symbol,)
-            )
-            symbol_row = cur.fetchone()
-            symbol_id = symbol_row[0] if symbol_row else None
-        
-        # Load column_names from first wide_vector
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT column_names FROM wide_vectors WHERE time >= %s AND time < %s AND vector_size >= 50 LIMIT 1",
-                (start_time, end_time)
-            )
-            col_row = cur.fetchone()
-            column_names = col_row[0] if col_row else []
-        
-        n_features = len(column_names)
-        
-        # Load data
-        with conn.cursor(name="export_cursor") as cur:
-            cur.itersize = 5000
-            query = """
-                SELECT
-                    wv.time,
-                    wv.vector,
-                    (c.target_value->>'normalized_value')::float AS target,
-                    c.close
-                FROM wide_vectors wv
-                JOIN candles_1s c ON c.time = wv.time AND c.symbol_id = %s
-                WHERE wv.time >= %s AND wv.time < %s
-                  AND wv.vector_size >= 50
-                  AND c.target_value IS NOT NULL
-                  AND (c.target_value->>'normalized_value') IS NOT NULL
-                  AND c.close IS NOT NULL
-                ORDER BY wv.time
-            """
-            cur.execute(query, (symbol_id, start_time, end_time))
-
-            rows = []
-            closes = []
-            row_count = 0
-            while row_count < max_rows:
-                batch = cur.fetchmany(min(5000, max_rows - row_count))
-                if not batch:
-                    break
-                for row in batch:
-                    ts, vector_json, target, close = row
-                    # Strip timezone for Excel compatibility
-                    if ts.tzinfo is not None:
-                        ts = ts.replace(tzinfo=None)
-                    # Parse vector
-                    if isinstance(vector_json, str):
-                        vec = json.loads(vector_json)
-                    else:
-                        vec = list(vector_json)
-                    # Pad/truncate to match column_names
-                    if len(vec) < n_features:
-                        vec = vec + [0.0] * (n_features - len(vec))
-                    elif len(vec) > n_features:
-                        vec = vec[:n_features]
-                    rows.append([ts] + vec + [target, close])
-                    closes.append(float(close))
-                    row_count += 1
-                    if row_count >= max_rows:
-                        break
-    finally:
-        conn.close()
-    
-    # Apply prediction_horizon shift (same as training)
-    # row[i] = [time, vec..., target, close]
-    # After shift: vector at time t → target at time t+horizon
-    # Compute relative target: (target[t+h] - close[t]) / close[t]
-    horizon = data_config.prediction_horizon
-    if len(rows) > horizon * 2:
-        n = len(rows)
-        n_out = n - horizon
-        
-        shifted_rows = []
-        for i in range(n_out):
-            time_val = rows[i][0]
-            vec_data = rows[i][1:-2]  # everything between time and target/close
-            future_target = rows[i + horizon][-2]  # target from row[i+horizon]
-            current_close = rows[i][-1]  # close at time t
-            
-            # Relative change
-            if current_close != 0:
-                relative_target = (future_target - current_close) / current_close
-            else:
-                relative_target = 0.0
-            
-            shifted_rows.append([time_val] + vec_data + [relative_target])
-        
-        rows = shifted_rows[:max_rows]
-    else:
-        print("  Not enough data for prediction horizon, skipping export")
-        return
-    
-    if not rows:
-        print("  No data to export")
-        return
-    
-    # Create workbook
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Training Data"
-    
-    # Add info row above headers
-    ws['A1'] = f"Training data for {data_config.target_symbol}"
-    ws['A2'] = f"Prediction horizon: +{horizon}s | relative target = (future_target - close) / close"
-    ws['A3'] = f"Each row: wide_vector at time t with relative target from time t+{horizon}s (percentage)"
-    for r in range(1, 4):
-        ws.cell(row=r, column=1).font = Font(italic=True, size=9)
-    
-    # Header styling
-    header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="2F5496", end_color="2F5496", fill_type="solid")
-    header_alignment = Alignment(horizontal="center", wrap_text=True)
-    
-    # Write headers (start at row 5)
-    headers = ["time"] + list(column_names) + [f"rel_target (t+{horizon}s, %)"]
-    for col_idx, header in enumerate(headers, 1):
-        cell = ws.cell(row=5, column=col_idx, value=header)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = header_alignment
-    
-    # Write data (start at row 6)
-    for row_idx, row_data in enumerate(rows, 6):
-        for col_idx, value in enumerate(row_data, 1):
-            ws.cell(row=row_idx, column=col_idx, value=value)
-    
-    # Column widths
-    ws.column_dimensions['A'].width = 25  # Time column
-    for col_idx in range(2, len(headers) + 1):
-        ws.column_dimensions[get_column_letter(col_idx)].width = 14
-    
-    # Freeze header row
-    ws.freeze_panes = 'A6'
-    
-    # Auto-filter
-    ws.auto_filter.ref = f"A5:{get_column_letter(len(headers))}{len(rows) + 5}"
-    
-    wb.save(output_path)
-    print(f"  ✓ Exported {len(rows)} rows × {len(headers)} columns to {output_path}")
-    logger.info(f"Exported {len(rows)} rows to {output_path}")
 
 
 def create_data_loaders(
@@ -636,16 +448,6 @@ def create_data_loaders(
     mean = train_dataset.mean
     std = train_dataset.std
     feature_mask = train_dataset.feature_mask
-
-    # Export training data to Excel (first 3000 rows)
-    export_training_data_to_excel(
-        db_config=db_config,
-        data_config=data_config,
-        start_time=train_start,
-        end_time=train_end,
-        output_path=os.path.join("ml", "data_export", "training_data.xlsx"),
-        max_rows=3000,
-    )
 
     # Load val and test with training normalization and feature mask
     val_dataset = WideVectorDataset(
