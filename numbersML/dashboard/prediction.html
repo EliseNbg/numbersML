@@ -94,13 +94,18 @@
             <div class="col-md-2">
                 <label class="form-label">Time Range</label>
                 <select class="form-select" id="prediction-hours">
+                    <option value="0.035" selected>2 Minutes</option>
+                    <option value="0.05">3 Minutes</option>
+                    <option value="0.083">5 Minutes</option>
+                    <option value="0.167">10 Minutes</option>
+                    <option value="0.5">30 Minutes</option>
                     <option value="1">1 Hour</option>
                     <option value="2">2 Hours</option>
                     <option value="12">12 Hours</option>
-                    <option value="24" selected>1 Day</option>
-                    <option value="72">3 Days</option>
-                    <option value="168">7 Days</option>
                 </select>
+                <div class="form-text text-warning">
+                    <i class="bi bi-exclamation-triangle"></i> Min 2 min (need 120 vectors)
+                </div>
             </div>
             <div class="col-md-2">
                 <label class="form-label">Ensemble Size</label>

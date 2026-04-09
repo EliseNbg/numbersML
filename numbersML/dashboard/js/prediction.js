@@ -202,6 +202,13 @@ async function loadPrediction() {
         updateStatus('Please select a model', 'warning');
         return;
     }
+    
+    // Validate minimum time range (need at least 120 vectors = ~2 minutes)
+    const hoursNum = parseFloat(hours);
+    if (hoursNum < 0.033) {
+        updateStatus('Time range too short. Minimum is 2 minutes (120 vectors required)', 'warning');
+        return;
+    }
 
     updateStatus('Loading prediction...', 'info');
     const btn = document.getElementById('btn-load-prediction');
@@ -213,16 +220,32 @@ async function loadPrediction() {
     try {
         const url = `${API_BASE}/ml/predict?symbol=${encodeURIComponent(symbol)}&model=${encodeURIComponent(model)}&hours=${hours}&ensemble_size=${ensembleSize}`;
         console.log('Fetching:', url);
+
+        // Add timeout controller for long-running request
+        // CNN+GRU models are slow on CPU - adjust timeout based on time range
+        const hoursNum = parseFloat(hours);
+        let timeoutMs = 120000; // Default 2 minutes
         
-        // Add timeout controller for long-running request (20 minutes)
+        if (hoursNum <= 0.05) {
+            timeoutMs = 60000; // 1 minute for very short ranges
+        } else if (hoursNum <= 1) {
+            timeoutMs = 180000; // 3 minutes for short ranges
+        } else if (hoursNum <= 24) {
+            timeoutMs = 300000; // 5 minutes for medium ranges
+        } else {
+            timeoutMs = 600000; // 10 minutes for long ranges
+        }
+        
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1200000);  // 20 minute timeout
-        
-        const response = await fetch(url, { 
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+        updateStatus(`Loading prediction... (timeout: ${Math.round(timeoutMs/1000)}s)`, 'info');
+
+        const response = await fetch(url, {
             signal: controller.signal,
             headers: { 'Accept': 'application/json' }
         });
-        
+
         clearTimeout(timeoutId);
         
         if (!response.ok) {

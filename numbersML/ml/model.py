@@ -737,6 +737,7 @@ class CNN_GRUModel(nn.Module):
             nn.Conv1d(64, cnn_channels[0], kernel_size=3, padding=1),
             nn.BatchNorm1d(cnn_channels[0]),
             nn.GELU(),
+            nn.Dropout(config.dropout),
         )
 
         # Second CNN block - medium patterns (kernel=5)
@@ -744,6 +745,7 @@ class CNN_GRUModel(nn.Module):
             nn.Conv1d(64, cnn_channels[0], kernel_size=5, padding=2),
             nn.BatchNorm1d(cnn_channels[0]),
             nn.GELU(),
+            nn.Dropout(config.dropout),
         )
 
         # Third CNN block - larger patterns (kernel=7)
@@ -751,6 +753,7 @@ class CNN_GRUModel(nn.Module):
             nn.Conv1d(64, cnn_channels[0], kernel_size=7, padding=3),
             nn.BatchNorm1d(cnn_channels[0]),
             nn.GELU(),
+            nn.Dropout(config.dropout),
         )
 
         # Combine multi-scale features
@@ -761,6 +764,9 @@ class CNN_GRUModel(nn.Module):
             nn.GELU(),
             nn.Dropout(config.dropout),
         )
+
+        # Additional dropout before GRU for stronger regularization
+        self.pre_gru_dropout = nn.Dropout(config.dropout)
 
         gru_input_dim = cnn_channels[1] if len(cnn_channels) > 1 else cnn_channels[0]
 
@@ -856,6 +862,9 @@ class CNN_GRUModel(nn.Module):
 
         # Transpose back to (batch, seq_len, channels) for GRU
         x = x.transpose(1, 2)
+
+        # Apply dropout before GRU
+        x = self.pre_gru_dropout(x)
 
         # Bidirectional GRU
         # gru_output: (batch, seq_len, hidden*2)

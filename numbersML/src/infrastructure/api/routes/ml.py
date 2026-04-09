@@ -10,12 +10,16 @@ import os
 import json
 import sys
 import math
+import time
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
 from src.infrastructure.database import get_db_pool_async
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/ml", tags=["ml"])
 
@@ -163,7 +167,7 @@ async def list_models() -> List[Dict[str, Any]]:
 async def predict(
     symbol: str = Query(..., description="Symbol name (e.g., 'BTC/USDC')"),
     model: str = Query(default="best_model.pt", description="Model filename"),
-    hours: int = Query(default=720, ge=1, le=1440, description="Hours of data to load"),
+    hours: float = Query(default=720, gt=0, le=1440, description="Hours of data to load"),
     ensemble_size: int = Query(default=5, ge=1, le=20, description="Average last N predictions for smoothing"),
 ) -> Dict[str, Any]:
     """
@@ -201,6 +205,9 @@ async def predict(
         
         now = latest_vector_time
         start_time = now - timedelta(hours=hours)
+        
+        # Debug output
+        print(f"DEBUG: Querying vectors from {start_time} to {now} ({hours} hours)")
 
         # Load candles
         candle_rows = await conn.fetch(
@@ -214,6 +221,8 @@ async def predict(
             start_time,
             now,
         )
+        
+        print(f"DEBUG: Got {len(candle_rows)} candles")
 
         # Load wide vectors for prediction
         vector_rows = await conn.fetch(
@@ -226,6 +235,8 @@ async def predict(
             start_time,
             now,
         )
+        
+        print(f"DEBUG: Got {len(vector_rows)} vectors")
 
     # Prepare candles data
     candles = [
@@ -277,12 +288,17 @@ async def predict(
     np, torch, _, _, _ = _get_torch_and_model()
     predictions = []
     vectors = []  # Initialize vectors list
+    
+    pred_start = time.time()
+    logger.info(f"Starting prediction with {len(vector_rows)} vector rows")
+    
     if len(vector_rows) >= seq_length:
         # Parse vectors
         vectors = []
         timestamps = []
         prev_size = None
 
+        parse_start = time.time()
         for row in vector_rows:
             vec_json = row["vector"]
             if isinstance(vec_json, str):
@@ -301,6 +317,8 @@ async def predict(
 
             vectors.append(vec)
             timestamps.append(row["time"])
+        
+        logger.info(f"Parsed {len(vectors)} vectors in {time.time() - parse_start:.2f}s")
 
         # Validate vector dimensions before normalization
         if vectors:
@@ -333,6 +351,9 @@ async def predict(
                 vectors = [(v - mean) / std_safe for v in vectors]
 
         # Sliding window prediction
+        logger.info(f"Running sliding window prediction: {len(vectors) - seq_length + 1} steps")
+        loop_start = time.time()
+        
         with torch.no_grad():
             for i in range(seq_length - 1, len(vectors)):
                 sequence = np.stack(vectors[i - seq_length + 1 : i + 1])
@@ -340,7 +361,11 @@ async def predict(
 
                 # Simple model only uses last timestep, but we pass full sequence
                 # The model internally handles this
+                pred_time = time.time()
                 prediction = ml_model(X).item()
+                
+                if (i - seq_length) % 50 == 0:
+                    logger.info(f"  Step {i - seq_length + 1}: model inference took {time.time() - pred_time:.3f}s")
 
                 # Check for NaN or Inf
                 if math.isnan(prediction) or math.isinf(prediction):
@@ -352,6 +377,8 @@ async def predict(
                         "predicted_target": round(prediction, 8),
                     }
                 )
+        
+        logger.info(f"Sliding window prediction completed in {time.time() - loop_start:.2f}s")
 
     # Predictions are already normalized [0..1], no scaling needed
     if predictions and candles:
