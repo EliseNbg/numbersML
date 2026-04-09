@@ -51,16 +51,17 @@ jobs:
       - name: Check Python syntax
         run: |
           cd numbersML
-          python -m py_compile src/cli/generate_wide_vector.py
           python -m py_compile src/application/services/enrichment_service.py
           python -m py_compile src/pipeline/target_value.py
           python -m py_compile src/pipeline/wide_vector_service.py
-      
+          python -m py_compile src/infrastructure/api/routes/ml.py
+
       - name: Verify imports
         run: |
           cd numbersML
-          python -c "from src.cli.generate_wide_vector import WideVectorGenerator"
           python -c "from src.application.services.enrichment_service import EnrichmentService"
+          python -c "from src.pipeline.target_value import batch_calculate"
+          python -c "from src.pipeline.wide_vector_service import WideVectorService"
 
   # =============================================================================
   # UNIT TESTS (Required for all PRs)
