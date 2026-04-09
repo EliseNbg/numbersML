@@ -38,7 +38,7 @@ class TestModelConfig:
     def test_default_config(self):
         config = get_default_config()
         assert config.model.hidden_dims == [512, 256, 128]
-        assert config.model.dropout == 0.2
+        assert config.model.dropout == 0.4  # Updated from 0.2 to 0.4 for better regularization
         assert config.model.attention_heads == 4
         assert config.seed == 42
 
