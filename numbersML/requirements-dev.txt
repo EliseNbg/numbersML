@@ -1,6 +1,9 @@
 # Include all production dependencies
 -r requirements.txt
 
+# ML Training (psycopg2 for synchronous dataset loading)
+psycopg2-binary==2.9.9
+
 # Testing
 pytest==7.4.3
 pytest-asyncio==0.21.1
