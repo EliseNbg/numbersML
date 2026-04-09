@@ -269,34 +269,21 @@ class WideVectorDataset(Dataset):
         # DATA QUALITY VALIDATION: Ensure exact +1 second intervals and unique timestamps
         self._validate_temporal_consistency(timestamps, vectors)
 
-        # Convert absolute targets to relative changes
-        # relative_target[i] = (target[t+i+horizon] - close[t+i]) / close[t+i]
-        # This makes the target scale-invariant and learnable
-        horizon = self.data_config.prediction_horizon
+        # Apply prediction horizon shift: target[i] = normalized_value[i + horizon]
+        # The model learns to predict the future smoothed target, not the current one
+        horizon = self.data_config.prediction_horizon  # 30 seconds
         if len(targets) > horizon:
-            # Apply horizon shift
-            shifted_targets = targets[horizon:]
-            shifted_vectors = vectors[:-horizon]
-            shifted_timestamps = timestamps[:-horizon]
-            shifted_closes = closes[:-horizon]
-            
-            # Compute relative change: (future_target - current_close) / current_close
-            # Multiply by 10000 for visibility (basis points * 10)
-            relative_targets = [
-                (ft - c) / c * 10000.0 if c != 0 else 0.0
-                for ft, c in zip(shifted_targets, shifted_closes)
-            ]
-            
-            targets = relative_targets
-            vectors = shifted_vectors
-            timestamps = shifted_timestamps
+            targets = targets[horizon:]
+            vectors = vectors[:-horizon]
+            timestamps = timestamps[:-horizon]
+            closes = closes[:-horizon]
         else:
             raise ValueError(f"Not enough data for prediction horizon {horizon}")
 
         print(f'Loaded {len(vectors)} samples, {len(targets)} targets, {len(timestamps)} timestamps')
         print(f'  Symbol: {self.target_symbol}, target id: {symbol_id}')
         print(f'  Time range: {timestamps[0] if timestamps else "N/A"} to {timestamps[-1] if timestamps else "N/A"}')
-        print(f'  Prediction horizon: {horizon}s (relative change from close)')
+        print(f'  Prediction horizon: {horizon}s (predicting future normalized_value)')
         print(f'  Target stats: mean={np.mean(targets):.6f}, std={np.std(targets):.6f}')
 
         if len(vectors) < self.data_config.min_samples:

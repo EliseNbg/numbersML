@@ -549,11 +549,9 @@ def batch_calculate_target_data(
     else:  # legacy fallback
         filtered = prices_arr  # Simplified
 
-    # Calculate normalized value
-    # normalized_value = filtered_value (raw smoothed price)
-    # norm_min/norm_max track rolling min/max for reference and dashboard scaling
+    # Calculate normalized value: map filtered_value to [0..1] using local min/max
     n = len(filtered)
-    normalized = filtered.copy()  # Use filtered price directly
+    normalized = np.zeros(n)  # Will hold [0..1] values
     norm_min = np.zeros(n)
     norm_max = np.zeros(n)
 
@@ -572,7 +570,7 @@ def batch_calculate_target_data(
             if all_extrema[-1] < n - 1:
                 all_extrema = np.concatenate([all_extrema, [n - 1]])
 
-            # For each segment between extrema, store the min/max range
+            # For each segment between extrema, compute min/max and normalize
             for seg_idx in range(len(all_extrema) - 1):
                 start_idx = int(all_extrema[seg_idx])
                 end_idx = int(all_extrema[seg_idx + 1])
@@ -582,18 +580,39 @@ def batch_calculate_target_data(
 
                 norm_min[start_idx:end_idx+1] = segment_min
                 norm_max[start_idx:end_idx+1] = segment_max
+
+                # Normalize to [0..1]
+                seg_range = segment_max - segment_min
+                if seg_range > 0:
+                    normalized[start_idx:end_idx+1] = (filtered[start_idx:end_idx+1] - segment_min) / seg_range
+                else:
+                    normalized[start_idx:end_idx+1] = 0.5  # Flat segment -> middle
         except Exception:
             # Fallback: use running window min/max
             window = 60
             for i in range(n):
                 start = max(0, i - window)
                 end = min(n, i + 1)
-                norm_min[i] = filtered[start:end].min()
-                norm_max[i] = filtered[start:end].max()
+                w_min = filtered[start:end].min()
+                w_max = filtered[start:end].max()
+                norm_min[i] = w_min
+                norm_max[i] = w_max
+                w_range = w_max - w_min
+                if w_range > 0:
+                    normalized[i] = (filtered[i] - w_min) / w_range
+                else:
+                    normalized[i] = 0.5
     else:
         # Not enough data, use flat values
-        norm_min.fill(filtered.min() if n > 0 else 0.0)
-        norm_max.fill(filtered.max() if n > 0 else 0.0)
+        f_min = filtered.min() if n > 0 else 0.0
+        f_max = filtered.max() if n > 0 else 0.0
+        norm_min.fill(f_min)
+        norm_max.fill(f_max)
+        f_range = f_max - f_min
+        if f_range > 0:
+            normalized = (filtered - f_min) / f_range
+        else:
+            normalized.fill(0.5)
 
     results = []
     for i in range(len(prices_arr)):

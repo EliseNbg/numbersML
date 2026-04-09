@@ -240,13 +240,14 @@ async def predict(
         for r in candle_rows
     ]
 
-    # Get target values (normalized_value) from database
-    # These are the actual targets the model was trained on (0-1 normalized waves)
+    # Get target values as normalized_value [0..1] from JSONB
+    # Apply horizon shift: target[i] = normalized_value[i + horizon] (same as training)
     if candles:
         async with db_pool.acquire() as conn:
             target_rows = await conn.fetch(
                 """
-                SELECT time, (target_value->>'normalized_value')::float AS target
+                SELECT time,
+                       (target_value->>'normalized_value')::float AS target
                 FROM candles_1s
                 WHERE symbol_id = $1 AND time >= $2 AND time < $3
                   AND target_value IS NOT NULL
@@ -256,13 +257,19 @@ async def predict(
                 symbol_id, start_time, now
             )
 
-        # Convert datetime keys to integer timestamps to match candle time format
-        target_map = {int(row['time'].timestamp()): row['target'] for row in target_rows}
-        targets = [
-            {"time": c["time"], "value": target_map.get(c["time"])}
-            for c in candles
-            if c["time"] in target_map
+        # Apply horizon shift (same as training dataset)
+        horizon = 30  # prediction_horizon
+        all_targets = [
+            {"time": int(row['time'].timestamp()), "value": float(row['target'])}
+            for row in target_rows
         ]
+
+        # Shift targets: target[i] = value[i + horizon]
+        if len(all_targets) > horizon:
+            # For visualization: show targets aligned with their prediction timestamps
+            targets = all_targets[horizon:]
+        else:
+            targets = []
     else:
         targets = []
 
@@ -346,27 +353,8 @@ async def predict(
                     }
                 )
 
-    # Scale predictions to match candle range if predictions exist
-    # This is for visualization - the model may need retraining
+    # Predictions are already normalized [0..1], no scaling needed
     if predictions and candles:
-        pred_values = [p["predicted_target"] for p in predictions]
-        candle_closes = [c["close"] for c in candles]
-
-        pred_min, pred_max = min(pred_values), max(pred_values)
-        candle_min, candle_max = min(candle_closes), max(candle_closes)
-
-        # Only scale if prediction range is different from candle range
-        if pred_max - pred_min > 0 and abs(pred_max - candle_max) > 1000:
-            scale_factor = (candle_max - candle_min) / (pred_max - pred_min)
-            offset = candle_min - pred_min * scale_factor
-
-            predictions = [
-                {
-                    "time": p["time"],
-                    "predicted_target": round(p["predicted_target"] * scale_factor + offset, 8)
-                }
-                for p in predictions
-            ]
 
         # Apply ensemble averaging (smooth predictions by averaging last N)
         if ensemble_size > 1 and len(predictions) >= ensemble_size:

@@ -70,7 +70,7 @@
         <div class="row mb-4">
             <div class="col-12">
                 <h1><i class="bi bi-robot"></i> ML Predictions</h1>
-                <p class="text-muted">Compare candles, target values, and ML model predictions (smoothed price)</p>
+                <p class="text-muted">Compare candles, target values, and ML model predictions (normalized 0-1)</p>
             </div>
         </div>
 
@@ -133,11 +133,11 @@
                     </div>
                     <div>
                         <span class="badge" style="background-color: #FF9800;"><i class="bi bi-bullseye"></i></span>
-                        <span>Target Value (Right Scale, smoothed price)</span>
+                        <span>Target Value (Right Scale, normalized 0-1)</span>
                     </div>
                     <div>
                         <span class="badge" style="background-color: #2196F3;"><i class="bi bi-cpu"></i></span>
-                        <span>ML Prediction (Right Scale, smoothed price)</span>
+                        <span>ML Prediction (Right Scale, normalized 0-1)</span>
                     </div>
                 </div>
             </div>
@@ -177,7 +177,7 @@
                     </div>
                     <div class="card-body">
                         <h3 id="stat-targets">-</h3>
-                        <p class="text-muted mb-0">Kalman + Hanning smoothed prices</p>
+                        <p class="text-muted mb-0">Normalized target values (0-1 range)</p>
                     </div>
                 </div>
             </div>

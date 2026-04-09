@@ -132,9 +132,10 @@ function initChart() {
             borderColor: '#FF9800',
             visible: true,
             scaleMargins: {
-                top: 0.1,
-                bottom: 0.1,
+                top: 0.05,
+                bottom: 0.05,
             },
+            autoScale: true,
         },
         timeScale: {
             borderColor: '#ccc',
@@ -157,7 +158,7 @@ function initChart() {
     targetSeries = chart.addLineSeries({
         color: '#FF9800',
         lineWidth: 3,
-        title: 'Target (Smoothed Price)',
+        title: 'Target (Normalized 0-1)',
         priceLineVisible: true,
         lastValueVisible: true,
         priceLineColor: '#FF9800',
@@ -168,7 +169,7 @@ function initChart() {
     predictionSeries = chart.addLineSeries({
         color: '#2196F3',
         lineWidth: 3,
-        title: 'ML Prediction (Smoothed Price)',
+        title: 'ML Prediction (Normalized 0-1)',
         priceLineVisible: true,
         lastValueVisible: true,
         priceLineColor: '#2196F3',

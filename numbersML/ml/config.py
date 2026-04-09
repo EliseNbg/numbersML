@@ -82,15 +82,15 @@ class ModelConfig:
     use_rope: bool = True  # Use Rotary Positional Embeddings
     use_swiglu: bool = True  # Use SwiGLU activation in FFN
     max_seq_len: int = 2048  # Maximum sequence length for RoPE
-    
+
     # CNN+GRU architecture (recommended for financial time series)
     model_arch: str = "cnn_gru"  # mlp, cnn_gru, transformer
-    
+
     # GRU settings
     gru_hidden_dim: int = 128  # GRU hidden size
     gru_num_layers: int = 2  # Number of GRU layers
     gru_dropout: float = 0.4  # Dropout between GRU layers (increased for regularization)
-    
+
     # CNN settings
     cnn_channels: List[int] = field(default_factory=lambda: [32, 64])  # Channels for each CNN layer
     cnn_kernel_size: int = 5  # Kernel size for 1D convolutions
@@ -110,7 +110,7 @@ class TrainingConfig:
     epochs: int = 100
 
     # Early stopping patience
-    patience: int = 10
+    patience: int = 40
 
     # Learning rate scheduler
     scheduler: str = "cosine"  # cosine, step, plateau
