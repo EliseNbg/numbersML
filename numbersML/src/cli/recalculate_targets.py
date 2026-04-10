@@ -7,11 +7,13 @@ This script:
 2. Runs Kalman filter on the full history
 3. Updates target_value column with rich JSONB structure:
    {
-       "filtered_value": 105.5,  // Smooth Kalman trend (WAVES)
-       "close": 103.2,           // Current candle close
-       "diff": -2.3,             // Deviation from trend
-       "trend": "up",            // or "down", "flat"
-       "velocity": 0.15          // Rate of change
+       "filtered_value": 105.5,       // Smooth Kalman trend (WAVES)
+       "close": 103.2,                // Current candle close
+       "diff": -2.3,                  // Deviation from trend
+       "trend": "up",                 // or "down", "flat"
+       "velocity": 0.15,              // Rate of change (absolute)
+       "trend_velocity": 0.75,        // Normalized trend [-1..1] for ML
+       "normalized_value": 0.65       // Local normalized [0..1]
    }
 
 Usage:

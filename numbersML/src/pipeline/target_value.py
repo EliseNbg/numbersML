@@ -488,7 +488,8 @@ def batch_calculate_target_data(
     """
     Calculate market state for all candles in a price series.
 
-    Returns list of dicts with filtered_value, close, diff, trend, velocity.
+    Returns list of dicts with filtered_value, close, diff, trend, velocity,
+    and trend_velocity (normalized to [-1, 1] for ML target prediction).
 
     Args:
         prices: List of close prices
@@ -528,13 +529,13 @@ def batch_calculate_target_data(
             # Create and normalize Hanning window
             hann = np.hanning(window_length)
             hann = hann / hann.sum()
-            
+
             # Convolve prices with Hanning window
             valid_conv = np.convolve(prices_arr, hann, mode='valid')
-            
+
             filtered = np.empty_like(prices_arr)
             shift = window_length // 2
-            
+
             if not use_future:
                 # Causal: Align result with the END of the window (uses past data only)
                 # valid_conv[i] corresponds to window ending at i + window_length - 1
@@ -548,6 +549,20 @@ def batch_calculate_target_data(
                 filtered[shift+len(valid_conv):] = prices_arr[shift+len(valid_conv):]
     else:  # legacy fallback
         filtered = prices_arr  # Simplified
+
+    # Calculate velocity (rate of change of filtered trend)
+    velocity = np.zeros(len(filtered))
+    for i in range(1, len(filtered)):
+        velocity[i] = float(filtered[i]) - float(filtered[i-1])
+
+    # Normalize velocity to [-1, 1] using fixed global scale
+    # Scale = 95th percentile of |velocity|, clipped to [-1, 1]
+    abs_velocity = np.abs(velocity)
+    velocity_scale = np.percentile(abs_velocity, 95) if len(abs_velocity) > 0 else 1.0
+    if velocity_scale < 1e-10:
+        velocity_scale = 1.0  # Prevent division by zero
+
+    trend_velocity = np.clip(velocity / velocity_scale, -1.0, 1.0)
 
     # Calculate normalized value: map filtered_value to [0..1] using local min/max
     n = len(filtered)
@@ -622,6 +637,7 @@ def batch_calculate_target_data(
         norm_val = float(normalized[i])
         n_min = float(norm_min[i])
         n_max = float(norm_max[i])
+        trend_vel = float(trend_velocity[i])
 
         # Velocity (rate of change)
         if i > 0:
@@ -643,6 +659,7 @@ def batch_calculate_target_data(
             'diff': round(diff, 8),
             'trend': trend,
             'velocity': round(velocity, 8),
+            'trend_velocity': round(trend_vel, 8),
             'normalized_value': round(norm_val, 8),
             'norm_min': round(n_min, 8),
             'norm_max': round(n_max, 8),

@@ -208,21 +208,20 @@ class WideVectorDataset(Dataset):
             with conn.cursor(name="ml_data_cursor") as cur:
                 cur.itersize = 5000
 
-                # Load wide_vectors with close price and target
-                # Target will be converted to relative change: (target[t+h] - close[t]) / close[t]
+                # Load wide_vectors with close price and trend_velocity target
                 query = """
                     SELECT
                         wv.time,
                         wv.vector,
                         wv.vector_size,
-                        (c.target_value->>'normalized_value')::float AS target,
+                        (c.target_value->>'trend_velocity')::float AS target,
                         c.close
                     FROM wide_vectors wv
                     JOIN candles_1s c ON c.time = wv.time AND c.symbol_id = %s
                     WHERE wv.time >= %s AND wv.time < %s
                       AND wv.vector_size >= 50
                       AND c.target_value IS NOT NULL
-                      AND (c.target_value->>'normalized_value') IS NOT NULL
+                      AND (c.target_value->>'trend_velocity') IS NOT NULL
                       AND c.close IS NOT NULL
                     ORDER BY wv.time
                 """
@@ -269,8 +268,8 @@ class WideVectorDataset(Dataset):
         # DATA QUALITY VALIDATION: Ensure exact +1 second intervals and unique timestamps
         self._validate_temporal_consistency(timestamps, vectors)
 
-        # Apply prediction horizon shift: target[i] = normalized_value[i + horizon]
-        # The model learns to predict the future smoothed target, not the current one
+        # Apply prediction horizon shift: target[i] = trend_velocity[i + horizon]
+        # The model learns to predict the future trend, not the current one
         horizon = self.data_config.prediction_horizon  # 30 seconds
         if len(targets) > horizon:
             targets = targets[horizon:]
@@ -283,8 +282,9 @@ class WideVectorDataset(Dataset):
         print(f'Loaded {len(vectors)} samples, {len(targets)} targets, {len(timestamps)} timestamps')
         print(f'  Symbol: {self.target_symbol}, target id: {symbol_id}')
         print(f'  Time range: {timestamps[0] if timestamps else "N/A"} to {timestamps[-1] if timestamps else "N/A"}')
-        print(f'  Prediction horizon: {horizon}s (predicting future normalized_value)')
+        print(f'  Prediction horizon: {horizon}s (predicting future trend_velocity)')
         print(f'  Target stats: mean={np.mean(targets):.6f}, std={np.std(targets):.6f}')
+        print(f'  Target range: [{np.min(targets):.4f} .. {np.max(targets):.4f}]')
 
         if len(vectors) < self.data_config.min_samples:
             raise ValueError(
