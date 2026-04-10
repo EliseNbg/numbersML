@@ -154,26 +154,36 @@ function initChart() {
         priceScaleId: 'left',
     });
 
-    // Normalized target value line (orange, right price scale)
+    // Normalized trend target line (orange, right price scale)
     targetSeries = chart.addLineSeries({
         color: '#FF9800',
         lineWidth: 3,
-        title: 'Target (Normalized 0-1)',
+        title: 'Trend Target (-1 to +1)',
         priceLineVisible: true,
         lastValueVisible: true,
         priceLineColor: '#FF9800',
         priceScaleId: 'right',
+        // Fix scale to [-1, 1] range
+        scaleMargins: {
+            top: 0.05,
+            bottom: 0.05,
+        },
     });
 
     // ML prediction line (blue, right price scale)
     predictionSeries = chart.addLineSeries({
         color: '#2196F3',
         lineWidth: 3,
-        title: 'ML Prediction (Normalized 0-1)',
+        title: 'ML Trend Prediction (-1 to +1)',
         priceLineVisible: true,
         lastValueVisible: true,
         priceLineColor: '#2196F3',
         priceScaleId: 'right',
+        // Fix scale to [-1, 1] range
+        scaleMargins: {
+            top: 0.05,
+            bottom: 0.05,
+        },
     });
 
     // Handle resize
