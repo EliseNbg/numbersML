@@ -60,8 +60,8 @@ class ModelConfig:
     # Hidden layer dimensions (for MLP models)
     hidden_dims: List[int] = field(default_factory=lambda: [512, 256, 128])
 
-    # Dropout rate (increased for regularization to prevent overfitting)
-    dropout: float = 0.4
+    # Dropout rate
+    dropout: float = 0.2
 
     # Activation function
     activation: str = "gelu"  # relu, gelu, silu
@@ -89,7 +89,7 @@ class ModelConfig:
     # GRU settings
     gru_hidden_dim: int = 128  # GRU hidden size
     gru_num_layers: int = 2  # Number of GRU layers
-    gru_dropout: float = 0.4  # Dropout between GRU layers (increased for regularization)
+    gru_dropout: float = 0.2  # Dropout between GRU layers
 
     # CNN settings
     cnn_channels: List[int] = field(default_factory=lambda: [32, 64])  # Channels for each CNN layer
@@ -104,7 +104,7 @@ class TrainingConfig:
     learning_rate: float = 1e-3
 
     # Weight decay (L2 regularization) - increased to prevent overfitting
-    weight_decay: float = 5e-3
+    weight_decay: float = 1e-4
 
     # Number of epochs
     epochs: int = 100
