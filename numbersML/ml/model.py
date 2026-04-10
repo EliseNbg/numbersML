@@ -782,7 +782,7 @@ class CNN_GRUModel(nn.Module):
         gru_output_dim = self.gru_hidden_dim  # Unidirectional
         self.attention = nn.Sequential(
             nn.Linear(gru_output_dim, 64),
-            nn.Tanh(),
+            nn.GELU(),
             nn.Linear(64, 1),
         )
 
@@ -856,11 +856,7 @@ class CNN_GRUModel(nn.Module):
         # Transpose back to (batch, seq_len, channels) for GRU
         x = x.transpose(1, 2)
 
-        # Apply dropout before GRU
-        x = self.pre_gru_dropout(x)
-
-        # Bidirectional GRU
-        # gru_output: (batch, seq_len, hidden*2)
+        # GRU
         gru_output, _ = self.gru(x)
 
         # Temporal attention pooling
