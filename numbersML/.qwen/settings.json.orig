@@ -3,6 +3,5 @@
     "allow": [
       "Bash(.venv/bin/python *)"
     ]
-  },
-  "$version": 3
+  }
 }

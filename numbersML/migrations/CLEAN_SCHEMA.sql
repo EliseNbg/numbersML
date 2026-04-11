@@ -350,7 +350,8 @@ CREATE TABLE public.candles_1s (
     created_at timestamp without time zone DEFAULT now(),
     updated_at timestamp without time zone DEFAULT now(),
     processed boolean DEFAULT false NOT NULL,
-    target_value double precision
+    target_value jsonb,
+    predicted_value jsonb
 );
 
 

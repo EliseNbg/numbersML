@@ -250,14 +250,36 @@ class TestMLRoutes:
         # Missing symbol - returns 422 (validation error)
         response = client.get("/api/ml/predict")
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
-        
+
         # Invalid hours (too low) - returns 422
         response = client.get("/api/ml/predict?symbol=BTC/USDC&hours=0")
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
-        
+
         # Invalid hours (too high) - returns 422
         response = client.get("/api/ml/predict?symbol=BTC/USDC&hours=1441")
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    def test_predict_and_save_validation(self, client: TestClient) -> None:
+        """Test predict-and-save endpoint validation."""
+        # Missing symbol - returns 422
+        response = client.post("/api/ml/predict-and-save")
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+        # Invalid horizon - returns 422
+        response = client.post("/api/ml/predict-and-save?symbol=BTC/USDC&horizon=2")
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    def test_task_status_validation(self, client: TestClient) -> None:
+        """Test task-status endpoint validation."""
+        # Missing task_id - returns 422
+        response = client.get("/api/ml/task-status")
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+        # Unknown task_id - returns 200 with unknown status
+        response = client.get("/api/ml/task-status?task_id=nonexistent_task")
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["status"] == "unknown"
 
 
 class TestCandleRoutes:

@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
  */
 function setupEventHandlers() {
     document.getElementById('btn-load-prediction')?.addEventListener('click', loadPrediction);
+    document.getElementById('btn-predict-save')?.addEventListener('click', predictAndSave);
 }
 
 /**
@@ -329,6 +330,88 @@ async function loadPrediction() {
         if (btn) {
             btn.disabled = false;
             btn.innerHTML = '<i class="bi bi-play-fill"></i> Load & Predict';
+        }
+    }
+}
+
+/**
+ * Predict and save results to DB
+ */
+async function predictAndSave() {
+    const symbol = document.getElementById('prediction-symbol')?.value;
+    const model = document.getElementById('prediction-model')?.value;
+    const hours = document.getElementById('prediction-hours')?.value;
+    const horizon = document.getElementById('prediction-horizon')?.value || 30;
+    const ensembleSize = document.getElementById('ensemble-size')?.value || 5;
+
+    if (!symbol) { updateStatus('Please select a symbol', 'warning'); return; }
+    if (!model) { updateStatus('Please select a model', 'warning'); return; }
+
+    updateStatus('Starting prediction task...', 'info');
+    const btn = document.getElementById('btn-predict-save');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Running...';
+    }
+
+    try {
+        const url = `${API_BASE}/ml/predict-and-save?symbol=${encodeURIComponent(symbol)}&model=${encodeURIComponent(model)}&hours=${hours}&horizon=${horizon}&ensemble_size=${ensembleSize}`;
+        const resp = await fetch(url, { method: 'POST' });
+        if (!resp.ok) {
+            const error = await resp.json();
+            throw new Error(error.detail || `HTTP ${resp.status}`);
+        }
+        const data = await resp.json();
+        const taskId = data.task_id;
+
+        updateStatus(`Task started: ${taskId}. Polling status...`, 'info');
+
+        // Poll for completion
+        const pollInterval = setInterval(async () => {
+            try {
+                const statusResp = await fetch(`${API_BASE}/ml/task-status?task_id=${encodeURIComponent(taskId)}`);
+                const statusData = await statusResp.json();
+
+                if (statusData.status === 'completed') {
+                    clearInterval(pollInterval);
+                    updateStatus(
+                        `Completed! Stored ${statusData.predictions_stored} predictions in ${statusData.elapsed_seconds}s.`,
+                        'success'
+                    );
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="bi bi-save"></i> Predict & Save';
+                    }
+                } else if (statusData.status === 'failed') {
+                    clearInterval(pollInterval);
+                    updateStatus(`Failed: ${statusData.error}`, 'danger');
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="bi bi-save"></i> Predict & Save';
+                    }
+                } else {
+                    updateStatus(`Running... (${statusData.status})`, 'info');
+                }
+            } catch (e) {
+                // Still polling, ignore errors
+            }
+        }, 2000);
+
+        // Timeout after 10 minutes
+        setTimeout(() => {
+            clearInterval(pollInterval);
+            if (btn && btn.disabled) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-save"></i> Predict & Save';
+            }
+        }, 600000);
+
+    } catch (error) {
+        console.error('Failed to start prediction:', error);
+        updateStatus(`Error: ${error.message}`, 'danger');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-save"></i> Predict & Save';
         }
     }
 }

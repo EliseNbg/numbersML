@@ -4,6 +4,7 @@ ML Prediction API endpoints.
 Provides REST API for ML model predictions:
 - GET /api/ml/models - List available trained models
 - GET /api/ml/predict?symbol=BTC/USDC&model=best_model.pt&hours=2 - Run prediction
+- POST /api/ml/predict-and-save - Run prediction and store in candles_1s.predicted_value
 """
 
 import os
@@ -12,10 +13,11 @@ import sys
 import math
 import time
 import logging
+import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 
 from src.infrastructure.database import get_db_pool_async
 
@@ -400,3 +402,257 @@ async def predict(
         "targets": targets,
         "predictions": predictions,
     }
+
+
+async def _run_prediction_and_save(
+    symbol: str,
+    model_path: str,
+    hours: float,
+    horizon: int,
+    ensemble_size: int,
+) -> Dict[str, Any]:
+    """
+    Internal: Run prediction and store results in candles_1s.predicted_value.
+    Returns status dict for tracking.
+    """
+    started_at = datetime.now(timezone.utc)
+    status = {
+        "status": "running",
+        "started_at": started_at.isoformat(),
+        "symbol": symbol,
+        "model": model_path,
+        "horizon": horizon,
+    }
+
+    try:
+        # Load model
+        ml_model, mean, std, feature_mask, config, seq_length = _load_model(model_path)
+
+        # Get DB pool
+        db_pool = await get_db_pool_async()
+
+        async with db_pool.acquire() as conn:
+            symbol_id = await conn.fetchval(
+                "SELECT id FROM symbols WHERE symbol = $1", symbol
+            )
+            if not symbol_id:
+                raise ValueError(f"Symbol '{symbol}' not found")
+
+            # Get latest vector time
+            latest_vector_time = await conn.fetchval(
+                "SELECT MAX(time) FROM wide_vectors"
+            )
+            if not latest_vector_time:
+                raise ValueError("No wide vectors available")
+
+            now = latest_vector_time
+            start_time = now - timedelta(hours=hours)
+
+            # Load candles
+            candle_rows = await conn.fetch(
+                """
+                SELECT time, open, high, low, close, volume
+                FROM candles_1s
+                WHERE symbol_id = $1 AND time >= $2 AND time < $3
+                ORDER BY time
+                """,
+                symbol_id, start_time, now,
+            )
+
+            # Load wide vectors
+            vector_rows = await conn.fetch(
+                """
+                SELECT time, vector
+                FROM wide_vectors
+                WHERE time >= $1 AND time < $2
+                ORDER BY time
+                """,
+                start_time, now,
+            )
+
+        candles = [
+            {
+                "time": r["time"],
+                "close": float(r["close"]),
+            }
+            for r in candle_rows
+        ]
+
+        # Run prediction
+        np, torch, _, _, _ = _get_torch_and_model()
+        predictions = []
+        vectors = []
+
+        if len(vector_rows) >= seq_length:
+            vectors = []
+            timestamps = []
+            prev_size = None
+
+            for row in vector_rows:
+                vec_json = row["vector"]
+                if isinstance(vec_json, str):
+                    vec = np.array(json.loads(vec_json), dtype=np.float32)
+                else:
+                    vec = np.array(vec_json, dtype=np.float32)
+
+                if prev_size is None:
+                    prev_size = len(vec)
+                elif len(vec) != prev_size:
+                    if len(vec) < prev_size:
+                        vec = np.pad(vec, (0, prev_size - len(vec)))
+                    else:
+                        vec = vec[:prev_size]
+
+                vectors.append(vec)
+                timestamps.append(row["time"])
+
+            # Normalize
+            if mean is not None and std is not None:
+                epsilon = 1e-8
+                std_safe = np.where(std < epsilon, epsilon, std)
+                if feature_mask is not None:
+                    vectors = [(v[feature_mask] - mean) / std_safe for v in vectors]
+                else:
+                    vectors = [(v - mean) / std_safe for v in vectors]
+
+            # Sliding window prediction
+            with torch.no_grad():
+                for i in range(seq_length - 1, len(vectors)):
+                    sequence = np.stack(vectors[i - seq_length + 1: i + 1])
+                    X = torch.from_numpy(sequence).unsqueeze(0)
+                    prediction = ml_model(X).item()
+
+                    if math.isnan(prediction) or math.isinf(prediction):
+                        prediction = 0.0
+
+                    predictions.append({
+                        "time": timestamps[i],
+                        "predicted_target": round(prediction, 8),
+                    })
+
+        # Apply ensemble
+        if ensemble_size > 1 and len(predictions) >= ensemble_size:
+            smoothed = []
+            for i in range(len(predictions)):
+                window_start = max(0, i - ensemble_size + 1)
+                window = predictions[window_start:i + 1]
+                avg_value = sum(p["predicted_target"] for p in window) / len(window)
+                smoothed.append({
+                    "time": predictions[i]["time"],
+                    "predicted_target": round(avg_value, 8),
+                })
+            predictions = smoothed
+
+        # Store predictions in DB
+        model_name = os.path.basename(model_path).replace('.pt', '')
+        updated = 0
+        if predictions and candles:
+            candle_map = {c["time"]: c["close"] for c in candles}
+            pred_map = {p["time"]: p["predicted_target"] for p in predictions}
+
+            batch = []
+            for t, pred_val in pred_map.items():
+                close_price = candle_map.get(t)
+                if close_price is not None:
+                    batch.append((
+                        json.dumps({
+                            "value": pred_val,
+                            "model": model_name,
+                            "horizon": horizon,
+                            "predicted_at": started_at.isoformat(),
+                        }),
+                        symbol_id,
+                        t,
+                    ))
+
+            if batch:
+                async with db_pool.acquire() as conn:
+                    batch_size = 5000
+                    for i in range(0, len(batch), batch_size):
+                        sub_batch = batch[i:i+batch_size]
+                        await conn.executemany(
+                            """
+                            UPDATE candles_1s SET predicted_value = $1::jsonb
+                            WHERE symbol_id = $2 AND time = $3
+                            """,
+                            [(b[0], b[1], b[2]) for b in sub_batch],
+                        )
+                updated = len(batch)
+
+        elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
+        status.update({
+            "status": "completed",
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "elapsed_seconds": round(elapsed, 2),
+            "predictions_stored": updated,
+            "predictions_count": len(predictions),
+            "vectors_count": len(vectors),
+        })
+
+    except Exception as e:
+        elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
+        status.update({
+            "status": "failed",
+            "error": str(e),
+            "elapsed_seconds": round(elapsed, 2),
+        })
+
+    return status
+
+
+# Background task registry
+_prediction_tasks: Dict[str, Dict[str, Any]] = {}
+
+
+@router.post(
+    "/predict-and-save",
+    summary="Run prediction and store results",
+    description="Run ML prediction and store results in candles_1s.predicted_value",
+)
+async def predict_and_save(
+    background_tasks: BackgroundTasks,
+    symbol: str = Query(..., description="Symbol name (e.g., 'BTC/USDC')"),
+    model: str = Query(default="best_model.pt", description="Model filename"),
+    hours: float = Query(default=720, gt=0, le=1440, description="Hours of data"),
+    horizon: int = Query(default=30, ge=5, le=300, description="Prediction horizon"),
+    ensemble_size: int = Query(default=5, ge=1, le=20, description="Ensemble size"),
+) -> Dict[str, Any]:
+    """
+    Start prediction in background and store results in candles_1s.predicted_value.
+    Returns a task ID for status checking.
+    """
+    model_path = os.path.join("ml/models", model)
+    if not os.path.exists(model_path):
+        raise HTTPException(status_code=404, detail=f"Model not found: {model_path}")
+
+    task_id = f"{symbol}_{model}_{horizon}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+
+    async def run_task():
+        result = await _run_prediction_and_save(symbol, model_path, hours, horizon, ensemble_size)
+        _prediction_tasks[task_id] = result
+
+    background_tasks.add_task(lambda: asyncio.create_task(run_task()))
+
+    return {
+        "task_id": task_id,
+        "status": "started",
+        "model": model,
+        "symbol": symbol,
+        "horizon": horizon,
+        "check_status_url": f"/api/ml/task-status?task_id={task_id}",
+    }
+
+
+@router.get(
+    "/task-status",
+    summary="Get prediction task status",
+    description="Check status of a background prediction task",
+)
+async def get_task_status(
+    task_id: str = Query(..., description="Task ID from predict-and-save"),
+) -> Dict[str, Any]:
+    """Get status of a background prediction task."""
+    task = _prediction_tasks.get(task_id)
+    if not task:
+        return {"task_id": task_id, "status": "unknown", "message": "Task not found or still starting"}
+    return task
