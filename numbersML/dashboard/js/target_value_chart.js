@@ -15,7 +15,6 @@ let chart = null;
 let candleSeries = null;
 let filteredSeries = null;
 let normalizedSeries = null;
-let trendVelocitySeries = null;
 
 const RANGE_HOURS = {
     '2': 2,
@@ -97,18 +96,6 @@ function initChart() {
         priceScaleId: 'right',
         scaleMargins: {
             top: 0.05,
-            bottom: 0.5,
-        },
-    });
-
-    // Trend velocity series (-1 to +1) - custom price scale for separation
-    trendVelocitySeries = chart.addLineSeries({
-        color: '#9C27B0',
-        lineWidth: 2,
-        title: 'Trend Velocity (-1 to +1)',
-        priceScaleId: 'tv_scale',
-        scaleMargins: {
-            top: 0.5,
             bottom: 0.05,
         },
     });
@@ -149,7 +136,6 @@ async function loadChartData() {
         candleSeries.setData([]);
         if (filteredSeries) filteredSeries.setData([]);
         if (normalizedSeries) normalizedSeries.setData([]);
-        if (trendVelocitySeries) trendVelocitySeries.setData([]);
         return;
     }
 
@@ -163,7 +149,6 @@ async function loadChartData() {
             candleSeries.setData([]);
             if (filteredSeries) filteredSeries.setData([]);
             if (normalizedSeries) normalizedSeries.setData([]);
-            if (trendVelocitySeries) trendVelocitySeries.setData([]);
             document.getElementById('chart-title').textContent = `${symbol} - No data`;
             return;
         }
@@ -195,19 +180,6 @@ async function loadChartData() {
                 value: c.target_value.normalized_value,
             }));
         normalizedSeries.setData(normalizedData);
-
-        // Trend velocity line (-1 to +1) - shows trend direction and strength
-        const trendVelocityData = data
-            .filter(c => c.target_value !== null && c.target_value.trend_velocity !== null)
-            .map(c => ({
-                time: c.time,
-                value: c.target_value.trend_velocity,
-            }));
-        console.log(`Trend velocity points: ${trendVelocityData.length}`);
-        if (trendVelocityData.length > 0) {
-            console.log('Sample trend_velocity:', trendVelocityData[0], trendVelocityData[Math.floor(trendVelocityData.length/2)], trendVelocityData[trendVelocityData.length-1]);
-        }
-        trendVelocitySeries.setData(trendVelocityData);
 
         chart.timeScale().fitContent();
 
