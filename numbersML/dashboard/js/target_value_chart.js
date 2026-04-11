@@ -96,20 +96,20 @@ function initChart() {
         title: 'Normalized (0-1)',
         priceScaleId: 'right',
         scaleMargins: {
-            top: 0.55,
-            bottom: 0.05,
+            top: 0.05,
+            bottom: 0.5,
         },
     });
 
-    // Trend velocity series (-1 to +1) on right scale, below normalized
+    // Trend velocity series (-1 to +1) - custom price scale for separation
     trendVelocitySeries = chart.addLineSeries({
         color: '#9C27B0',
         lineWidth: 2,
         title: 'Trend Velocity (-1 to +1)',
-        priceScaleId: 'right',
+        priceScaleId: 'tv_scale',
         scaleMargins: {
-            top: 0.05,
-            bottom: 0.55,
+            top: 0.5,
+            bottom: 0.05,
         },
     });
 
@@ -205,6 +205,10 @@ async function loadChartData() {
                 time: c.time,
                 value: c.target_value.trend_velocity,
             }));
+        console.log(`Trend velocity points: ${trendVelocityData.length}`);
+        if (trendVelocityData.length > 0) {
+            console.log('Sample trend_velocity:', trendVelocityData[0], trendVelocityData[Math.floor(trendVelocityData.length/2)], trendVelocityData[trendVelocityData.length-1]);
+        }
         trendVelocitySeries.setData(trendVelocityData);
 
         chart.timeScale().fitContent();
