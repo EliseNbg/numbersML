@@ -550,19 +550,26 @@ def batch_calculate_target_data(
     else:  # legacy fallback
         filtered = prices_arr  # Simplified
 
-    # Calculate velocity (rate of change of filtered trend)
+    # Calculate trend velocity as the difference between short-term and long-term trends
+    # (similar to MACD concept): when short-term filter crosses above long-term → bullish
+    short_response = max(int(response_time * 0.1), 5)  # ~10% of main window, min 5
+    short_filtered = savgol_filter_prices(prices_arr, window_length=short_response, causal=True)
+
+    # Long-term minus short-term = positive when price is above trend (bullish)
+    raw_trend = filtered - short_filtered
+
+    # Normalize to [-1, 1] using fixed global scale (95th percentile of |raw_trend|)
+    abs_trend = np.abs(raw_trend)
+    trend_scale = np.percentile(abs_trend, 95) if len(abs_trend) > 0 else 1.0
+    if trend_scale < 1e-10:
+        trend_scale = 1.0  # Prevent division by zero
+
+    trend_velocity = np.clip(raw_trend / trend_scale, -1.0, 1.0)
+
+    # Also keep the original velocity (single-step change) for backward compat
     velocity = np.zeros(len(filtered))
     for i in range(1, len(filtered)):
         velocity[i] = float(filtered[i]) - float(filtered[i-1])
-
-    # Normalize velocity to [-1, 1] using fixed global scale
-    # Scale = 95th percentile of |velocity|, clipped to [-1, 1]
-    abs_velocity = np.abs(velocity)
-    velocity_scale = np.percentile(abs_velocity, 95) if len(abs_velocity) > 0 else 1.0
-    if velocity_scale < 1e-10:
-        velocity_scale = 1.0  # Prevent division by zero
-
-    trend_velocity = np.clip(velocity / velocity_scale, -1.0, 1.0)
 
     # Calculate normalized value: map filtered_value to [0..1] using local min/max
     n = len(filtered)

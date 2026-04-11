@@ -69,29 +69,11 @@
                 </select>
             </div>
             <div class="col-md-2">
-                <label class="form-label">Smoothing Method</label>
-                <select class="form-select" id="target-method">
-                    <option value="savgol">Savitzky-Golay (smooth waves)</option>
-                    <option value="kalman">Kalman Filter (adaptive)</option>
-                    <option value="hanning" selected>Hanning (legacy)</option>
-                </select>
-            </div>
-            <div class="col-md-2">
                 <label class="form-label">Window Size</label>
                 <input type="number" class="form-control" id="target-window" value="2000" min="1" max="20000" step="100">
-                <small class="text-muted">Samples (default: 600)</small>
+                <small class="text-muted">Samples (default: 2000)</small>
             </div>
-            <div class="col-md-2">
-                <label class="form-label"> </label>
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="use-future" checked>
-                    <label class="form-check-label" for="use-future">
-                        Use future data (ML only!)
-                    </label>
-                </div>
-                <small class="text-danger">⚠️ Not for indicators</small>
-            </div>
-            <div class="col-md-3 d-flex align-items-end gap-2">
+            <div class="col-md-4 d-flex align-items-end gap-2">
                 <button class="btn btn-primary" id="btn-load-chart">
                     <i class="bi bi-play-fill"></i> Load Chart
                 </button>
@@ -99,7 +81,7 @@
                     <i class="bi bi-calculator"></i> Calculate Target Values
                 </button>
             </div>
-            <div class="col-md-3 d-flex align-items-end">
+            <div class="col-md-4 d-flex align-items-end">
                 <div id="calculate-status" class="text-muted"></div>
             </div>
         </div>

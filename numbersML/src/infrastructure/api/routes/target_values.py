@@ -28,20 +28,15 @@ async def get_target_values(
     symbol: str = Query(..., description="Symbol name (e.g., 'BTC/USDC')"),
     hours: int = Query(default=720, ge=1, le=1440),
     response_time: float = Query(default=2000.0, ge=1.0, le=20000.0),
-    method: str = Query(default='hanning', regex='^(savgol|kalman|hanning)$'),
-    use_future: bool = Query(default=True, description="Use future data for Savitzky-Golay (ML training ONLY!)"),
 ) -> List[Dict[str, Any]]:
     """
     Get candle data with target values.
 
     Returns candles with close price and calculated market state.
     Target data includes filtered_value (smooth wave), diff, trend direction, velocity.
-    
-    Methods:
-    - savgol: Savitzky-Golay filter (very smooth waves, default)
-    - kalman: Kalman filter (adaptive, less smooth)
-    - hanning: Hanning window (legacy)
     """
+    method = 'hanning'
+    use_future = True
     db_pool = await get_db_pool_async()
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
 
@@ -93,8 +88,6 @@ async def get_target_values(
 async def calculate_target_values(
     symbol: str = Query(..., description="Symbol name"),
     response_time: float = Query(default=2000.0, ge=1.0, le=20000.0),
-    method: str = Query(default='hanning', regex='^(savgol|kalman|hanning)$'),
-    use_future: bool = Query(default=True, description="Use future data for Savitzky-Golay (ML training ONLY!)"),
     from_time: Optional[str] = Query(default=None, description="Start time (YYYY-MM-DD HH:MM:SS)"),
     to_time: Optional[str] = Query(default=None, description="End time (YYYY-MM-DD HH:MM:SS)"),
     hours: Optional[int] = Query(default=None, ge=1, le=1440, description="Calculate last N hours"),
@@ -106,12 +99,9 @@ async def calculate_target_values(
     1. Loads ALL historical candles (needed for filter state)
     2. Calculates target data for ALL candles (continuous state)
     3. Only UPDATES candles in the specified time range
-
-    Methods:
-    - savgol: Savitzky-Golay filter (very smooth waves, default)
-    - kalman: Kalman filter (adaptive, less smooth)
-    - hanning: Hanning window (legacy)
     """
+    method = 'hanning'
+    use_future = True
     db_pool = await get_db_pool_async()
 
     async with db_pool.acquire() as conn:
