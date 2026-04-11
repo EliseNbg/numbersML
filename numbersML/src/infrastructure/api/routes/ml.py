@@ -251,18 +251,18 @@ async def predict(
         for r in candle_rows
     ]
 
-    # Get target values as trend_velocity [-1..1] from JSONB
-    # Apply horizon shift: target[i] = trend_velocity[i + horizon] (same as training)
+    # Get target values as normalized_value [0..1] from JSONB
+    # Apply horizon shift: target[i] = normalized_value[i + horizon] (same as training)
     if candles:
         async with db_pool.acquire() as conn:
             target_rows = await conn.fetch(
                 """
                 SELECT time,
-                       (target_value->>'trend_velocity')::float AS target
+                       (target_value->>'normalized_value')::float AS target
                 FROM candles_1s
                 WHERE symbol_id = $1 AND time >= $2 AND time < $3
                   AND target_value IS NOT NULL
-                  AND target_value->>'trend_velocity' IS NOT NULL
+                  AND target_value->>'normalized_value' IS NOT NULL
                 ORDER BY time
                 """,
                 symbol_id, start_time, now
@@ -380,7 +380,7 @@ async def predict(
         
         logger.info(f"Sliding window prediction completed in {time.time() - loop_start:.2f}s")
 
-    # Predictions are already in [-1..1] range (tanh output), no scaling needed
+    # Predictions are normalized [0..1], same scale as target values
     if predictions and candles:
 
         # Apply ensemble averaging (smooth predictions by averaging last N)

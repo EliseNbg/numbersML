@@ -11,9 +11,10 @@ This script:
        "close": 103.2,                // Current candle close
        "diff": -2.3,                  // Deviation from trend
        "trend": "up",                 // or "down", "flat"
-       "velocity": 0.15,              // Rate of change (absolute)
-       "trend_velocity": 0.75,        // Normalized trend [-1..1] for ML
-       "normalized_value": 0.65       // Local normalized [0..1]
+       "velocity": 0.15,              // Rate of change (trend direction)
+       "normalized_value": 0.65,      // Local normalized [0..1] - ML target
+       "norm_min": 99.5,              // Local min for normalization
+       "norm_max": 101.8              // Local max for normalization
    }
 
 Usage:

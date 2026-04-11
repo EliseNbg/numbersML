@@ -489,7 +489,7 @@ def batch_calculate_target_data(
     Calculate market state for all candles in a price series.
 
     Returns list of dicts with filtered_value, close, diff, trend, velocity,
-    and trend_velocity (normalized to [-1, 1] for ML target prediction).
+    and normalized_value (local [0..1] range for ML target prediction).
 
     Args:
         prices: List of close prices
@@ -550,23 +550,7 @@ def batch_calculate_target_data(
     else:  # legacy fallback
         filtered = prices_arr  # Simplified
 
-    # Calculate trend velocity as the difference between short-term and long-term trends
-    # (similar to MACD concept): when short-term filter crosses above long-term → bullish
-    short_response = max(int(response_time * 0.1), 5)  # ~10% of main window, min 5
-    short_filtered = savgol_filter_prices(prices_arr, window_length=short_response, causal=True)
-
-    # Long-term minus short-term = positive when price is above trend (bullish)
-    raw_trend = filtered - short_filtered
-
-    # Normalize to [-1, 1] using fixed global scale (95th percentile of |raw_trend|)
-    abs_trend = np.abs(raw_trend)
-    trend_scale = np.percentile(abs_trend, 95) if len(abs_trend) > 0 else 1.0
-    if trend_scale < 1e-10:
-        trend_scale = 1.0  # Prevent division by zero
-
-    trend_velocity = np.clip(raw_trend / trend_scale, -1.0, 1.0)
-
-    # Also keep the original velocity (single-step change) for backward compat
+    # Calculate velocity (rate of change of filtered trend, used for trend direction)
     velocity = np.zeros(len(filtered))
     for i in range(1, len(filtered)):
         velocity[i] = float(filtered[i]) - float(filtered[i-1])
@@ -644,18 +628,17 @@ def batch_calculate_target_data(
         norm_val = float(normalized[i])
         n_min = float(norm_min[i])
         n_max = float(norm_max[i])
-        trend_vel = float(trend_velocity[i])
 
         # Velocity (rate of change)
         if i > 0:
-            velocity = filtered_value - float(filtered[i-1])
+            vel = filtered_value - float(filtered[i-1])
         else:
-            velocity = 0.0
+            vel = 0.0
 
         # Trend direction
-        if velocity > 0.01:
+        if vel > 0.01:
             trend = 'up'
-        elif velocity < -0.01:
+        elif vel < -0.01:
             trend = 'down'
         else:
             trend = 'flat'
@@ -665,8 +648,7 @@ def batch_calculate_target_data(
             'close': current_price,
             'diff': round(diff, 8),
             'trend': trend,
-            'velocity': round(velocity, 8),
-            'trend_velocity': round(trend_vel, 8),
+            'velocity': round(vel, 8),
             'normalized_value': round(norm_val, 8),
             'norm_min': round(n_min, 8),
             'norm_max': round(n_max, 8),
