@@ -350,9 +350,9 @@ def create_data_loaders(
     
     try:
         with conn.cursor() as cur:
-            # Get the actual data range available
+            # Get the actual data range available (with target values)
             cur.execute("""
-                SELECT 
+                SELECT
                     MIN(wv.time) as earliest,
                     MAX(wv.time) as latest
                 FROM wide_vectors wv
@@ -360,6 +360,8 @@ def create_data_loaders(
                     SELECT id FROM symbols WHERE symbol = %s
                 )
                 WHERE c.close IS NOT NULL
+                  AND c.target_value IS NOT NULL
+                  AND (c.target_value->>'trend_velocity') IS NOT NULL
             """, (data_config.target_symbol,))
             row = cur.fetchone()
             if row and row[0] and row[1]:

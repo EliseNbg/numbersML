@@ -239,11 +239,11 @@ async function loadPrediction() {
         if (hoursNum <= 0.05) {
             timeoutMs = 60000; // 1 minute for very short ranges
         } else if (hoursNum <= 1) {
-            timeoutMs = 180000; // 3 minutes for short ranges
+            timeoutMs = 1800000; // 30 minutes for short ranges
         } else if (hoursNum <= 24) {
-            timeoutMs = 300000; // 5 minutes for medium ranges
+            timeoutMs = 3000000; // 50 minutes for medium ranges
         } else {
-            timeoutMs = 600000; // 10 minutes for long ranges
+            timeoutMs = 6010000; // 100 minutes for long ranges
         }
         
         const controller = new AbortController();
