@@ -71,6 +71,7 @@
             <div class="col-12">
                 <h1><i class="bi bi-robot"></i> ML Price Return Predictions</h1>
                 <p class="text-muted">Predict future price returns: positive = bullish, negative = bearish</p>
+                <p class="text-muted">Horizon: time ahead to predict (must match model training horizon)</p>
             </div>
         </div>
 
@@ -106,6 +107,18 @@
                 <div class="form-text text-warning">
                     <i class="bi bi-exclamation-triangle"></i> Min 2 min (need 120 vectors)
                 </div>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Prediction Horizon</label>
+                <select class="form-select" id="prediction-horizon">
+                    <option value="5">5 Seconds</option>
+                    <option value="10">10 Seconds</option>
+                    <option value="30" selected>30 Seconds</option>
+                    <option value="60">1 Minute</option>
+                    <option value="120">2 Minutes</option>
+                    <option value="300">5 Minutes</option>
+                </select>
+                <div class="form-text">Model must be trained with same horizon</div>
             </div>
             <div class="col-md-2">
                 <label class="form-label">Ensemble Size</label>

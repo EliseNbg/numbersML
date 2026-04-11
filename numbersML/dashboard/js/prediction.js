@@ -191,6 +191,7 @@ async function loadPrediction() {
     const symbol = document.getElementById('prediction-symbol')?.value;
     const model = document.getElementById('prediction-model')?.value;
     const hours = document.getElementById('prediction-hours')?.value;
+    const horizon = document.getElementById('prediction-horizon')?.value || 30;
     const ensembleSize = document.getElementById('ensemble-size')?.value || 5;
 
     if (!symbol) {
@@ -218,7 +219,7 @@ async function loadPrediction() {
     }
 
     try {
-        const url = `${API_BASE}/ml/predict?symbol=${encodeURIComponent(symbol)}&model=${encodeURIComponent(model)}&hours=${hours}&ensemble_size=${ensembleSize}`;
+        const url = `${API_BASE}/ml/predict?symbol=${encodeURIComponent(symbol)}&model=${encodeURIComponent(model)}&hours=${hours}&horizon=${horizon}&ensemble_size=${ensembleSize}`;
         console.log('Fetching:', url);
 
         // Add timeout controller for long-running request

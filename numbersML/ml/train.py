@@ -600,6 +600,13 @@ def main():
         default="BTC/USDC",
         help="Target symbol to train for (default: BTC/USDC)",
     )
+    parser.add_argument(
+        "--horizon",
+        type=int,
+        default=30,
+        choices=[5, 10, 30, 60, 120, 300],
+        help="Prediction horizon in seconds (default: 30)",
+    )
 
     args = parser.parse_args()
 
@@ -611,6 +618,7 @@ def main():
     config.data.sequence_length = args.seq_length
     config.data.train_hours = args.train_hours
     config.data.target_symbol = args.symbol
+    config.data.prediction_horizon = args.horizon
     config.optuna.n_trials = args.trials
 
     if args.tune:

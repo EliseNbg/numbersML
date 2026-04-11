@@ -267,7 +267,7 @@ class WideVectorDataset(Dataset):
 
         # Compute price return targets: (close[t+horizon] - close[t]) / close[t]
         # This is stationary (mean ~0, stable variance) unlike normalized_value
-        horizon = self.data_config.prediction_horizon  # 30 seconds
+        horizon = self.data_config.prediction_horizon  # configurable (default 30s)
         if len(closes) > horizon:
             closes_arr = np.array(closes, dtype=np.float64)
             targets = ((closes_arr[horizon:] - closes_arr[:-horizon]) / closes_arr[:-horizon]).tolist()

@@ -168,6 +168,7 @@ async def predict(
     symbol: str = Query(..., description="Symbol name (e.g., 'BTC/USDC')"),
     model: str = Query(default="best_model.pt", description="Model filename"),
     hours: float = Query(default=720, gt=0, le=1440, description="Hours of data to load"),
+    horizon: int = Query(default=30, ge=5, le=300, description="Prediction horizon in seconds"),
     ensemble_size: int = Query(default=5, ge=1, le=20, description="Average last N predictions for smoothing"),
 ) -> Dict[str, Any]:
     """
@@ -255,7 +256,6 @@ async def predict(
     if candles:
         # Compute price return targets from candle data
         close_prices = [c["close"] for c in candles]
-        horizon = 30  # prediction_horizon
         all_targets = []
         for i in range(len(close_prices) - horizon):
             ret = (close_prices[i + horizon] - close_prices[i]) / close_prices[i]
