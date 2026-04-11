@@ -69,8 +69,8 @@
         <!-- Header -->
         <div class="row mb-4">
             <div class="col-12">
-                <h1><i class="bi bi-robot"></i> ML Predictions</h1>
-                <p class="text-muted">Compare candles, target values, and ML model predictions (normalized 0-1)</p>
+                <h1><i class="bi bi-robot"></i> ML Price Return Predictions</h1>
+                <p class="text-muted">Predict future price returns: positive = bullish, negative = bearish</p>
             </div>
         </div>
 
@@ -138,11 +138,19 @@
                     </div>
                     <div>
                         <span class="badge" style="background-color: #FF9800;"><i class="bi bi-bullseye"></i></span>
-                        <span>Target Value (Right Scale, normalized 0-1)</span>
+                        <span>Target Return (Right Scale)</span>
                     </div>
                     <div>
                         <span class="badge" style="background-color: #2196F3;"><i class="bi bi-cpu"></i></span>
-                        <span>ML Prediction (Right Scale, normalized 0-1)</span>
+                        <span>ML Return Prediction (Right Scale)</span>
+                    </div>
+                    <div>
+                        <span class="badge" style="background-color: #4CAF50;"><i class="bi bi-graph-up"></i></span>
+                        <span>&gt; 0 = Bullish</span>
+                    </div>
+                    <div>
+                        <span class="badge" style="background-color: #f44336;"><i class="bi bi-graph-down"></i></span>
+                        <span>&lt; 0 = Bearish</span>
                     </div>
                 </div>
             </div>
@@ -182,7 +190,7 @@
                     </div>
                     <div class="card-body">
                         <h3 id="stat-targets">-</h3>
-                        <p class="text-muted mb-0">Normalized target values (0-1 range)</p>
+                        <p class="text-muted mb-0">Price return targets</p>
                     </div>
                 </div>
             </div>
@@ -204,7 +212,7 @@
                     </div>
                     <div class="card-body">
                         <h3 id="stat-predictions">-</h3>
-                        <p class="text-muted mb-0">Model predictions</p>
+                        <p class="text-muted mb-0">Predicted price returns</p>
                     </div>
                 </div>
             </div>

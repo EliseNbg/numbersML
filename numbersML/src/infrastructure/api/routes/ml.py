@@ -251,36 +251,20 @@ async def predict(
         for r in candle_rows
     ]
 
-    # Get target values as normalized_value [0..1] from JSONB
-    # Apply horizon shift: target[i] = normalized_value[i + horizon] (same as training)
+    # Get target values as price returns: (close[t+horizon] - close[t]) / close[t]
     if candles:
-        async with db_pool.acquire() as conn:
-            target_rows = await conn.fetch(
-                """
-                SELECT time,
-                       (target_value->>'normalized_value')::float AS target
-                FROM candles_1s
-                WHERE symbol_id = $1 AND time >= $2 AND time < $3
-                  AND target_value IS NOT NULL
-                  AND target_value->>'normalized_value' IS NOT NULL
-                ORDER BY time
-                """,
-                symbol_id, start_time, now
-            )
-
-        # Apply horizon shift (same as training dataset)
+        # Compute price return targets from candle data
+        close_prices = [c["close"] for c in candles]
         horizon = 30  # prediction_horizon
-        all_targets = [
-            {"time": int(row['time'].timestamp()), "value": float(row['target'])}
-            for row in target_rows
-        ]
+        all_targets = []
+        for i in range(len(close_prices) - horizon):
+            ret = (close_prices[i + horizon] - close_prices[i]) / close_prices[i]
+            all_targets.append({
+                "time": candles[i]["time"],
+                "value": round(ret, 8),
+            })
 
-        # Shift targets: target[i] = value[i + horizon]
-        if len(all_targets) > horizon:
-            # For visualization: show targets aligned with their prediction timestamps
-            targets = all_targets[horizon:]
-        else:
-            targets = []
+        targets = all_targets
     else:
         targets = []
 
@@ -380,7 +364,7 @@ async def predict(
         
         logger.info(f"Sliding window prediction completed in {time.time() - loop_start:.2f}s")
 
-    # Predictions are normalized [0..1], same scale as target values
+    # Predictions are price returns, same scale as target values
     if predictions and candles:
 
         # Apply ensemble averaging (smooth predictions by averaging last N)
