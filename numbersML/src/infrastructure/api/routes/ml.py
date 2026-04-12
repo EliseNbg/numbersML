@@ -631,7 +631,7 @@ async def predict_and_save(
         result = await _run_prediction_and_save(symbol, model_path, hours, horizon, ensemble_size)
         _prediction_tasks[task_id] = result
 
-    background_tasks.add_task(lambda: asyncio.create_task(run_task()))
+    background_tasks.add_task(asyncio.run, run_task())
 
     return {
         "task_id": task_id,
