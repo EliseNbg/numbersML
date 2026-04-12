@@ -14,6 +14,7 @@ import math
 import time
 import logging
 import asyncio
+import numpy as np
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
@@ -89,6 +90,7 @@ async def _load_saved_predictions(
         )
 
     candles = []
+    closes = []
     targets = []
     predictions = []
     for r in rows:
@@ -100,17 +102,7 @@ async def _load_saved_predictions(
             "close": float(r["close"]),
             "volume": float(r["volume"]),
         })
-
-        tv = r["target_value"]
-        if tv:
-            if isinstance(tv, str):
-                tv = json.loads(tv)
-            norm_val = tv.get("normalized_value")
-            if norm_val is not None:
-                targets.append({
-                    "time": int(r["time"].timestamp()),
-                    "value": float(norm_val),
-                })
+        closes.append(float(r["close"]))
 
         pv = r["predicted_value"]
         if pv:
@@ -122,6 +114,19 @@ async def _load_saved_predictions(
                     "time": int(r["time"].timestamp()),
                     "predicted_target": float(pred_val),
                 })
+
+    # Compute targets from close prices (same scaled return formula as training)
+    if len(closes) > horizon:
+        close_arr = np.array(closes, dtype=np.float64)
+        returns = (close_arr[horizon:] - close_arr[:-horizon]) / close_arr[:-horizon]
+        std_return = float(np.std(returns)) if len(returns) > 0 else 0.002
+        if std_return < 1e-10:
+            std_return = 0.002
+        scaled = 1.0 / (1.0 + np.exp(-returns / std_return * 2.0))
+        targets = [
+            {"time": candles[i]["time"], "value": round(float(scaled[i]), 8)}
+            for i in range(len(scaled))
+        ]
 
     return {
         "symbol": symbol,
@@ -366,33 +371,22 @@ async def predict(
         for r in candle_rows
     ]
 
-    # Get target values as normalized_value [0..1] from JSONB
-    # Apply horizon shift: target[i] = normalized_value[i + horizon] (same as training)
+    # Get target values as scaled price returns [0..1] via sigmoid
+    # Same computation as training: sigmoid(return / std * 2)
     if candles:
-        async with db_pool.acquire() as conn:
-            target_rows = await conn.fetch(
-                """
-                SELECT time,
-                       (target_value->>'normalized_value')::float AS target
-                FROM candles_1s
-                WHERE symbol_id = $1 AND time >= $2 AND time < $3
-                  AND target_value IS NOT NULL
-                  AND target_value->>'normalized_value' IS NOT NULL
-                ORDER BY time
-                """,
-                symbol_id, start_time, now
-            )
-
-        # Apply horizon shift (same as training dataset)
-        horizon_shift = horizon  # use same horizon as model was trained with
-        all_targets = [
-            {"time": int(row['time'].timestamp()), "value": float(row['target'])}
-            for row in target_rows
-        ]
-
-        # Shift targets: target[i] = value[i + horizon]
-        if len(all_targets) > horizon_shift:
-            targets = all_targets[horizon_shift:]
+        close_prices = [c["close"] for c in candles]
+        close_arr = np.array(close_prices, dtype=np.float64)
+        if len(close_arr) > horizon:
+            returns = (close_arr[horizon:] - close_arr[:-horizon]) / close_arr[:-horizon]
+            # Use typical crypto 120s return std for scaling (~0.002 for 120s)
+            std_return = float(np.std(returns)) if len(returns) > 0 else 0.002
+            if std_return < 1e-10:
+                std_return = 0.002
+            scaled = 1.0 / (1.0 + np.exp(-returns / std_return * 2.0))
+            targets = [
+                {"time": int(candles[i]["time"]), "value": round(float(scaled[i]), 8)}
+                for i in range(len(scaled))
+            ]
         else:
             targets = []
     else:

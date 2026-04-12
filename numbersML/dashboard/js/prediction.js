@@ -155,11 +155,11 @@ function initChart() {
         priceScaleId: 'left',
     });
 
-    // Normalized target value line (orange, right price scale)
+    // Scaled return target line (orange, right price scale)
     targetSeries = chart.addLineSeries({
         color: '#FF9800',
         lineWidth: 3,
-        title: 'Target (Normalized 0-1)',
+        title: 'Target Return (0-1)',
         priceLineVisible: true,
         lastValueVisible: true,
         priceLineColor: '#FF9800',
@@ -170,7 +170,7 @@ function initChart() {
     predictionSeries = chart.addLineSeries({
         color: '#2196F3',
         lineWidth: 3,
-        title: 'ML Prediction (Normalized 0-1)',
+        title: 'ML Return Prediction (0-1)',
         priceLineVisible: true,
         lastValueVisible: true,
         priceLineColor: '#2196F3',
