@@ -36,6 +36,7 @@ async def _load_saved_predictions(
     """
     Load pre-computed predictions from candles_1s.predicted_value.
     Fast — no model loading or inference needed.
+    Uses the latest available prediction time as reference instead of NOW().
     """
     db_pool = await get_db_pool_async()
 
@@ -50,8 +51,30 @@ async def _load_saved_predictions(
                 "candles": [], "targets": [], "predictions": [],
             }
 
-        now = datetime.now(timezone.utc)
-        start_time = now - timedelta(hours=hours)
+        # Get the latest time with predicted_value for this symbol
+        latest_time = await conn.fetchval(
+            """
+            SELECT MAX(time) FROM candles_1s
+            WHERE symbol_id = $1 AND predicted_value IS NOT NULL
+            """,
+            symbol_id,
+        )
+
+        # Fallback to latest candle time if no predictions exist
+        if not latest_time:
+            latest_time = await conn.fetchval(
+                "SELECT MAX(time) FROM candles_1s WHERE symbol_id = $1",
+                symbol_id,
+            )
+
+        if not latest_time:
+            return {
+                "symbol": symbol, "candles_count": 0, "targets_count": 0,
+                "predictions_count": 0, "vectors_count": 0,
+                "candles": [], "targets": [], "predictions": [],
+            }
+
+        start_time = latest_time - timedelta(hours=hours)
 
         # Load candles with target_value and predicted_value
         rows = await conn.fetch(
@@ -59,10 +82,10 @@ async def _load_saved_predictions(
             SELECT time, open, high, low, close, volume,
                    target_value, predicted_value
             FROM candles_1s
-            WHERE symbol_id = $1 AND time >= $2 AND time < $3
+            WHERE symbol_id = $1 AND time >= $2 AND time <= $3
             ORDER BY time
             """,
-            symbol_id, start_time, now,
+            symbol_id, start_time, latest_time,
         )
 
     candles = []
