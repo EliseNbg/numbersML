@@ -646,17 +646,19 @@ def batch_calculate_target_data(
             vel = 0.0
 
         # Scaled return targets for ML training (stored for visualization)
+        # Computed from HANNING FILTERED values instead of raw close prices
         # target = sigmoid(return / std * 2), range [0..1]
         # >0.5 = bullish, <0.5 = bearish
-        def scaled_return(horizon_secs):
+        def scaled_return_from_filter(horizon_secs):
             j = i + horizon_secs  # future index
-            if j < len(prices_arr):
-                ret = (float(prices_arr[j]) - current_price) / current_price
+            if j < len(filtered):
+                # Return of filtered (smooth) trend, normalized by current close
+                ret = (float(filtered[j]) - float(filtered[i])) / current_price
                 return round(1.0 / (1.0 + np.exp(-ret / (std_return + 1e-10) * 2.0)), 8)
             return None
 
-        ml_target_30 = scaled_return(30)
-        ml_target_120 = scaled_return(120)
+        ml_target_30 = scaled_return_from_filter(30)
+        ml_target_120 = scaled_return_from_filter(120)
 
         # Trend direction
         if vel > 0.01:
