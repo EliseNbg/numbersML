@@ -15,6 +15,7 @@ let chart = null;
 let candleSeries = null;
 let filteredSeries = null;
 let normalizedSeries = null;
+let mlTargetSeries = null;
 
 const RANGE_HOURS = {
     '2': 2,
@@ -88,7 +89,7 @@ function initChart() {
         priceScaleId: 'left',
     });
 
-    // Normalized value series (0-1 range) on right scale
+    // Normalized value series (0-1 range) on right scale, top half
     normalizedSeries = chart.addLineSeries({
         color: '#4CAF50',
         lineWidth: 2,
@@ -96,6 +97,18 @@ function initChart() {
         priceScaleId: 'right',
         scaleMargins: {
             top: 0.05,
+            bottom: 0.5,
+        },
+    });
+
+    // ML Target (scaled return 120s) on separate scale, bottom half
+    mlTargetSeries = chart.addLineSeries({
+        color: '#2196F3',
+        lineWidth: 2,
+        title: 'ML Target 120s (0-1)',
+        priceScaleId: 'ml_scale',
+        scaleMargins: {
+            top: 0.55,
             bottom: 0.05,
         },
     });
@@ -136,6 +149,7 @@ async function loadChartData() {
         candleSeries.setData([]);
         if (filteredSeries) filteredSeries.setData([]);
         if (normalizedSeries) normalizedSeries.setData([]);
+        if (mlTargetSeries) mlTargetSeries.setData([]);
         return;
     }
 
@@ -149,6 +163,7 @@ async function loadChartData() {
             candleSeries.setData([]);
             if (filteredSeries) filteredSeries.setData([]);
             if (normalizedSeries) normalizedSeries.setData([]);
+            if (mlTargetSeries) mlTargetSeries.setData([]);
             document.getElementById('chart-title').textContent = `${symbol} - No data`;
             return;
         }
@@ -180,6 +195,19 @@ async function loadChartData() {
                 value: c.target_value.normalized_value,
             }));
         normalizedSeries.setData(normalizedData);
+
+        // ML Target (scaled return 120s) - blue line, bottom half
+        const mlTargetData = data
+            .filter(c => c.target_value !== null && c.target_value.ml_target_120 !== null)
+            .map(c => ({
+                time: c.time,
+                value: c.target_value.ml_target_120,
+            }));
+        console.log(`ML target points (120s): ${mlTargetData.length}`);
+        if (mlTargetData.length > 0) {
+            console.log('Sample ml_target_120:', mlTargetData[0], mlTargetData[Math.floor(mlTargetData.length/2)], mlTargetData[mlTargetData.length-1]);
+        }
+        mlTargetSeries.setData(mlTargetData);
 
         chart.timeScale().fitContent();
 

@@ -555,6 +555,16 @@ def batch_calculate_target_data(
     for i in range(1, len(filtered)):
         velocity[i] = float(filtered[i]) - float(filtered[i-1])
 
+    # Compute std of price returns for ML target scaling
+    # Use 30s return std as reference scale
+    if len(filtered) > 31:
+        ret_30s = (filtered[30:] - filtered[:-30]) / np.abs(filtered[:-30] + 1e-10)
+        std_return = float(np.std(ret_30s))
+    else:
+        std_return = 1e-6
+    if std_return < 1e-10:
+        std_return = 1e-6
+
     # Calculate normalized value: map filtered_value to [0..1] using local min/max
     n = len(filtered)
     normalized = np.zeros(n)  # Will hold [0..1] values
@@ -635,6 +645,19 @@ def batch_calculate_target_data(
         else:
             vel = 0.0
 
+        # Scaled return targets for ML training (stored for visualization)
+        # target = sigmoid(return / std * 2), range [0..1]
+        # >0.5 = bullish, <0.5 = bearish
+        def scaled_return(horizon_secs):
+            j = i + horizon_secs  # future index
+            if j < len(prices_arr):
+                ret = (float(prices_arr[j]) - current_price) / current_price
+                return round(1.0 / (1.0 + np.exp(-ret / (std_return + 1e-10) * 2.0)), 8)
+            return None
+
+        ml_target_30 = scaled_return(30)
+        ml_target_120 = scaled_return(120)
+
         # Trend direction
         if vel > 0.01:
             trend = 'up'
@@ -652,6 +675,8 @@ def batch_calculate_target_data(
             'normalized_value': round(norm_val, 8),
             'norm_min': round(n_min, 8),
             'norm_max': round(n_max, 8),
+            'ml_target_30': ml_target_30,
+            'ml_target_120': ml_target_120,
             'method': method,
             'use_future': use_future if method == 'savgol' else False,
         })
