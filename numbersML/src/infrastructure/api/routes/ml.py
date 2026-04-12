@@ -29,6 +29,90 @@ router = APIRouter(prefix="/api/ml", tags=["ml"])
 _model_cache: Dict[str, Any] = {}
 
 
+async def _load_saved_predictions(
+    symbol: str,
+    hours: float,
+) -> Dict[str, Any]:
+    """
+    Load pre-computed predictions from candles_1s.predicted_value.
+    Fast — no model loading or inference needed.
+    """
+    db_pool = await get_db_pool_async()
+
+    async with db_pool.acquire() as conn:
+        symbol_id = await conn.fetchval(
+            "SELECT id FROM symbols WHERE symbol = $1", symbol
+        )
+        if not symbol_id:
+            return {
+                "symbol": symbol, "candles_count": 0, "targets_count": 0,
+                "predictions_count": 0, "vectors_count": 0,
+                "candles": [], "targets": [], "predictions": [],
+            }
+
+        now = datetime.now(timezone.utc)
+        start_time = now - timedelta(hours=hours)
+
+        # Load candles with target_value and predicted_value
+        rows = await conn.fetch(
+            """
+            SELECT time, open, high, low, close, volume,
+                   target_value, predicted_value
+            FROM candles_1s
+            WHERE symbol_id = $1 AND time >= $2 AND time < $3
+            ORDER BY time
+            """,
+            symbol_id, start_time, now,
+        )
+
+    candles = []
+    targets = []
+    predictions = []
+    for r in rows:
+        candles.append({
+            "time": int(r["time"].timestamp()),
+            "open": float(r["open"]),
+            "high": float(r["high"]),
+            "low": float(r["low"]),
+            "close": float(r["close"]),
+            "volume": float(r["volume"]),
+        })
+
+        tv = r["target_value"]
+        if tv:
+            if isinstance(tv, str):
+                tv = json.loads(tv)
+            norm_val = tv.get("normalized_value")
+            if norm_val is not None:
+                targets.append({
+                    "time": int(r["time"].timestamp()),
+                    "value": float(norm_val),
+                })
+
+        pv = r["predicted_value"]
+        if pv:
+            if isinstance(pv, str):
+                pv = json.loads(pv)
+            pred_val = pv.get("value")
+            if pred_val is not None:
+                predictions.append({
+                    "time": int(r["time"].timestamp()),
+                    "predicted_target": float(pred_val),
+                })
+
+    return {
+        "symbol": symbol,
+        "use_saved": True,
+        "candles_count": len(candles),
+        "targets_count": len(targets),
+        "predictions_count": len(predictions),
+        "vectors_count": 0,
+        "candles": candles,
+        "targets": targets,
+        "predictions": predictions,
+    }
+
+
 def _get_torch_and_model():
     """Lazy import torch and model modules to avoid import errors in tests."""
     import numpy as np
@@ -172,13 +256,18 @@ async def predict(
     hours: float = Query(default=720, gt=0, le=1440, description="Hours of data to load"),
     horizon: int = Query(default=30, ge=5, le=300, description="Prediction horizon in seconds"),
     ensemble_size: int = Query(default=5, ge=1, le=20, description="Average last N predictions for smoothing"),
+    use_saved: bool = Query(default=False, description="Load pre-computed predictions from DB instead of running inference"),
 ) -> Dict[str, Any]:
     """
     Run ML prediction for a symbol.
 
     Returns candles, target values, and ML predictions.
     Uses ensemble averaging (last N predictions) to reduce noise.
+    If use_saved=true, reads pre-computed predictions from candles_1s.predicted_value.
     """
+    if use_saved:
+        return await _load_saved_predictions(symbol, hours)
+
     model_path = os.path.join("ml/models", model)
 
     try:

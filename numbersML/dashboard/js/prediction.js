@@ -194,21 +194,10 @@ async function loadPrediction() {
     const hours = document.getElementById('prediction-hours')?.value;
     const horizon = document.getElementById('prediction-horizon')?.value || 30;
     const ensembleSize = document.getElementById('ensemble-size')?.value || 5;
+    const useSaved = document.getElementById('use-saved')?.checked ?? true;
 
     if (!symbol) {
         updateStatus('Please select a symbol', 'warning');
-        return;
-    }
-
-    if (!model) {
-        updateStatus('Please select a model', 'warning');
-        return;
-    }
-    
-    // Validate minimum time range (need at least 120 vectors = ~2 minutes)
-    const hoursNum = parseFloat(hours);
-    if (hoursNum < 0.033) {
-        updateStatus('Time range too short. Minimum is 2 minutes (120 vectors required)', 'warning');
         return;
     }
 
@@ -220,24 +209,14 @@ async function loadPrediction() {
     }
 
     try {
-        const url = `${API_BASE}/ml/predict?symbol=${encodeURIComponent(symbol)}&model=${encodeURIComponent(model)}&hours=${hours}&horizon=${horizon}&ensemble_size=${ensembleSize}`;
+        const url = `${API_BASE}/ml/predict?symbol=${encodeURIComponent(symbol)}&model=${encodeURIComponent(model)}&hours=${hours}&horizon=${horizon}&ensemble_size=${ensembleSize}&use_saved=${useSaved}`;
         console.log('Fetching:', url);
 
         // Add timeout controller for long-running request
-        // CNN+GRU models are slow on CPU - adjust timeout based on time range
+        // Saved predictions load instantly, ML inference can be slow
         const hoursNum = parseFloat(hours);
-        let timeoutMs = 120000; // Default 2 minutes
-        
-        if (hoursNum <= 0.05) {
-            timeoutMs = 60000; // 1 minute for very short ranges
-        } else if (hoursNum <= 1) {
-            timeoutMs = 1800000; // 30 minutes for short ranges
-        } else if (hoursNum <= 24) {
-            timeoutMs = 3000000; // 50 minutes for medium ranges
-        } else {
-            timeoutMs = 6010000; // 100 minutes for long ranges
-        }
-        
+        let timeoutMs = useSaved ? 30000 : (hoursNum <= 0.05 ? 60000 : 180000);
+
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -329,7 +308,7 @@ async function loadPrediction() {
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-play-fill"></i> Load & Predict';
+            btn.innerHTML = '<i class="bi bi-play-fill"></i> Load';
         }
     }
 }

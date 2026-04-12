@@ -124,12 +124,20 @@
                 <input type="number" class="form-control" id="ensemble-size" value="5" min="1" max="20">
                 <div class="form-text">Average last N predictions (1=raw, 5=smooth)</div>
             </div>
-            <div class="col-md-2 d-flex align-items-end gap-2">
+            <div class="col-md-1 d-flex align-items-end">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="use-saved" checked>
+                    <label class="form-check-label" for="use-saved">
+                        Use saved
+                    </label>
+                </div>
+            </div>
+            <div class="col-md-1 d-flex align-items-end gap-2">
                 <button class="btn btn-primary flex-grow-1" id="btn-load-prediction">
-                    <i class="bi bi-play-fill"></i> Load & Predict
+                    <i class="bi bi-play-fill"></i> Load
                 </button>
                 <button class="btn btn-success flex-grow-1" id="btn-predict-save">
-                    <i class="bi bi-save"></i> Predict & Save
+                    <i class="bi bi-save"></i> Save
                 </button>
             </div>
         </div>
