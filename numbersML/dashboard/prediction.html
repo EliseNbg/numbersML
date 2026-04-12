@@ -146,7 +146,20 @@
         <div class="row mb-3">
             <div class="col-12">
                 <div id="prediction-status" class="text-muted">
-                    <i class="bi bi-info-circle"></i> Select a symbol and model, then click "Load & Predict"
+                    <i class="bi bi-info-circle"></i> Select a symbol and model, then click "Load"
+                </div>
+            </div>
+        </div>
+
+        <!-- Progress bar -->
+        <div class="row mb-3" id="progress-row" style="display: none;">
+            <div class="col-12">
+                <div class="progress" style="height: 8px;">
+                    <div id="prediction-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <small class="text-muted" id="progress-time">0.0s elapsed</small>
+                    <small class="text-muted" id="progress-step">ML Inference</small>
                 </div>
             </div>
         </div>

@@ -222,10 +222,34 @@ async function loadPrediction() {
 
         updateStatus(`Loading prediction... (timeout: ${Math.round(timeoutMs/1000)}s)`, 'info');
 
+        // Show progress with elapsed time
+        const startTime = Date.now();
+        const progressBar = document.getElementById('prediction-progress-bar');
+        const progressRow = document.getElementById('progress-row');
+        const progressTime = document.getElementById('progress-time');
+        const progressStep = document.getElementById('progress-step');
+
+        if (progressRow) progressRow.style.display = '';
+        const progressInterval = setInterval(() => {
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+            const dots = '.'.repeat(Math.floor((Date.now() - startTime) / 500) % 4);
+            updateStatus(`Running ML inference${dots}`, 'warning');
+            if (progressTime) progressTime.textContent = `${elapsed}s elapsed`;
+            if (progressBar) {
+                // Animate bar from 20% to 90% (we don't know exact progress)
+                const pct = Math.min(90, 20 + (Date.now() - startTime) / 300);
+                progressBar.style.width = `${pct}%`;
+            }
+        }, 200);
+
         const response = await fetch(url, {
             signal: controller.signal,
             headers: { 'Accept': 'application/json' }
         });
+
+        clearInterval(progressInterval);
+        if (progressBar) progressBar.style.width = '100%';
+        if (progressStep) progressStep.textContent = 'Rendering chart...';
 
         clearTimeout(timeoutId);
         
@@ -298,6 +322,11 @@ async function loadPrediction() {
             'success'
         );
 
+        // Hide progress bar
+        setTimeout(() => {
+            if (progressRow) progressRow.style.display = 'none';
+        }, 500);
+
     } catch (error) {
         console.error('Failed to load prediction:', error);
         if (error.name === 'AbortError') {
@@ -305,6 +334,10 @@ async function loadPrediction() {
         } else {
             updateStatus(`Error: ${error.message}`, 'danger');
         }
+        // Hide progress bar on error
+        setTimeout(() => {
+            if (progressRow) progressRow.style.display = 'none';
+        }, 500);
     } finally {
         if (btn) {
             btn.disabled = false;
