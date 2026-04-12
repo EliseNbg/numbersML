@@ -382,6 +382,8 @@ async function predictAndSave() {
                         btn.disabled = false;
                         btn.innerHTML = '<i class="bi bi-save"></i> Predict & Save';
                     }
+                    // Reload chart to show saved predictions alongside target values
+                    loadPrediction();
                 } else if (statusData.status === 'failed') {
                     clearInterval(pollInterval);
                     updateStatus(`Failed: ${statusData.error}`, 'danger');
