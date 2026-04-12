@@ -366,6 +366,15 @@ async function predictAndSave() {
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Running...';
     }
 
+    // Show progress bar
+    const progressBar = document.getElementById('prediction-progress-bar');
+    const progressRow = document.getElementById('progress-row');
+    const progressTime = document.getElementById('progress-time');
+    const progressStep = document.getElementById('progress-step');
+    if (progressRow) progressRow.style.display = '';
+    if (progressBar) progressBar.style.width = '10%';
+    if (progressStep) progressStep.textContent = 'Starting prediction task';
+
     try {
         const url = `${API_BASE}/ml/predict-and-save?symbol=${encodeURIComponent(symbol)}&model=${encodeURIComponent(model)}&hours=${hours}&horizon=${horizon}&ensemble_size=${ensembleSize}`;
         const resp = await fetch(url, { method: 'POST' });
@@ -377,34 +386,45 @@ async function predictAndSave() {
         const taskId = data.task_id;
 
         updateStatus(`Task started: ${taskId}. Polling status...`, 'info');
+        if (progressStep) progressStep.textContent = 'Running ML inference';
 
-        // Poll for completion
+        // Poll for completion with progress animation
+        const startTime = Date.now();
         const pollInterval = setInterval(async () => {
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+            if (progressTime) progressTime.textContent = `${elapsed}s elapsed`;
+
             try {
                 const statusResp = await fetch(`${API_BASE}/ml/task-status?task_id=${encodeURIComponent(taskId)}`);
                 const statusData = await statusResp.json();
 
                 if (statusData.status === 'completed') {
                     clearInterval(pollInterval);
+                    if (progressBar) progressBar.style.width = '100%';
                     updateStatus(
                         `Completed! Stored ${statusData.predictions_stored} predictions in ${statusData.elapsed_seconds}s.`,
                         'success'
                     );
                     if (btn) {
                         btn.disabled = false;
-                        btn.innerHTML = '<i class="bi bi-save"></i> Predict & Save';
+                        btn.innerHTML = '<i class="bi bi-save"></i> Save';
                     }
                     // Reload chart to show saved predictions alongside target values
                     loadPrediction();
+                    setTimeout(() => { if (progressRow) progressRow.style.display = 'none'; }, 500);
                 } else if (statusData.status === 'failed') {
                     clearInterval(pollInterval);
                     updateStatus(`Failed: ${statusData.error}`, 'danger');
                     if (btn) {
                         btn.disabled = false;
-                        btn.innerHTML = '<i class="bi bi-save"></i> Predict & Save';
+                        btn.innerHTML = '<i class="bi bi-save"></i> Save';
                     }
+                    setTimeout(() => { if (progressRow) progressRow.style.display = 'none'; }, 500);
                 } else {
-                    updateStatus(`Running... (${statusData.status})`, 'info');
+                    if (progressBar) {
+                        const pct = Math.min(90, 10 + (Date.now() - startTime) / 500);
+                        progressBar.style.width = `${pct}%`;
+                    }
                 }
             } catch (e) {
                 // Still polling, ignore errors
@@ -416,8 +436,10 @@ async function predictAndSave() {
             clearInterval(pollInterval);
             if (btn && btn.disabled) {
                 btn.disabled = false;
-                btn.innerHTML = '<i class="bi bi-save"></i> Predict & Save';
+                btn.innerHTML = '<i class="bi bi-save"></i> Save';
             }
+            updateStatus('Prediction timed out after 10 minutes', 'warning');
+            setTimeout(() => { if (progressRow) progressRow.style.display = 'none'; }, 500);
         }, 600000);
 
     } catch (error) {
@@ -425,8 +447,9 @@ async function predictAndSave() {
         updateStatus(`Error: ${error.message}`, 'danger');
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-save"></i> Predict & Save';
+            btn.innerHTML = '<i class="bi bi-save"></i> Save';
         }
+        setTimeout(() => { if (progressRow) progressRow.style.display = 'none'; }, 500);
     }
 }
 
