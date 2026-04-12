@@ -208,18 +208,21 @@ class WideVectorDataset(Dataset):
             with conn.cursor(name="ml_data_cursor") as cur:
                 cur.itersize = 5000
 
-                # Load wide_vectors with close price and price return target
-                # Target = future return: (close[t+horizon] - close[t]) / close[t]
+                # Load wide_vectors with close price and normalized_value target
+                # Target = normalized_value from target_value JSONB [0..1]
                 query = """
                     SELECT
                         wv.time,
                         wv.vector,
                         wv.vector_size,
+                        (c.target_value->>'normalized_value')::float AS target,
                         c.close
                     FROM wide_vectors wv
                     JOIN candles_1s c ON c.time = wv.time AND c.symbol_id = %s
                     WHERE wv.time >= %s AND wv.time < %s
                       AND wv.vector_size >= 50
+                      AND c.target_value IS NOT NULL
+                      AND (c.target_value->>'normalized_value') IS NOT NULL
                       AND c.close IS NOT NULL
                     ORDER BY wv.time
                 """
@@ -237,7 +240,7 @@ class WideVectorDataset(Dataset):
                         break
 
                     for row in batch:
-                        ts, vector_json, vec_size, close = row
+                        ts, vector_json, vec_size, target, close = row
 
                         # Parse vector from JSONB
                         if isinstance(vector_json, str):
@@ -256,6 +259,7 @@ class WideVectorDataset(Dataset):
                                 vec = vec[:prev_size]
 
                         vectors.append(vec)
+                        targets.append(float(target))
                         closes.append(float(close))
                         timestamps.append(ts)
 
@@ -265,12 +269,11 @@ class WideVectorDataset(Dataset):
         # DATA QUALITY VALIDATION: Ensure exact +1 second intervals and unique timestamps
         self._validate_temporal_consistency(timestamps, vectors)
 
-        # Compute price return targets: (close[t+horizon] - close[t]) / close[t]
-        # This is stationary (mean ~0, stable variance) unlike normalized_value
+        # Apply prediction horizon shift: target[i] = normalized_value[i + horizon]
+        # The model learns to predict the future normalized_value, not the current one
         horizon = self.data_config.prediction_horizon  # configurable (default 30s)
-        if len(closes) > horizon:
-            closes_arr = np.array(closes, dtype=np.float64)
-            targets = ((closes_arr[horizon:] - closes_arr[:-horizon]) / closes_arr[:-horizon]).tolist()
+        if len(targets) > horizon:
+            targets = targets[horizon:]
             vectors = vectors[:-horizon]
             timestamps = timestamps[:-horizon]
             closes = closes[:-horizon]
@@ -280,8 +283,8 @@ class WideVectorDataset(Dataset):
         print(f'Loaded {len(vectors)} samples, {len(targets)} targets, {len(timestamps)} timestamps')
         print(f'  Symbol: {self.target_symbol}, target id: {symbol_id}')
         print(f'  Time range: {timestamps[0] if timestamps else "N/A"} to {timestamps[-1] if timestamps else "N/A"}')
-        print(f'  Prediction horizon: {horizon}s (predicting future price return)')
-        print(f'  Target stats: mean={np.mean(targets):.8f}, std={np.std(targets):.8f}')
+        print(f'  Prediction horizon: {horizon}s (predicting future normalized_value)')
+        print(f'  Target stats: mean={np.mean(targets):.6f}, std={np.std(targets):.6f}')
 
         if len(vectors) < self.data_config.min_samples:
             raise ValueError(
@@ -347,7 +350,7 @@ def create_data_loaders(
     
     try:
         with conn.cursor() as cur:
-            # Get the actual data range available
+            # Get the actual data range available (with normalized_value targets)
             cur.execute("""
                 SELECT
                     MIN(time) as earliest,
@@ -355,6 +358,8 @@ def create_data_loaders(
                 FROM candles_1s
                 WHERE symbol_id = (SELECT id FROM symbols WHERE symbol = %s)
                   AND close IS NOT NULL
+                  AND target_value IS NOT NULL
+                  AND (target_value->>'normalized_value') IS NOT NULL
             """, (data_config.target_symbol,))
             row = cur.fetchone()
             if row and row[0] and row[1]:

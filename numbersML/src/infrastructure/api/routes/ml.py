@@ -254,19 +254,35 @@ async def predict(
         for r in candle_rows
     ]
 
-    # Get target values as price returns: (close[t+horizon] - close[t]) / close[t]
+    # Get target values as normalized_value [0..1] from JSONB
+    # Apply horizon shift: target[i] = normalized_value[i + horizon] (same as training)
     if candles:
-        # Compute price return targets from candle data
-        close_prices = [c["close"] for c in candles]
-        all_targets = []
-        for i in range(len(close_prices) - horizon):
-            ret = (close_prices[i + horizon] - close_prices[i]) / close_prices[i]
-            all_targets.append({
-                "time": candles[i]["time"],
-                "value": round(ret, 8),
-            })
+        async with db_pool.acquire() as conn:
+            target_rows = await conn.fetch(
+                """
+                SELECT time,
+                       (target_value->>'normalized_value')::float AS target
+                FROM candles_1s
+                WHERE symbol_id = $1 AND time >= $2 AND time < $3
+                  AND target_value IS NOT NULL
+                  AND target_value->>'normalized_value' IS NOT NULL
+                ORDER BY time
+                """,
+                symbol_id, start_time, now
+            )
 
-        targets = all_targets
+        # Apply horizon shift (same as training dataset)
+        horizon_shift = horizon  # use same horizon as model was trained with
+        all_targets = [
+            {"time": int(row['time'].timestamp()), "value": float(row['target'])}
+            for row in target_rows
+        ]
+
+        # Shift targets: target[i] = value[i + horizon]
+        if len(all_targets) > horizon_shift:
+            targets = all_targets[horizon_shift:]
+        else:
+            targets = []
     else:
         targets = []
 
@@ -366,7 +382,7 @@ async def predict(
         
         logger.info(f"Sliding window prediction completed in {time.time() - loop_start:.2f}s")
 
-    # Predictions are price returns, same scale as target values
+    # Predictions are normalized [0..1], same scale as target values
     if predictions and candles:
 
         # Apply ensemble averaging (smooth predictions by averaging last N)
@@ -547,23 +563,20 @@ async def _run_prediction_and_save(
         model_name = os.path.basename(model_path).replace('.pt', '')
         updated = 0
         if predictions and candles:
-            candle_map = {c["time"]: c["close"] for c in candles}
             pred_map = {p["time"]: p["predicted_target"] for p in predictions}
 
             batch = []
             for t, pred_val in pred_map.items():
-                close_price = candle_map.get(t)
-                if close_price is not None:
-                    batch.append((
-                        json.dumps({
-                            "value": pred_val,
-                            "model": model_name,
-                            "horizon": horizon,
-                            "predicted_at": started_at.isoformat(),
-                        }),
-                        symbol_id,
-                        t,
-                    ))
+                batch.append((
+                    json.dumps({
+                        "value": pred_val,
+                        "model": model_name,
+                        "horizon": horizon,
+                        "predicted_at": started_at.isoformat(),
+                    }),
+                    symbol_id,
+                    t,
+                ))
 
             if batch:
                 async with db_pool.acquire() as conn:
