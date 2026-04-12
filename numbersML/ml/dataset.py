@@ -208,13 +208,14 @@ class WideVectorDataset(Dataset):
             with conn.cursor(name="ml_data_cursor") as cur:
                 cur.itersize = 5000
 
-                # Load wide_vectors with close price for return-based target
+                # Load wide_vectors with close price and filtered_value for target
                 query = """
                     SELECT
                         wv.time,
                         wv.vector,
                         wv.vector_size,
-                        c.close
+                        c.close,
+                        (c.target_value->>'filtered_value')::float AS filtered_val
                     FROM wide_vectors wv
                     JOIN candles_1s c ON c.time = wv.time AND c.symbol_id = %s
                     WHERE wv.time >= %s AND wv.time < %s
@@ -227,6 +228,7 @@ class WideVectorDataset(Dataset):
                 vectors = []
                 targets = []
                 closes = []
+                filtered_vals = []
                 timestamps = []
                 prev_size = None
 
@@ -236,7 +238,7 @@ class WideVectorDataset(Dataset):
                         break
 
                     for row in batch:
-                        ts, vector_json, vec_size, close = row
+                        ts, vector_json, vec_size, close, filtered_val = row
 
                         # Parse vector from JSONB
                         if isinstance(vector_json, str):
@@ -256,6 +258,10 @@ class WideVectorDataset(Dataset):
 
                         vectors.append(vec)
                         closes.append(float(close))
+                        if filtered_val is not None:
+                            filtered_vals.append(float(filtered_val))
+                        else:
+                            filtered_vals.append(float(close))  # fallback
                         timestamps.append(ts)
 
         finally:
@@ -264,23 +270,22 @@ class WideVectorDataset(Dataset):
         # DATA QUALITY VALIDATION: Ensure exact +1 second intervals and unique timestamps
         self._validate_temporal_consistency(timestamps, vectors)
 
-        # Compute scaled price return targets: [0..1] via sigmoid
-        # target = sigmoid(return / std_return * 2)
+        # Compute scaled filtered return targets: [0..1] via sigmoid
+        # target = sigmoid((filtered[t+h] - filtered[t]) / close[t] / std * 2)
+        # Uses HANNING-FILTERED values for smooth trend signal
         #  - return ≈ 0    → target ≈ 0.5 (flat)
         #  - return > 0    → target > 0.5 (bullish)
         #  - return < 0    → target < 0.5 (bearish)
-        # This is STATIONARY: same meaning at all times, unlike normalized_value
         horizon = self.data_config.prediction_horizon
-        if len(closes) > horizon:
+        if len(filtered_vals) > horizon:
+            filtered_arr = np.array(filtered_vals, dtype=np.float64)
             closes_arr = np.array(closes, dtype=np.float64)
-            # Compute returns
-            returns = (closes_arr[horizon:] - closes_arr[:-horizon]) / closes_arr[:-horizon]
+            # Compute returns from filtered values, normalized by close price
+            returns = (filtered_arr[horizon:] - filtered_arr[:-horizon]) / (closes_arr[:-horizon] + 1e-10)
             # Scale to [0..1] using sigmoid
-            # First pass: compute std for scaling
             std_return = float(np.std(returns))
             if std_return < 1e-10:
                 std_return = 1e-6  # prevent division by zero
-            # Sigmoid scaling: factor 2 maps ±1 std to ~[0.12, 0.88]
             targets = 1.0 / (1.0 + np.exp(-returns / std_return * 2.0))
             targets = targets.tolist()
             # Store scale for inference
@@ -295,7 +300,7 @@ class WideVectorDataset(Dataset):
         print(f'Loaded {len(vectors)} samples, {len(targets)} targets, {len(timestamps)} timestamps')
         print(f'  Symbol: {self.target_symbol}, target id: {symbol_id}')
         print(f'  Time range: {timestamps[0] if timestamps else "N/A"} to {timestamps[-1] if timestamps else "N/A"}')
-        print(f'  Prediction horizon: {horizon}s (predicting scaled return [0..1])')
+        print(f'  Prediction horizon: {horizon}s (predicting filtered return [0..1])')
         print(f'  Target stats: mean={np.mean(targets):.6f}, std={np.std(targets):.6f}')
 
         if len(vectors) < self.data_config.min_samples:
