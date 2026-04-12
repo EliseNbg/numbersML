@@ -17,7 +17,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Query
 
 from src.infrastructure.database import get_db_pool_async
 
@@ -602,6 +602,7 @@ async def _run_prediction_and_save(
 
 # Background task registry
 _prediction_tasks: Dict[str, Dict[str, Any]] = {}
+_pending_tasks: List[asyncio.Task] = []
 
 
 @router.post(
@@ -610,7 +611,6 @@ _prediction_tasks: Dict[str, Dict[str, Any]] = {}
     description="Run ML prediction and store results in candles_1s.predicted_value",
 )
 async def predict_and_save(
-    background_tasks: BackgroundTasks,
     symbol: str = Query(..., description="Symbol name (e.g., 'BTC/USDC')"),
     model: str = Query(default="best_model.pt", description="Model filename"),
     hours: float = Query(default=720, gt=0, le=1440, description="Hours of data"),
@@ -619,6 +619,7 @@ async def predict_and_save(
 ) -> Dict[str, Any]:
     """
     Start prediction in background and store results in candles_1s.predicted_value.
+    Uses asyncio.create_task() to run in the same event loop (avoids asyncpg pool issues).
     Returns a task ID for status checking.
     """
     model_path = os.path.join("ml/models", model)
@@ -628,10 +629,20 @@ async def predict_and_save(
     task_id = f"{symbol}_{model}_{horizon}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
 
     async def run_task():
-        result = await _run_prediction_and_save(symbol, model_path, hours, horizon, ensemble_size)
-        _prediction_tasks[task_id] = result
+        try:
+            result = await _run_prediction_and_save(symbol, model_path, hours, horizon, ensemble_size)
+            _prediction_tasks[task_id] = result
+        except Exception as e:
+            _prediction_tasks[task_id] = {
+                "status": "failed",
+                "error": str(e),
+                "task_id": task_id,
+            }
 
-    background_tasks.add_task(asyncio.run, run_task())
+    # Schedule in the SAME event loop — asyncpg pool connections work correctly
+    task = asyncio.create_task(run_task())
+    _pending_tasks.append(task)
+    task.add_done_callback(lambda t: _pending_tasks.remove(t) if t in _pending_tasks else None)
 
     return {
         "task_id": task_id,
