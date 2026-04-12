@@ -870,8 +870,8 @@ class CNN_GRUModel(nn.Module):
         # MLP head
         x = self.mlp(context)
 
-        # Output
-        return self.output(x).squeeze(-1)
+        # Output with sigmoid to bound predictions to [0, 1]
+        return torch.sigmoid(self.output(x)).squeeze(-1)
 
 
 def create_model(
