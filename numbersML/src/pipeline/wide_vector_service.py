@@ -118,7 +118,7 @@ class WideVectorService:
         symbol_names = [sname for _, sname in self._active_symbols]
 
         async with self.db_pool.acquire() as conn:
-            # 1. Read candles
+            # 1. Read candles for current second
             candle_rows = await conn.fetch(
                 """
                 SELECT c.symbol_id, s.symbol, c.close, c.volume
@@ -129,10 +129,7 @@ class WideVectorService:
                 symbol_ids, candle_time,
             )
 
-            if not candle_rows:
-                return None
-
-            # 2. Read indicators
+            # 2. Read indicators for current second
             indicator_rows = await conn.fetch(
                 """
                 SELECT ci.symbol_id, s.symbol, ci.values, ci.indicator_keys
@@ -143,7 +140,12 @@ class WideVectorService:
                 symbol_ids, candle_time,
             )
 
-            # 3. Build lookup dicts
+            # 3. Forward-fill missing data: use last known values for symbols without candles
+            symbols_with_candles = {r['symbol'] for r in candle_rows} if candle_rows else set()
+            symbols_without_candles = [sname for _, sname in self._active_symbols
+                                       if sname not in symbols_with_candles]
+
+            # 4. Build lookup dicts for current second data
             candle_data: Dict[str, Dict[str, float]] = {}
             for r in candle_rows:
                 candle_data[r['symbol']] = {
@@ -167,6 +169,57 @@ class WideVectorService:
                 }
                 if r['indicator_keys']:
                     all_indicator_keys.update(r['indicator_keys'])
+
+            # 5. Forward-fill: use last known values for symbols without candles
+            if symbols_without_candles:
+                missing_ids = [sid for sid, sname in self._active_symbols
+                               if sname in symbols_without_candles]
+                # Last known candles
+                last_candle_rows = await conn.fetch(
+                    """
+                    SELECT DISTINCT ON (c.symbol_id) c.symbol_id, s.symbol,
+                           c.close, c.volume
+                    FROM candles_1s c
+                    JOIN symbols s ON s.id = c.symbol_id
+                    WHERE c.symbol_id = ANY($1) AND c.time < $2
+                    ORDER BY c.symbol_id, c.time DESC
+                    """,
+                    missing_ids, candle_time,
+                )
+                for r in last_candle_rows:
+                    symbol_name = r['symbol']
+                    candle_data[symbol_name] = {
+                        'close': float(r['close']),
+                        'volume': 0.0,  # No trades this second
+                    }
+
+                # Last known indicators
+                last_indicator_rows = await conn.fetch(
+                    """
+                    SELECT DISTINCT ON (ci.symbol_id) ci.symbol_id, s.symbol,
+                           ci.values, ci.indicator_keys
+                    FROM candle_indicators ci
+                    JOIN symbols s ON s.id = ci.symbol_id
+                    WHERE ci.symbol_id = ANY($1) AND ci.time < $2
+                    ORDER BY ci.symbol_id, ci.time DESC
+                    """,
+                    missing_ids, candle_time,
+                )
+                for r in last_indicator_rows:
+                    symbol_name = r['symbol']
+                    values_raw = r['values']
+                    if isinstance(values_raw, str):
+                        values = json.loads(values_raw)
+                    elif isinstance(values_raw, dict):
+                        values = values_raw
+                    else:
+                        values = {}
+                    indicator_data[symbol_name] = {
+                        k: float(v) if v is not None else 0.0
+                        for k, v in values.items()
+                    }
+                    if r['indicator_keys']:
+                        all_indicator_keys.update(r['indicator_keys'])
 
             # 4. Build flat vector
             sorted_indicator_keys = sorted(all_indicator_keys)
