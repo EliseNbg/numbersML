@@ -375,6 +375,80 @@ async def recalculate_wide_vectors(
                 'volume': float(r['volume']),
             }
 
+        # FILL GAPS: Forward-fill missing symbols from last known data
+        # This ensures wide vectors have complete data for ALL active symbols
+        all_times = sorted(set(list(by_time.keys()) + list(candle_by_time.keys())))
+        missing_count = 0
+
+        async with db_pool.acquire() as conn:
+            for t in all_times:
+                symbols_at_time = set()
+                if t in candle_by_time:
+                    symbols_at_time.update(candle_by_time[t].keys())
+                if t in by_time:
+                    symbols_at_time.update(by_time[t].keys())
+
+                missing_symbols = [sname for _, sname in active_symbols
+                                   if sname not in symbols_at_time]
+
+                if missing_symbols:
+                    missing_ids = [sid for sid, sname in active_symbols
+                                   if sname in missing_symbols]
+                    # Get last known candles before this time
+                    last_candles = await conn.fetch(
+                        """
+                        SELECT DISTINCT ON (c.symbol_id) c.symbol_id, s.symbol,
+                               c.close, c.volume
+                        FROM candles_1s c
+                        JOIN symbols s ON s.id = c.symbol_id
+                        WHERE c.symbol_id = ANY($1) AND c.time < $2
+                        ORDER BY c.symbol_id, c.time DESC
+                        """,
+                        missing_ids, t,
+                    )
+                    for r in last_candles:
+                        sym = r['symbol']
+                        if t not in candle_by_time:
+                            candle_by_time[t] = {}
+                        candle_by_time[t][sym] = {
+                            'close': float(r['close']),
+                            'volume': 0.0,  # No trades at this second
+                        }
+                        missing_count += 1
+
+                    # Get last known indicators before this time
+                    last_indicators = await conn.fetch(
+                        """
+                        SELECT DISTINCT ON (ci.symbol_id) ci.symbol_id, s.symbol,
+                               ci.values, ci.indicator_keys
+                        FROM candle_indicators ci
+                        JOIN symbols s ON s.id = ci.symbol_id
+                        WHERE ci.symbol_id = ANY($1) AND ci.time < $2
+                        ORDER BY ci.symbol_id, ci.time DESC
+                        """,
+                        missing_ids, t,
+                    )
+                    for r in last_indicators:
+                        sym = r['symbol']
+                        if t not in by_time:
+                            by_time[t] = {}
+                        values_raw = r['values']
+                        if isinstance(values_raw, str):
+                            values = json.loads(values_raw)
+                        elif isinstance(values_raw, dict):
+                            values = values_raw
+                        else:
+                            values = {}
+                        by_time[t][sym] = {
+                            k: float(v) if v is not None else 0.0
+                            for k, v in values.items()
+                        }
+                        if r['indicator_keys']:
+                            all_keys.update(r['indicator_keys'])
+
+        if missing_count > 0:
+            logger.info(f"  Filled {missing_count} symbol-time gaps with forward-filled data")
+
         # Build and insert wide vectors for this batch
         vector_batch = []
         batch_count = 0
