@@ -125,9 +125,15 @@ class TestWideVectorService:
 
     @pytest.mark.asyncio
     async def test_generate_no_candles(self, mock_db_pool: MagicMock) -> None:
-        """Test generate returns None when no candles exist."""
+        """Test generate returns None when no candles and no history exist."""
         mock_conn = AsyncMock()
-        mock_conn.fetch = AsyncMock(return_value=[])
+        # No candles, no history → all forward-fill queries return []
+        mock_conn.fetch = AsyncMock(side_effect=[
+            [],   # candle_rows (empty)
+            [],   # indicator_rows (empty)
+            [],   # last_candle_rows (no history)
+            [],   # last_indicator_rows (no history)
+        ])
         mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
 
         service = WideVectorService(
@@ -135,7 +141,9 @@ class TestWideVectorService:
             [(58, 'BTC/USDC')],
         )
         result = await service.generate(datetime.now(timezone.utc))
-        assert result is None
+        # Returns vector with 0.0 values since no data at all
+        assert result is not None
+        assert result['vector'] == [0.0, 0.0]
 
     @pytest.mark.asyncio
     async def test_generate_sets_processed_flag(
