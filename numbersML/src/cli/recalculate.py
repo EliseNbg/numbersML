@@ -78,6 +78,7 @@ async def reset_processed(
             symbol_ids, from_time,
         )
     count = int(result.split()[-1])
+    logger.info(f"Reset processed flag for {count} candles")
     return count
 
 
@@ -85,188 +86,70 @@ async def recalculate_indicators(
     db_pool: asyncpg.Pool,
     symbol_ids: List[int],
     from_time: datetime,
-    to_time: Optional[datetime],
+    to_time: Optional[datetime] = None,
 ) -> int:
     """
-    Recalculate indicators for all candles.
-    Optimized: Uses vectorized calculation (Numpy) instead of row-by-row loops.
+    Recalculate indicators for unprocessed candles.
+
+    Uses time-batched processing to avoid OOM:
+    - Processes data in 1-hour chunks
+    - Loads only current batch into memory
     """
-    import json
-    import numpy as np
     from src.pipeline.indicator_calculator import IndicatorCalculator
 
     calc = IndicatorCalculator(db_pool)
     await calc.load_definitions()
 
+    if not calc._definitions:
+        logger.warning("No active indicator definitions found")
+        return 0
+
+    # Determine time range
+    if to_time is None:
+        to_time = datetime.now(timezone.utc)
+
+    # Process in 1-hour chunks
+    batch_size = timedelta(hours=1)
+    current_start = from_time
     total_count = 0
 
-    async with db_pool.acquire() as conn:
-        sym_rows = await conn.fetch(
-            "SELECT id, symbol FROM symbols WHERE id = ANY($1) ORDER BY id",
-            symbol_ids,
-        )
+    logger.info(f"Processing indicators in 1h batches from {from_time} to {to_time}")
 
-        for sym_row in sym_rows:
-            sid = sym_row['id']
-            sname = sym_row['symbol']
-            logger.info(f"Processing {sname}...")
+    while current_start < to_time:
+        current_end = min(current_start + batch_size, to_time)
 
-            # 1. Load ALL candles + sufficient history for long indicators (e.g. EMA 2000)
-            # We use a 2-hour buffer to ensure long-period indicators stabilize.
-            buffer_time = from_time - timedelta(hours=2)
-            
-            query = """
-                SELECT time, open, high, low, close, volume
-                FROM candles_1s
-                WHERE symbol_id = $1 AND time >= $2
-                ORDER BY time
-            """
-            params = [sid, buffer_time]
-            
-            if to_time:
-                query += " AND time <= $3"
-                params.append(to_time)
-                
-            all_candles = await conn.fetch(query, *params)
+        async with db_pool.acquire() as conn:
+            # Get unprocessed candles for this batch
+            unprocessed = await conn.fetch(
+                """
+                SELECT DISTINCT c.time
+                FROM candles_1s c
+                WHERE c.symbol_id = ANY($1)
+                  AND c.time >= $2 AND c.time < $3
+                  AND c.processed = false
+                ORDER BY c.time
+                """,
+                symbol_ids, current_start, current_end,
+            )
 
-            if not all_candles:
-                logger.warning(f"No candles for {sname}")
-                continue
+        if not unprocessed:
+            current_start = current_end
+            continue
 
-            num_candles = len(all_candles)
-            logger.info(f"Loaded {num_candles} candles for {sname}")
+        times = [r['time'] for r in unprocessed]
+        logger.info(f"Processing {len(times)} unprocessed time points in batch")
 
-            # 2. Convert to Numpy arrays for vectorization
-            logger.info(f"Converting to numpy arrays...")
-            np_opens = np.array([float(c['open']) for c in all_candles], dtype=np.float64)
-            np_highs = np.array([float(c['high']) for c in all_candles], dtype=np.float64)
-            np_lows = np.array([float(c['low']) for c in all_candles], dtype=np.float64)
-            np_closes = np.array([float(c['close']) for c in all_candles], dtype=np.float64)
-            np_volumes = np.array([float(c['volume']) for c in all_candles], dtype=np.float64)
-
-            # 3. Calculate indicators in bulk (one call per indicator type)
-            logger.info(f"Calculating indicators for {num_candles} candles...")
-            bulk_results = {}  # key -> numpy array of results
-
-            for defn in calc._definitions:
-                ind_name = defn.get('name', 'unknown')
-                try:
-                    cls = calc._get_indicator_class(defn['class_name'], defn['module_path'])
-                    if cls is None:
-                        continue
-
-                    indicator = cls(**defn['params'])
-                    
-                    # Calculate for the ENTIRE array at once
-                    result = indicator.calculate(
-                        prices=np_closes,
-                        volumes=np_volumes,
-                        highs=np_highs,
-                        lows=np_lows,
-                        opens=np_opens,
-                        closes=np_closes,
-                    )
-
-                    # We want to store ONE value per indicator definition.
-                    # Indicators often return multiple arrays (e.g., MACD returns macd, signal, hist).
-                    # We take the last valid one found in result.values.
-                    
-                    values_to_store = None
-                    for key, vals in result.values.items():
-                        if len(vals) > 0:
-                            values_to_store = vals
-
-                    if values_to_store is not None:
-                        # Ensure array matches length
-                        if len(values_to_store) < num_candles:
-                            padding = num_candles - len(values_to_store)
-                            values_to_store = np.concatenate([np.full(padding, np.nan), values_to_store])
-                        
-                        # Use the definition name as the key (e.g., 'macd_12_26_9')
-                        bulk_results[ind_name] = values_to_store
-                        logger.debug(f"  Calculated {ind_name}")
-                except Exception as e:
-                    logger.error(f"Error calculating {ind_name}: {e}")
-
-            # 4. Prepare batches for insertion
-            logger.info(f"Building result batches...")
-            indicator_batch = []
-            batch_size = 5000
-            count = 0
-            
-            # Collect all valid keys
-            all_keys = sorted(list(bulk_results.keys()))
-            logger.info(f"Total valid indicator keys found: {len(all_keys)}")
-
-            for i in range(num_candles):
-                candle = all_candles[i]
-                
-                # Skip history buffer rows (only insert from 'from_time' onwards)
-                if from_time and candle['time'] < from_time:
-                    continue
-
-                # Logging progress
-                if count > 0 and count % 10000 == 0:
-                    logger.info(f"  Progress: {count} candles processed...")
-
-                row_values = {}
-                row_keys = []
-
-                # Extract values for this row from the bulk arrays
-                for key in all_keys:
-                    arr = bulk_results[key]
-                    if i < len(arr):
-                        val = arr[i]
-                        if not np.isnan(val) and not np.isinf(val):
-                            row_values[key] = float(val)
-                            row_keys.append(key)
-
-                if row_values:
-                    indicator_batch.append((
-                        candle['time'],
-                        sid,
-                        float(candle['close']),
-                        float(candle['volume']),
-                        json.dumps(row_values),
-                        row_keys,
-                    ))
-                    count += 1
-
-                    if len(indicator_batch) >= batch_size:
-                        await conn.executemany(
-                            """
-                            INSERT INTO candle_indicators (time, symbol_id, price, volume, values, indicator_keys)
-                            VALUES ($1, $2, $3, $4, $5::jsonb, $6)
-                            ON CONFLICT (symbol_id, time) DO UPDATE SET
-                                price = EXCLUDED.price,
-                                volume = EXCLUDED.volume,
-                                values = EXCLUDED.values,
-                                indicator_keys = EXCLUDED.indicator_keys,
-                                updated_at = NOW()
-                            """,
-                            indicator_batch,
-                        )
-                        logger.info(f"  Batch saved: {count} indicators written so far...")
-                        indicator_batch = []
-
-            # Insert remaining
-            if indicator_batch:
-                await conn.executemany(
-                    """
-                    INSERT INTO candle_indicators (time, symbol_id, price, volume, values, indicator_keys)
-                    VALUES ($1, $2, $3, $4, $5::jsonb, $6)
-                    ON CONFLICT (symbol_id, time) DO UPDATE SET
-                        price = EXCLUDED.price,
-                        volume = EXCLUDED.volume,
-                        values = EXCLUDED.values,
-                        indicator_keys = EXCLUDED.indicator_keys,
-                        updated_at = NOW()
-                    """,
-                    indicator_batch,
-                )
-
-            logger.info(f"  {sname}: {count} total indicators processed")
+        # Calculate indicators for each time point
+        for t in times:
+            count = await calc.calculate_with_candle(
+                symbol='',
+                time=t,
+                open=0, high=0, low=0, close=0, volume=0,
+                symbol_id=symbol_ids[0] if symbol_ids else None,
+            )
             total_count += count
+
+        current_start = current_end
 
     return total_count
 
@@ -274,35 +157,26 @@ async def recalculate_indicators(
 async def recalculate_wide_vectors(
     db_pool: asyncpg.Pool,
     symbol_ids: List[int],
+    active_symbols: List[Tuple[int, str]],
     from_time: datetime,
-    to_time: Optional[datetime],
+    to_time: Optional[datetime] = None,
     batch_hours: int = 1,
 ) -> int:
     """
-    Regenerate wide vectors for unprocessed candles.
+    Regenerate wide vectors with gap-filling.
 
-    Uses time-batched processing to avoid OOM:
-    - Processes data in batch_hours chunks (default: 1 hour)
-    - Loads only current batch into memory
-    - Builds and inserts wide vectors per batch
+    Uses IN-MEMORY forward-fill to avoid N+1 queries.
+    Loads all historical data ONCE per batch (2 queries), then fills gaps in memory.
+    This reduces processing time from hours to seconds per batch.
     """
-    from src.pipeline.wide_vector_service import WideVectorService
-
-    service = WideVectorService(db_pool)
-    await service.load_symbols()
-
-    active_symbols = service._active_symbols
     if not active_symbols:
         return 0
 
-    symbol_id_set = {sid for sid, _ in active_symbols}
     symbol_names = [sname for _, sname in active_symbols]
 
-    # Determine time range
     if to_time is None:
         to_time = datetime.now(timezone.utc)
 
-    # Process in batch_hours chunks to avoid OOM
     batch_size = timedelta(hours=batch_hours)
     current_start = from_time
     total_count = 0
@@ -313,7 +187,7 @@ async def recalculate_wide_vectors(
         current_end = min(current_start + batch_size, to_time)
         logger.info(f"Processing batch: {current_start} to {current_end}")
 
-        # Load indicator data for this batch only
+        # Load indicator data for this batch
         async with db_pool.acquire() as conn:
             indicator_rows = await conn.fetch(
                 """
@@ -331,7 +205,7 @@ async def recalculate_wide_vectors(
             current_start = current_end
             continue
 
-        # Group by time (only for this batch)
+        # Group by time
         by_time: dict = {}
         all_keys: set = set()
         for r in indicator_rows:
@@ -352,7 +226,7 @@ async def recalculate_wide_vectors(
         sorted_indicator_keys = sorted(all_keys)
         logger.info(f"  Found {len(by_time)} time points with indicators")
 
-        # Load candle data for this batch only
+        # Load candle data for this batch
         async with db_pool.acquire() as conn:
             candle_rows = await conn.fetch(
                 """
@@ -375,76 +249,87 @@ async def recalculate_wide_vectors(
                 'volume': float(r['volume']),
             }
 
-        # FILL GAPS: Forward-fill missing symbols from last known data
-        # This ensures wide vectors have complete data for ALL active symbols
-        all_times = sorted(set(list(by_time.keys()) + list(candle_by_time.keys())))
+        # === FILL GAPS: Load ALL historical data ONCE, then forward-fill in memory ===
+        # OLD: 7200 queries per batch (2 per time point × 3600 time points)
+        # NEW: 2 queries per batch (load all history once)
         missing_count = 0
 
-        async with db_pool.acquire() as conn:
-            for t in all_times:
+        all_times_set = set(by_time.keys()) | set(candle_by_time.keys())
+        if all_times_set:
+            async with db_pool.acquire() as conn:
+                # Get last known data for each symbol BEFORE batch start
+                all_symbol_ids = [sid for sid, _ in active_symbols]
+
+                last_candles = await conn.fetch(
+                    """
+                    SELECT DISTINCT ON (c.symbol_id) c.symbol_id, s.symbol,
+                           c.close, c.volume
+                    FROM candles_1s c
+                    JOIN symbols s ON s.id = c.symbol_id
+                    WHERE c.symbol_id = ANY($1) AND c.time < $2
+                    ORDER BY c.symbol_id, c.time DESC
+                    """,
+                    all_symbol_ids, current_start,
+                )
+
+                last_indicators = await conn.fetch(
+                    """
+                    SELECT DISTINCT ON (ci.symbol_id) ci.symbol_id, s.symbol,
+                           ci.values, ci.indicator_keys
+                    FROM candle_indicators ci
+                    JOIN symbols s ON s.id = ci.symbol_id
+                    WHERE ci.symbol_id = ANY($1) AND ci.time < $2
+                    ORDER BY ci.symbol_id, ci.time DESC
+                    """,
+                    all_symbol_ids, current_start,
+                )
+
+            # Build forward-fill cache from last known data
+            last_candle_cache = {}
+            for r in last_candles:
+                last_candle_cache[r['symbol']] = {
+                    'close': float(r['close']),
+                    'volume': 0.0,
+                }
+
+            last_indicator_cache = {}
+            for r in last_indicators:
+                values_raw = r['values']
+                if isinstance(values_raw, str):
+                    values = json.loads(values_raw)
+                elif isinstance(values_raw, dict):
+                    values = values_raw
+                else:
+                    values = {}
+                last_indicator_cache[r['symbol']] = {
+                    k: float(v) if v is not None else 0.0
+                    for k, v in values.items()
+                }
+
+            # Forward-fill gaps in MEMORY (no more DB queries!)
+            for t in sorted(all_times_set):
                 symbols_at_time = set()
                 if t in candle_by_time:
                     symbols_at_time.update(candle_by_time[t].keys())
                 if t in by_time:
                     symbols_at_time.update(by_time[t].keys())
 
-                missing_symbols = [sname for _, sname in active_symbols
-                                   if sname not in symbols_at_time]
+                missing = [sname for _, sname in active_symbols
+                           if sname not in symbols_at_time]
 
-                if missing_symbols:
-                    missing_ids = [sid for sid, sname in active_symbols
-                                   if sname in missing_symbols]
-                    # Get last known candles before this time
-                    last_candles = await conn.fetch(
-                        """
-                        SELECT DISTINCT ON (c.symbol_id) c.symbol_id, s.symbol,
-                               c.close, c.volume
-                        FROM candles_1s c
-                        JOIN symbols s ON s.id = c.symbol_id
-                        WHERE c.symbol_id = ANY($1) AND c.time < $2
-                        ORDER BY c.symbol_id, c.time DESC
-                        """,
-                        missing_ids, t,
-                    )
-                    for r in last_candles:
-                        sym = r['symbol']
-                        if t not in candle_by_time:
-                            candle_by_time[t] = {}
-                        candle_by_time[t][sym] = {
-                            'close': float(r['close']),
-                            'volume': 0.0,  # No trades at this second
-                        }
-                        missing_count += 1
-
-                    # Get last known indicators before this time
-                    last_indicators = await conn.fetch(
-                        """
-                        SELECT DISTINCT ON (ci.symbol_id) ci.symbol_id, s.symbol,
-                               ci.values, ci.indicator_keys
-                        FROM candle_indicators ci
-                        JOIN symbols s ON s.id = ci.symbol_id
-                        WHERE ci.symbol_id = ANY($1) AND ci.time < $2
-                        ORDER BY ci.symbol_id, ci.time DESC
-                        """,
-                        missing_ids, t,
-                    )
-                    for r in last_indicators:
-                        sym = r['symbol']
-                        if t not in by_time:
-                            by_time[t] = {}
-                        values_raw = r['values']
-                        if isinstance(values_raw, str):
-                            values = json.loads(values_raw)
-                        elif isinstance(values_raw, dict):
-                            values = values_raw
-                        else:
-                            values = {}
-                        by_time[t][sym] = {
-                            k: float(v) if v is not None else 0.0
-                            for k, v in values.items()
-                        }
-                        if r['indicator_keys']:
-                            all_keys.update(r['indicator_keys'])
+                if missing:
+                    # Use last known candle (from cache)
+                    for sname in missing:
+                        if sname in last_candle_cache:
+                            if t not in candle_by_time:
+                                candle_by_time[t] = {}
+                            candle_by_time[t][sname] = dict(last_candle_cache[sname])
+                            missing_count += 1
+                        if sname in last_indicator_cache:
+                            if t not in by_time:
+                                by_time[t] = {}
+                            by_time[t][sname] = dict(last_indicator_cache[sname])
+                            all_keys.update(last_indicator_cache[sname].keys())
 
         if missing_count > 0:
             logger.info(f"  Filled {missing_count} symbol-time gaps with forward-filled data")
@@ -488,14 +373,12 @@ async def recalculate_wide_vectors(
                 # Call external provider if available
                 if external_provider:
                     try:
-                        # Prepare candles with normalized keys
                         provider_candles = {
                             sname.replace('/', '_'): cd
                             for sname, cd in cd_data.items()
                         }
                         ext_features = external_provider(provider_candles, ind_data, t)
-                        
-                        # Prepend external features (reverse sorted order to maintain alphabetical at start)
+
                         if ext_features:
                             for key, value in sorted(ext_features.items()):
                                 if value is not None:
@@ -530,7 +413,7 @@ async def recalculate_wide_vectors(
                     logger.info(f"  {batch_count} wide vectors written...")
                     vector_batch = []
 
-        # Insert remaining vectors for this batch
+        # Insert remaining vectors
         if vector_batch:
             async with db_pool.acquire() as conn:
                 await conn.executemany(
@@ -554,84 +437,78 @@ async def recalculate_wide_vectors(
 
         current_start = current_end
 
-    # Set processed flag for all symbols
-    async with db_pool.acquire() as conn:
-        await conn.execute(
-            """
-            UPDATE candles_1s SET processed = true
-            WHERE symbol_id = ANY($1) AND time >= $2 AND time <= $3
-            """,
-            symbol_ids, from_time, to_time,
-        )
-
     return total_count
 
 
 async def main() -> None:
-    parser = argparse.ArgumentParser(description="Recalculate indicators and wide vectors")
-    parser.add_argument('--reset', action='store_true', help='Reset processed flag')
-    parser.add_argument('--indicators', action='store_true', help='Recalculate indicators')
-    parser.add_argument('--vectors', action='store_true', help='Recalculate wide vectors')
-    parser.add_argument('--all', action='store_true', help='Reset + indicators + vectors')
-    parser.add_argument('--vectors-only', action='store_true', 
-                        help='Recalculate wide vectors only (skip indicators, assumes they exist)')
-    parser.add_argument('--from', dest='from_time', required=True,
-                        help='Start time (YYYY-MM-DD HH:MM:SS)')
-    parser.add_argument('--to', dest='to_time', default=None,
-                        help='End time (YYYY-MM-DD HH:MM:SS)')
-    parser.add_argument('--symbols', dest='symbols', default=None,
-                        help='Comma-separated symbol list (e.g., BTC/USDC,ETH/USDC)')
-    parser.add_argument('--batch-hours', dest='batch_hours', type=int, default=1,
-                        help='Batch size in hours for wide vector processing (default: 1)')
+    parser = argparse.ArgumentParser(
+        description="Recalculate indicators and wide vectors"
+    )
+    parser.add_argument(
+        '--symbols', type=str, default=None,
+        help='Comma-separated symbol list (e.g., "BTC/USDC,ETH/USDC")'
+    )
+    parser.add_argument(
+        '--from', dest='from_time', type=str, required=True,
+        help='Start time (YYYY-MM-DD HH:MM:SS)'
+    )
+    parser.add_argument(
+        '--to', dest='to_time', type=str, default=None,
+        help='End time (YYYY-MM-DD HH:MM:SS), default: now'
+    )
+    parser.add_argument(
+        '--reset', action='store_true',
+        help='Reset processed flag only'
+    )
+    parser.add_argument(
+        '--indicators', action='store_true',
+        help='Recalculate indicators only'
+    )
+    parser.add_argument(
+        '--vectors-only', action='store_true',
+        help='Recalculate wide vectors only'
+    )
+    parser.add_argument(
+        '--all', action='store_true',
+        help='Recalculate both indicators and wide vectors'
+    )
 
     args = parser.parse_args()
 
-    from_time = datetime.strptime(args.from_time, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
-    to_time = None
-    if args.to_time:
-        to_time = datetime.strptime(args.to_time, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
+    if not any([args.reset, args.indicators, args.vectors_only, args.all]):
+        parser.error("Must specify --reset, --indicators, --vectors-only, or --all")
 
+    from_time = datetime.fromisoformat(args.from_time)
+    to_time = datetime.fromisoformat(args.to_time) if args.to_time else None
     symbols = [s.strip() for s in args.symbols.split(',')] if args.symbols else None
 
-    if args.all:
-        args.reset = True
-        args.indicators = True
-        args.vectors = True
+    pool = await asyncpg.create_pool(DB_URL, min_size=2, max_size=5)
 
-    if args.vectors_only:
-        args.vectors = True
-
-    async def _set_utc(conn):
-        await conn.execute("SET timezone = 'UTC'")
-
-    pool = await asyncpg.create_pool(DB_URL, min_size=2, max_size=5, init=_set_utc)
-
-    async with pool.acquire() as conn:
-        symbol_ids = await get_symbol_ids(conn, symbols)
-        logger.info(f"Processing {len(symbol_ids)} symbols, from={from_time}, to={to_time}")
-
-    if args.reset:
+    try:
         async with pool.acquire() as conn:
-            count = await reset_processed(conn, symbol_ids, from_time, to_time)
-            logger.info(f"Reset {count} candles' processed flag")
+            symbol_ids = await get_symbol_ids(conn, symbols)
+            logger.info(f"Processing {len(symbol_ids)} symbols")
 
-    if args.indicators:
-        logger.info("Recalculating indicators...")
-        count = await recalculate_indicators(pool, symbol_ids, from_time, to_time)
-        logger.info(f"Recalculated {count} indicators")
+            if args.reset:
+                count = await reset_processed(conn, symbol_ids, from_time, to_time)
+                logger.info(f"Reset {count} candles")
 
-    if args.vectors:
-        logger.info("Recalculating wide vectors...")
-        count = await recalculate_wide_vectors(pool, symbol_ids, from_time, to_time, 
-                                              batch_hours=args.batch_hours)
-        logger.info(f"Generated {count} wide vectors")
+            if args.indicators or args.all:
+                count = await recalculate_indicators(pool, symbol_ids, from_time, to_time)
+                logger.info(f"Recalculated {count} indicators")
 
-    if not args.reset and not args.indicators and not args.vectors:
-        logger.error("No action specified. Use --reset, --indicators, --vectors, --all, or --vectors-only")
-        sys.exit(1)
+            if args.vectors_only or args.all:
+                # Load active symbols
+                service_from_wvs = __import__('src.pipeline.wide_vector_service', fromlist=['WideVectorService']).WideVectorService(pool)
+                await service_from_wvs.load_symbols()
+                active = service_from_wvs._active_symbols
+                count = await recalculate_wide_vectors(
+                    pool, symbol_ids, active, from_time, to_time, batch_hours=1
+                )
+                logger.info(f"Generated {count} wide vectors")
 
-    await pool.close()
-    logger.info("Done")
+    finally:
+        await pool.close()
 
 
 if __name__ == '__main__':
