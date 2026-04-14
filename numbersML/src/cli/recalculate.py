@@ -479,7 +479,11 @@ async def main() -> None:
         parser.error("Must specify --reset, --indicators, --vectors-only, or --all")
 
     from_time = datetime.fromisoformat(args.from_time)
+    if from_time.tzinfo is None:
+        from_time = from_time.replace(tzinfo=timezone.utc)
     to_time = datetime.fromisoformat(args.to_time) if args.to_time else None
+    if to_time and to_time.tzinfo is None:
+        to_time = to_time.replace(tzinfo=timezone.utc)
     symbols = [s.strip() for s in args.symbols.split(',')] if args.symbols else None
 
     pool = await asyncpg.create_pool(DB_URL, min_size=2, max_size=5)
