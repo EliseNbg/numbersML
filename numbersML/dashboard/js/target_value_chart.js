@@ -196,16 +196,33 @@ async function loadChartData() {
             }));
         normalizedSeries.setData(normalizedData);
 
-        // ML Target (scaled return 120s) - blue line, bottom half
-        const mlTargetData = data
-            .filter(c => c.target_value !== null && c.target_value.ml_target_120 !== null)
-            .map(c => ({
-                time: c.time,
-                value: c.target_value.ml_target_120,
-            }));
-        console.log(`ML target points (120s): ${mlTargetData.length}`);
+        // ML Training Target - blue line, bottom half
+        // Computes the EXACT same target as used in training: sigmoid(return / std * 2)
+        const horizon = 5;  // Must match model training horizon
+        const closes = data.map(c => c.close);
+        const mlTargetData = [];
+        if (closes.length > horizon) {
+            // Compute std of returns (same as training)
+            const returns = [];
+            for (let i = horizon; i < closes.length; i++) {
+                returns.push((closes[i] - closes[i - horizon]) / (closes[i - horizon] + 1e-10));
+            }
+            const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+            const std = Math.sqrt(returns.reduce((a, b) => a + (b - mean) ** 2, 0) / returns.length) || 0.002;
+            
+            for (let i = 0; i <= closes.length - 1 - horizon; i++) {
+                const ret = (closes[i + horizon] - closes[i]) / (closes[i] + 1e-10);
+                const scaled = 1.0 / (1.0 + Math.exp(-ret / std * 2.0));
+                mlTargetData.push({
+                    time: data[i].time,
+                    value: scaled,
+                });
+            }
+        }
+        console.log(`ML training target (horizon=${horizon}s): ${mlTargetData.length} points`);
         if (mlTargetData.length > 0) {
-            console.log('Sample ml_target_120:', mlTargetData[0], mlTargetData[Math.floor(mlTargetData.length/2)], mlTargetData[mlTargetData.length-1]);
+            console.log('  first:', mlTargetData[0]);
+            console.log('  last: ', mlTargetData[mlTargetData.length - 1]);
         }
         mlTargetSeries.setData(mlTargetData);
 
