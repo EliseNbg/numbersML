@@ -270,18 +270,17 @@ class WideVectorDataset(Dataset):
         # DATA QUALITY VALIDATION: Ensure exact +1 second intervals and unique timestamps
         self._validate_temporal_consistency(timestamps, vectors)
 
-        # Compute scaled filtered return targets: [0..1] via sigmoid
-        # target = sigmoid((filtered[t+h] - filtered[t]) / close[t] / std * 2)
-        # Uses HANNING-FILTERED values for smooth trend signal
+        # Compute scaled price return targets: [0..1] via sigmoid
+        # Uses RAW close prices (not filtered) — filtered returns have no signal
+        # target = sigmoid(return / std_return * 2)
         #  - return ≈ 0    → target ≈ 0.5 (flat)
         #  - return > 0    → target > 0.5 (bullish)
         #  - return < 0    → target < 0.5 (bearish)
         horizon = self.data_config.prediction_horizon
-        if len(filtered_vals) > horizon:
-            filtered_arr = np.array(filtered_vals, dtype=np.float64)
+        if len(closes) > horizon:
             closes_arr = np.array(closes, dtype=np.float64)
-            # Compute returns from filtered values, normalized by close price
-            returns = (filtered_arr[horizon:] - filtered_arr[:-horizon]) / (closes_arr[:-horizon] + 1e-10)
+            # Compute returns from RAW close prices
+            returns = (closes_arr[horizon:] - closes_arr[:-horizon]) / (closes_arr[:-horizon] + 1e-10)
             # Scale to [0..1] using sigmoid
             std_return = float(np.std(returns))
             if std_return < 1e-10:

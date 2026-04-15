@@ -91,7 +91,6 @@ async def _load_saved_predictions(
 
     candles = []
     closes = []
-    filtered_vals = []
     targets = []
     predictions = []
     for r in rows:
@@ -105,18 +104,6 @@ async def _load_saved_predictions(
         })
         closes.append(float(r["close"]))
 
-        tv = r["target_value"]
-        if tv:
-            if isinstance(tv, str):
-                tv = json.loads(tv)
-            fv = tv.get("filtered_value")
-            if fv is not None:
-                filtered_vals.append(float(fv))
-            else:
-                filtered_vals.append(float(r["close"]))
-        else:
-            filtered_vals.append(float(r["close"]))
-
         pv = r["predicted_value"]
         if pv:
             if isinstance(pv, str):
@@ -128,11 +115,10 @@ async def _load_saved_predictions(
                     "predicted_target": float(pred_val),
                 })
 
-    # Compute targets from filtered values (same formula as training)
-    if len(filtered_vals) > horizon:
-        filtered_arr = np.array(filtered_vals, dtype=np.float64)
-        closes_arr = np.array(closes, dtype=np.float64)
-        returns = (filtered_arr[horizon:] - filtered_arr[:-horizon]) / (closes_arr[:-horizon] + 1e-10)
+    # Compute targets from close prices (same raw return formula as training)
+    if len(closes) > horizon:
+        close_arr = np.array(closes, dtype=np.float64)
+        returns = (close_arr[horizon:] - close_arr[:-horizon]) / (close_arr[:-horizon] + 1e-10)
         std_return = float(np.std(returns)) if len(returns) > 0 else 0.002
         if std_return < 1e-10:
             std_return = 0.002
@@ -385,42 +371,22 @@ async def predict(
         for r in candle_rows
     ]
 
-    # Get target values as scaled filtered returns [0..1] via sigmoid
-    # Same computation as training: sigmoid((filtered[t+h]-filtered[t])/close[t]/std*2)
+    # Get target values as scaled raw price returns [0..1] via sigmoid
+    # Same computation as training: sigmoid(return / std * 2)
+    # Uses RAW close prices (not filtered) — filtered returns have no signal
     if candles:
-        # Extract close prices and filtered values from candle data
         close_prices = [c["close"] for c in candles]
-        # filtered_value comes from the candle rows (we have target_value in the query)
-        # Since candle_rows doesn't include target_value in the main predict endpoint,
-        # we need to load it separately or use the candle_rows result
-        # For now, compute from close prices (will be updated when saved predictions are used)
         close_arr = np.array(close_prices, dtype=np.float64)
         if len(close_arr) > horizon:
-            # Load filtered values from target_value
-            filtered_vals = []
-            for r in candle_rows:
-                tv = r["target_value"]
-                if tv:
-                    tv_dict = json.loads(tv) if isinstance(tv, str) else tv
-                    fv = tv_dict.get("filtered_value")
-                    if fv is not None:
-                        filtered_vals.append(float(fv))
-                    else:
-                        filtered_vals.append(float(r["close"]))
-                else:
-                    filtered_vals.append(float(r["close"]))
-
-            if len(filtered_vals) > horizon:
-                filtered_arr = np.array(filtered_vals, dtype=np.float64)
-                returns = (filtered_arr[horizon:] - filtered_arr[:-horizon]) / (close_arr[:-horizon] + 1e-10)
-                std_return = float(np.std(returns))
-                if std_return < 1e-10:
-                    std_return = 0.002
-                scaled = 1.0 / (1.0 + np.exp(-returns / std_return * 2.0))
-                targets = [
-                    {"time": int(candles[i]["time"]), "value": round(float(scaled[i]), 8)}
-                    for i in range(len(scaled))
-                ]
+            returns = (close_arr[horizon:] - close_arr[:-horizon]) / (close_arr[:-horizon] + 1e-10)
+            std_return = float(np.std(returns)) if len(returns) > 0 else 0.002
+            if std_return < 1e-10:
+                std_return = 0.002
+            scaled = 1.0 / (1.0 + np.exp(-returns / std_return * 2.0))
+            targets = [
+                {"time": int(candles[i]["time"]), "value": round(float(scaled[i]), 8)}
+                for i in range(len(scaled))
+            ]
         else:
             targets = []
     else:
