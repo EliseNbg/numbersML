@@ -33,6 +33,7 @@ _model_cache: Dict[str, Any] = {}
 async def _load_saved_predictions(
     symbol: str,
     hours: float,
+    horizon: int = 30,
 ) -> Dict[str, Any]:
     """
     Load pre-computed predictions from candles_1s.predicted_value.
@@ -294,7 +295,7 @@ async def predict(
     If use_saved=true, reads pre-computed predictions from candles_1s.predicted_value.
     """
     if use_saved:
-        return await _load_saved_predictions(symbol, hours)
+        return await _load_saved_predictions(symbol, hours, horizon)
 
     model_path = os.path.join("ml/models", model)
 
