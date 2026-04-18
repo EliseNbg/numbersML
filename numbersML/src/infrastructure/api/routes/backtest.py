@@ -4,6 +4,7 @@ Backtest API endpoints for Entry Point Model.
 
 import logging
 import os
+import json
 import pickle
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -72,44 +73,31 @@ async def run_backtest(
     4. Simulate trading with entry/exit rules
     5. Return trades list and performance metrics
     """
-    db_pool = await get_db_pool_async()
-
-    # Get last timestamp for symbol
-    async with db_pool.acquire() as conn:
-        symbol_id = await conn.fetchval("SELECT id FROM symbols WHERE symbol = $1", symbol)
-        if not symbol_id:
-            return {'error': 'Symbol not found'}
-
-        last_time = await conn.fetchval("""
-            SELECT MAX(time) FROM candles_1s WHERE symbol_id = $1
-        """, symbol_id)
-
-        start_time = last_time - timedelta(seconds=seconds)
-
-        rows = await conn.fetch("""
-            SELECT c.time, c.close, wv.vector FROM candles_1s c
-            JOIN wide_vectors wv ON wv.time = c.time
-            WHERE c.symbol_id = $1 AND c.time >= $2
-            ORDER BY c.time ASC
-        """, symbol_id, start_time)
-
-    if not rows:
-        return {'error': 'No candle data found'}
-
-    closes = np.array([float(r['close']) for r in rows])
-    timestamps = np.array([int(r['time'].timestamp()) for r in rows])
-    
-    # Handle vector json parsing
-    vectors = []
-    for r in rows:
-        if isinstance(r['vector'], str):
-            vec = np.array(json.loads(r['vector']), dtype=np.float32)
-        else:
-            vec = np.array(r['vector'], dtype=np.float32)
-        vectors.append(vec)
-    vectors = np.array(vectors)
-
     try:
+        db_pool = await get_db_pool_async()
+
+        # Get last timestamp for symbol
+        async with db_pool.acquire() as conn:
+            symbol_id = await conn.fetchval("SELECT id FROM symbols WHERE symbol = $1", symbol)
+            if not symbol_id:
+                return {'error': 'Symbol not found'}
+
+            last_time = await conn.fetchval("""
+                SELECT MAX(time) FROM candles_1s WHERE symbol_id = $1
+            """, symbol_id)
+
+            start_time = last_time - timedelta(seconds=seconds)
+
+            rows = await conn.fetch("""
+                SELECT c.time, c.close, wv.vector FROM candles_1s c
+                JOIN wide_vectors wv ON wv.time = c.time
+                WHERE c.symbol_id = $1 AND c.time >= $2
+                ORDER BY c.time ASC
+            """, symbol_id, start_time)
+
+        if not rows:
+            return {'error': 'No candle data found'}
+
         # Load model
         loaded_model = EntryPointModel.load(model)
 
