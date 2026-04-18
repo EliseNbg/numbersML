@@ -114,7 +114,7 @@ class EntryPointModel:
 
         return metrics
 
-    def predict(self, X: np.ndarray, threshold: float = 0.6) -> Tuple[np.ndarray, np.ndarray]:
+    def predict(self, X: np.ndarray, threshold: float = 0.9) -> Tuple[np.ndarray, np.ndarray]:
         """
         Predict entry probability for given features.
 
@@ -140,13 +140,14 @@ class EntryPointModel:
 
         return gain, split
 
-    def save(self, path: str) -> None:
+    def save(self, path: str, feature_mask = None) -> None:
         """Save model to file."""
         with open(path, 'wb') as f:
             pickle.dump({
                 'model': self.model,
                 'params': self.params,
-                'feature_names': self.feature_names
+                'feature_names': self.feature_names,
+                'feature_mask': feature_mask
             }, f)
         logger.info(f"Model saved to {path}")
 
@@ -159,6 +160,7 @@ class EntryPointModel:
         instance = cls(data['params'])
         instance.model = data['model']
         instance.feature_names = data['feature_names']
+        instance.feature_mask = data.get('feature_mask', None)
 
         logger.info(f"Model loaded from {path}")
         return instance

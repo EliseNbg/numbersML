@@ -114,6 +114,10 @@ async def run_backtest(
         # Load model
         loaded_model = EntryPointModel.load(model)
 
+        # Apply same feature mask as during training
+        if hasattr(loaded_model, 'feature_mask') and loaded_model.feature_mask is not None:
+            vectors = vectors[:, loaded_model.feature_mask]
+
         # Run predictions
         probabilities, predictions = loaded_model.predict(vectors, threshold=threshold)
 
