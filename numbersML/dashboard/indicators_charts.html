@@ -296,7 +296,18 @@
                             color: volumeColors[volColorIdx % volumeColors.length],
                             priceScaleId: 'right'
                         });
-                        series.setData(indicators[name].map(p => ({ time: p.time, value: p.value })));
+
+                        // ATR is normalized, scale to actual price volatility
+                        if (name.startsWith('atr_')) {
+                            const lastPrice = candles[candles.length-1].close;
+                            series.setData(indicators[name].map(p => ({ 
+                                time: p.time, 
+                                value: p.value * lastPrice * 1000 
+                            })));
+                        } else {
+                            series.setData(indicators[name].map(p => ({ time: p.time, value: p.value })));
+                        }
+                        
                         volColorIdx++;
                     });
 
@@ -304,9 +315,6 @@
                 volumeChart.priceScale('right').applyOptions({
                     borderColor: '#9C27B0'
                 });
-                        colorIndex++;
-                        series.setData(indicators[name].map(p => ({ time: p.time, value: p.value })));
-                    });
 
                 charts.forEach(c => c.timeScale().fitContent());
                 status.textContent = 'Loaded successfully';
