@@ -189,7 +189,7 @@ async def run_backtest(
                 'total_trades': int(len(trades)),
                 'win_rate': safe_float(win_rate),
                 'total_return': safe_float(total_return),
-                'profit_factor': safe_float(profit_factor),
+                'profit_factor': safe_float(profit_factor) if not np.isinf(profit_factor) else 999.0,
                 'max_drawdown': safe_float(max_dd),
                 'avg_duration': safe_float(avg_duration)
             }
