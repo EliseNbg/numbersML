@@ -182,7 +182,7 @@
 
         async function loadModels() {
             try {
-                const response = await fetch(`${API_BASE}/models/entry`);
+                const response = await fetch(`${API_BASE}/backtest/models/entry`);
                 const models = await response.json();
 
                 const select = document.getElementById('model-select');
