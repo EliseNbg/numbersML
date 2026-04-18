@@ -149,13 +149,13 @@ async def run_backtest(
                     position = 0
                     pnl = (current_price - entry_price) / entry_price
 
-                    trades.append({
-                        'entry_time': entry_time,
-                        'exit_time': current_time,
-                        'entry_price': entry_price,
-                        'exit_price': current_price,
-                        'pnl': pnl
-                    })
+        trades.append({
+            'entry_time': int(entry_time),
+            'exit_time': int(current_time),
+            'entry_price': float(entry_price),
+            'exit_price': float(current_price),
+            'pnl': float(pnl)
+        })
 
         # Calculate metrics
         if trades:
@@ -181,14 +181,14 @@ async def run_backtest(
 
             avg_duration = np.mean([t['exit_time'] - t['entry_time'] for t in trades])
 
-            metrics = {
-                'total_trades': len(trades),
-                'win_rate': win_rate,
-                'total_return': total_return,
-                'profit_factor': profit_factor,
-                'max_drawdown': max_dd,
-                'avg_duration': avg_duration
-            }
+        metrics = {
+            'total_trades': int(len(trades)),
+            'win_rate': float(win_rate),
+            'total_return': float(total_return),
+            'profit_factor': float(profit_factor),
+            'max_drawdown': float(max_dd),
+            'avg_duration': float(avg_duration)
+        }
         else:
             metrics = {
                 'total_trades': 0,
