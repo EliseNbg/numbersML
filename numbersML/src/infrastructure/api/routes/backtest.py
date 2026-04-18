@@ -206,7 +206,7 @@ async def run_backtest(
         return {
             'symbol': symbol,
             'model': model,
-            'candles': [{'time': t, 'close': c} for t, c in zip(timestamps, closes)],
+            'candles': [{'time': int(t), 'close': float(c)} for t, c in zip(timestamps, closes)],
             'trades': trades,
             'metrics': metrics
         }
