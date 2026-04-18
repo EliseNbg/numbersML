@@ -42,7 +42,6 @@ async def get_model_files() -> List[Dict]:
             continue
 
     return sorted(models, key=lambda m: m['timestamp'], reverse=True)
-    return models
 
 
 @router.get(
