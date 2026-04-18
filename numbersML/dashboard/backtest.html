@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backtest Visualization - numbersML</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        #chart-container { width: 100%; height: 600px; }
+        .card { margin-bottom: 1rem; }
+        .trade-line { stroke-dasharray: 5, 5; stroke-width: 2; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/dashboard/index.html">
+                <i class="bi bi-graph-up"></i> numbersML - Backtest Visualization
+            </a>
+            <div class="d-flex gap-2">
+                <a href="/dashboard/index.html" class="btn btn-outline-light btn-sm">Dashboard</a>
+                <a href="/dashboard/symbols.html" class="btn btn-outline-light btn-sm">Symbols</a>
+                <a href="/dashboard/chart.html" class="btn btn-outline-light btn-sm">Chart</a>
+                <a href="/dashboard/indicators_charts.html" class="btn btn-outline-light btn-sm">Indicators</a>
+                <a href="/dashboard/target_value_chart.html" class="btn btn-outline-light btn-sm">Target Value</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-3">
+        <!-- Controls -->
+        <div class="row mb-4">
+            <div class="col-md-2">
+                <label class="form-label">Symbol</label>
+                <select class="form-select" id="symbol-select"></select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Entry Point Model</label>
+                <select class="form-select" id="model-select">
+                    <option value="">Loading models...</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Time Range</label>
+                <select class="form-select" id="time-range">
+                    <option value="86400">1 Day</option>
+                    <option value="259200">3 Days</option>
+                    <option value="604800" selected>7 Days</option>
+                    <option value="2592000">1 Month</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Prediction Threshold</label>
+                <input type="number" class="form-control" id="threshold" value="0.9" min="0.5" max="1.0" step="0.05">
+            </div>
+            <div class="col-md-3 d-flex align-items-end gap-2">
+                <button class="btn btn-primary" id="btn-predict">
+                    <i class="bi bi-play-fill"></i> Predict & Backtest
+                </button>
+                <div id="status" class="text-muted"></div>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="row mb-3" id="stats-row" style="display: none;">
+            <div class="col-md-2">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Trades</h5>
+                        <h3 id="stat-trades">0</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Win Rate</h5>
+                        <h3 id="stat-winrate">0%</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Return</h5>
+                        <h3 id="stat-return">0%</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Profit Factor</h5>
+                        <h3 id="stat-profitfactor">0</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Max Drawdown</h5>
+                        <h3 id="stat-drawdown">0%</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Avg Trade Duration</h5>
+                        <h3 id="stat-duration">0 min</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chart -->
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-graph-up"></i> <span id="chart-title">Select symbol, model and click Predict</span>
+            </div>
+            <div class="card-body p-0">
+                <div id="chart-container"></div>
+            </div>
+        </div>
+
+        <!-- Trade Table -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <i class="bi bi-list-ul"></i> Trade List
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm" id="trades-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Entry Time</th>
+                                <th>Entry Price</th>
+                                <th>Exit Time</th>
+                                <th>Exit Price</th>
+                                <th>PnL %</th>
+                                <th>Duration</th>
+                            </tr>
+                        </thead>
+                        <tbody id="trades-table-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const API_BASE = '/api';
+        let chart = null;
+        let priceSeries = null;
+        let trades = [];
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadSymbols();
+            await loadModels();
+            initChart();
+            setupEventHandlers();
+        });
+
+        async function loadSymbols() {
+            try {
+                const response = await fetch(`${API_BASE}/symbols`);
+                const symbols = await response.json();
+                const activeSymbols = symbols.filter(s => s.is_active);
+
+                const select = document.getElementById('symbol-select');
+                select.innerHTML = '<option value="">Select symbol...</option>' +
+                    activeSymbols.map(s => `<option value="${s.symbol}">${s.symbol}</option>`).join('');
+            } catch (error) {
+                console.error('Failed to load symbols:', error);
+            }
+        }
+
+        async function loadModels() {
+            try {
+                const response = await fetch(`${API_BASE}/models/entry`);
+                const models = await response.json();
+
+                const select = document.getElementById('model-select');
+                select.innerHTML = '<option value="">Select model...</option>' +
+                    models.map(m => `<option value="${m.filename}">${m.name} (${m.timestamp})</option>`).join('');
+            } catch (error) {
+                console.error('Failed to load models:', error);
+                document.getElementById('model-select').innerHTML = '<option value="">No models found</option>';
+            }
+        }
+
+        function initChart() {
+            const container = document.getElementById('chart-container');
+
+            chart = LightweightCharts.createChart(container, {
+                layout: { textColor: 'black', background: { type: 'solid', color: 'white' } },
+                grid: {
+                    vertLines: { color: 'rgba(197, 203, 206, 0.5)' },
+                    horzLines: { color: 'rgba(197, 203, 206, 0.5)' },
+                },
+                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+                rightPriceScale: { borderColor: 'rgba(197, 203, 206, 0.8)' },
+                timeScale: { borderColor: 'rgba(197, 203, 206, 0.8)', timeVisible: true, secondsVisible: true },
+            });
+
+            priceSeries = chart.addLineSeries({ color: '#2196F3', lineWidth: 2, title: 'Price' });
+
+            window.addEventListener('resize', () => {
+                chart.applyOptions({ width: container.clientWidth });
+            });
+        }
+
+        function setupEventHandlers() {
+            document.getElementById('btn-predict').addEventListener('click', runBacktest);
+        }
+
+        async function runBacktest() {
+            const symbol = document.getElementById('symbol-select').value;
+            const model = document.getElementById('model-select').value;
+            const seconds = parseInt(document.getElementById('time-range').value);
+            const threshold = parseFloat(document.getElementById('threshold').value);
+            const status = document.getElementById('status');
+
+            if (!symbol || !model) {
+                status.textContent = 'Please select symbol and model';
+                return;
+            }
+
+            status.textContent = 'Running backtest...';
+            document.getElementById('stats-row').style.display = 'none';
+
+            try {
+                const url = `${API_BASE}/backtest/entry?symbol=${encodeURIComponent(symbol)}&model=${encodeURIComponent(model)}&seconds=${seconds}&threshold=${threshold}`;
+                const response = await fetch(url);
+                const result = await response.json();
+
+                status.textContent = 'Backtest complete';
+
+                // Update stats
+                document.getElementById('stat-trades').textContent = result.trades.length;
+                document.getElementById('stat-winrate').textContent = `${(result.metrics.win_rate * 100).toFixed(1)}%`;
+                document.getElementById('stat-return').textContent = `${(result.metrics.total_return * 100).toFixed(2)}%`;
+                document.getElementById('stat-profitfactor').textContent = result.metrics.profit_factor.toFixed(2);
+                document.getElementById('stat-drawdown').textContent = `${(result.metrics.max_drawdown * 100).toFixed(2)}%`;
+                document.getElementById('stat-duration').textContent = `${Math.round(result.metrics.avg_duration / 60)} min`;
+                document.getElementById('stats-row').style.display = 'flex';
+
+                // Update chart
+                priceSeries.setData(result.candles.map(c => ({ time: c.time, value: c.close })));
+
+                // Draw trade lines
+                result.trades.forEach((trade, idx) => {
+                    const color = trade.pnl > 0 ? '#4CAF50' : '#f44336';
+
+                    // Entry marker
+                    priceSeries.attachPrimitive({
+                        update: (sp) => {
+                            const x = sp.timeToCoordinate(trade.entry_time);
+                            const y = sp.priceToCoordinate(trade.entry_price);
+                            if (x === null || y === null) return;
+
+                            const ctx = sp.context;
+                            ctx.fillStyle = color;
+                            ctx.beginPath();
+                            ctx.arc(x, y, 6, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    });
+
+                    // Exit marker
+                    priceSeries.attachPrimitive({
+                        update: (sp) => {
+                            const x = sp.timeToCoordinate(trade.exit_time);
+                            const y = sp.priceToCoordinate(trade.exit_price);
+                            if (x === null || y === null) return;
+
+                            const ctx = sp.context;
+                            ctx.fillStyle = color;
+                            ctx.strokeStyle = color;
+                            ctx.lineWidth = 2;
+                            ctx.beginPath();
+                            ctx.moveTo(x - 8, y - 8);
+                            ctx.lineTo(x + 8, y + 8);
+                            ctx.moveTo(x + 8, y - 8);
+                            ctx.lineTo(x - 8, y + 8);
+                            ctx.stroke();
+                        }
+                    });
+
+                    // Connecting line
+                    priceSeries.attachPrimitive({
+                        update: (sp) => {
+                            const x1 = sp.timeToCoordinate(trade.entry_time);
+                            const y1 = sp.priceToCoordinate(trade.entry_price);
+                            const x2 = sp.timeToCoordinate(trade.exit_time);
+                            const y2 = sp.priceToCoordinate(trade.exit_price);
+
+                            if (x1 === null || y1 === null || x2 === null || y2 === null) return;
+
+                            const ctx = sp.context;
+                            ctx.strokeStyle = color;
+                            ctx.setLineDash([5, 5]);
+                            ctx.lineWidth = 2;
+                            ctx.beginPath();
+                            ctx.moveTo(x1, y1);
+                            ctx.lineTo(x2, y2);
+                            ctx.stroke();
+                            ctx.setLineDash([]);
+                        }
+                    });
+                });
+
+                chart.timeScale().fitContent();
+
+                // Fill trade table
+                const tbody = document.getElementById('trades-table-body');
+                tbody.innerHTML = result.trades.map((trade, idx) => `
+                    <tr class="${trade.pnl > 0 ? 'table-success' : 'table-danger'}">
+                        <td>${idx + 1}</td>
+                        <td>${new Date(trade.entry_time * 1000).toLocaleString()}</td>
+                        <td>${trade.entry_price.toFixed(6)}</td>
+                        <td>${new Date(trade.exit_time * 1000).toLocaleString()}</td>
+                        <td>${trade.exit_price.toFixed(6)}</td>
+                        <td>${(trade.pnl * 100).toFixed(4)}%</td>
+                        <td>${Math.round((trade.exit_time - trade.entry_time) / 60)} min</td>
+                    </tr>
+                `).join('');
+
+                trades = result.trades;
+
+            } catch (e) {
+                console.error('Backtest error:', e);
+                status.textContent = 'Error running backtest';
+            }
+        }
+    </script>
+</body>
+</html>
