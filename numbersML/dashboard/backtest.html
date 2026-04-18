@@ -62,6 +62,43 @@
             </div>
         </div>
 
+        <!-- Training Section -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="bi bi-robot"></i> Train New Model
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-2">
+                        <label class="form-label">Profit Target %</label>
+                        <input type="number" class="form-control" id="train-profit" value="0.9" min="0.1" max="10" step="0.1">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Stop Loss %</label>
+                        <input type="number" class="form-control" id="train-stop" value="0.35" min="0.1" max="5" step="0.05">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Training Hours</label>
+                        <input type="number" class="form-control" id="train-hours" value="160" min="24" max="2000" step="24">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Look Ahead Min</label>
+                        <input type="number" class="form-control" id="train-lookahead" value="60" min="10" max="480" step="10">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Threshold</label>
+                        <input type="number" class="form-control" id="train-threshold" value="0.9" min="0.5" max="1.0" step="0.05">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end gap-2">
+                        <button class="btn btn-success" id="btn-train">
+                            <i class="bi bi-lightning-charge"></i> Train Model
+                        </button>
+                        <div id="train-status" class="text-muted"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Stats Cards -->
         <div class="row mb-3" id="stats-row" style="display: none;">
             <div class="col-md-2">
@@ -215,8 +252,54 @@
             });
         }
 
+        async function trainNewModel() {
+            const symbol = document.getElementById('symbol-select').value;
+            const profit = parseFloat(document.getElementById('train-profit').value) / 100;
+            const stop = parseFloat(document.getElementById('train-stop').value) / 100;
+            const hours = parseInt(document.getElementById('train-hours').value);
+            const lookahead = parseInt(document.getElementById('train-lookahead').value) * 60;
+            const threshold = parseFloat(document.getElementById('train-threshold').value);
+            const status = document.getElementById('train-status');
+
+            if (!symbol) {
+                status.textContent = 'Please select symbol';
+                return;
+            }
+
+            status.textContent = 'Training model... this may take several minutes';
+
+            try {
+                const response = await fetch(`${API_BASE}/backtest/train`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        symbol,
+                        profit_target: profit,
+                        stop_loss: stop,
+                        training_hours: hours,
+                        look_ahead: lookahead,
+                        threshold
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.error) {
+                    status.textContent = `Error: ${result.error}`;
+                } else {
+                    status.textContent = `✓ Model trained: ${result.filename} - ${result.metrics.win_rate*100:.1f}% win rate`;
+                    await loadModels();
+                }
+
+            } catch (e) {
+                console.error('Training error:', e);
+                status.textContent = 'Error training model';
+            }
+        }
+
         function setupEventHandlers() {
             document.getElementById('btn-predict').addEventListener('click', runBacktest);
+            document.getElementById('btn-train').addEventListener('click', trainNewModel);
         }
 
         async function runBacktest() {
