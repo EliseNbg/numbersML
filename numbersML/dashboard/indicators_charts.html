@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Indicators Charts - numbersML</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .chart-container { width: 100%; height: 380px; margin-bottom: 1rem; }
+        .card { margin-bottom: 1.5rem; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/dashboard/index.html">
+                <i class="bi bi-graph-up"></i> numbersML - Indicators Charts
+            </a>
+            <div class="d-flex gap-2">
+                <a href="/dashboard/index.html" class="btn btn-outline-light btn-sm">Dashboard</a>
+                <a href="/dashboard/symbols.html" class="btn btn-outline-light btn-sm">Symbols</a>
+                <a href="/dashboard/chart.html" class="btn btn-outline-light btn-sm">Chart</a>
+                <a href="/dashboard/indicators.html" class="btn btn-outline-light btn-sm">Indicators</a>
+                <a href="/dashboard/prediction.html" class="btn btn-outline-light btn-sm">Predictions</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-3">
+        <!-- Controls -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <label class="form-label">Symbol</label>
+                <select class="form-select" id="symbol-select"></select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Time Range</label>
+                <select class="form-select" id="time-range">
+                    <option value="3600">1 Hour</option>
+                    <option value="21600">6 Hours</option>
+                    <option value="43200">12 Hours</option>
+                    <option value="86400" selected>1 Day</option>
+                </select>
+            </div>
+            <div class="col-md-4 d-flex align-items-end gap-2">
+                <button class="btn btn-primary" id="btn-load">
+                    <i class="bi bi-play-fill"></i> Load
+                </button>
+                <button class="btn btn-secondary" id="btn-clear">
+                    <i class="bi bi-trash"></i> Clear
+                </button>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <div id="status" class="text-muted"></div>
+            </div>
+        </div>
+
+        <!-- Charts Container -->
+        <div id="charts-container">
+            <div class="text-center text-muted p-5">
+                <i class="bi bi-graph-up display-1"></i>
+                <p class="mt-3">Select symbol and click Load to show indicator charts</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let charts = [];
+
+        const API_BASE = '/api';
+
+        // Load symbols on page load
+        async function loadSymbols() {
+            try {
+                const response = await fetch(`${API_BASE}/symbols`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const symbols = await response.json();
+                const activeSymbols = symbols.filter(s => s.is_active);
+
+                const select = document.getElementById('symbol-select');
+                select.innerHTML = '<option value="">Select symbol...</option>' +
+                    activeSymbols.map(s => `<option value="${s.symbol}">${s.symbol}</option>`).join('');
+
+            } catch (error) {
+                console.error('Failed to load symbols:', error);
+            }
+        }
+
+        function createChartCard(title, parent) {
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.innerHTML = `
+                <div class="card-header">
+                    <i class="bi bi-graph-up"></i> ${title}
+                </div>
+                <div class="card-body p-0">
+                    <div class="chart-container"></div>
+                </div>
+            `;
+            parent.appendChild(card);
+            const container = card.querySelector('.chart-container');
+
+            const chart = LightweightCharts.createChart(container, {
+                layout: { textColor: 'black', background: { type: 'solid', color: 'white' } },
+                grid: {
+                    vertLines: { color: 'rgba(197, 203, 206, 0.5)' },
+                    horzLines: { color: 'rgba(197, 203, 206, 0.5)' },
+                },
+                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+                rightPriceScale: { borderColor: 'rgba(197, 203, 206, 0.8)' },
+                timeScale: { borderColor: 'rgba(197, 203, 206, 0.8)', timeVisible: true, secondsVisible: true },
+            });
+
+            charts.push(chart);
+            return chart;
+        }
+
+        async function loadData() {
+            const symbol = document.getElementById('symbol-select').value;
+            const range = parseInt(document.getElementById('time-range').value);
+            const status = document.getElementById('status');
+
+            if (!symbol) {
+                status.textContent = 'Please select a symbol';
+                return;
+            }
+
+            status.textContent = 'Loading data...';
+            clearCharts();
+
+            try {
+                // The /api/candles endpoint automatically gets latest N seconds from last existing candle
+                // No need to calculate timestamps manually - API already handles correct time range
+
+                // Load candles and indicators from existing endpoints
+                const seconds = Math.min(range, 86400);
+                const [candlesRes, indicatorsRes] = await Promise.all([
+                    fetch(`${API_BASE}/candles?symbol=${encodeURIComponent(symbol)}&seconds=${seconds}`),
+                    fetch(`${API_BASE}/candles/indicators?symbol=${encodeURIComponent(symbol)}&seconds=${seconds}`)
+                ]);
+
+                const candles = await candlesRes.json();
+                const indicatorRows = await indicatorsRes.json();
+
+                // Format indicators
+                const indicators = {};
+                indicatorRows.forEach(row => {
+                    Object.entries(row.values).forEach(([name, value]) => {
+                        if (!indicators[name]) indicators[name] = [];
+                        indicators[name].push({ time: row.time, value: value });
+                    });
+                });
+
+                // Log available indicators for debugging
+                console.log('Available indicators:', Object.keys(indicators));
+                if (indicators['bb_20_2']) {
+                    console.log('BB sample value:', indicators['bb_20_2'][0]);
+                }
+
+                const container = document.getElementById('charts-container');
+                container.innerHTML = '';
+
+                // 1. Price + EMA / SMA
+                const priceChart = createChartCard(`${symbol} Price with EMA / SMA`, container);
+                const priceSeries = priceChart.addLineSeries({ color: '#2196F3', lineWidth: 2, title: 'Close' });
+                priceSeries.setData(candles.map(c => ({ time: c.time, value: c.close })));
+
+                const indicatorColors = [
+                    '#FF5722', '#9C27B0', '#00BCD4', '#8BC34A', '#FF9800',
+                    '#E91E63', '#3F51B5', '#009688', '#CDDC39', '#FFC107',
+                    '#673AB7', '#2196F3', '#4CAF50', '#FFEB3B', '#F44336'
+                ];
+                let colorIndex = 0;
+
+                // Add EMA indicators
+                Object.keys(indicators)
+                    .filter(k => k.startsWith('ema_'))
+                    .forEach(name => {
+                        const series = priceChart.addLineSeries({
+                            lineWidth: 1, title: name,
+                            color: indicatorColors[colorIndex % indicatorColors.length]
+                        });
+                        series.setData(indicators[name].map(p => ({ time: p.time, value: p.value })));
+                        colorIndex++;
+                    });
+
+                // Add SMA indicators
+                Object.keys(indicators)
+                    .filter(k => k.startsWith('sma_'))
+                    .forEach(name => {
+                        const series = priceChart.addLineSeries({
+                            lineWidth: 1, title: name,
+                            color: indicatorColors[colorIndex % indicatorColors.length],
+                            lineStyle: 2
+                        });
+                        series.setData(indicators[name].map(p => ({ time: p.time, value: p.value })));
+                        colorIndex++;
+                    });
+
+
+                // 2. Price + Bollinger Bands
+                const bbChart = createChartCard(`${symbol} Price with Bollinger Bands`, container);
+                const bbPriceSeries = bbChart.addLineSeries({ color: '#2196F3', lineWidth: 2, title: 'Close' });
+                bbPriceSeries.setData(candles.map(c => ({ time: c.time, value: c.close })));
+
+                // Bollinger Bands
+                const bbColors = ['#f44336', '#FF9800', '#4CAF50'];
+                let bbColorIdx = 0;
+
+                // BB are normalized 0-1 - denormalize to actual price range
+                const closePrices = candles.map(c => c.close);
+                const minPrice = Math.min(...closePrices);
+                const maxPrice = Math.max(...closePrices);
+                const priceRange = maxPrice - minPrice;
+
+                Object.keys(indicators)
+                    .filter(k => k.startsWith('bb_'))
+                    .forEach(name => {
+                        const series = bbChart.addLineSeries({
+                            lineWidth: 1,
+                            title: name,
+                            color: bbColors[bbColorIdx % bbColors.length]
+                        });
+                        // Scale normalized BB value back to real price
+                        series.setData(indicators[name].map(p => ({ 
+                            time: p.time, 
+                            value: minPrice + (p.value * priceRange) 
+                        })));
+                        bbColorIdx++;
+                    });
+
+
+                // 3. MACD
+                const macdChart = createChartCard(`${symbol} MACD`, container);
+
+                // Add all found MACD indicators
+                const macdColors = ['#2196F3', '#9C27B0', '#4CAF50'];
+                let macdColorIndex = 0;
+
+                Object.keys(indicators)
+                    .filter(k => k.startsWith('macd_'))
+                    .forEach(name => {
+                        const series = macdChart.addLineSeries({
+                            lineWidth: 2,
+                            title: name,
+                            color: macdColors[macdColorIndex % macdColors.length]
+                        });
+                        series.setData(indicators[name].map(p => ({ time: p.time, value: p.value })));
+                        macdColorIndex++;
+                    });
+
+
+                // 4. RSI
+                const rsiChart = createChartCard(`${symbol} RSI`, container);
+
+                // RSI always 0-100 fixed scale
+                rsiChart.priceScale('right').applyOptions({
+                    minimum: 0,
+                    maximum: 100
+                });
+
+                Object.keys(indicators)
+                    .filter(k => k.startsWith('rsi_'))
+                    .forEach((name, idx) => {
+                        const colors = ['#FF9800', '#F44336', '#9C27B0'];
+                        const series = rsiChart.addLineSeries({
+                            lineWidth: 2,
+                            title: name,
+                            color: colors[idx % colors.length]
+                        });
+                        series.setData(indicators[name].map(p => ({ time: p.time, value: p.value })));
+                    });
+
+
+                // 5. Volume Indicators
+
+
+                // 4. Volume Indicators
+                const volumeChart = createChartCard(`${symbol} Volume Indicators`, container);
+                const volumeSeries = volumeChart.addHistogramSeries({ color: '#2196F3', title: 'Volume' });
+                volumeSeries.setData(candles.map(c => ({ time: c.time, value: c.volume })));
+
+                // Add other volume indicators
+                const volumeColors = ['#9C27B0', '#00BCD4', '#FF9800', '#673AB7'];
+                let volColorIdx = 0;
+
+                Object.keys(indicators)
+                    .filter(k => ['obv', 'cmf', 'mfi', 'adi', 'atr'].includes(k.split('_')[0]))
+                    .forEach(name => {
+                        const series = volumeChart.addLineSeries({
+                            lineWidth: 1, title: name,
+                            color: volumeColors[volColorIdx % volumeColors.length],
+                            priceScaleId: 'right'
+                        });
+                        series.setData(indicators[name].map(p => ({ time: p.time, value: p.value })));
+                        volColorIdx++;
+                    });
+
+                // Fix right scale for volume indicators
+                volumeChart.priceScale('right').applyOptions({
+                    borderColor: '#9C27B0'
+                });
+                        colorIndex++;
+                        series.setData(indicators[name].map(p => ({ time: p.time, value: p.value })));
+                    });
+
+                charts.forEach(c => c.timeScale().fitContent());
+                status.textContent = 'Loaded successfully';
+
+            } catch (e) {
+                console.error('Error loading data:', e);
+                status.textContent = 'Error loading data';
+            }
+        }
+
+        function clearCharts() {
+            charts.forEach(c => c.remove());
+            charts = [];
+            document.getElementById('charts-container').innerHTML = '';
+            document.getElementById('status').textContent = '';
+        }
+
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', loadSymbols);
+        document.getElementById('btn-load').addEventListener('click', loadData);
+        document.getElementById('btn-clear').addEventListener('click', clearCharts);
+    </script>
+</body>
+</html>
