@@ -98,10 +98,20 @@ async def run_backtest(
 
     closes = np.array([float(r['close']) for r in rows])
     timestamps = np.array([int(r['time'].timestamp()) for r in rows])
-    vectors = np.array([r['vector'] for r in rows])
+    
+    # Handle vector json parsing
+    vectors = []
+    for r in rows:
+        if isinstance(r['vector'], str):
+            vec = np.array(json.loads(r['vector']), dtype=np.float32)
+        else:
+            vec = np.array(r['vector'], dtype=np.float32)
+        vectors.append(vec)
+    vectors = np.array(vectors)
 
-    # Load model
-    loaded_model = EntryPointModel.load(model)
+    try:
+        # Load model
+        loaded_model = EntryPointModel.load(model)
 
     # Run predictions
     probabilities, predictions = loaded_model.predict(vectors, threshold=threshold)
@@ -190,3 +200,7 @@ async def run_backtest(
         'trades': trades,
         'metrics': metrics
     }
+
+    except Exception as e:
+        logger.exception(f"Backtest failed: {e}")
+        return {'error': str(e)}
