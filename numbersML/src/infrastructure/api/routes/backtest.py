@@ -181,14 +181,14 @@ async def run_backtest(
 
             avg_duration = np.mean([t['exit_time'] - t['entry_time'] for t in trades])
 
-        metrics = {
-            'total_trades': len(trades),
-            'win_rate': float(win_rate.item()),
-            'total_return': float(total_return.item()),
-            'profit_factor': float(profit_factor.item()),
-            'max_drawdown': float(max_dd.item()),
-            'avg_duration': float(avg_duration.item())
-        }
+            metrics = {
+                'total_trades': int(len(trades)),
+                'win_rate': float(win_rate),
+                'total_return': float(total_return),
+                'profit_factor': float(profit_factor),
+                'max_drawdown': float(max_dd),
+                'avg_duration': float(avg_duration)
+            }
         else:
             metrics = {
                 'total_trades': 0,
