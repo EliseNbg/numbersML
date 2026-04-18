@@ -45,19 +45,21 @@ class EntryPointModel:
             'objective': 'binary',
             'metric': ['binary_logloss', 'auc'],
             'boosting_type': 'gbdt',
-            'num_leaves': 31,
-            'max_depth': 5,
-            'learning_rate': 0.01,
-            'feature_fraction': 0.6,
-            'bagging_fraction': 0.8,
-            'bagging_freq': 5,
+            'num_leaves': 15,
+            'max_depth': 3,
+            'learning_rate': 0.005,
+            'feature_fraction': 0.8,
+            'bagging_fraction': 0.9,
+            'bagging_freq': 10,
             'verbose': -1,
             'random_state': 42,
-            'is_unbalance': True,
-            'min_child_samples': 100,
-            'lambda_l1': 0.1,
-            'lambda_l2': 0.1,
-            'early_stopping_round': 50,
+            'is_unbalance': False,
+            'scale_pos_weight': 1.2,
+            'min_child_samples': 200,
+            'min_split_gain': 0.001,
+            'lambda_l1': 0.5,
+            'lambda_l2': 0.5,
+            'early_stopping_round': 15,
         }
 
     def train(
@@ -80,9 +82,9 @@ class EntryPointModel:
         self.model = lgb.train(
             self.params,
             train_data,
-            num_boost_round=1000,
+            num_boost_round=200,
             valid_sets=[val_data],
-            callbacks=[lgb.log_evaluation(period=50)]
+            callbacks=[lgb.log_evaluation(period=10)]
         )
 
         # Evaluate

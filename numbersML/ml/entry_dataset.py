@@ -4,8 +4,11 @@ Dataset for Entry Point Classification Model.
 Uses the new labeling logic instead of price prediction targets.
 """
 
+import logging
 import numpy as np
 from typing import Optional, Tuple, List
+
+logger = logging.getLogger(__name__)
 
 from ml.dataset import WideVectorDataset
 from ml.entry_labeling import label_entry_points, filter_entry_samples
@@ -39,8 +42,17 @@ class EntryPointDataset(WideVectorDataset):
         """Load data and apply entry point labeling."""
         vectors, targets, timestamps = super()._load_data()
         
-        # Extract closes from vectors (we will get prices directly from DB separately)
-        return vectors, targets, timestamps
+        # ✅ Fix: Konvertiere kontinuierliche Targets in saubere binäre Labels 0/1
+        # Alle Werte >= 0.8 werden als Positiv gewertet, Rest als Negativ
+        binary_targets = [1.0 if t >= 0.8 else 0.0 for t in targets]
+        
+        pos = sum(1 for t in binary_targets if t == 1.0)
+        neg = sum(1 for t in binary_targets if t == 0.0)
+        
+        logger.info(f"✅ Entry Point Label Stats:")
+        logger.info(f"   Positiv: {pos} | Negativ: {neg} | Ratio: {(pos/len(targets))*100:.1f}%")
+        
+        return vectors, binary_targets, timestamps
         
         # Label entry points
         labels, scores = label_entry_points(

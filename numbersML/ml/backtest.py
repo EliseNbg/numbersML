@@ -197,6 +197,7 @@ if __name__ == '__main__':
     parser.add_argument('--symbol', required=True)
     parser.add_argument('--hours', type=int, default=24)
     parser.add_argument('--threshold', type=float, default=0.65)
+    parser.add_argument('--print-trades', action='store_true', help='Print individual trades')
     args = parser.parse_args()
 
     logger.info("✅ BACKTEST START | %s | %dh | th=%.2f", args.symbol, args.hours, args.threshold)
