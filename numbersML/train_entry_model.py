@@ -27,10 +27,10 @@ def main():
     parser = argparse.ArgumentParser(description='Train Entry Point Classification Model')
     parser.add_argument('--symbol', type=str, default='BTC/USDC', help='Target symbol')
     parser.add_argument('--hours', type=int, default=720, help='Train on last N hours')
-    parser.add_argument('--profit', type=float, default=0.005, help='Profit target (0.005 = 0.5%)')
-    parser.add_argument('--stop', type=float, default=0.002, help='Stop loss (0.002 = 0.2%)')
-    parser.add_argument('--lookahead', type=int, default=1800, help='Look ahead bars')
-    parser.add_argument('--output', type=str, default='entry_model.pkl', help='Output model path')
+    parser.add_argument('--profit', type=float, default=0.009, help='Profit target (0.009 = 0.9%)')
+    parser.add_argument('--stop', type=float, default=0.007, help='Stop loss (0.007 = 0.7%)')
+    parser.add_argument('--lookahead', type=int, default=3600, help='Look ahead bars')
+    parser.add_argument('--output', type=str, help='Output model path (auto generated if not set)')
 
     args = parser.parse_args()
 
@@ -76,8 +76,15 @@ def main():
     model = EntryPointModel()
     metrics = model.train(X_train, y_train, X_val, y_val)
 
+    # Auto generate model filename with symbol and date if not provided
+    if not args.output:
+        safe_symbol = args.symbol.replace('/', '_')
+        timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')
+        args.output = f'entry_model_{safe_symbol}_{timestamp}.pkl'
+
     # Save model
     model.save(args.output)
+    logger.info(f"Model saved to: {args.output}")
 
     logger.info("Training complete!")
 
