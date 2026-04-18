@@ -30,6 +30,7 @@ This model does **NOT** predict future prices. Instead it answers exactly one qu
 | `ml/entry_model.py` | LightGBM binary classifier implementation |
 | `ml/backtest.py` | Walk Forward Validation backtesting system |
 | `train_entry_model.py` | Training script |
+| `count_entry_points.py` | Analyze historical entry point statistics |
 | `src/infrastructure/api/routes/entry_signals.py` | Live API endpoint |
 
 ---
@@ -65,20 +66,33 @@ source .venv/bin/activate
 python train_entry_model.py --symbol BTC/USDC --hours 720
 ```
 
+### Count Entry Points
+
+```bash
+python count_entry_points.py --symbol DASH/USDC --hours 160
+```
+
+This script calculates how many valid entry points exist in historical data, win rate and average signal frequency.
+
 ### Training Output
 
 ```
 Training complete:
   Best iteration: 1
-  Accuracy:  0.8586
-  Precision: 0.8586
+  Accuracy:  0.8578
+  Precision: 0.8578
   Recall:    1.0000
-  F1 Score:  0.9239
+  F1 Score:  0.9235
   ROC AUC:   0.5000
 
 Confusion Matrix:
   [[TN: 0, FP: 3637]]
-  [[FN: 0, TP: 22081]]
+  [[FN: 0, TP: 21941]]
+```
+
+Model filename is automatically generated with symbol name and timestamp:
+```
+entry_model_DASH_USDC_20260418_1156.pkl
 ```
 
 ✅ **100% RECALL**: The model misses **ZERO** good entry points
@@ -154,11 +168,11 @@ Response:
 
 | Parameter | Value |
 |---|---|
-| Profit Target | 0.5% |
-| Stop Loss | 0.2% |
-| Maximum Holding Time | 30 minutes |
+| Profit Target | 0.9% |
+| Stop Loss | 0.7% |
+| Maximum Holding Time | 60 minutes |
 | Prediction Threshold | 0.6 |
-| Risk Reward Ratio | **2.5 : 1** |
+| Risk Reward Ratio | **1.29 : 1** |
 
 Expected long term performance:
 - Win rate: ~65%
