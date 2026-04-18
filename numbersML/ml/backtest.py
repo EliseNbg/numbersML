@@ -183,3 +183,37 @@ def calculate_profit_factor(trades: List[dict]) -> float:
         return float('inf')
 
     return gross_profit / gross_loss
+
+
+if __name__ == '__main__':
+    import argparse
+    from datetime import datetime, timedelta, timezone
+    from ml.entry_dataset import EntryPointDataset
+    from ml.config import DatabaseConfig, DataConfig
+
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+    parser = argparse.ArgumentParser(description='Backtest Entry Point Model')
+    parser.add_argument('--model', required=True)
+    parser.add_argument('--symbol', required=True)
+    parser.add_argument('--hours', type=int, default=24)
+    parser.add_argument('--threshold', type=float, default=0.65)
+    args = parser.parse_args()
+
+    logger.info("✅ BACKTEST START | %s | %dh | th=%.2f", args.symbol, args.hours, args.threshold)
+    
+    model = EntryPointModel.load(args.model)
+    ds = EntryPointDataset(DatabaseConfig(), DataConfig(), datetime.now(timezone.utc)-timedelta(hours=args.hours), datetime.now(timezone.utc))
+    
+    # Für bereits trainierte Modelle brauchen wir KEIN Walk Forward!
+    # Direkt Vorhersage auf gesamten Datensatz
+    probs, _ = model.predict(np.vstack(ds.vectors), threshold=args.threshold)
+    
+    logger.info("\n✅ ERGEBNIS:")
+    logger.info("   Samples: %d | Positive Signale: %d | Signal Rate: %.1f%%", 
+        len(probs), 
+        sum(1 for p in probs if p >= args.threshold),
+        (sum(1 for p in probs if p >= args.threshold) / len(probs)) * 100
+    )
+    logger.info("   Min Prob: %.4f | Max Prob: %.4f | Mean Prob: %.4f",
+        np.min(probs), np.max(probs), np.mean(probs)
+    )

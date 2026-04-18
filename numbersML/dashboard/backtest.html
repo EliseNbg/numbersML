@@ -52,7 +52,7 @@
             </div>
             <div class="col-md-2">
                 <label class="form-label">Prediction Threshold</label>
-                <input type="number" class="form-control" id="threshold" value="0.9" min="0.5" max="1.0" step="0.05">
+                <input type="number" class="form-control" id="threshold" value="0.62" min="0.5" max="1.0" step="0.01">
             </div>
             <div class="col-md-3 d-flex align-items-end gap-2">
                 <button class="btn btn-primary" id="btn-predict">
@@ -69,25 +69,27 @@
             </div>
             <div class="card-body">
                 <div class="row">
-                    <div class="col-md-2">
-                        <label class="form-label">Profit Target %</label>
-                        <input type="number" class="form-control" id="train-profit" value="0.9" min="0.1" max="10" step="0.1">
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label">Stop Loss %</label>
-                        <input type="number" class="form-control" id="train-stop" value="0.35" min="0.1" max="5" step="0.05">
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label">Training Hours</label>
-                        <input type="number" class="form-control" id="train-hours" value="160" min="24" max="2000" step="24">
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label">Look Ahead Min</label>
-                        <input type="number" class="form-control" id="train-lookahead" value="60" min="10" max="480" step="10">
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label">Threshold</label>
-                        <input type="number" class="form-control" id="train-threshold" value="0.9" min="0.5" max="1.0" step="0.05">
+                        <div class="col-md-2">
+                            <label class="form-label">Profit Target %</label>
+                            <input type="number" class="form-control" id="train-profit" value="0.9" min="0.1" max="3.0" step="0.1">
+                            <div class="form-text text-muted">Eingabe in echten Prozent (0.9 = 0.9%)</div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Stop Loss %</label>
+                            <input type="number" class="form-control" id="train-stop" value="0.3" min="0.1" max="1.0" step="0.05">
+                            <div class="form-text text-muted">Eingabe in echten Prozent (0.3 = 0.3%)</div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Training Hours</label>
+                            <input type="number" class="form-control" id="train-hours" value="720" min="24" max="2000" step="24">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Look Ahead Min</label>
+                            <input type="number" class="form-control" id="train-lookahead" value="45" min="10" max="120" step="5">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Threshold</label>
+                            <input type="number" class="form-control" id="train-threshold" value="0.62" min="0.5" max="0.95" step="0.01">
                     </div>
                     <div class="col-md-2 d-flex align-items-end gap-2">
                         <button class="btn btn-success" id="btn-train">
@@ -204,16 +206,32 @@
         });
 
         async function loadSymbols() {
+            console.log('🔄 Loading symbols from', `${API_BASE}/symbols`);
             try {
                 const response = await fetch(`${API_BASE}/symbols`);
+                console.log('✅ Symbols response status:', response.status);
+                
                 const symbols = await response.json();
+                console.log('✅ Loaded symbols total:', symbols.length);
+                
                 const activeSymbols = symbols.filter(s => s.is_active);
+                console.log('✅ Active symbols:', activeSymbols.length);
 
                 const select = document.getElementById('symbol-select');
                 select.innerHTML = '<option value="">Select symbol...</option>' +
                     activeSymbols.map(s => `<option value="${s.symbol}">${s.symbol}</option>`).join('');
+                
+                // Set default value automatically if available
+                if (activeSymbols.length > 0) {
+                    select.value = activeSymbols[0].symbol;
+                    console.log('✅ Default symbol set:', activeSymbols[0].symbol);
+                }
+                    
+                console.log('✅ Symbol select populated');
+                
             } catch (error) {
-                console.error('Failed to load symbols:', error);
+                console.error('❌ Failed to load symbols:', error);
+                alert('Symbols API Fehler: ' + error.message);
             }
         }
 
@@ -283,12 +301,19 @@
                 });
 
                 const result = await response.json();
+                console.log('✅ Training response:', result);
+                
+                const trainStatus = document.getElementById('train-status');
 
-                if (result.error) {
-                    status.textContent = `Error: ${result.error}`;
+                if (!response.ok || result.detail) {
+                    trainStatus.textContent = `❌ Fehler: ${JSON.stringify(result.detail || result.error || 'Unbekannter Fehler')}`;
                 } else {
-                    status.textContent = `✓ Model trained: ${result.filename} - ${result.metrics.win_rate*100:.1f}% win rate`;
-                    await loadModels();
+                    trainStatus.textContent = `✅ Training gestartet! Modell-ID: ${result.model_id}`;
+                    // Aktualisiere Model Liste nach 10 Sekunden automatisch
+                    setTimeout(async () => {
+                        await loadModels();
+                        trainStatus.textContent = '✅ Modelle Liste aktualisiert';
+                    }, 10000);
                 }
 
             } catch (e) {
@@ -299,7 +324,8 @@
 
         function setupEventHandlers() {
             document.getElementById('btn-predict').addEventListener('click', runBacktest);
-            document.getElementById('btn-train').addEventListener('click', trainNewModel);
+            // ❌ Entfernt doppelter Event Listener
+            // document.getElementById('btn-train').addEventListener('click', trainNewModel);
         }
 
         async function runBacktest() {
@@ -336,8 +362,10 @@
                 // Update chart
                 priceSeries.setData(result.candles.map(c => ({ time: c.time, value: c.close })));
 
-                // Clear old primitives first
-                chart.removeAllPrimitives();
+                // Clear old primitives (lightweight-charts v4 work-around)
+                while (chart._primitives && chart._primitives.length > 0) {
+                    chart.removePrimitive(chart._primitives[0]);
+                }
 
                 // Draw trade lines
                 result.trades.forEach((trade, idx) => {
@@ -426,6 +454,81 @@
                 status.textContent = 'Error running backtest';
             }
         }
+
+        // Train Model Button Handler
+        document.getElementById('btn-train').addEventListener('click', async () => {
+            console.log('\n\n✅ 🔴 ==============================================');
+            console.log('✅ 🔴 TRAIN BUTTON PRESSED');
+            console.log('✅ 🔴 ==============================================');
+
+            const trainBtn = document.getElementById('btn-train');
+            const trainStatus = document.getElementById('train-status');
+            
+            const val_symbol      = document.getElementById('symbol-select').value;
+            const val_profit      = parseFloat(document.getElementById('train-profit').value);
+            const val_stop        = parseFloat(document.getElementById('train-stop').value);
+            const val_hours       = parseInt(document.getElementById('train-hours').value);
+            const val_lookahead   = parseInt(document.getElementById('train-lookahead').value);
+            const val_threshold   = parseFloat(document.getElementById('train-threshold').value);
+
+            console.log('✅ 🔴 WERTE AUS DEM FORMULAR:');
+            console.log('   symbol:      ', val_symbol);
+            console.log('   profit:      ', val_profit, '%');
+            console.log('   stop:        ', val_stop, '%');
+            console.log('   hours:       ', val_hours, 'h');
+            console.log('   lookahead:   ', val_lookahead, 'min');
+            console.log('   threshold:   ', val_threshold);
+            
+            if (!val_symbol) {
+                trainStatus.textContent = 'Bitte zuerst Symbol auswählen!';
+                console.error('❌ TRAIN BUTTON: Kein Symbol ausgewählt');
+                return;
+            }
+
+            const payload = {
+                symbol: val_symbol,
+                profit_target: val_profit,
+                stop_loss: val_stop,
+                training_hours: val_hours,
+                look_ahead_min: val_lookahead,
+                threshold: val_threshold
+            };
+
+            console.log('\n✅ 🔴 WIRD GESENDET AN: /api/ml/train');
+            console.log('   Payload:', payload);
+
+            trainBtn.disabled = true;
+            trainBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Training läuft...';
+            trainStatus.textContent = 'Training wird gestartet...';
+
+            try {
+                const response = await fetch(`/api/ml/train?symbol=${encodeURIComponent(val_symbol)}&profit_target=${val_profit}&stop_loss=${val_stop}&training_hours=${val_hours}&look_ahead_min=${val_lookahead}&threshold=${val_threshold}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                console.log('✅ RESPONSE STATUS:', response.status);
+                console.log('   RESPONSE OK:', response.ok);
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    trainStatus.textContent = `✅ Modell erfolgreich trainiert! ID: ${result.model_id}`;
+                    // Aktualisiere Model Liste
+                    loadModels();
+                } else {
+                    trainStatus.textContent = `❌ Fehler: ${result.error || 'Unbekannter Fehler'}`;
+                }
+
+            } catch (e) {
+                console.error('Train error:', e);
+                trainStatus.textContent = 'Verbindungsfehler beim Training';
+            } finally {
+                trainBtn.disabled = false;
+                trainBtn.innerHTML = '<i class="bi bi-lightning-charge"></i> Train Model';
+            }
+        });
     </script>
 </body>
 </html>

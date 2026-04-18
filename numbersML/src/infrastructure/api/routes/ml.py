@@ -12,13 +12,24 @@ import json
 import sys
 import math
 import time
+import uuid
 import logging
 import asyncio
+import subprocess
 import numpy as np
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
+from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, Query
+
+class TrainRequest(BaseModel):
+    symbol: str
+    profit_target: float
+    stop_loss: float
+    training_hours: int
+    look_ahead_min: int
+    threshold: float
 
 from src.infrastructure.database import get_db_pool_async
 
@@ -787,3 +798,88 @@ async def get_task_status(
     if not task:
         return {"task_id": task_id, "status": "unknown", "message": "Task not found or still starting"}
     return task
+
+
+@router.post(
+    "/train",
+    summary="Start model training",
+    description="Start training a new model with given parameters",
+)
+async def train_model(
+    symbol: str = Query(..., description="Trading symbol"),
+    profit_target: float = Query(0.9, description="Target profit percentage"),
+    stop_loss: float = Query(0.35, description="Stop loss percentage"),
+    training_hours: int = Query(160, description="Hours of historical data to use"),
+    look_ahead_min: int = Query(60, description="Look ahead time in minutes"),
+    threshold: float = Query(0.9, description="Classification threshold"),
+) -> Dict[str, Any]:
+    logger.info("\n\n✅ 🔵 ==============================================")
+    logger.info("✅ 🔵 SERVER: TRAIN REQUEST ERHALTEN")
+    logger.info("✅ 🔵 ==============================================")
+    logger.info(f"   Symbol:            {symbol}")
+    logger.info(f"   Profit Target:     {profit_target} %")
+    logger.info(f"   Stop Loss:         {stop_loss} %")
+    logger.info(f"   Training Stunden:  {training_hours} h")
+    logger.info(f"   Look Ahead:        {look_ahead_min} min")
+    logger.info(f"   Threshold:         {threshold}")
+    logger.info("✅ 🔵 ==============================================\n")
+    """
+    Start model training in background.
+    
+    Accepted parameters:
+    - symbol: Trading symbol
+    - profit_target: Target profit percentage
+    - stop_loss: Stop loss percentage
+    - training_hours: Hours of historical data to use
+    - look_ahead_min: Look ahead time in minutes
+    - threshold: Classification threshold
+    """
+    try:
+        # Run existing train_entry_model.py script
+        import subprocess
+        import uuid
+        
+        model_id = str(uuid.uuid4())[:8]
+        
+        # Umrechnung UI Prozent Werte in interne Faktoren
+        # UI: 0.9 = 0.9% → intern: 0.009
+        # ✅ KORREKT: Division durch 100
+        profit_factor = profit_target / 100.0
+        stop_factor = stop_loss / 100.0
+        lookahead_sec = look_ahead_min * 60
+        
+        cmd = [
+            sys.executable,
+            "train_entry_model.py",
+            "--symbol", symbol,
+            "--hours", str(training_hours),
+            "--profit", str(profit_factor),
+            "--stop", str(stop_factor),
+            "--lookahead", str(lookahead_sec),
+        ]
+
+        logger.info(f"👉 EXECUTE COMMAND: {' '.join(cmd)}")
+        logger.info(f"   profit = {profit_factor} = {profit_target} %")
+        logger.info(f"   stop   = {stop_factor} = {stop_loss} %")
+        logger.info("="*70)
+        
+        # Start training process non-blocking
+        subprocess.Popen(cmd, cwd=os.getcwd())
+        
+        return {
+            "success": True,
+            "model_id": model_id,
+            "message": "Training started successfully",
+            "parameters": {
+                "symbol": symbol,
+                "profit_target": profit_target,
+                "stop_loss": stop_loss,
+                "training_hours": training_hours,
+                "look_ahead_min": look_ahead_min,
+                "threshold": threshold
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to start training: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Training start failed: {str(e)}")
