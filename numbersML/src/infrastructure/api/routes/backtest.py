@@ -101,93 +101,94 @@ async def run_backtest(
         # Load model
         loaded_model = EntryPointModel.load(model)
 
-    # Run predictions
-    probabilities, predictions = loaded_model.predict(vectors, threshold=threshold)
+        # Run predictions
+        probabilities, predictions = loaded_model.predict(vectors, threshold=threshold)
 
-    # Simulate trading
-    trades = []
-    position = 0
-    entry_price = 0.0
-    entry_time = 0
+        # Simulate trading
+        trades = []
+        position = 0
+        entry_price = 0.0
+        entry_time = 0
 
-    profit_target = 0.06
-    stop_loss = 0.0035
+        profit_target = 0.06
+        stop_loss = 0.0035
 
-    for i in range(len(closes)):
-        current_price = closes[i]
-        current_time = timestamps[i]
+        for i in range(len(closes)):
+            current_price = closes[i]
+            current_time = timestamps[i]
 
-        if predictions[i] == 1 and position == 0:
-            # Enter position
-            position = 1
-            entry_price = current_price
-            entry_time = current_time
+            if predictions[i] == 1 and position == 0:
+                # Enter position
+                position = 1
+                entry_price = current_price
+                entry_time = current_time
 
-        elif position == 1:
-            # Check exit conditions
-            profit_pct = (current_price - entry_price) / entry_price
+            elif position == 1:
+                # Check exit conditions
+                profit_pct = (current_price - entry_price) / entry_price
 
-            if profit_pct >= profit_target or profit_pct <= -stop_loss or i == len(closes)-1:
-                # Exit position
-                position = 0
-                pnl = (current_price - entry_price) / entry_price
+                if profit_pct >= profit_target or profit_pct <= -stop_loss or i == len(closes)-1:
+                    # Exit position
+                    position = 0
+                    pnl = (current_price - entry_price) / entry_price
 
-                trades.append({
-                    'entry_time': entry_time,
-                    'exit_time': current_time,
-                    'entry_price': entry_price,
-                    'exit_price': current_price,
-                    'pnl': pnl
-                })
+                    trades.append({
+                        'entry_time': entry_time,
+                        'exit_time': current_time,
+                        'entry_price': entry_price,
+                        'exit_price': current_price,
+                        'pnl': pnl
+                    })
 
-    # Calculate metrics
-    if trades:
-        wins = sum(1 for t in trades if t['pnl'] > 0)
-        win_rate = wins / len(trades)
-        total_return = np.prod([1 + t['pnl'] for t in trades]) - 1
-        gross_profit = sum(t['pnl'] for t in trades if t['pnl'] > 0)
-        gross_loss = abs(sum(t['pnl'] for t in trades if t['pnl'] < 0))
-        profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf')
+        # Calculate metrics
+        if trades:
+            wins = sum(1 for t in trades if t['pnl'] > 0)
+            win_rate = wins / len(trades)
+            total_return = np.prod([1 + t['pnl'] for t in trades]) - 1
+            gross_profit = sum(t['pnl'] for t in trades if t['pnl'] > 0)
+            gross_loss = abs(sum(t['pnl'] for t in trades if t['pnl'] < 0))
+            profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf')
 
-        # Calculate max drawdown
-        equity = 1.0
-        peak = 1.0
-        max_dd = 0.0
-        for t in trades:
-            equity *= (1 + t['pnl'])
-            if equity > peak:
-                peak = equity
-            dd = (peak - equity) / peak
-            if dd > max_dd:
-                max_dd = dd
+            # Calculate max drawdown
+            equity = 1.0
+            peak = 1.0
+            max_dd = 0.0
+            for t in trades:
+                equity *= (1 + t['pnl'])
+                if equity > peak:
+                    peak = equity
 
-        avg_duration = np.mean([t['exit_time'] - t['entry_time'] for t in trades])
+                dd = (peak - equity) / peak
+                if dd > max_dd:
+                    max_dd = dd
 
-        metrics = {
-            'total_trades': len(trades),
-            'win_rate': win_rate,
-            'total_return': total_return,
-            'profit_factor': profit_factor,
-            'max_drawdown': max_dd,
-            'avg_duration': avg_duration
+            avg_duration = np.mean([t['exit_time'] - t['entry_time'] for t in trades])
+
+            metrics = {
+                'total_trades': len(trades),
+                'win_rate': win_rate,
+                'total_return': total_return,
+                'profit_factor': profit_factor,
+                'max_drawdown': max_dd,
+                'avg_duration': avg_duration
+            }
+        else:
+            metrics = {
+                'total_trades': 0,
+                'win_rate': 0,
+                'total_return': 0,
+                'profit_factor': 0,
+                'max_drawdown': 0,
+                'avg_duration': 0
+            }
+
+        return {
+            'symbol': symbol,
+            'model': model,
+            'candles': [{'time': t, 'close': c} for t, c in zip(timestamps, closes)],
+            'trades': trades,
+            'metrics': metrics
         }
-    else:
-        metrics = {
-            'total_trades': 0,
-            'win_rate': 0,
-            'total_return': 0,
-            'profit_factor': 0,
-            'max_drawdown': 0,
-            'avg_duration': 0
-        }
-
-    return {
-        'symbol': symbol,
-        'model': model,
-        'candles': [{'time': t, 'close': c} for t, c in zip(timestamps, closes)],
-        'trades': trades,
-        'metrics': metrics
-    }
 
     except Exception as e:
         logger.exception(f"Backtest failed: {e}")
