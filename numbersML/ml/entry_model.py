@@ -125,7 +125,7 @@ class EntryPointModel:
         if self.model is None:
             raise ValueError("Model not trained")
 
-        probs = self.model.predict(X, num_iteration=self.model.best_iteration)
+        probs = self.model.predict(X, num_iteration=self.model.best_iteration, predict_disable_shape_check=True)
         classes = (probs >= threshold).astype(int)
 
         return probs, classes
