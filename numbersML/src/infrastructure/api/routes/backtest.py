@@ -88,15 +88,28 @@ async def run_backtest(
 
             start_time = last_time - timedelta(seconds=seconds)
 
-            rows = await conn.fetch("""
-                SELECT c.time, c.close, wv.vector FROM candles_1s c
-                JOIN wide_vectors wv ON wv.time = c.time
-                WHERE c.symbol_id = $1 AND c.time >= $2
-                ORDER BY c.time ASC
-            """, symbol_id, start_time)
+        rows = await conn.fetch("""
+            SELECT c.time, c.close, wv.vector FROM candles_1s c
+            JOIN wide_vectors wv ON wv.time = c.time
+            WHERE c.symbol_id = $1 AND c.time >= $2
+            ORDER BY c.time ASC
+        """, symbol_id, start_time)
 
-        if not rows:
-            return {'error': 'No candle data found'}
+    if not rows:
+        return {'error': 'No candle data found'}
+
+    closes = np.array([float(r['close']) for r in rows])
+    timestamps = np.array([int(r['time'].timestamp()) for r in rows])
+    
+    # Handle vector json parsing
+    vectors = []
+    for r in rows:
+        if isinstance(r['vector'], str):
+            vec = np.array(json.loads(r['vector']), dtype=np.float32)
+        else:
+            vec = np.array(r['vector'], dtype=np.float32)
+        vectors.append(vec)
+    vectors = np.array(vectors)
 
         # Load model
         loaded_model = EntryPointModel.load(model)
