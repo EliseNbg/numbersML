@@ -210,11 +210,25 @@ if __name__ == '__main__':
     probs, _ = model.predict(np.vstack(ds.vectors), threshold=args.threshold)
     
     logger.info("\n✅ ERGEBNIS:")
+    signal_count = sum(1 for p in probs if p >= args.threshold)
     logger.info("   Samples: %d | Positive Signale: %d | Signal Rate: %.1f%%", 
         len(probs), 
-        sum(1 for p in probs if p >= args.threshold),
-        (sum(1 for p in probs if p >= args.threshold) / len(probs)) * 100
+        signal_count,
+        (signal_count / len(probs)) * 100
     )
     logger.info("   Min Prob: %.4f | Max Prob: %.4f | Mean Prob: %.4f",
         np.min(probs), np.max(probs), np.mean(probs)
     )
+    
+    if args.print_trades and signal_count > 0:
+        logger.info("\n📋 EINSTIEGSPUNKTE:")
+        logger.info("-" * 70)
+        
+        signal_idx = 0
+        for idx, prob in enumerate(probs):
+            if prob >= args.threshold:
+                signal_idx += 1
+                ts = ds.timestamps[idx]
+                logger.info(f"✅  #{signal_idx:4d} | {ts} | Prob: {prob:.4f}")
+        
+        logger.info("-" * 70)

@@ -63,7 +63,7 @@ async def run_backtest(
     symbol: str = Query(..., description="Symbol name"),
     model: str = Query(..., description="Model filename"),
     seconds: int = Query(604800, description="Backtest time range in seconds"),
-    threshold: float = Query(0.9, description="Prediction threshold", ge=0.5, le=1.0)
+    threshold: float = Query(0.7, description="Prediction threshold", ge=0.0, le=1.0)
 ):
     """
     Run backtest:
@@ -149,7 +149,7 @@ async def run_backtest(
                     position = 0
                     pnl = (current_price - entry_price) / entry_price
 
-        trades.append({
+                trades.append({
             'entry_time': int(entry_time),
             'exit_time': int(current_time),
             'entry_price': float(entry_price),
