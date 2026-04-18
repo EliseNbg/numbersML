@@ -181,13 +181,17 @@ async def run_backtest(
 
             avg_duration = np.mean([t['exit_time'] - t['entry_time'] for t in trades])
 
+            # Safe numpy scalar conversion
+            def safe_float(val):
+                return float(val.item() if hasattr(val, 'item') else val)
+
             metrics = {
                 'total_trades': int(len(trades)),
-                'win_rate': float(win_rate),
-                'total_return': float(total_return),
-                'profit_factor': float(profit_factor),
-                'max_drawdown': float(max_dd),
-                'avg_duration': float(avg_duration)
+                'win_rate': safe_float(win_rate),
+                'total_return': safe_float(total_return),
+                'profit_factor': safe_float(profit_factor),
+                'max_drawdown': safe_float(max_dd),
+                'avg_duration': safe_float(avg_duration)
             }
         else:
             metrics = {
