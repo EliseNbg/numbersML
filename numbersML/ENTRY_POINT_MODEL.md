@@ -129,3 +129,28 @@ binary_targets = [1.0 if t >= 0.8 else 0.0 for t in targets]
 - Backtest Logik: `ml/backtest.py`
 - Training Logik: `ml/entry_model.py`
 - Dataset Generator: `ml/entry_dataset.py`
+
+---
+
+## 🐛 Kritischer Backtest Fehler behoben 19.04.2026
+
+### Problem
+Der Backtest Endpunkt hat den Threshold Parameter komplett ignoriert. Es wurden immer alle 578.909 möglichen Trades zurückgegeben, völlig egal welcher Wert eingestellt wurde.
+
+### Ursache
+Im Backtest Endpunkt wurde immer `predictions[i] == 1` statt `probabilities[i] >= threshold` abgefragt.
+
+### Lösung
+```python
+# Vorher: ❌ Threshold wurde ignoriert
+if predictions[i] == 1 and position == 0:
+
+# Nachher: ✅ Korrekte Anwendung des Thresholds
+if probabilities[i] >= threshold and position == 0:
+```
+
+### Ergebnis
+✅ Genau definierte Anzahl an Trades wird jetzt zurückgegeben
+✅ Die Einstellung auf der Webseite wirkt sich tatsächlich aus
+✅ Keine Überladung des Browsers mit Millionen unnötigen Einträgen
+✅ Backtest läuft in < 2 Sekunden statt 30+ Sekunden

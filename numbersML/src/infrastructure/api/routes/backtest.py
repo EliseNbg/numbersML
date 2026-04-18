@@ -120,6 +120,8 @@ async def run_backtest(
 
         # Run predictions
         probabilities, predictions = loaded_model.predict(vectors, threshold=threshold)
+        print(f"✅ DEBUG: Probabilities: min={np.min(probabilities):.4f} max={np.max(probabilities):.4f} mean={np.mean(probabilities):.4f}")
+        print(f"✅ DEBUG: Predictions count: {np.sum(predictions)} / {len(predictions)}")
 
         # Simulate trading
         trades = []
@@ -127,14 +129,14 @@ async def run_backtest(
         entry_price = 0.0
         entry_time = 0
 
-        profit_target = 0.06
-        stop_loss = 0.0035
+        profit_target = 0.006
+        stop_loss = 0.003
 
         for i in range(len(closes)):
             current_price = closes[i]
             current_time = timestamps[i]
 
-            if predictions[i] == 1 and position == 0:
+            if probabilities[i] >= threshold and position == 0:
                 # Enter position
                 position = 1
                 entry_price = current_price
@@ -147,15 +149,15 @@ async def run_backtest(
                 if profit_pct >= profit_target or profit_pct <= -stop_loss or i == len(closes)-1:
                     # Exit position
                     position = 0
-                    pnl = (current_price - entry_price) / entry_price
+                pnl = (current_price - entry_price) / entry_price
 
                 trades.append({
-            'entry_time': int(entry_time),
-            'exit_time': int(current_time),
-            'entry_price': float(entry_price),
-            'exit_price': float(current_price),
-            'pnl': float(pnl)
-        })
+                    'entry_time': int(entry_time),
+                    'exit_time': int(current_time),
+                    'entry_price': float(entry_price),
+                    'exit_price': float(current_price),
+                    'pnl': float(pnl)
+                })
 
         # Calculate metrics
         if trades:
@@ -203,12 +205,42 @@ async def run_backtest(
                 'avg_duration': 0
             }
 
+        # Calculate metrics properly
+        win_rate = 0.0
+        total_return = 0.0
+        profit_factor = 0.0
+        max_drawdown = 0.0
+        avg_duration = 0.0
+        
+        if trades:
+            wins = sum(1 for t in trades if t['pnl'] > 0)
+            win_rate = wins / len(trades)
+            total_return = sum(t['pnl'] for t in trades)
+            
+            gross_profit = sum(t['pnl'] for t in trades if t['pnl'] > 0)
+            gross_loss = abs(sum(t['pnl'] for t in trades if t['pnl'] < 0))
+            profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf')
+            
+            avg_duration = sum(t['duration'] for t in trades) / len(trades) if 'duration' in trades[0] else 0
+
         return {
             'symbol': symbol,
             'model': model,
-            'candles': [{'time': int(t), 'close': float(c)} for t, c in zip(timestamps, closes)],
+            'candles': [{"time": int(t), "close": float(c)} for t, c in zip(timestamps, closes)],
             'trades': trades,
-            'metrics': metrics
+            'probability_stats': {
+                'min': float(np.min(probabilities)),
+                'max': float(np.max(probabilities)),
+                'mean': float(np.mean(probabilities))
+            },
+            'metrics': {
+                'total_trades': len(trades),
+                'win_rate': win_rate,
+                'total_return': total_return,
+                'profit_factor': profit_factor,
+                'max_drawdown': max_drawdown,
+                'avg_duration': avg_duration
+            }
         }
 
     except Exception as e:

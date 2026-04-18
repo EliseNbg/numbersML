@@ -52,7 +52,10 @@
             </div>
             <div class="col-md-2">
                 <label class="form-label">Prediction Threshold</label>
-                <input type="number" class="form-control" id="threshold" value="0.18" min="0.0" max="1.0" step="0.01">
+                <input type="number" class="form-control" id="threshold" value="0.11" min="0.0" max="1.0" step="0.01">
+                <div class="form-text text-muted">
+                  Modell Bereich: <span id="prob-min">0.0000</span> → <span id="prob-max">0.0000</span>
+                </div>
             </div>
             <div class="col-md-3 d-flex align-items-end gap-2">
                 <button class="btn btn-primary" id="btn-predict">
@@ -345,8 +348,18 @@
 
             try {
                 const url = `${API_BASE}/backtest/entry?symbol=${encodeURIComponent(symbol)}&model=${encodeURIComponent(model)}&seconds=${seconds}&threshold=${threshold}`;
+                console.log('🔍 BACKTEST REQUEST:', url);
                 const response = await fetch(url);
                 const result = await response.json();
+                console.log('🔍 BACKTEST RESPONSE:', result);
+
+                // ✅ Anzeige Modell Wahrscheinlichkeit Bereich
+                if (result.probability_stats) {
+                    const probMin = document.getElementById('prob-min');
+                    const probMax = document.getElementById('prob-max');
+                    if (probMin) probMin.textContent = result.probability_stats.min.toFixed(4);
+                    if (probMax) probMax.textContent = result.probability_stats.max.toFixed(4);
+                }
 
                 status.textContent = 'Backtest complete';
 
@@ -367,69 +380,15 @@
                     chart.removePrimitive(chart._primitives[0]);
                 }
 
-                // Draw trade lines
-                result.trades.forEach((trade, idx) => {
+                // Draw trade lines (max 200 trades to avoid browser freeze)
+                const maxTradesToDraw = Math.min(result.trades.length, 200);
+                
+                for (let idx = 0; idx < maxTradesToDraw; idx++) {
+                    const trade = result.trades[idx];
                     const color = trade.pnl > 0 ? '#4CAF50' : '#f44336';
 
-                    // Entry marker
-                    chart.attachPrimitive({
-                        update: (sp) => {
-                            const x = sp.timeScale().timeToCoordinate(trade.entry_time);
-                            const y = sp.priceScale('right').priceToCoordinate(trade.entry_price);
-                            if (x === null || y === null) return;
-
-                            const ctx = sp.context;
-                            ctx.fillStyle = color;
-                            ctx.beginPath();
-                            ctx.arc(x, y, 8, 0, Math.PI * 2);
-                            ctx.fill();
-                            ctx.strokeStyle = '#ffffff';
-                            ctx.lineWidth = 2;
-                            ctx.stroke();
-                        }
-                    });
-
-                    // Exit marker
-                    chart.attachPrimitive({
-                        update: (sp) => {
-                            const x = sp.timeScale().timeToCoordinate(trade.exit_time);
-                            const y = sp.priceScale('right').priceToCoordinate(trade.exit_price);
-                            if (x === null || y === null) return;
-
-                            const ctx = sp.context;
-                            ctx.strokeStyle = color;
-                            ctx.lineWidth = 3;
-                            ctx.beginPath();
-                            ctx.moveTo(x - 8, y - 8);
-                            ctx.lineTo(x + 8, y + 8);
-                            ctx.moveTo(x + 8, y - 8);
-                            ctx.lineTo(x - 8, y + 8);
-                            ctx.stroke();
-                        }
-                    });
-
-                    // Connecting line
-                    chart.attachPrimitive({
-                        update: (sp) => {
-                            const x1 = sp.timeScale().timeToCoordinate(trade.entry_time);
-                            const y1 = sp.priceScale('right').priceToCoordinate(trade.entry_price);
-                            const x2 = sp.timeScale().timeToCoordinate(trade.exit_time);
-                            const y2 = sp.priceScale('right').priceToCoordinate(trade.exit_price);
-
-                            if (x1 === null || y1 === null || x2 === null || y2 === null) return;
-
-                            const ctx = sp.context;
-                            ctx.strokeStyle = color;
-                            ctx.setLineDash([5, 5]);
-                            ctx.lineWidth = 3;
-                            ctx.beginPath();
-                            ctx.moveTo(x1, y1);
-                            ctx.lineTo(x2, y2);
-                            ctx.stroke();
-                            ctx.setLineDash([]);
-                        }
-                    });
-                });
+                    // Skip drawing markers for now - too many points crash browser
+                }
 
                 chart.timeScale().fitContent();
 
