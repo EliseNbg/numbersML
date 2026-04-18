@@ -253,36 +253,41 @@
                 // Update chart
                 priceSeries.setData(result.candles.map(c => ({ time: c.time, value: c.close })));
 
+                // Clear old primitives first
+                chart.removeAllPrimitives();
+
                 // Draw trade lines
                 result.trades.forEach((trade, idx) => {
                     const color = trade.pnl > 0 ? '#4CAF50' : '#f44336';
 
                     // Entry marker
-                    priceSeries.attachPrimitive({
+                    chart.attachPrimitive({
                         update: (sp) => {
-                            const x = sp.timeToCoordinate(trade.entry_time);
-                            const y = sp.priceToCoordinate(trade.entry_price);
+                            const x = sp.timeScale().timeToCoordinate(trade.entry_time);
+                            const y = sp.priceScale('right').priceToCoordinate(trade.entry_price);
                             if (x === null || y === null) return;
 
                             const ctx = sp.context;
                             ctx.fillStyle = color;
                             ctx.beginPath();
-                            ctx.arc(x, y, 6, 0, Math.PI * 2);
+                            ctx.arc(x, y, 8, 0, Math.PI * 2);
                             ctx.fill();
+                            ctx.strokeStyle = '#ffffff';
+                            ctx.lineWidth = 2;
+                            ctx.stroke();
                         }
                     });
 
                     // Exit marker
-                    priceSeries.attachPrimitive({
+                    chart.attachPrimitive({
                         update: (sp) => {
-                            const x = sp.timeToCoordinate(trade.exit_time);
-                            const y = sp.priceToCoordinate(trade.exit_price);
+                            const x = sp.timeScale().timeToCoordinate(trade.exit_time);
+                            const y = sp.priceScale('right').priceToCoordinate(trade.exit_price);
                             if (x === null || y === null) return;
 
                             const ctx = sp.context;
-                            ctx.fillStyle = color;
                             ctx.strokeStyle = color;
-                            ctx.lineWidth = 2;
+                            ctx.lineWidth = 3;
                             ctx.beginPath();
                             ctx.moveTo(x - 8, y - 8);
                             ctx.lineTo(x + 8, y + 8);
@@ -293,19 +298,19 @@
                     });
 
                     // Connecting line
-                    priceSeries.attachPrimitive({
+                    chart.attachPrimitive({
                         update: (sp) => {
-                            const x1 = sp.timeToCoordinate(trade.entry_time);
-                            const y1 = sp.priceToCoordinate(trade.entry_price);
-                            const x2 = sp.timeToCoordinate(trade.exit_time);
-                            const y2 = sp.priceToCoordinate(trade.exit_price);
+                            const x1 = sp.timeScale().timeToCoordinate(trade.entry_time);
+                            const y1 = sp.priceScale('right').priceToCoordinate(trade.entry_price);
+                            const x2 = sp.timeScale().timeToCoordinate(trade.exit_time);
+                            const y2 = sp.priceScale('right').priceToCoordinate(trade.exit_price);
 
                             if (x1 === null || y1 === null || x2 === null || y2 === null) return;
 
                             const ctx = sp.context;
                             ctx.strokeStyle = color;
                             ctx.setLineDash([5, 5]);
-                            ctx.lineWidth = 2;
+                            ctx.lineWidth = 3;
                             ctx.beginPath();
                             ctx.moveTo(x1, y1);
                             ctx.lineTo(x2, y2);
