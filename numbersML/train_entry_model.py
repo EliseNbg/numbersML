@@ -27,9 +27,9 @@ def main():
     parser = argparse.ArgumentParser(description='Train Entry Point Classification Model')
     parser.add_argument('--symbol', type=str, default='BTC/USDC', help='Target symbol')
     parser.add_argument('--hours', type=int, default=720, help='Train on last N hours')
-    parser.add_argument('--profit', type=float, default=0.009, help='Profit target (0.009 = 0.9%)')
-    parser.add_argument('--stop', type=float, default=0.007, help='Stop loss (0.007 = 0.7%)')
-    parser.add_argument('--lookahead', type=int, default=3600, help='Look ahead bars')
+    parser.add_argument('--profit', type=float, default=0.06, help='Profit target (0.06 = 6.0%)')
+    parser.add_argument('--stop', type=float, default=0.0035, help='Stop loss (0.0035 = 0.35%)')
+    parser.add_argument('--lookahead', type=int, default=28800, help='Look ahead bars')
     parser.add_argument('--output', type=str, help='Output model path (auto generated if not set)')
 
     args = parser.parse_args()
