@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""
+Training script for Entry Point Classification Model.
+
+Run:
+  python train_entry_model.py --symbol BTC/USDC --hours 720
+"""
+
+import argparse
+import logging
+import numpy as np
+from datetime import datetime, timedelta, timezone
+
+from ml.config import DatabaseConfig, DataConfig
+from ml.entry_dataset import EntryPointDataset
+from ml.entry_model import EntryPointModel
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+logger = logging.getLogger(__name__)
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Train Entry Point Classification Model')
+    parser.add_argument('--symbol', type=str, default='BTC/USDC', help='Target symbol')
+    parser.add_argument('--hours', type=int, default=720, help='Train on last N hours')
+    parser.add_argument('--profit', type=float, default=0.005, help='Profit target (0.005 = 0.5%)')
+    parser.add_argument('--stop', type=float, default=0.002, help='Stop loss (0.002 = 0.2%)')
+    parser.add_argument('--lookahead', type=int, default=1800, help='Look ahead bars')
+    parser.add_argument('--output', type=str, default='entry_model.pkl', help='Output model path')
+
+    args = parser.parse_args()
+
+    db_config = DatabaseConfig()
+    data_config = DataConfig()
+    data_config.target_symbol = args.symbol
+    data_config.train_hours = args.hours
+
+    logger.info(f"Starting Entry Point Model training:")
+    logger.info(f"  Symbol: {args.symbol}")
+    logger.info(f"  Training window: {args.hours} hours")
+    logger.info(f"  Profit target: {args.profit*100:.2f}%")
+    logger.info(f"  Stop loss: {args.stop*100:.2f}%")
+    logger.info(f"  Look ahead: {args.lookahead/60:.1f} minutes")
+
+    # Calculate time ranges
+    end_time = datetime.now(timezone.utc)
+    start_time = end_time - timedelta(hours=args.hours)
+
+    # Load full dataset
+    dataset = EntryPointDataset(
+        db_config=db_config,
+        data_config=data_config,
+        start_time=start_time,
+        end_time=end_time,
+        profit_target=args.profit,
+        stop_loss=args.stop,
+        look_ahead=args.lookahead,
+        balance_classes=True,
+        sequence_length=data_config.sequence_length
+    )
+
+    # Time based split (80% train, 20% val)
+    split_idx = int(len(dataset) * 0.8)
+
+    X = np.vstack(dataset.vectors)
+    y = np.array(dataset.targets)
+
+    X_train, X_val = X[:split_idx], X[split_idx:]
+    y_train, y_val = y[:split_idx], y[split_idx:]
+
+    # Train model
+    model = EntryPointModel()
+    metrics = model.train(X_train, y_train, X_val, y_val)
+
+    # Save model
+    model.save(args.output)
+
+    logger.info("Training complete!")
+
+
+if __name__ == "__main__":
+    main()
