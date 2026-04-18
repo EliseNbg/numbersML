@@ -87,9 +87,10 @@ async def run_backtest(
         start_time = last_time - timedelta(seconds=seconds)
 
         rows = await conn.fetch("""
-            SELECT time, close FROM candles_1s
-            WHERE symbol_id = $1 AND time >= $2
-            ORDER BY time ASC
+            SELECT c.time, c.close, wv.vector FROM candles_1s c
+            JOIN wide_vectors wv ON wv.time = c.time
+            WHERE c.symbol_id = $1 AND c.time >= $2
+            ORDER BY c.time ASC
         """, symbol_id, start_time)
 
     if not rows:
@@ -97,12 +98,13 @@ async def run_backtest(
 
     closes = np.array([float(r['close']) for r in rows])
     timestamps = np.array([int(r['time'].timestamp()) for r in rows])
+    vectors = np.array([r['vector'] for r in rows])
 
     # Load model
     loaded_model = EntryPointModel.load(model)
 
     # Run predictions
-    probabilities, predictions = loaded_model.predict(closes.reshape(-1, 1), threshold=threshold)
+    probabilities, predictions = loaded_model.predict(vectors, threshold=threshold)
 
     # Simulate trading
     trades = []
