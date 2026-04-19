@@ -269,6 +269,7 @@ class WideVectorDataset(Dataset):
 
         # DATA QUALITY VALIDATION: Ensure exact +1 second intervals and unique timestamps
         self._validate_temporal_consistency(timestamps, vectors)
+        self.closes = closes
 
         # Compute scaled price return targets: [0..1] via sigmoid
         # Uses RAW close prices (not filtered) — filtered returns have no signal

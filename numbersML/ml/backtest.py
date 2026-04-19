@@ -88,7 +88,7 @@ def walk_forward_backtest(
                 position = 1
                 entry_price = current_price
                 entry_time = current_time
-                logger.debug(f"ENTER long at {entry_price} time={entry_time}")
+                logger.info(f"ENTER long at {entry_price} time={entry_time}")
 
             elif position == 1:
                 # Check exit conditions
@@ -110,7 +110,7 @@ def walk_forward_backtest(
                     })
 
                     fold_trades += 1
-                    logger.debug(f"EXIT at {current_price} PnL: {pnl*100:.3f}%")
+                    logger.info(f"EXIT at {current_price} PnL: {pnl*100:.3f}%")
 
             equity_curve.append(equity)
 
@@ -196,39 +196,121 @@ if __name__ == '__main__':
     parser.add_argument('--model', required=True)
     parser.add_argument('--symbol', required=True)
     parser.add_argument('--hours', type=int, default=24)
-    parser.add_argument('--threshold', type=float, default=0.65)
+    parser.add_argument('--threshold', type=float, default=0.11)
     parser.add_argument('--print-trades', action='store_true', help='Print individual trades')
     args = parser.parse_args()
 
-    logger.info("✅ BACKTEST START | %s | %dh | th=%.2f", args.symbol, args.hours, args.threshold)
+    logger.info("✅ BACKTEST START | %s | %dh | th=%.4f", args.symbol, args.hours, args.threshold)
     
+    # Load model
     model = EntryPointModel.load(args.model)
-    ds = EntryPointDataset(DatabaseConfig(), DataConfig(), datetime.now(timezone.utc)-timedelta(hours=args.hours), datetime.now(timezone.utc))
     
-    # Für bereits trainierte Modelle brauchen wir KEIN Walk Forward!
-    # Direkt Vorhersage auf gesamten Datensatz
-    probs, _ = model.predict(np.vstack(ds.vectors), threshold=args.threshold)
+    # Load dataset for EXACT requested symbol
+    db_config = DatabaseConfig()
+    data_config = DataConfig()
+    data_config.target_symbol = args.symbol
     
-    logger.info("\n✅ ERGEBNIS:")
-    signal_count = sum(1 for p in probs if p >= args.threshold)
-    logger.info("   Samples: %d | Positive Signale: %d | Signal Rate: %.1f%%", 
-        len(probs), 
-        signal_count,
-        (signal_count / len(probs)) * 100
+    ds = EntryPointDataset(
+        db_config=db_config,
+        data_config=data_config,
+        start_time=datetime.now(timezone.utc)-timedelta(hours=args.hours),
+        end_time=datetime.now(timezone.utc)
     )
-    logger.info("   Min Prob: %.4f | Max Prob: %.4f | Mean Prob: %.4f",
-        np.min(probs), np.max(probs), np.mean(probs)
-    )
+
+    # Run EXACT same backtest logic as Web API
+    probabilities, _ = model.predict(np.vstack(ds.vectors), threshold=args.threshold)
+    # ✅ Load REAL closing prices from dataset public attribute
+    closes = np.array(ds.closes)
+    timestamps = np.array([int(t.timestamp()) for t in ds.timestamps])
+
+    # ✅ Exakt gleiche Trading Simulation wie Web API /api/backtest/entry
+    trades = []
+    position = 0
+    entry_price = 0.0
+    entry_time = 0
+    entry_counter = 0
+    exit_counter = 0
+
+    profit_target = 0.006
+    stop_loss = 0.003
+
+    logger.info(f"🔄 Starting trading simulation with threshold={args.threshold:.4f}")
+    logger.info(f"   Profit Target: +{profit_target*100:.2f}% | Stop Loss: -{stop_loss*100:.2f}%")
+
+    data_length = min(len(closes), len(timestamps), len(probabilities))
+    for i in range(data_length):
+        current_price = closes[i]
+        current_time = timestamps[i]
+        prob = probabilities[i]
+
+        # ENTER LONG POSITION
+        if prob >= args.threshold and position == 0:
+            position = 1
+            entry_price = current_price
+            entry_time = current_time
+            entry_counter += 1
+            logger.info(f"✅ ENTER #{entry_counter} at price={entry_price:.6f} time={datetime.fromtimestamp(current_time)} prob={prob:.6f}")
+
+        # ✅ EXIT POSITION LOGIC - CHECK IN EVERY SINGLE STEP!
+        elif position == 1:
+            profit_pct = (current_price - entry_price) / entry_price
+
+            # ✅ DEBUG LOG EVERY SINGLE CANDLE WHILE POSITION IS OPEN
+            logger.debug(f"   📊 POSITION OPEN: candle={i:6d} price={current_price:.6f} pnl={profit_pct*100:+.4f}%")
+
+            # ✅ Check exit conditions ON EVERY SINGLE CANDLE!
+            should_exit = (
+                profit_pct >= profit_target 
+                or profit_pct <= -stop_loss 
+                or i == len(closes)-1
+            )
+
+            if should_exit:
+                position = 0
+                pnl = profit_pct - 0.002  # minus 0.2% fees
+
+                trades.append({
+                    'entry_time': int(entry_time),
+                    'exit_time': int(current_time),
+                    'entry_price': float(entry_price),
+                    'exit_price': float(current_price),
+                    'pnl': float(pnl),
+                    'duration': int(current_time - entry_time)
+                })
+
+                exit_counter += 1
+                logger.info(f"❌ EXIT  #{exit_counter} pnl={pnl*100:.4f}% price={current_price:.6f} duration={int(current_time - entry_time)}s")
+
+    logger.info(f"✅ Trading simulation complete: entered={entry_counter} exited={exit_counter} total_trades={len(trades)}")
+
+    # Calculate metrics
+    win_rate = 0.0
+    total_return = 0.0
+    profit_factor = 0.0
     
-    if args.print_trades and signal_count > 0:
-        logger.info("\n📋 EINSTIEGSPUNKTE:")
+    if trades:
+        wins = sum(1 for t in trades if t['pnl'] > 0)
+        win_rate = wins / len(trades)
+        total_return = sum(t['pnl'] for t in trades)
+        
+        gross_profit = sum(t['pnl'] for t in trades if t['pnl'] > 0)
+        gross_loss = abs(sum(t['pnl'] for t in trades if t['pnl'] < 0))
+        profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf')
+
+    logger.info("\n✅ FINALES ERGEBNIS:")
+    logger.info("=" * 70)
+    logger.info(f"✅ Gesamte Trades:      {len(trades)}")
+    logger.info(f"✅ Trades pro Stunde:  {(len(trades)/args.hours):.2f}")
+    logger.info(f"✅ Trades pro Tag:     {(len(trades)/args.hours * 24):.1f}")
+    logger.info("")
+    logger.info(f"📈 Win Rate:           {(win_rate * 100):.1f} %")
+    logger.info(f"📈 Gesamt Gewinn:      {(total_return * 100):.2f} %")
+    logger.info(f"📈 Profit Factor:      {profit_factor:.2f}")
+    logger.info("=" * 70)
+    
+    if args.print_trades and len(trades) > 0:
+        logger.info("\n📋 ABGESCHLOSSENE TRADES:")
         logger.info("-" * 70)
         
-        signal_idx = 0
-        for idx, prob in enumerate(probs):
-            if prob >= args.threshold:
-                signal_idx += 1
-                ts = ds.timestamps[idx]
-                logger.info(f"✅  #{signal_idx:4d} | {ts} | Prob: {prob:.4f}")
-        
-        logger.info("-" * 70)
+        for idx, trade in enumerate(trades):
+            side = "✅" if trade['pnl'] > 0 else "❌"
