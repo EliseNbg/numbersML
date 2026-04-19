@@ -164,11 +164,11 @@ async def run_backtest(
                 entry_counter += 1
                 logger.debug(f"✅ ENTER #{entry_counter} at price={entry_price:.6f} time={current_time} prob={prob:.6f}")
 
-            # EXIT POSITION LOGIC
+            # ✅ EXIT POSITION LOGIC - CHECK IN EVERY SINGLE STEP!
             elif position == 1:
                 profit_pct = (current_price - entry_price) / entry_price
 
-                # Check exit conditions
+                # ✅ Check exit conditions ON EVERY SINGLE CANDLE!
                 should_exit = (
                     profit_pct >= profit_target 
                     or profit_pct <= -stop_loss 
