@@ -375,20 +375,42 @@
                 // Update chart
                 priceSeries.setData(result.candles.map(c => ({ time: c.time, value: c.close })));
 
-                // Clear old primitives (lightweight-charts v4 work-around)
-                while (chart._primitives && chart._primitives.length > 0) {
-                    chart.removePrimitive(chart._primitives[0]);
+                // Clear old markers
+                if (window.tradeMarkers) {
+                    priceSeries.detachPrimitive(window.tradeMarkers);
                 }
 
-                // Draw trade lines (max 200 trades to avoid browser freeze)
-                const maxTradesToDraw = Math.min(result.trades.length, 200);
+                // Trade markers implementation for Lightweight Charts v4.1
+                const maxTrades = 50;
+                const displayTrades = result.trades.slice(-maxTrades);
                 
-                for (let idx = 0; idx < maxTradesToDraw; idx++) {
-                    const trade = result.trades[idx];
-                    const color = trade.pnl > 0 ? '#4CAF50' : '#f44336';
-
-                    // Skip drawing markers for now - too many points crash browser
-                }
+                console.log('✅ Drawing markers for', displayTrades.length, 'trades');
+                
+                // Use official markers API - this is the correct v4 way
+                const markers = [];
+                
+                displayTrades.forEach(trade => {
+                    // Entry marker (circle below bar)
+                    markers.push({
+                        time: trade.entry_time,
+                        position: 'belowBar',
+                        color: '#26a69a',
+                        shape: 'circle',
+                        text: 'ENTER'
+                    });
+                    
+                    // Exit marker
+                    markers.push({
+                        time: trade.exit_time,
+                        position: 'aboveBar',
+                        color: trade.pnl > 0 ? '#26a69a' : '#ef5350',
+                        shape: 'square',
+                        text: trade.pnl > 0 ? 'WIN' : 'LOSS'
+                    });
+                });
+                
+                priceSeries.setMarkers(markers);
+                console.log('✅ Markers set:', markers.length);
 
                 chart.timeScale().fitContent();
 
