@@ -40,21 +40,12 @@ class EntryPointDataset(WideVectorDataset):
         
     def _load_data(self) -> Tuple[List[np.ndarray], List[float], List]:
         """Load data and apply entry point labeling."""
-        vectors, targets, timestamps = super()._load_data()
+        vectors, _, timestamps = super()._load_data()
         
-        # ✅ Fix: Konvertiere kontinuierliche Targets in saubere binäre Labels 0/1
-        # Alle Werte >= 0.8 werden als Positiv gewertet, Rest als Negativ
-        binary_targets = [1.0 if t >= 0.8 else 0.0 for t in targets]
+        # Get close prices from parent dataset
+        closes = np.array(self.closes, dtype=np.float64)
         
-        pos = sum(1 for t in binary_targets if t == 1.0)
-        neg = sum(1 for t in binary_targets if t == 0.0)
-        
-        logger.info(f"✅ Entry Point Label Stats:")
-        logger.info(f"   Positiv: {pos} | Negativ: {neg} | Ratio: {(pos/len(targets))*100:.1f}%")
-        
-        return vectors, binary_targets, timestamps
-        
-        # Label entry points
+        # Label entry points with actual parameters
         labels, scores = label_entry_points(
             closes,
             profit_target=self.profit_target,
@@ -62,8 +53,12 @@ class EntryPointDataset(WideVectorDataset):
             look_ahead=self.look_ahead
         )
         
-        # Filter valid samples
+        # Filter valid samples - align lengths (parent dataset truncates last look_ahead samples)
         vectors_np = np.vstack(vectors)
+        valid_length = len(vectors_np)
+        labels = labels[:valid_length]
+        scores = scores[:valid_length]
+        
         X, y = filter_entry_samples(vectors_np, labels, scores, balance_classes=self.balance_classes)
         
         # Store filtered data
@@ -71,9 +66,11 @@ class EntryPointDataset(WideVectorDataset):
         self.targets = list(y)
         self.timestamps = timestamps[:len(y)]
         
-        print(f'Entry Point Dataset loaded:')
-        print(f'  Total samples: {len(self.vectors)}')
-        print(f'  Positive class: {np.sum(y == 1)} ({np.sum(y == 1)/len(y)*100:.1f}%)')
-        print(f'  Negative class: {np.sum(y == 0)} ({np.sum(y == 0)/len(y)*100:.1f}%)')
+        pos = np.sum(y == 1)
+        neg = np.sum(y == 0)
+        
+        logger.info(f"✅ Entry Point Label Stats:")
+        logger.info(f"   Profit target: {self.profit_target*100:.2f}% | Stop loss: {self.stop_loss*100:.2f}%")
+        logger.info(f"   Positiv: {pos} | Negativ: {neg} | Ratio: {(pos/len(y))*100:.1f}%")
         
         return self.vectors, self.targets, self.timestamps

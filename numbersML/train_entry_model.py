@@ -79,8 +79,10 @@ def main():
     # Auto generate model filename with symbol and date if not provided
     if not args.output:
         safe_symbol = args.symbol.replace('/', '_')
+        profit_val = int(round(args.profit * 10000))
+        stop_val = int(round(args.stop * 10000))
         timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')
-        args.output = f'entry_model_{safe_symbol}_{timestamp}.pkl'
+        args.output = f'entry_model_{safe_symbol}_p{profit_val}_s{stop_val}_{timestamp}.pkl'
 
     # Save model
     model.save(args.output)
