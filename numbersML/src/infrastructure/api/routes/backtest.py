@@ -119,45 +119,79 @@ async def run_backtest(
             vectors = vectors[:, loaded_model.feature_mask]
 
         # Run predictions
-        probabilities, predictions = loaded_model.predict(vectors, threshold=threshold)
-        print(f"✅ DEBUG: Probabilities: min={np.min(probabilities):.4f} max={np.max(probabilities):.4f} mean={np.mean(probabilities):.4f}")
-        print(f"✅ DEBUG: Predictions count: {np.sum(predictions)} / {len(predictions)}")
+        probabilities, _ = loaded_model.predict(vectors, threshold=threshold)
+        
+        print("\n\n🔴 🔴 🔴 BACKTEST DEBUG START 🔴 🔴 🔴")
+        print(f"✅ DEBUG: Received threshold: {threshold:.4f}")
+        print(f"✅ DEBUG: Probabilities: min={np.min(probabilities):.6f} max={np.max(probabilities):.6f} mean={np.mean(probabilities):.6f}")
+        
+        count_ge_threshold = np.sum(probabilities >= threshold)
+        print(f"✅ DEBUG: Probabilities >= threshold: {count_ge_threshold} / {len(probabilities)}")
+        print(f"✅ DEBUG: Percentage >= threshold: {(count_ge_threshold / len(probabilities)) * 100:.2f} %")
+        
+        # Print first 10 probability values
+        print(f"✅ DEBUG: First 10 probabilities: {[f'{p:.6f}' for p in probabilities[:10]]}")
+        
+        # Print distribution
+        for t in [0.0, 0.05, 0.07, 0.10, 0.11, 0.115, 0.117, 0.118, 0.1187]:
+            cnt = np.sum(probabilities >= t)
+            print(f"✅ DEBUG: >= {t:.4f} → {cnt} entries")
+        print("🔴 🔴 🔴 BACKTEST DEBUG END 🔴 🔴 🔴\n\n")
 
         # Simulate trading
         trades = []
         position = 0
         entry_price = 0.0
         entry_time = 0
+        entry_counter = 0
+        exit_counter = 0
 
         profit_target = 0.006
         stop_loss = 0.003
 
+        logger.info(f"🔄 Starting trading simulation with threshold={threshold:.4f}")
+
         for i in range(len(closes)):
             current_price = closes[i]
             current_time = timestamps[i]
+            prob = probabilities[i]
 
-            if probabilities[i] >= threshold and position == 0:
-                # Enter position
+            # ENTER LONG POSITION
+            if prob >= threshold and position == 0:
                 position = 1
                 entry_price = current_price
                 entry_time = current_time
+                entry_counter += 1
+                logger.debug(f"✅ ENTER #{entry_counter} at price={entry_price:.6f} time={current_time} prob={prob:.6f}")
 
+            # EXIT POSITION LOGIC
             elif position == 1:
-                # Check exit conditions
                 profit_pct = (current_price - entry_price) / entry_price
 
-                if profit_pct >= profit_target or profit_pct <= -stop_loss or i == len(closes)-1:
-                    # Exit position
-                    position = 0
-                pnl = (current_price - entry_price) / entry_price
+                # Check exit conditions
+                should_exit = (
+                    profit_pct >= profit_target 
+                    or profit_pct <= -stop_loss 
+                    or i == len(closes)-1
+                )
 
-                trades.append({
-                    'entry_time': int(entry_time),
-                    'exit_time': int(current_time),
-                    'entry_price': float(entry_price),
-                    'exit_price': float(current_price),
-                    'pnl': float(pnl)
-                })
+                if should_exit:
+                    position = 0
+                    pnl = profit_pct - 0.002  # minus 0.2% fees
+
+                    trades.append({
+                        'entry_time': int(entry_time),
+                        'exit_time': int(current_time),
+                        'entry_price': float(entry_price),
+                        'exit_price': float(current_price),
+                        'pnl': float(pnl),
+                        'duration': int(current_time - entry_time)
+                    })
+
+                    exit_counter += 1
+                    logger.debug(f"❌ EXIT  #{exit_counter} pnl={pnl*100:.4f}% price={current_price:.6f}")
+
+        logger.info(f"✅ Trading simulation complete: entered={entry_counter} exited={exit_counter} total_trades={len(trades)}")
 
         # Calculate metrics
         if trades:
