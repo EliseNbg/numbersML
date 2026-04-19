@@ -37,6 +37,9 @@ class EntryPointModel:
         self.params = params or self.default_params()
         self.model = None
         self.feature_names = None
+        self.feature_mask = None
+        self.profit_target = None
+        self.stop_loss = None
 
     @staticmethod
     def default_params() -> dict:
@@ -149,7 +152,9 @@ class EntryPointModel:
                 'model': self.model,
                 'params': self.params,
                 'feature_names': self.feature_names,
-                'feature_mask': feature_mask
+                'feature_mask': feature_mask,
+                'profit_target': self.profit_target,
+                'stop_loss': self.stop_loss,
             }, f)
         logger.info(f"Model saved to {path}")
 
@@ -162,6 +167,8 @@ class EntryPointModel:
         instance = cls(data['params'])
         instance.model = data['model']
         instance.feature_names = data['feature_names']
+        instance.profit_target = data.get('profit_target')
+        instance.stop_loss = data.get('stop_loss')
         instance.feature_mask = data.get('feature_mask', None)
 
         logger.info(f"Model loaded from {path}")

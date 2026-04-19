@@ -74,6 +74,8 @@ def main():
 
     # Train model
     model = EntryPointModel()
+    model.profit_target = args.profit
+    model.stop_loss = args.stop
     metrics = model.train(X_train, y_train, X_val, y_val)
 
     # Auto generate model filename with symbol and date if not provided
@@ -82,7 +84,7 @@ def main():
         profit_val = int(round(args.profit * 10000))
         stop_val = int(round(args.stop * 10000))
         timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')
-        args.output = f'entry_model_{safe_symbol}_p{profit_val}_s{stop_val}_{timestamp}.pkl'
+        args.output = f'ml/models/entry_point/entry_model_{safe_symbol}_p{profit_val:04d}_s{stop_val:04d}_{timestamp}.pkl'
 
     # Save model
     model.save(args.output)

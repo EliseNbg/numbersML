@@ -23,19 +23,32 @@ logger = logging.getLogger(__name__)
 async def get_model_files() -> List[Dict]:
     """Get list of available entry point models.
     """
-    model_dir = Path('.')
+    model_dir = Path('ml/models/entry_point')
     models = []
 
     for file in model_dir.glob('entry_model_*.pkl'):
         try:
             parts = file.stem.split('_')
             symbol = parts[2] + '/' + parts[3]
-            timestamp = datetime.strptime(f"{parts[4]}_{parts[5]}", "%Y%m%d_%H%M")
+            
+            # Support old and new filename formats
+            if len(parts) == 8 and parts[4].startswith('p') and parts[5].startswith('s'):
+                # New format: entry_model_SYMBOL_pXXXX_sXXXX_DATE_TIME
+                profit = int(parts[4][1:]) / 10000
+                stop = int(parts[5][1:]) / 10000
+                timestamp = datetime.strptime(f"{parts[6]}_{parts[7]}", "%Y%m%d_%H%M")
+            else:
+                # Old format fallback
+                profit = 0.005
+                stop = 0.002
+                timestamp = datetime.strptime(f"{parts[4]}_{parts[5]}", "%Y%m%d_%H%M")
 
             models.append({
                 'filename': file.name,
                 'name': file.stem,
                 'symbol': symbol,
+                'profit_target': profit,
+                'stop_loss': stop,
                 'timestamp': timestamp.isoformat(),
                 'size': file.stat().st_size
             })
@@ -112,7 +125,8 @@ async def run_backtest(
         vectors = np.array(vectors)
 
         # Load model
-        loaded_model = EntryPointModel.load(model)
+        model_path = str(Path('ml/models/entry_point') / model)
+        loaded_model = EntryPointModel.load(model_path)
 
         # Apply same feature mask as during training
         if hasattr(loaded_model, 'feature_mask') and loaded_model.feature_mask is not None:
@@ -146,8 +160,8 @@ async def run_backtest(
         entry_counter = 0
         exit_counter = 0
 
-        profit_target = 0.006
-        stop_loss = 0.003
+        profit_target = loaded_model.profit_target if loaded_model.profit_target is not None else 0.006
+        stop_loss = loaded_model.stop_loss if loaded_model.stop_loss is not None else 0.003
 
         logger.info(f"🔄 Starting trading simulation with threshold={threshold:.4f}")
 
@@ -261,6 +275,7 @@ async def run_backtest(
             'symbol': symbol,
             'model': model,
             'candles': [{"time": int(t), "close": float(c)} for t, c in zip(timestamps, closes)],
+            'probabilities': probabilities.tolist(),
             'trades': trades,
             'probability_stats': {
                 'min': float(np.min(probabilities)),

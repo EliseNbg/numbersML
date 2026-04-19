@@ -93,8 +93,10 @@ def walk_forward_backtest(
             elif position == 1:
                 # Check exit conditions
                 profit_pct = (current_price - entry_price) / entry_price
+                profit_target = model.profit_target if model.profit_target is not None else 0.005
+                stop_loss = model.stop_loss if model.stop_loss is not None else 0.002
 
-                if profit_pct >= 0.005 or profit_pct <= -0.002 or j == len(preds)-1:
+                if profit_pct >= profit_target or profit_pct <= -stop_loss or j == len(preds)-1:
                     # Exit position
                     position = 0
                     pnl = (current_price - entry_price) / entry_price - 0.001  # minus fees
@@ -203,7 +205,11 @@ if __name__ == '__main__':
     logger.info("✅ BACKTEST START | %s | %dh | th=%.4f", args.symbol, args.hours, args.threshold)
     
     # Load model
-    model = EntryPointModel.load(args.model)
+    import os
+    model_path = args.model
+    if not os.path.exists(model_path):
+        model_path = os.path.join('ml', 'models', 'entry_point', args.model)
+    model = EntryPointModel.load(model_path)
     
     # Load dataset for EXACT requested symbol
     db_config = DatabaseConfig()
@@ -214,7 +220,11 @@ if __name__ == '__main__':
         db_config=db_config,
         data_config=data_config,
         start_time=datetime.now(timezone.utc)-timedelta(hours=args.hours),
-        end_time=datetime.now(timezone.utc)
+        end_time=datetime.now(timezone.utc),
+        profit_target=model.profit_target if model.profit_target is not None else 0.005,
+        stop_loss=model.stop_loss if model.stop_loss is not None else 0.002,
+        look_ahead=3900,
+        balance_classes=False
     )
 
     # Run EXACT same backtest logic as Web API

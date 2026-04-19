@@ -375,6 +375,32 @@
                 // Update chart
                 priceSeries.setData(result.candles.map(c => ({ time: c.time, value: c.close })));
 
+                // Plot model prediction probabilities on separate scale
+                if (window.probSeries) {
+                    chart.removeSeries(window.probSeries);
+                }
+                window.probSeries = chart.addLineSeries({
+                    color: '#9C27B0',
+                    lineWidth: 1,
+                    priceScaleId: 'probability',
+                    title: 'Probability',
+                    lastValueVisible: true
+                });
+                
+                // Setup separate 0..1 scale for predictions
+                window.probSeries.priceScale().applyOptions({
+                    scaleMargins: {
+                        top: 0.80,
+                        bottom: 0.05
+                    },
+                    borderVisible: true,
+                    entireTextOnly: true
+                });
+                window.probSeries.setData(result.candles.map((c, i) => ({ 
+                    time: c.time, 
+                    value: result.probabilities[i] 
+                })));
+
                 // Clear old markers
                 if (window.tradeMarkers) {
                     priceSeries.detachPrimitive(window.tradeMarkers);
