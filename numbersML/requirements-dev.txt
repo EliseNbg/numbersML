@@ -26,3 +26,6 @@ testcontainers==3.7.1
 
 # API testing (for dashboard)
 httpx==0.26.0
+
+# CLI utilities
+psutil==7.2.2

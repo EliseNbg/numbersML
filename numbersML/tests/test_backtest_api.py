@@ -21,14 +21,32 @@ def test_list_models_endpoint():
 
 
 def test_backtest_endpoint_parameters():
-    """Test backtest endpoint parameter validation"""
+    """Test backtest endpoint parameter validation for TradingTCN"""
     # Missing symbol
-    response = client.get("/api/backtest/entry")
+    response = client.get("/api/backtest/trading_tcn")
     assert response.status_code == 422
 
-    # Invalid threshold
-    response = client.get("/api/backtest/entry?symbol=BTC/USDC&model=test.pkl&threshold=1.5")
+    # With valid parameters (no specific validation on score_threshold)
+    response = client.get("/api/backtest/trading_tcn?symbol=BTC/USDC&model=test.pt&score_threshold=1.5")
+    # Should not be 422 (param validation error)
+    assert response.status_code != 422
+
+
+def test_list_trading_tcn_models_endpoint():
+    """Test GET /api/backtest/models/trading_tcn endpoint"""
+    response = client.get("/api/backtest/models/trading_tcn")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+
+
+def test_trading_tcn_backtest_endpoint_parameters():
+    """Test TradingTCN backtest endpoint parameter validation"""
+    # Missing symbol
+    response = client.get("/api/backtest/trading_tcn")
     assert response.status_code == 422
 
-    response = client.get("/api/backtest/entry?symbol=BTC/USDC&model=test.pkl&threshold=0.4")
-    assert response.status_code == 422
+    # With symbol and model (validation passes, may fail later due to no DB)
+    response = client.get("/api/backtest/trading_tcn?symbol=DASH/USDC&model=test.pt")
+    # Should not be 422 (param validation error)
+    assert response.status_code != 422
