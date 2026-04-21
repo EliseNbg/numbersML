@@ -97,5 +97,6 @@ dmypy.json
 *.pt
 *.pth
 *.onnx
+*.pkl
 ml/models/*/best_model.pt
 ml/models/*/norm_params.npz
