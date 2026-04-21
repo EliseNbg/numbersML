@@ -245,8 +245,26 @@ def main():
     # ── Fit feature normalizer on TRAINING set only ──────────────────
     logger.info("Fitting feature normalizer on training set...")
     train_vectors = np.stack(train_dataset.vectors)  # (n_samples, feat_dim)
-    feat_mean = train_vectors.mean(axis=0, keepdims=True).astype(np.float32)
-    feat_std  = train_vectors.std(axis=0, keepdims=True).astype(np.float32) + 1e-8
+
+    # OPTION 1: Per-feature standardization (removes relative scales) - DEPRECATED
+    # feat_mean = train_vectors.mean(axis=0, keepdims=True).astype(np.float32)
+    # feat_std  = train_vectors.std(axis=0, keepdims=True).astype(np.float32) + 1e-8
+
+    # OPTION 2: Global standardization (preserves relative feature magnitudes) - CURRENT
+    logger.info("Using GLOBAL standardization (preserves relative feature magnitudes)")
+    global_mean = float(train_vectors.mean())
+    global_std = float(train_vectors.std()) + 1e-8
+    feat_mean = np.full((1, train_vectors.shape[1]), global_mean, dtype=np.float32)
+    feat_std  = np.full((1, train_vectors.shape[1]), global_std, dtype=np.float32)
+
+    # OPTION 3: Robust scaling (median/IQR - handles outliers better)
+    # from scipy.stats import iqr
+    # logger.info("Using ROBUST scaling (median/IQR)")
+    # feat_median = np.median(train_vectors, axis=0, keepdims=True).astype(np.float32)
+    # feat_iqr = iqr(train_vectors, axis=0).astype(np.float32) + 1e-8
+    # feat_mean = feat_median
+    # feat_std = feat_iqr
+
     feat_mask = np.ones(train_vectors.shape[1], dtype=bool)
 
     # Normalize training vectors in-place
@@ -256,6 +274,7 @@ def main():
     train_dataset.std  = feat_std
     train_dataset.feature_mask = feat_mask
     logger.info(f"  Feature mean: {feat_mean.mean():.4f}, std: {feat_std.mean():.4f}")
+    logger.info(f"  After normalization - mean: {train_vectors_norm.mean():.6f}, std: {train_vectors_norm.std():.6f}")
 
     # ── Validation dataset — reuse training scaler (no leakage) ───────
     val_dataset = TradingDataset(
