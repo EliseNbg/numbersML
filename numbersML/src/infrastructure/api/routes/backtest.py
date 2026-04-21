@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import torch
+import torch.serialization
 from fastapi import APIRouter, Query, Depends
 
 from ml.model import TradingTCN, create_model
@@ -132,7 +133,8 @@ async def run_trading_tcn_backtest(
 
         # Load TradingTCN model
         model_path = str(Path('ml/models/trading_tcn') / model)
-        checkpoint = torch.load(model_path, map_location='cpu', weights_only=True)
+        # Load full checkpoint (we trust our own saved models)
+        checkpoint = torch.load(model_path, map_location='cpu', weights_only=False)
 
         # Reconstruct model from saved config
         cfg = checkpoint.get('model_cfg', ModelConfig())
