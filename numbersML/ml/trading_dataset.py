@@ -144,8 +144,9 @@ class TradingDataset(Dataset):
                         else:
                             vec = np.array(vector_json, dtype=np.float32)
 
-                        # Sanitize: replace NaNs/infs with 0
-                        if not np.isfinite(vec).all():
+                        # DATA QUALITY: Handle NaN values from indicators
+                        # Some technical indicators return NaN when they don't have enough history
+                        if np.isnan(vec).any():
                             vec = np.nan_to_num(vec, nan=0.0, posinf=0.0, neginf=0.0)
 
                         # Pad / truncate to fixed length

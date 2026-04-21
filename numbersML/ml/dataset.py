@@ -69,30 +69,33 @@ class WideVectorDataset(Dataset):
         # Compute normalization params if not provided
         if self.mean is None or self.std is None:
             all_vectors = np.vstack(self.vectors)
-            
-            # Apply StandardScaler: zero mean, unit variance
-            self.mean = np.mean(all_vectors, axis=0)
-            self.std = np.std(all_vectors, axis=0)
-            
-            # Add epsilon to prevent division by zero
-            epsilon = 1e-8
-            self.std = np.where(self.std < epsilon, epsilon, self.std)
 
-            # Filter out low-variance features to prevent overfitting
-            # Higher threshold = fewer features = less overfitting
-            min_std = 1e-6  # Keep all features except truly constant ones
-            self.feature_mask = self.std > min_std
-            
-            # Apply feature mask
-            self.mean = self.mean[self.feature_mask]
-            self.std = self.std[self.feature_mask]
-            
+            # OPTION 1: Per-feature standardization (removes relative scales) - DEPRECATED
+            # self.mean = np.mean(all_vectors, axis=0)
+            # self.std = np.std(all_vectors, axis=0)
+
+            # OPTION 2: Global standardization (preserves relative feature magnitudes) - CURRENT
+            logger.info("Using GLOBAL standardization for WideVectorDataset (preserves relative feature magnitudes)")
+            global_mean = float(np.mean(all_vectors))
+            global_std = float(np.std(all_vectors))
+            epsilon = 1e-8
+            global_std = max(global_std, epsilon)  # Prevent division by zero
+
+            # Use same global stats for all features
+            n_features = all_vectors.shape[1]
+            self.mean = np.full(n_features, global_mean, dtype=np.float32)
+            self.std = np.full(n_features, global_std, dtype=np.float32)
+
+            # With global normalization, we don't filter features by variance
+            # since all features are scaled to the same global std
+            self.feature_mask = np.ones(n_features, dtype=bool)
+
             # Normalize vectors: x = (x - mean) / std
-            self.vectors = [(v[self.feature_mask] - self.mean) / self.std for v in self.vectors]
-            
-            print(f'Feature normalization: StandardScaler (zero mean, unit variance)')
+            self.vectors = [(v - self.mean) / self.std for v in self.vectors]
+
+            print(f'Feature normalization: Global standardization (preserves relative scales)')
             print(f'  Original features: {all_vectors.shape[1]}')
-            print(f'  Features after mask: {len(self.mean)} (removed {all_vectors.shape[1] - len(self.mean)} low-variance)')
+            print(f'  Global mean: {global_mean:.4f}, global std: {global_std:.4f}')
         else:
             # Apply existing feature mask and normalization
             self.vectors = [(v[self.feature_mask] - self.mean) / self.std for v in self.vectors]
@@ -245,6 +248,12 @@ class WideVectorDataset(Dataset):
                             vec = np.array(json.loads(vector_json), dtype=np.float32)
                         else:
                             vec = np.array(vector_json, dtype=np.float32)
+
+                        # DATA QUALITY: Handle NaN values in indicators
+                        if np.isnan(vec).any():
+                            # Replace NaN with 0 (neutral value)
+                            # Could also use mean imputation, but 0 is safer for indicators
+                            vec = np.nan_to_num(vec, nan=0.0, posinf=0.0, neginf=0.0)
 
                         # Handle variable-length vectors by padding
                         if prev_size is None:
