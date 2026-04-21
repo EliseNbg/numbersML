@@ -3,7 +3,7 @@ ML Training Pipeline Configuration.
 """
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 import os
 
 
@@ -46,7 +46,7 @@ class DataConfig:
 
     # Target calculation parameters
     hanning_window: int = 300  # Causal Hanning filter window size
-    prediction_horizon: int = 30  # Predict smoothed price at t + prediction_horizon
+    prediction_horizon: int = 900  # Predict return over 15 minutes (sweet spot)
     
     # Feature types to include in input vector
     # Options: close, volume, returns, indicators (ATR, EMA, MACD, RSI, SMA, Bollinger)
@@ -84,17 +84,25 @@ class ModelConfig:
     max_seq_len: int = 2048  # Maximum sequence length for RoPE
 
     # CNN+GRU architecture (recommended for financial time series)
-    model_arch: str = "cnn_gru"  # mlp, cnn_gru, transformer
+    model_arch: str = "cnn_gru"  # mlp, cnn_gru, transformer, temporal_cnn
 
-    # GRU settings
+    # GRU settings (used by cnn_gru)
     gru_hidden_dim: int = 128  # GRU hidden size
     gru_num_layers: int = 2  # Number of GRU layers
     gru_dropout: float = 0.2  # Dropout between GRU layers
 
-    # CNN settings
+    # CNN settings (used by cnn_gru, transformer, temporal_cnn)
     cnn_channels: List[int] = field(default_factory=lambda: [32, 64])  # Channels for each CNN layer
     cnn_kernel_size: int = 5  # Kernel size for 1D convolutions
     cnn_pool_size: int = 2  # Pool size after CNN layers
+
+    # TemporalCNN-specific settings
+    temporal_cnn_layers: int = 6  # Number of dilated causal conv layers
+    temporal_cnn_kernel: int = 3  # Kernel size per layer (3 gives smooth exponential dilation)
+
+    # TradingTCN-specific settings (PnL-optimized gated TCN)
+    trading_tcn_blocks: int = 8  # Number of gated residual blocks
+    trading_tcn_dilations: Optional[List[int]] = None  # e.g. [1,2,4,8,16,32,4,1]
 
 
 @dataclass

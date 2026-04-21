@@ -111,12 +111,30 @@ def filter_entry_samples(
     balance_classes: bool = True,
     undersample_ratio: float = 1.2
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Filter and balance dataset for training.
+    """Filter and optionally balance a labelled dataset while preserving temporal order.
 
-    - Remove ambiguous samples (label=-1)
-    - Optional class balancing (undersample majority class)
-    - This prevents model bias towards the majority class
+    Temporal order MUST be preserved here so that callers can do a clean
+    chronological train/val split afterwards.  Previous random-shuffle-based
+    undersampling destroyed this order and caused training samples from the
+    future to appear in what looked like the "early" portion of the dataset —
+    a form of temporal leakage.
+
+    Undersampling (when enabled) uses a uniform stride across the negative
+    class so that the negatives are spread evenly in time rather than chosen
+    at random.  All indices are sorted before indexing to maintain the
+    original chronological sequence.
+
+    Args:
+        features: Feature matrix aligned with ``labels``.
+        labels: Integer labels: 1 = good entry, 0 = bad entry, -1 = ignore.
+        scores: Quality scores aligned with ``labels``.
+        balance_classes: Whether to undersample the majority (negative) class.
+        undersample_ratio: Target neg/pos ratio after undersampling.
+
+    Returns:
+        X: Filtered (and optionally undersampled) feature matrix in
+           chronological order.
+        y: Corresponding binary labels.
     """
     # Keep only valid labels
     mask = labels != -1
@@ -125,7 +143,7 @@ def filter_entry_samples(
     y = labels[mask]
     w = scores[mask]
 
-    logger.info(f"Filtering dataset:")
+    logger.info("Filtering dataset:")
     logger.info(f"  Original samples: {len(features)}")
     logger.info(f"  Valid samples:    {len(X)}")
 
@@ -135,19 +153,22 @@ def filter_entry_samples(
 
         logger.info(f"  Positive: {len(pos_idx)}, Negative: {len(neg_idx)}")
 
-        # Undersample majority class
         if len(neg_idx) > len(pos_idx) * undersample_ratio:
             keep_neg = int(len(pos_idx) * undersample_ratio)
-            neg_idx = np.random.choice(neg_idx, keep_neg, replace=False)
 
-            keep_idx = np.concatenate([pos_idx, neg_idx])
-            np.random.shuffle(keep_idx)
+            # Stride-based selection: take every k-th negative so the
+            # retained negatives are uniformly spread across the timeline.
+            stride = max(1, len(neg_idx) // keep_neg)
+            neg_idx_kept = neg_idx[::stride][:keep_neg]
+
+            # Sort to restore chronological order before returning.
+            keep_idx = np.sort(np.concatenate([pos_idx, neg_idx_kept]))
 
             X = X[keep_idx]
             y = y[keep_idx]
             w = w[keep_idx]
 
             logger.info(f"  After balancing: {len(X)} samples")
-            logger.info(f"    Positive: {len(pos_idx)}, Negative: {len(neg_idx)}")
+            logger.info(f"    Positive: {len(pos_idx)}, Negative: {len(neg_idx_kept)}")
 
     return X, y

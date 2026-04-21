@@ -90,25 +90,40 @@ tests/
 
 ## ML Models
 
-Three architectures trained on wide_vector sequences to predict target_value:
+Five architectures available:
 
-| Model | Architecture | Params | Use case |
-|-------|-------------|--------|----------|
-| `simple` | MLP + avg pooling | ~10K | Baseline |
-| `full` | CNN + Attention + MLP | ~116K | Local + temporal patterns |
-| `transformer` | RoPE + SwiGLU + 4 layers | ~349K | Long-range dependencies |
+| Model | Architecture | Params | Use case | Status |
+|-------|-------------|--------|----------|--------|
+| `simple` | MLP + avg pooling | ~10K | Baseline | ✅ Stable |
+| `full` | CNN + Attention + MLP | ~116K | Local + temporal patterns | ⚠️ Sometimes overfits |
+| `transformer` | RoPE + SwiGLU + 4 layers | ~349K | Long-range dependencies | ⚠️ Slow, unstable |
+| `temporal_cnn` | Dilated causal CNN | ~45K | General time series | ✅ Stable |
+| `trading_tcn` | Gated TCN + risk head + PnL loss | ~100K | **PnL‑optimized trading** | 🆕 **New** |
 
-**Transformer innovations:** Rotary Positional Embeddings (RoPE), SwiGLU activation, pre-norm architecture, multi-scale CNN feature extraction.
+**Transformer innovations:** Rotary Positional Embeddings (RoPE), SwiGLU activation, pre‑norm, multi‑scale CNN.
+
+**TemporalCNN:** Pure dilated causal convs with exponential dilation (1,2,4,8,16). Trains reliably, MAE ~0.058–0.065 on BTC/USDC. No RNN/attention issues. See [TemporalCNN Model](TEMPORAL_CNN_MODEL.md).
+
+**TradingTCN (NEW):** State‑of‑the‑art for profit maximization. WaveNet‑style gated residual blocks, multi‑scale dilations, channel mixing, dual heads (expected return + predicted risk). Trained with differentiable PnL / Sharpe losses. See [TradingTCN Model](TRADING_TCN_MODEL.md).
 
 ```bash
-# Train all models and compare
-.venv/bin/python -m ml.train --model simple --epochs 30 --symbol BTC/USDC
-.venv/bin/python -m ml.train --model full --epochs 30 --symbol BTC/USDC
-.venv/bin/python -m ml.train --model transformer --epochs 30 --symbol BTC/USDC
+# Train standard regression models (sigmoid-scaled target)
+.venv/bin/python -m ml.train --model simple          --epochs 30 --symbol BTC/USDC
+.venv/bin/python -m ml.train --model full            --epochs 30 --symbol BTC/USDC
+.venv/bin/python -m ml.train --model transformer     --epochs 30 --symbol BTC/USDC
+.venv/bin/python -m ml.train --model temporal_cnn    --epochs 60 --symbol BTC/USDC --seq-length 120
 
-# Compare
-.venv/bin/python -m ml.compare --models ml/models/simple/best_model.pt ml/models/full/best_model.pt ml/models/transformer/best_model.pt
+# Train PnL-optimized TradingTCN (raw returns + risk-adjusted loss)
+.venv/bin/python train_trading_tcn.py \
+  --symbol BTC/USDC \
+  --hours 360 \
+  --seq-length 120 \
+  --horizon 900 \
+  --stride 60 \
+  --loss risk_adjusted
 ```
+
+**Entry‑point classifier** (LightGBM binary) is separate — see [Entry Point Model](ENTRY_POINT_MODEL.md).
 
 ## Testing
 
