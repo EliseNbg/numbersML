@@ -62,12 +62,19 @@ async def run_backtest(args):
 
     pool = await get_db_pool_async()
 
-    # Get data time range
-    end_time = datetime.now(timezone.utc)
-    start_time_db = end_time - timedelta(hours=args.hours)
+    # Determine time range from latest available data
+    async with pool.acquire() as conn:
+        latest_time_result = await conn.fetchrow("SELECT MAX(time) FROM wide_vectors")
+        if latest_time_result and latest_time_result['max']:
+            latest_time = latest_time_result['max']
+            logger.info(f"   Latest data timepoint: {latest_time}")
+        else:
+            logger.error("No wide_vectors data found")
+            return
 
-    logger.info(f"   Start time: {start_time_db}")
-    logger.info(f"   End time: {end_time}")
+    db_start_time = latest_time - timedelta(hours=args.hours)
+    db_end_time = latest_time
+    logger.info(f"   Backtest time range: {db_start_time} to {db_end_time}")
     logger.info(f"   Duration: {args.hours} hours")
 
     phase_time = time.time() - phase_start
@@ -86,7 +93,7 @@ async def run_backtest(args):
             WHERE symbol_id = (SELECT id FROM symbols WHERE symbol = $1)
             AND time >= $2 AND time < $3
             ORDER BY time ASC
-        """, args.symbol, start_time_db, end_time)
+        """, args.symbol, db_start_time, db_end_time)
 
         candle_time = time.time() - candle_query_start
         logger.info(f"   Candle query time: {candle_time:.3f}s")
@@ -107,7 +114,7 @@ async def run_backtest(args):
             SELECT time, vector FROM wide_vectors
             WHERE time >= $1 AND time < $2
             ORDER BY time ASC
-        """, start_time_db, end_time)
+        """, db_start_time, db_end_time)
 
         vector_time = time.time() - vector_query_start
         logger.info(f"   Vector query time: {vector_time:.3f}s")
@@ -149,7 +156,10 @@ async def run_backtest(args):
     phase_start = time.time()
     logger.info("📊 Phase 4: Loading TradingTCN model...")
 
-    model_path = Path('ml/models/trading_tcn') / args.model
+    if Path(args.model).is_absolute() or '/' in args.model:
+        model_path = Path(args.model)
+    else:
+        model_path = Path('ml/models/trading_tcn') / args.model
     if not model_path.exists():
         logger.error(f"Model file not found: {model_path}")
         return
@@ -171,6 +181,15 @@ async def run_backtest(args):
 
     logger.info(f"   Model loaded: {sum(p.numel() for p in model.parameters()):,} parameters")
 
+    # Apply training normalization if available
+    if 'feat_mean' in checkpoint and 'feat_std' in checkpoint:
+        feat_mean = checkpoint['feat_mean']
+        feat_std = checkpoint['feat_std']
+        vectors = (vectors - feat_mean) / feat_std
+        logger.info(f"   Applied training normalization (mean shape: {feat_mean.shape})")
+    else:
+        logger.warning("   No normalization stats in checkpoint — using raw vectors (model may not generalize)")
+
     phase_time = time.time() - phase_start
     logger.info(f"   Phase time: {phase_time:.3f}s")
     logger.info(f"   Memory usage: {get_memory_usage():.1f} MB")
@@ -180,7 +199,7 @@ async def run_backtest(args):
     logger.info("📊 Phase 5: Creating sequences and running inference...")
 
     seq_length = 120
-    stride = 60
+    stride = 1
 
     logger.info(f"   Sequence length: {seq_length}")
     logger.info(f"   Stride: {stride}")
@@ -196,13 +215,13 @@ async def run_backtest(args):
     inference_times = []
 
     with torch.no_grad():
-        for i in range(0, max_start_idx + 1, stride):
+        for i in range(0, max_start_idx, stride):
             # Create sequence
             seq = vectors[i:i+seq_length]
             seq_tensor = torch.from_numpy(seq).unsqueeze(0).float()  # Add batch dim
 
-            if args.debug and i % 1000 == 0:
-                logger.info(f"   Processing sequence {i//stride + 1}...")
+            if args.debug and i % 50 == 0:
+                logger.info(f"   Processing sequence {i+1}...")
 
             # Run inference
             batch_start = time.time()
@@ -217,9 +236,21 @@ async def run_backtest(args):
     predictions_ret = np.array(predictions_ret)
     predictions_risk = np.array(predictions_risk)
 
-    # Create aligned arrays (predictions correspond to timestamps[seq_length-1::stride])
-    aligned_timestamps = timestamps[seq_length-1::stride][:len(predictions_ret)]
-    aligned_closes = closes[seq_length-1::stride][:len(predictions_ret)]
+    # Create aligned arrays (predictions correspond to timestamps[seq_length::stride])
+    aligned_timestamps = timestamps[seq_length::stride][:len(predictions_ret)]
+    aligned_closes = closes[seq_length::stride][:len(predictions_ret)]
+
+    n_common = min(len(predictions_ret), len(aligned_timestamps), len(aligned_closes))
+    if n_common < len(predictions_ret):
+        logger.warning(
+            f"   Data mismatch: predictions={len(predictions_ret)}, "
+            f"timestamps={len(aligned_timestamps)}, closes={len(aligned_closes)}. "
+            f"Truncating to {n_common}."
+        )
+        predictions_ret = predictions_ret[:n_common]
+        predictions_risk = predictions_risk[:n_common]
+        aligned_timestamps = aligned_timestamps[:n_common]
+        aligned_closes = aligned_closes[:n_common]
 
     logger.info(f"   Predictions shape: ret={predictions_ret.shape}, risk={predictions_risk.shape}")
     logger.info(f"   Average inference time: {np.mean(inference_times):.3f}s per batch")
@@ -236,11 +267,26 @@ async def run_backtest(args):
     logger.info(f"   Score range: min={scores.min():.6f}, max={scores.max():.6f}")
     logger.info(f"   Score threshold: {args.score_threshold}")
 
+    # Diagnostics: score distribution
+    pctiles = [1, 5, 10, 25, 50, 75, 90, 95, 99]
+    score_pct = np.percentile(scores, pctiles)
+    for p, v in zip(pctiles, score_pct):
+        logger.info(f"   Score p{p}: {v:.6f}")
+
+    above_threshold = (scores >= args.score_threshold).sum()
+    positive_ret = (predictions_ret > 0).sum()
+    logger.info(f"   Scores >= threshold: {above_threshold}/{len(scores)}")
+    logger.info(f"   Positive pred_ret: {positive_ret}/{len(predictions_ret)}")
+    logger.info(f"   Pred_ret range: min={predictions_ret.min():.6f}, max={predictions_ret.max():.6f}")
+    logger.info(f"   Pred_risk range: min={predictions_risk.min():.6f}, max={predictions_risk.max():.6f}")
+
     # Simulate trading
     trades = []
     position = 0
     entry_price = 0.0
     entry_time = 0
+    missed_due_to_position = 0
+    missed_due_to_low_score = 0
 
     for i in range(len(scores)):
         current_price = aligned_closes[i]
@@ -252,9 +298,13 @@ async def run_backtest(args):
             position = 1
             entry_price = current_price
             entry_time = current_time
+        elif score >= args.score_threshold and position == 1:
+            missed_due_to_position += 1
+        elif score < args.score_threshold and position == 0:
+            missed_due_to_low_score += 1
 
         # EXIT POSITION after fixed time (10 minutes = 600 seconds)
-        elif position == 1 and (current_time - entry_time >= 600 or i == len(scores)-1):
+        if position == 1 and (current_time - entry_time >= 600 or i == len(scores)-1):
             position = 0
             pnl = (current_price - entry_price) / entry_price - 0.002  # minus fees
 
@@ -269,6 +319,8 @@ async def run_backtest(args):
             })
 
     logger.info(f"   Simulated {len(trades)} trades")
+    logger.info(f"   Missed entries (score high, in position): {missed_due_to_position}")
+    logger.info(f"   Missed entries (score low, flat): {missed_due_to_low_score}")
 
     phase_time = time.time() - phase_start
     logger.info(f"   Phase time: {phase_time:.3f}s")
@@ -316,7 +368,7 @@ def main():
     parser = argparse.ArgumentParser(description='Run TradingTCN backtest with detailed debugging')
     parser.add_argument('--symbol', type=str, required=True, help='Trading symbol (e.g., DASH/USDC)')
     parser.add_argument('--model', type=str, required=True, help='Model filename')
-    parser.add_argument('--hours', type=int, default=24, help='Hours of data to backtest')
+    parser.add_argument('--hours', type=int, default=24, help='Hours of historical data to backtest from the latest available timepoint')
     parser.add_argument('--score-threshold', type=float, default=0.001, help='Risk-adjusted score threshold')
     parser.add_argument('--debug', action='store_true', help='Enable detailed debug output')
     parser.add_argument('--batch-size', type=int, default=64, help='Inference batch size')

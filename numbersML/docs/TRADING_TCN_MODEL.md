@@ -5,10 +5,10 @@
 **TradingTCN** is a new model (`trading_tcn`) that directly optimizes trading profit instead of generic ML metrics. It uses a gated WaveNet‑style TCN with dual heads: expected return + predicted risk. Train with `risk_adjusted_loss()` to maximize risk‑adjusted PnL.
 
 ```bash
-.venv/bin/python train_trading_tcn.py \
+python train_trading_tcn.py \
   --symbol DASH/USDC \
   --hours 360 \
-  --seq-length 120 \
+  --seq_length 120 \
   --horizon 900 \
   --stride 60 \
   --loss risk_adjusted
@@ -181,18 +181,18 @@ Script uses a **temporal gap** between train and validation windows (size: 2×st
 ### Full command reference
 
 ```bash
-.venv/bin/python train_trading_tcn.py \
+python train_trading_tcn.py \
   --symbol DASH/USDC \          # trading pair
   --hours 360 \                 # total data window (hours)
-  --seq-length 120 \            # timesteps per sequence
+  --seq_length 120 \            # timesteps per sequence
   --horizon 900 \               # prediction horizon (15 min)
   --stride 60 \                 # downsample to reduce overlap
-  --batch-size 128 \            # minibatch size
+  --batch_size 128 \            # minibatch size
   --epochs 60 \                 # max epochs (early stopping used)
   --lr 0.0003 \                 # AdamW learning rate
   --loss risk_adjusted \        # loss type: risk_adjusted / pnl / sharpe
-  --clip-returns 0.02 \         # clip extreme moves to ±2%
-  --normalize-returns \         # standardize return distribution
+  --clip_returns 0.02 \         # clip extreme moves to ±2%
+  --normalize_returns \         # standardize return distribution
   --output ml/models/trading_tcn/dash_model.pt
 ```
 
@@ -282,11 +282,40 @@ With normalized features (mean 0, std 1) and the built‑in NaN guards, training
 
 ---
 
+## Backtesting
+
+The backtest dashboard and API have been rebuilt to support TradingTCN models directly, replacing the legacy entry point models. The new system uses the dual predictions (return + risk) for score-based trade selection.
+
+### Dashboard backtesting
+
+Access the web interface at `/dashboard/backtest.html` in the FastAPI app. Select a TradingTCN model, set score threshold, and run historical backtests with real-time visualization of return/risk predictions.
+
+### API endpoints
+
+- `GET /api/backtest/models/trading_tcn` — List available TradingTCN models
+- `GET /api/backtest/trading_tcn?symbol=DASH/USDC&model=trading_tcn_DASH_USDC_20260421_0509.pt&seconds=86400&score_threshold=0.001` — Run backtest
+- `POST /api/backtest/train_trading_tcn` — Train new model
+
+### Command-line backtesting
+
+For fast, debuggable backtests outside the web interface:
+
+```bash
+python backtest_trading_tcn.py \
+  --symbol DASH/USDC \
+  --model trading_tcn_DASH_USDC_20260421_0509.pt \
+  --hours 24 \
+  --score-threshold 0.001 \
+  --debug
+```
+
+This provides detailed phase timing (database queries, model loading, inference, simulation) and memory usage tracking.
+
 ## Next steps
 
-1. **Calibrate the threshold** on a held‑out set: pick top‑K or score threshold that maximizes historical Sharpe.
-2. **Backtest** using `ml/backtest.py` by wrapping the model as a predictor that returns `(probabilities, classifications)`. You'll need to convert `pred_ret` → binary entry signals.
-3. **Compare** against baseline `entry_model` (LightGBM) to ensure edge persists in live conditions.
+1. **Calibrate the score threshold** on a held‑out set: pick threshold that maximizes historical Sharpe using the CLI backtest.
+2. **Compare** against baseline `entry_model` (LightGBM) using the updated dashboard to ensure edge persists.
+3. **Optimize performance**: Use CLI debug output to identify bottlenecks in database queries or inference batching.
 4. **Production inference**: export to ONNX or TorchScript for low‑latency serving.
 
 ---

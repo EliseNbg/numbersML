@@ -31,6 +31,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 
 import numpy as np
+import psycopg2
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
@@ -199,15 +200,27 @@ def main():
     logger.info(f"Using device: {device}")
 
     # ------------------------------------------------------------------
-    # Time window with gap protection
+    # Time window from latest DB data (not wall-clock time)
     # ------------------------------------------------------------------
+    db_cfg = DatabaseConfig()
+    conn_tmp = psycopg2.connect(
+        host=db_cfg.host, port=db_cfg.port, dbname=db_cfg.dbname,
+        user=db_cfg.user, password=db_cfg.password,
+    )
+    with conn_tmp.cursor() as cur:
+        cur.execute("SELECT MAX(time) FROM wide_vectors")
+        row = cur.fetchone()
+        latest_time = row[0] if row and row[0] else datetime.now(timezone.utc)
+    conn_tmp.close()
+    logger.info(f"Latest DB timepoint: {latest_time}")
+
     gap_seconds = args.stride * 2  # conservative gap between val/train
     total_seconds = int(args.hours * 3600)
     usable_seconds = total_seconds - gap_seconds
     val_seconds = int(usable_seconds * args.val_frac)
     train_seconds = usable_seconds - val_seconds
 
-    end_time   = datetime.now(timezone.utc)
+    end_time   = latest_time
     val_end    = end_time
     val_start  = end_time - timedelta(seconds=val_seconds)
     train_end  = val_start - timedelta(seconds=gap_seconds)
@@ -223,8 +236,8 @@ def main():
     # ------------------------------------------------------------------
     model_cfg = ModelConfig()
     model_cfg.hidden_dims         = [128]          # d_model
-    model_cfg.dropout             = 0.2
-    model_cfg.trading_tcn_blocks  = 8
+    model_cfg.dropout             = 0.3            # higher dropout for small dataset
+    model_cfg.trading_tcn_blocks  = 6              # slightly smaller, faster training
     model_cfg.trading_tcn_dilations = None         # use default [1,2,4,8,16,32,4,1]
 
     # ── Train dataset (raw, no feature norm yet) ─────────────────────
@@ -243,40 +256,54 @@ def main():
     )
 
     # ── Fit feature normalizer on TRAINING set only ──────────────────
-    logger.info("Fitting feature normalizer on training set...")
+    logger.info("Fitting per-feature normalizer on training set...")
     train_vectors = np.stack(train_dataset.vectors)  # (n_samples, feat_dim)
 
-    # OPTION 1: Per-feature standardization (removes relative scales) - DEPRECATED
-    # feat_mean = train_vectors.mean(axis=0, keepdims=True).astype(np.float32)
-    # feat_std  = train_vectors.std(axis=0, keepdims=True).astype(np.float32) + 1e-8
-
-    # OPTION 2: Global standardization (preserves relative feature magnitudes) - CURRENT
-    logger.info("Using GLOBAL standardization (preserves relative feature magnitudes)")
-    global_mean = float(train_vectors.mean())
-    global_std = float(train_vectors.std()) + 1e-8
-    feat_mean = np.full((1, train_vectors.shape[1]), global_mean, dtype=np.float32)
-    feat_std  = np.full((1, train_vectors.shape[1]), global_std, dtype=np.float32)
-
-    # OPTION 3: Robust scaling (median/IQR - handles outliers better)
-    # from scipy.stats import iqr
-    # logger.info("Using ROBUST scaling (median/IQR)")
-    # feat_median = np.median(train_vectors, axis=0, keepdims=True).astype(np.float32)
-    # feat_iqr = iqr(train_vectors, axis=0).astype(np.float32) + 1e-8
-    # feat_mean = feat_median
-    # feat_std = feat_iqr
+    # Per-feature standardization — each feature scaled independently
+    feat_mean = train_vectors.mean(axis=0, keepdims=True).astype(np.float32)
+    feat_std  = train_vectors.std(axis=0, keepdims=True).astype(np.float32)
+    # Constant (or near-constant) features: set std=1.0 so they pass through unchanged.
+    # Otherwise dividing validation values by ~1e-8 creates million-scale outliers.
+    near_zero = feat_std < 1e-6
+    if near_zero.any():
+        n_const = near_zero.sum()
+        logger.warning(f"  {n_const} features have near-zero std in training — left unscaled")
+        feat_std[near_zero] = 1.0
 
     feat_mask = np.ones(train_vectors.shape[1], dtype=bool)
 
-    # Normalize training vectors in-place
+    # Normalize training vectors in-place and clip extreme outliers
     train_vectors_norm = (train_vectors - feat_mean) / feat_std
+    train_vectors_norm = np.clip(train_vectors_norm, -10.0, 10.0)
     train_dataset.vectors = [train_vectors_norm[i] for i in range(len(train_vectors_norm))]
     train_dataset.mean = feat_mean
     train_dataset.std  = feat_std
     train_dataset.feature_mask = feat_mask
-    logger.info(f"  Feature mean: {feat_mean.mean():.4f}, std: {feat_std.mean():.4f}")
-    logger.info(f"  After normalization - mean: {train_vectors_norm.mean():.6f}, std: {train_vectors_norm.std():.6f}")
 
-    # ── Validation dataset — reuse training scaler (no leakage) ───────
+    # Log per-feature stats for diagnostics
+    n_features = feat_mean.shape[1]
+    logger.info(f"  Features: {n_features}")
+    logger.info(f"  Raw feature mean range: [{train_vectors.mean(axis=0).min():.2f}, {train_vectors.mean(axis=0).max():.2f}]")
+    logger.info(f"  Raw feature std  range: [{train_vectors.std(axis=0).min():.2f}, {train_vectors.std(axis=0).max():.2f}]")
+    logger.info(f"  Norm feature mean range: [{train_vectors_norm.mean(axis=0).min():.4f}, {train_vectors_norm.mean(axis=0).max():.4f}]")
+    logger.info(f"  Norm feature std  range: [{train_vectors_norm.std(axis=0).min():.4f}, {train_vectors_norm.std(axis=0).max():.4f}]")
+
+    # Identify top scale features (likely price-dependent)
+    train_means = train_vectors.mean(axis=0)
+    train_stds = train_vectors.std(axis=0)
+    top_scale_idx = np.argsort(train_stds)[-10:][::-1]
+    logger.info("  Top 10 features by raw std (likely price-dependent):")
+    for idx in top_scale_idx:
+        logger.info(f"    Feature {idx:3d}: mean={train_means[idx]:10.2f}, std={train_stds[idx]:10.2f}")
+
+    # Identify constant/near-constant features
+    const_idx = np.where(feat_std.flatten() == 1.0)[0]
+    if len(const_idx) > 0:
+        logger.info(f"  Near-constant features (std set to 1.0): {const_idx.tolist()}")
+        for idx in const_idx[:5]:
+            logger.info(f"    Feature {idx:3d}: train_mean={train_means[idx]:.4f}, train_std={train_stds[idx]:.6f}")
+
+    # ── Validation dataset — load raw, then apply identical normalization ──
     val_dataset = TradingDataset(
         db_config         = DatabaseConfig(),
         data_config       = DataConfig(target_symbol=args.symbol, prediction_horizon=args.horizon),
@@ -286,10 +313,52 @@ def main():
         normalize_returns = args.normalize_returns,
         clip_returns      = args.clip_returns,
         return_stride     = args.stride,
-        mean              = feat_mean,   # ← reuse training statistics
-        std               = feat_std,
-        feature_mask      = feat_mask,
+        mean              = None,
+        std               = None,
+        feature_mask      = None,
     )
+    val_vectors = np.stack(val_dataset.vectors)
+    logger.info(f"  Val raw shape: {val_vectors.shape}, mean={val_vectors.mean():.4f}, std={val_vectors.std():.4f}")
+    logger.info(f"  feat_mean shape: {feat_mean.shape}, dtype: {feat_mean.dtype}")
+    logger.info(f"  feat_std  shape: {feat_std.shape}, dtype: {feat_std.dtype}")
+
+    # Per-feature val diagnostics before normalization
+    val_means = val_vectors.mean(axis=0)
+    val_stds = val_vectors.std(axis=0)
+    logger.info(f"  Val raw per-feature mean range: [{val_means.min():.2f}, {val_means.max():.2f}]")
+    logger.info(f"  Val raw per-feature std  range: [{val_stds.min():.2f}, {val_stds.max():.2f}]")
+
+    # Per-feature z-scores after normalization (pre-clip)
+    val_vectors_norm = (val_vectors - feat_mean) / feat_std
+    val_norm_means = val_vectors_norm.mean(axis=0)
+    val_norm_stds = val_vectors_norm.std(axis=0)
+    val_norm_max = np.abs(val_vectors_norm).max(axis=0)
+
+    # Find features with largest post-norm deviations
+    worst_idx = np.argsort(val_norm_max)[-10:][::-1]
+    logger.info("  Top 10 features by max abs z-score in validation (pre-clip):")
+    for idx in worst_idx:
+        logger.info(
+            f"    Feature {idx:3d}: val_mean={val_means[idx]:10.2f}, "
+            f"train_mean={train_means[idx]:10.2f}, train_std={train_stds[idx]:10.2f}, "
+            f"z_mean={val_norm_means[idx]:7.2f}, z_std={val_norm_stds[idx]:7.2f}, z_max={val_norm_max[idx]:8.2f}"
+        )
+
+    # Count how many values get clipped per feature
+    n_clipped = ((val_vectors_norm < -10.0) | (val_vectors_norm > 10.0)).sum(axis=0)
+    most_clipped = np.argsort(n_clipped)[-10:][::-1]
+    logger.info("  Top 10 features by clip count in validation:")
+    for idx in most_clipped:
+        if n_clipped[idx] > 0:
+            logger.info(f"    Feature {idx:3d}: {n_clipped[idx]} values clipped ({100*n_clipped[idx]/len(val_vectors):.1f}%)")
+
+    logger.info(f"  Val after norm (pre-clip): mean={val_vectors_norm.mean():.4f}, std={val_vectors_norm.std():.4f}, min={val_vectors_norm.min():.4f}, max={val_vectors_norm.max():.4f}")
+    val_vectors_norm = np.clip(val_vectors_norm, -10.0, 10.0)
+    logger.info(f"  Val after clip: mean={val_vectors_norm.mean():.4f}, std={val_vectors_norm.std():.4f}")
+    val_dataset.vectors = [val_vectors_norm[i] for i in range(len(val_vectors_norm))]
+    val_dataset.mean = feat_mean
+    val_dataset.std = feat_std
+    val_dataset.feature_mask = feat_mask
 
     # ── Build sliding‑window sequences (after normalization) ─────────
     train_seqs = build_sequences(train_dataset, args.seq_length)
@@ -368,9 +437,15 @@ def main():
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
 
+    # Cosine LR scheduler with linear warmup
+    warmup_epochs = 3
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=args.epochs - warmup_epochs, eta_min=args.lr * 0.01
+    )
+
     # Loss selection
     loss_map = {
-        'risk_adjusted': lambda r, risk, y: risk_adjusted_loss(r, risk, y, risk_penalty=0.1),
+        'risk_adjusted': lambda r, risk, y: risk_adjusted_loss(r, risk, y, risk_penalty=args.risk_penalty),
         'pnl'         : lambda r, risk, y: pnl_loss(r, y, cost=0.0005),
         'sharpe'      : lambda r, risk, y: sharpe_loss(r, y),
     }
@@ -381,21 +456,33 @@ def main():
     # ------------------------------------------------------------------
     logger.info(f"Starting TradingTCN training — loss={args.loss}")
     best_sharpe = -float('inf')
-    patience    = 10
+    patience    = 8
     no_improve  = 0
     best_path   = None
 
     for epoch in range(args.epochs):
+        # Linear warmup for first few epochs
+        if epoch < warmup_epochs:
+            lr_scale = (epoch + 1) / warmup_epochs
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = args.lr * lr_scale
+
         train_loss = train_epoch(model, train_loader, optimizer, loss_fn, device)
         val_loss, val_pnl, val_sharpe = eval_epoch(model, val_loader, loss_fn, device)
 
+        current_lr = optimizer.param_groups[0]['lr']
         logger.info(
             f"Epoch {epoch+1:3d}/{args.epochs}  "
             f"train_loss={train_loss:.6f}  "
             f"val_loss={val_loss:.6f}  "
             f"val_pnl={val_pnl:.6f}  "
-            f"val_sharpe={val_sharpe:.3f}"
+            f"val_sharpe={val_sharpe:.3f}  "
+            f"lr={current_lr:.2e}"
         )
+
+        # Step scheduler after warmup
+        if epoch >= warmup_epochs:
+            scheduler.step()
 
         # Save best model by Sharpe
         if val_sharpe > best_sharpe + 1e-4:
@@ -411,6 +498,10 @@ def main():
                 'epoch'           : epoch,
                 'val_sharpe'      : val_sharpe,
                 'val_pnl'         : val_pnl,
+                'feat_mean'       : feat_mean,
+                'feat_std'        : feat_std,
+                'symbol'          : args.symbol,
+                'horizon'         : args.horizon,
             }, best_path)
             logger.info(f"  ✓ New best model saved (Sharpe={val_sharpe:.3f})")
         else:

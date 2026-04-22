@@ -219,6 +219,7 @@ class TradingDataset(Dataset):
             # If they are return stats from above they are scalars — skip feature norm.
             if isinstance(self.mean, np.ndarray) and isinstance(self.std, np.ndarray):
                 X = (X - self.mean) / self.std
+                X = np.clip(X, -10.0, 10.0)  # defensive clip for near-zero-std features
 
         # Convert to list of rows for Dataset __getitem__ compatibility
         vectors_out = [X[i] for i in range(len(X))]
