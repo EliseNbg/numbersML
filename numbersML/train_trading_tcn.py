@@ -256,66 +256,44 @@ def main():
     )
 
     # ── Fit feature normalizer on TRAINING set only ──────────────────
-    logger.info("Fitting per-feature normalizer on training set...")
+    logger.info("Fitting per-feature ROBUST normalizer (median + IQR) on training set...")
     train_vectors = np.stack(train_dataset.vectors)  # (n_samples, feat_dim)
 
-    # Per-feature standardization — each feature scaled independently
-    feat_mean = train_vectors.mean(axis=0, keepdims=True).astype(np.float32)
-    feat_std  = train_vectors.std(axis=0, keepdims=True).astype(np.float32)
+    # Robust scaling: median + interquartile range (much more stable across
+    # train/val splits than mean+std, especially for price/volume features
+    # with heavy tails and distribution shifts).
+    feat_median = np.median(train_vectors, axis=0, keepdims=True).astype(np.float32)
+    feat_q25    = np.percentile(train_vectors, 25, axis=0, keepdims=True).astype(np.float32)
+    feat_q75    = np.percentile(train_vectors, 75, axis=0, keepdims=True).astype(np.float32)
+    feat_iqr    = (feat_q75 - feat_q25)
 
-    # Detect near-constant or low-variance features.
-    # These are useless for training and become landmines in validation
-    # when their tiny mean shifts produce z-scores in the thousands.
-    train_range = train_vectors.max(axis=0) - train_vectors.min(axis=0)
-    # Any feature with std < 1.0 is essentially constant over the training window
-    # and becomes a landmine when validation mean shifts even slightly.
-    low_var = (feat_std.flatten() < 1.0) | (train_range < 1.0)
-    if low_var.any():
-        n_low = low_var.sum()
-        logger.warning(
-            f"  {n_low} features have near-zero variance (std<1.0 or range<1.0) — "
-            "WILL BE ZEROED OUT"
-        )
+    # IQR can be zero for constant features; floor it so they don't explode
+    # For constant features this produces near-zero values, letting the model ignore them
+    feat_iqr_safe = np.maximum(feat_iqr, 1e-6)
 
-    # Build feature mask: True = keep and normalize, False = zero out
-    feat_mask = (~low_var).astype(bool)
-
-    # Safe std: for valid features use actual std; for zeroed features std=1.0 (unused)
-    feat_std_safe = feat_std.copy()
-    feat_std_safe[:, ~feat_mask] = 1.0
-    # Also apply a minimum floor to prevent extreme z-scores on low-but-nonzero variance
-    min_floor = np.maximum(1e-3 * np.abs(feat_mean), 1e-6)
-    feat_std_safe = np.maximum(feat_std_safe, min_floor)
-
-    # Normalize training vectors using safe std, zero out low-variance features
-    train_vectors_norm = (train_vectors - feat_mean) / feat_std_safe
-    train_vectors_norm = np.clip(train_vectors_norm, -10.0, 10.0)
-    train_vectors_norm[:, ~feat_mask] = 0.0  # zero out useless features
+    # Normalize training vectors
+    train_vectors_norm = (train_vectors - feat_median) / feat_iqr_safe
+    train_vectors_norm = np.clip(train_vectors_norm, -5.0, 5.0)
     train_dataset.vectors = [train_vectors_norm[i] for i in range(len(train_vectors_norm))]
-    train_dataset.mean = feat_mean
-    train_dataset.std  = feat_std_safe
-    train_dataset.feature_mask = feat_mask
+    train_dataset.mean = feat_median      # stored as 'mean' for back-compat
+    train_dataset.std  = feat_iqr_safe    # stored as 'std'  for back-compat
+    train_dataset.feature_mask = np.ones(train_vectors.shape[1], dtype=bool)  # keep all
 
     # Log per-feature stats for diagnostics
-    n_features = feat_mean.shape[1]
+    n_features = feat_median.shape[1]
     logger.info(f"  Features: {n_features}")
-    logger.info(f"  Raw feature mean range: [{train_vectors.mean(axis=0).min():.2f}, {train_vectors.mean(axis=0).max():.2f}]")
-    logger.info(f"  Raw feature std  range: [{train_vectors.std(axis=0).min():.2f}, {train_vectors.std(axis=0).max():.2f}]")
+    logger.info(f"  Raw feature median range: [{np.median(train_vectors, axis=0).min():.2f}, {np.median(train_vectors, axis=0).max():.2f}]")
+    logger.info(f"  Raw feature IQR  range: [{(feat_q75-feat_q25).min():.2f}, {(feat_q75-feat_q25).max():.2f}]")
     logger.info(f"  Norm feature mean range: [{train_vectors_norm.mean(axis=0).min():.4f}, {train_vectors_norm.mean(axis=0).max():.4f}]")
     logger.info(f"  Norm feature std  range: [{train_vectors_norm.std(axis=0).min():.4f}, {train_vectors_norm.std(axis=0).max():.4f}]")
 
     # Identify top scale features (likely price-dependent)
-    train_means = train_vectors.mean(axis=0)
-    train_stds = train_vectors.std(axis=0)
-    top_scale_idx = np.argsort(train_stds)[-10:][::-1]
-    logger.info("  Top 10 features by raw std (likely price-dependent):")
+    train_medians = np.median(train_vectors, axis=0)
+    train_iqrs = (feat_q75 - feat_q25).flatten()
+    top_scale_idx = np.argsort(train_iqrs)[-10:][::-1]
+    logger.info("  Top 10 features by raw IQR (likely price-dependent):")
     for idx in top_scale_idx:
-        logger.info(f"    Feature {idx:3d}: mean={train_means[idx]:10.2f}, std={train_stds[idx]:10.2f}")
-
-    # Identify constant/near-constant features
-    zeroed_idx = np.where(~feat_mask)[0]
-    if len(zeroed_idx) > 0:
-        logger.info(f"  Zeroed out features (low variance): {zeroed_idx.tolist()}")
+        logger.info(f"    Feature {idx:3d}: median={train_medians[idx]:10.2f}, iqr={train_iqrs[idx]:10.2f}")
 
     # ── Validation dataset — load raw, then apply identical normalization ──
     val_dataset = TradingDataset(
@@ -333,8 +311,8 @@ def main():
     )
     val_vectors = np.stack(val_dataset.vectors)
     logger.info(f"  Val raw shape: {val_vectors.shape}, mean={val_vectors.mean():.4f}, std={val_vectors.std():.4f}")
-    logger.info(f"  feat_mean shape: {feat_mean.shape}, dtype: {feat_mean.dtype}")
-    logger.info(f"  feat_std  shape: {feat_std.shape}, dtype: {feat_std.dtype}")
+    logger.info(f"  feat_median shape: {feat_median.shape}, dtype: {feat_median.dtype}")
+    logger.info(f"  feat_iqr    shape: {feat_iqr_safe.shape}, dtype: {feat_iqr_safe.dtype}")
 
     # Per-feature val diagnostics before normalization
     val_means = val_vectors.mean(axis=0)
@@ -342,8 +320,8 @@ def main():
     logger.info(f"  Val raw per-feature mean range: [{val_means.min():.2f}, {val_means.max():.2f}]")
     logger.info(f"  Val raw per-feature std  range: [{val_stds.min():.2f}, {val_stds.max():.2f}]")
 
-    # Per-feature z-scores after normalization (pre-clip)
-    val_vectors_norm = (val_vectors - feat_mean) / feat_std_safe
+    # Per-feature z-scores after robust normalization (pre-clip)
+    val_vectors_norm = (val_vectors - feat_median) / feat_iqr_safe
     val_norm_means = val_vectors_norm.mean(axis=0)
     val_norm_stds = val_vectors_norm.std(axis=0)
     val_norm_max = np.abs(val_vectors_norm).max(axis=0)
@@ -354,12 +332,12 @@ def main():
     for idx in worst_idx:
         logger.info(
             f"    Feature {idx:3d}: val_mean={val_means[idx]:10.2f}, "
-            f"train_mean={train_means[idx]:10.2f}, train_std={train_stds[idx]:10.2f}, "
+            f"train_median={feat_median[0,idx]:10.2f}, train_iqr={feat_iqr_safe[0,idx]:10.2f}, "
             f"z_mean={val_norm_means[idx]:7.2f}, z_std={val_norm_stds[idx]:7.2f}, z_max={val_norm_max[idx]:8.2f}"
         )
 
     # Count how many values get clipped per feature
-    n_clipped = ((val_vectors_norm < -10.0) | (val_vectors_norm > 10.0)).sum(axis=0)
+    n_clipped = ((val_vectors_norm < -5.0) | (val_vectors_norm > 5.0)).sum(axis=0)
     most_clipped = np.argsort(n_clipped)[-10:][::-1]
     logger.info("  Top 10 features by clip count in validation:")
     for idx in most_clipped:
@@ -367,13 +345,12 @@ def main():
             logger.info(f"    Feature {idx:3d}: {n_clipped[idx]} values clipped ({100*n_clipped[idx]/len(val_vectors):.1f}%)")
 
     logger.info(f"  Val after norm (pre-clip): mean={val_vectors_norm.mean():.4f}, std={val_vectors_norm.std():.4f}, min={val_vectors_norm.min():.4f}, max={val_vectors_norm.max():.4f}")
-    val_vectors_norm = np.clip(val_vectors_norm, -10.0, 10.0)
-    val_vectors_norm[:, ~feat_mask] = 0.0  # zero out same low-variance features
+    val_vectors_norm = np.clip(val_vectors_norm, -5.0, 5.0)
     logger.info(f"  Val after clip: mean={val_vectors_norm.mean():.4f}, std={val_vectors_norm.std():.4f}")
     val_dataset.vectors = [val_vectors_norm[i] for i in range(len(val_vectors_norm))]
-    val_dataset.mean = feat_mean
-    val_dataset.std = feat_std_safe
-    val_dataset.feature_mask = feat_mask
+    val_dataset.mean = feat_median
+    val_dataset.std = feat_iqr_safe
+    val_dataset.feature_mask = np.ones(val_vectors.shape[1], dtype=bool)
 
     # ── Build sliding‑window sequences (after normalization) ─────────
     train_seqs = build_sequences(train_dataset, args.seq_length)
@@ -513,9 +490,9 @@ def main():
                 'epoch'           : epoch,
                 'val_sharpe'      : val_sharpe,
                 'val_pnl'         : val_pnl,
-                'feat_mean'       : feat_mean,
-                'feat_std'        : feat_std_safe,
-                'feat_mask'       : feat_mask,
+                'feat_mean'       : feat_median,
+                'feat_std'        : feat_iqr_safe,
+                'feat_mask'       : np.ones(train_vectors.shape[1], dtype=bool),
                 'symbol'          : args.symbol,
                 'horizon'         : args.horizon,
             }, best_path)

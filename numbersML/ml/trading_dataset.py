@@ -113,24 +113,6 @@ class TradingDataset(Dataset):
                     raise ValueError(f"Symbol '{self.data_config.target_symbol}' not found")
                 symbol_id = row[0]
 
-                # Fetch column_names from one row to build target-symbol mask
-                target_prefix = self.data_config.target_symbol.replace('/', '_') + '_'
-                cur.execute(
-                    "SELECT column_names FROM wide_vectors WHERE column_names IS NOT NULL LIMIT 1"
-                )
-                col_row = cur.fetchone()
-                if col_row and col_row[0]:
-                    column_names = col_row[0] if isinstance(col_row[0], list) else json.loads(col_row[0])
-                    target_mask = np.array([name.startswith(target_prefix) for name in column_names], dtype=bool)
-                    n_target = target_mask.sum()
-                    logger.info(f"Filtering to {n_target}/{len(column_names)} features for {self.data_config.target_symbol}")
-                    if n_target == 0:
-                        logger.warning(f"No features match prefix '{target_prefix}' — using all features")
-                        target_mask = np.ones(len(column_names), dtype=bool)
-                else:
-                    logger.warning("No column_names found in wide_vectors — cannot filter by symbol")
-                    target_mask = None
-
                 # Load wide_vectors + close prices
                 query = """
                     SELECT
@@ -166,10 +148,6 @@ class TradingDataset(Dataset):
                         # Some technical indicators return NaN when they don't have enough history
                         if np.isnan(vec).any():
                             vec = np.nan_to_num(vec, nan=0.0, posinf=0.0, neginf=0.0)
-
-                        # Filter to target symbol features only
-                        if target_mask is not None and len(vec) >= len(target_mask):
-                            vec = vec[target_mask]
 
                         # Pad / truncate to fixed length
                         if prev_size is None:
