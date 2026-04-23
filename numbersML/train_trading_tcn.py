@@ -262,22 +262,38 @@ def main():
     # Per-feature standardization — each feature scaled independently
     feat_mean = train_vectors.mean(axis=0, keepdims=True).astype(np.float32)
     feat_std  = train_vectors.std(axis=0, keepdims=True).astype(np.float32)
-    # Constant (or near-constant) features: set std=1.0 so they pass through unchanged.
-    # Otherwise dividing validation values by ~1e-8 creates million-scale outliers.
-    near_zero = feat_std < 1e-6
-    if near_zero.any():
-        n_const = near_zero.sum()
-        logger.warning(f"  {n_const} features have near-zero std in training — left unscaled")
-        feat_std[near_zero] = 1.0
 
-    feat_mask = np.ones(train_vectors.shape[1], dtype=bool)
+    # Detect near-constant or low-variance features.
+    # These are useless for training and become landmines in validation
+    # when their tiny mean shifts produce z-scores in the thousands.
+    train_range = train_vectors.max(axis=0) - train_vectors.min(axis=0)
+    # Any feature with std < 1.0 is essentially constant over the training window
+    # and becomes a landmine when validation mean shifts even slightly.
+    low_var = (feat_std.flatten() < 1.0) | (train_range < 1.0)
+    if low_var.any():
+        n_low = low_var.sum()
+        logger.warning(
+            f"  {n_low} features have near-zero variance (std<1.0 or range<1.0) — "
+            "WILL BE ZEROED OUT"
+        )
 
-    # Normalize training vectors in-place and clip extreme outliers
-    train_vectors_norm = (train_vectors - feat_mean) / feat_std
+    # Build feature mask: True = keep and normalize, False = zero out
+    feat_mask = (~low_var).astype(bool)
+
+    # Safe std: for valid features use actual std; for zeroed features std=1.0 (unused)
+    feat_std_safe = feat_std.copy()
+    feat_std_safe[:, ~feat_mask] = 1.0
+    # Also apply a minimum floor to prevent extreme z-scores on low-but-nonzero variance
+    min_floor = np.maximum(1e-3 * np.abs(feat_mean), 1e-6)
+    feat_std_safe = np.maximum(feat_std_safe, min_floor)
+
+    # Normalize training vectors using safe std, zero out low-variance features
+    train_vectors_norm = (train_vectors - feat_mean) / feat_std_safe
     train_vectors_norm = np.clip(train_vectors_norm, -10.0, 10.0)
+    train_vectors_norm[:, ~feat_mask] = 0.0  # zero out useless features
     train_dataset.vectors = [train_vectors_norm[i] for i in range(len(train_vectors_norm))]
     train_dataset.mean = feat_mean
-    train_dataset.std  = feat_std
+    train_dataset.std  = feat_std_safe
     train_dataset.feature_mask = feat_mask
 
     # Log per-feature stats for diagnostics
@@ -297,11 +313,9 @@ def main():
         logger.info(f"    Feature {idx:3d}: mean={train_means[idx]:10.2f}, std={train_stds[idx]:10.2f}")
 
     # Identify constant/near-constant features
-    const_idx = np.where(feat_std.flatten() == 1.0)[0]
-    if len(const_idx) > 0:
-        logger.info(f"  Near-constant features (std set to 1.0): {const_idx.tolist()}")
-        for idx in const_idx[:5]:
-            logger.info(f"    Feature {idx:3d}: train_mean={train_means[idx]:.4f}, train_std={train_stds[idx]:.6f}")
+    zeroed_idx = np.where(~feat_mask)[0]
+    if len(zeroed_idx) > 0:
+        logger.info(f"  Zeroed out features (low variance): {zeroed_idx.tolist()}")
 
     # ── Validation dataset — load raw, then apply identical normalization ──
     val_dataset = TradingDataset(
@@ -329,7 +343,7 @@ def main():
     logger.info(f"  Val raw per-feature std  range: [{val_stds.min():.2f}, {val_stds.max():.2f}]")
 
     # Per-feature z-scores after normalization (pre-clip)
-    val_vectors_norm = (val_vectors - feat_mean) / feat_std
+    val_vectors_norm = (val_vectors - feat_mean) / feat_std_safe
     val_norm_means = val_vectors_norm.mean(axis=0)
     val_norm_stds = val_vectors_norm.std(axis=0)
     val_norm_max = np.abs(val_vectors_norm).max(axis=0)
@@ -354,10 +368,11 @@ def main():
 
     logger.info(f"  Val after norm (pre-clip): mean={val_vectors_norm.mean():.4f}, std={val_vectors_norm.std():.4f}, min={val_vectors_norm.min():.4f}, max={val_vectors_norm.max():.4f}")
     val_vectors_norm = np.clip(val_vectors_norm, -10.0, 10.0)
+    val_vectors_norm[:, ~feat_mask] = 0.0  # zero out same low-variance features
     logger.info(f"  Val after clip: mean={val_vectors_norm.mean():.4f}, std={val_vectors_norm.std():.4f}")
     val_dataset.vectors = [val_vectors_norm[i] for i in range(len(val_vectors_norm))]
     val_dataset.mean = feat_mean
-    val_dataset.std = feat_std
+    val_dataset.std = feat_std_safe
     val_dataset.feature_mask = feat_mask
 
     # ── Build sliding‑window sequences (after normalization) ─────────
@@ -499,7 +514,8 @@ def main():
                 'val_sharpe'      : val_sharpe,
                 'val_pnl'         : val_pnl,
                 'feat_mean'       : feat_mean,
-                'feat_std'        : feat_std,
+                'feat_std'        : feat_std_safe,
+                'feat_mask'       : feat_mask,
                 'symbol'          : args.symbol,
                 'horizon'         : args.horizon,
             }, best_path)

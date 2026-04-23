@@ -186,6 +186,11 @@ async def run_backtest(args):
         feat_mean = checkpoint['feat_mean']
         feat_std = checkpoint['feat_std']
         vectors = (vectors - feat_mean) / feat_std
+        if 'feat_mask' in checkpoint:
+            feat_mask = checkpoint['feat_mask']
+            vectors[:, ~feat_mask] = 0.0
+            n_zeroed = (~feat_mask).sum()
+            logger.info(f"   Zeroed {n_zeroed} low-variance features")
         logger.info(f"   Applied training normalization (mean shape: {feat_mean.shape})")
     else:
         logger.warning("   No normalization stats in checkpoint — using raw vectors (model may not generalize)")
