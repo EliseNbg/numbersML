@@ -154,6 +154,26 @@ async def recalculate_indicators(
     return total_count
 
 
+async def load_indicator_schema(db_pool: asyncpg.Pool) -> List[str]:
+    """Load fixed global indicator key list from DB (run once).
+
+    Uses the superset of all indicator keys ever stored in candle_indicators
+    so the wide-vector schema never shifts between batches.
+    """
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT DISTINCT jsonb_array_elements_text(indicator_keys) AS k
+            FROM candle_indicators
+            WHERE indicator_keys IS NOT NULL
+            ORDER BY k
+            """
+        )
+        schema = [r['k'] for r in rows if r['k']]
+    logger.info(f"Loaded fixed indicator schema: {len(schema)} keys")
+    return schema
+
+
 async def recalculate_wide_vectors(
     db_pool: asyncpg.Pool,
     symbol_ids: List[int],
@@ -176,6 +196,13 @@ async def recalculate_wide_vectors(
 
     if to_time is None:
         to_time = datetime.now(timezone.utc)
+
+    # Load fixed global schema ONCE before processing batches
+    # Prevents column index shifts when different batches have different keys
+    fixed_indicator_keys = await load_indicator_schema(db_pool)
+    if not fixed_indicator_keys:
+        logger.warning("No indicator keys found in database, aborting wide vector recalculation")
+        return 0
 
     batch_size = timedelta(hours=batch_hours)
     current_start = from_time
@@ -205,9 +232,8 @@ async def recalculate_wide_vectors(
             current_start = current_end
             continue
 
-        # Group by time
+        # Group by time (using fixed global schema, not per-batch dynamic keys)
         by_time: dict = {}
-        all_keys: set = set()
         for r in indicator_rows:
             t = r['time']
             if t not in by_time:
@@ -220,10 +246,8 @@ async def recalculate_wide_vectors(
             else:
                 values = {}
             by_time[t][r['symbol']] = values
-            if r['indicator_keys']:
-                all_keys.update(r['indicator_keys'])
 
-        sorted_indicator_keys = sorted(all_keys)
+        sorted_indicator_keys = fixed_indicator_keys  # Use fixed schema, not per-batch
         logger.info(f"  Found {len(by_time)} time points with indicators")
 
         # Load candle data for this batch

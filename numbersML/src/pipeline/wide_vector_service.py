@@ -58,7 +58,7 @@ class WideVectorService:
         """
         self.db_pool = db_pool
         self._active_symbols: List[Tuple[int, str]] = active_symbols or []
-        self._indicator_keys: List[str] = []
+        self._indicator_keys: Optional[List[str]] = None  # None=unloaded, []=no indicators
         self._external_provider = self._load_external_provider()
         self._last_known: Dict[str, Dict[str, float]] = {}
 
@@ -139,7 +139,7 @@ class WideVectorService:
 
         # Load fixed indicator schema once — prevents column index shifts
         # when different timesteps have different subsets of indicators.
-        if not self._indicator_keys:
+        if self._indicator_keys is None:
             await self._load_indicator_schema()
 
         symbol_ids = [sid for sid, _ in self._active_symbols]

@@ -57,6 +57,10 @@ Fix TradingTCN Normalization — validation data showed massive distribution mis
 - Tests three normalization methods and flags dead features
 - Prints per-feature table with IQR, clip counts, normalization stats
 
+## Commit & Push Status
+✅ **Committed and pushed** to `main` on GitHub
+- Commit: `8d9394d` — "Fix wide vector schema stability, multi-key indicators, forward-fill, and diagnostics"
+
 ## Required Next Step
 
 **Recalculate all wide_vectors** to fix the shifting schema in historical data:
@@ -75,9 +79,25 @@ With fixed schema + forward-fill + named diagnostics, validation normalization s
 - No 100% clipped features
 - Actual column names in diagnostics confirming feature 68 = `DASH_USDC_bb_20_2_middle` in both train and val
 
+## Additional Fixes (Code Quality)
+
+### 7. Fixed Unit Tests for WideVectorService
+`tests/unit/pipeline/test_wide_vector_service.py`
+- Changed `_indicator_keys` initialization from `[]` to `None` (None = not loaded yet)
+- Fixed all 8 failing tests by pre-setting `service._indicator_keys` to skip schema load in mocks
+- Fixed test assertions to match fixed schema behavior (external provider ordering, vector sizes)
+
+### 8. Fixed recalculate.py Schema Bug
+`src/cli/recalculate.py`
+- Added `load_indicator_schema()` function to fetch fixed global indicator key list once at startup
+- Changed from per-batch dynamic `sorted_indicator_keys` to fixed global `fixed_indicator_keys`
+- Prevents column index shifts between 1-hour batches during historical recalculation
+
 ## Files Modified
 - `src/pipeline/indicator_calculator.py` — multi-key indicator storage
-- `src/pipeline/wide_vector_service.py` — fixed schema + forward-fill cache
+- `src/pipeline/wide_vector_service.py` — fixed schema + forward-fill cache + None init
+- `src/cli/recalculate.py` — fixed global schema for batch processing
 - `ml/trading_dataset.py` — column_names fetching
 - `train_trading_tcn.py` — named diagnostics + IQR floor
 - `tests/integration/test_wide_vector_quality.py` — new integration test
+- `tests/unit/pipeline/test_wide_vector_service.py` — fixed 8 tests for new behavior

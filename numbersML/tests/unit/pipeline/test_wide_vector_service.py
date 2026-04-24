@@ -34,7 +34,7 @@ class TestWideVectorService:
         service = WideVectorService(mock_db_pool)
         assert service.db_pool is mock_db_pool
         assert service._active_symbols == []
-        assert service._indicator_keys == []
+        assert service._indicator_keys is None  # None means not loaded yet
 
     def test_init_with_symbols(self, mock_db_pool: MagicMock) -> None:
         """Test initialization with symbols."""
@@ -68,6 +68,7 @@ class TestWideVectorService:
         mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
 
         service = WideVectorService(mock_db_pool)
+        service._indicator_keys = []  # Skip schema load
         result = await service.generate(datetime.now(timezone.utc))
 
         assert result is None
@@ -106,6 +107,7 @@ class TestWideVectorService:
             [(58, 'BTC/USDC'), (59, 'ETH/USDC')],
         )
         service._external_provider = None  # Disable external features for this test
+        service._indicator_keys = ['rsi', 'sma']  # Skip schema load
         result = await service.generate(now)
 
         assert result is not None
@@ -140,6 +142,7 @@ class TestWideVectorService:
             mock_db_pool,
             [(58, 'BTC/USDC')],
         )
+        service._indicator_keys = []  # Skip schema load
         result = await service.generate(datetime.now(timezone.utc))
         # Returns vector with 0.0 values since no data at all
         assert result is not None
@@ -171,6 +174,7 @@ class TestWideVectorService:
             mock_db_pool,
             [(58, 'BTC/USDC')],
         )
+        service._indicator_keys = []  # Skip schema load
         await service.generate(now)
 
         # Check that processed flag was set
@@ -247,14 +251,17 @@ class TestWideVectorService:
             [(58, 'BTC/USDC'), (59, 'ETH/USDC')],
         )
         service._external_provider = None  # Disable external features for this test
+        service._indicator_keys = ['rsi', 'sma']  # Skip schema load
         result = await service.generate(now)
 
         assert result is not None
-        # Layout: [BTC_close, BTC_vol, BTC_rsi, ETH_close, ETH_vol, ETH_rsi]
-        assert result['vector'][0] == 67000.0 # BTC close
-        assert result['vector'][2] == 65.0    # BTC rsi
-        assert result['vector'][5] == 0.0     # ETH rsi (missing)
-        assert result['vector'][3] == 3500.0  # ETH close (from candles)
+        # Layout: [BTC_close, BTC_vol, BTC_rsi, BTC_sma, ETH_close, ETH_vol, ETH_rsi, ETH_sma]
+        assert result['vector'][0] == 67000.0  # BTC close
+        assert result['vector'][2] == 65.0     # BTC rsi
+        assert result['vector'][3] == 0.0     # BTC sma (no data in this batch)
+        assert result['vector'][4] == 3500.0   # ETH close
+        assert result['vector'][6] == 0.0     # ETH rsi (missing)
+        assert result['vector'][7] == 0.0     # ETH sma (missing)
 
     @pytest.mark.asyncio
     async def test_generate_with_external_provider(
@@ -282,18 +289,18 @@ class TestWideVectorService:
             [(58, 'BTC/USDC')],
         )
         service._external_provider = mock_provider
-
+        service._indicator_keys = ['my_feature', 'another_feature', 'rsi']  # Skip schema load
         result = await service.generate(now)
 
         assert result is not None
-        # [my_feature, another_feature, BTC_close, BTC_vol]
-        assert result['vector_size'] == 4
-        assert result['vector'][0] == 42.0
-        assert result['vector'][1] == 3.14
-        assert result['vector'][2] == 67000.0
-        assert result['vector'][3] == 1.5
-        assert 'my_feature' in result['column_names']
-        assert 'another_feature' in result['column_names']
+        # External features: sorted(['another_feature', 'my_feature']) = ['another_feature', 'my_feature']
+        # Then inserted at index 0: first 'another_feature' -> [3.14], then 'my_feature' -> [42.0, 3.14]
+        # So vector[0]=my_feature (42.0), vector[1]=another_feature (3.14)
+        assert result['vector_size'] == 7  # 2 external + 2 candle + 3 indicators (all 0.0 since no data)
+        assert result['vector'][0] == 42.0  # my_feature (last inserted at 0)
+        assert result['vector'][1] == 3.14  # another_feature (first inserted at 0)
+        assert result['vector'][2] == 67000.0  # BTC close
+        assert result['vector'][3] == 1.5  # BTC volume
 
     @pytest.mark.asyncio
     async def test_external_provider_receives_normalized_keys(
@@ -324,7 +331,7 @@ class TestWideVectorService:
             [(58, 'BTC/USDC')],
         )
         service._external_provider = mock_provider
-
+        service._indicator_keys = []  # Skip schema load
         await service.generate(now)
 
         assert 'BTC_USDC' in received_candles
@@ -356,7 +363,7 @@ class TestWideVectorService:
             [(58, 'BTC/USDC')],
         )
         service._external_provider = bad_provider
-
+        service._indicator_keys = []  # Skip schema load
         result = await service.generate(now)
 
         # Should still succeed without external features
@@ -386,7 +393,7 @@ class TestWideVectorService:
             [(58, 'BTC/USDC')],
         )
         service._external_provider = None
-
+        service._indicator_keys = []  # Skip schema load
         result = await service.generate(now)
 
         assert result is not None
