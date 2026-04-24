@@ -271,24 +271,29 @@ class IndicatorCalculator:
                 )
 
                 # Use the name from the indicator definition (e.g. 'rsi_14', 'macd_12_26_9')
-                # instead of the generated class name.
-                full_key = defn['name']
+                # instead of the generated class name.  Flatten all sub‑keys so multi‑output
+                # indicators (BollingerBands, MACD…) contribute every series.
+                base_key = defn['name']
 
-                # Get the last valid value from the result
-                val_to_store = None
-                for key, values in result.values.items():
+                for sub_key, values in result.values.items():
+                    # Build the full key: base + sub_key (e.g. 'bb_20_2_upper')
+                    if sub_key == 'value' or len(result.values) == 1:
+                        flat_key = base_key
+                    else:
+                        flat_key = f"{base_key}_{sub_key}"
+
                     if len(values) > 0:
                         val = values[-1]
                         if not np.isnan(val) and not np.isinf(val):
-                            val_to_store = float(val)
+                            results[flat_key] = float(val)
+                        else:
+                            results[flat_key] = None   # null in JSON
+                    else:
+                        results[flat_key] = None
 
-                # Always store the key to ensure we match the definitions count.
-                # Use None (null in JSON) if no valid value found (e.g. warmup period).
-                results[full_key] = val_to_store
-                
-                # Ensure uniqueness in keys list
-                if full_key not in indicator_keys:
-                    indicator_keys.append(full_key)
+                    # Ensure uniqueness in keys list
+                    if flat_key not in indicator_keys:
+                        indicator_keys.append(flat_key)
 
                 calculated += 1
 

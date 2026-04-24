@@ -269,7 +269,7 @@ def main():
 
     # IQR can be zero for constant features; floor it so they don't explode
     # For constant features this produces near-zero values, letting the model ignore them
-    feat_iqr_safe = np.maximum(feat_iqr, 1e-6)
+    feat_iqr_safe = np.maximum(feat_iqr, 1.0)
 
     # Normalize training vectors
     train_vectors_norm = (train_vectors - feat_median) / feat_iqr_safe
@@ -291,9 +291,11 @@ def main():
     train_medians = np.median(train_vectors, axis=0)
     train_iqrs = (feat_q75 - feat_q25).flatten()
     top_scale_idx = np.argsort(train_iqrs)[-10:][::-1]
+    col_names = train_dataset.column_names if hasattr(train_dataset, 'column_names') and train_dataset.column_names else [f"feat_{i}" for i in range(n_features)]
     logger.info("  Top 10 features by raw IQR (likely price-dependent):")
     for idx in top_scale_idx:
-        logger.info(f"    Feature {idx:3d}: median={train_medians[idx]:10.2f}, iqr={train_iqrs[idx]:10.2f}")
+        name = col_names[idx] if idx < len(col_names) else f"feat_{idx}"
+        logger.info(f"    Feature {idx:3d} ({name:35s}): median={train_medians[idx]:10.2f}, iqr={train_iqrs[idx]:10.2f}")
 
     # ── Validation dataset — load raw, then apply identical normalization ──
     val_dataset = TradingDataset(
@@ -330,8 +332,9 @@ def main():
     worst_idx = np.argsort(val_norm_max)[-10:][::-1]
     logger.info("  Top 10 features by max abs z-score in validation (pre-clip):")
     for idx in worst_idx:
+        name = col_names[idx] if idx < len(col_names) else f"feat_{idx}"
         logger.info(
-            f"    Feature {idx:3d}: val_mean={val_means[idx]:10.2f}, "
+            f"    Feature {idx:3d} ({name:35s}): val_mean={val_means[idx]:10.2f}, "
             f"train_median={feat_median[0,idx]:10.2f}, train_iqr={feat_iqr_safe[0,idx]:10.2f}, "
             f"z_mean={val_norm_means[idx]:7.2f}, z_std={val_norm_stds[idx]:7.2f}, z_max={val_norm_max[idx]:8.2f}"
         )
@@ -342,7 +345,8 @@ def main():
     logger.info("  Top 10 features by clip count in validation:")
     for idx in most_clipped:
         if n_clipped[idx] > 0:
-            logger.info(f"    Feature {idx:3d}: {n_clipped[idx]} values clipped ({100*n_clipped[idx]/len(val_vectors):.1f}%)")
+            name = col_names[idx] if idx < len(col_names) else f"feat_{idx}"
+            logger.info(f"    Feature {idx:3d} ({name:35s}): {n_clipped[idx]} values clipped ({100*n_clipped[idx]/len(val_vectors):.1f}%)")
 
     logger.info(f"  Val after norm (pre-clip): mean={val_vectors_norm.mean():.4f}, std={val_vectors_norm.std():.4f}, min={val_vectors_norm.min():.4f}, max={val_vectors_norm.max():.4f}")
     val_vectors_norm = np.clip(val_vectors_norm, -5.0, 5.0)

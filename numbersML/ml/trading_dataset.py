@@ -81,17 +81,18 @@ class TradingDataset(Dataset):
         self.feature_mask = feature_mask
 
         # Load data from DB
-        self.vectors, self.targets, self.timestamps = self._load_data()
+        self.vectors, self.targets, self.timestamps, self.column_names = self._load_data()
 
         logger.info(
             f"TradingDataset loaded: {len(self.vectors)} vectors, "
-            f"{len(self.targets)} targets, {len(self.timestamps)} timestamps"
+            f"{len(self.targets)} targets, {len(self.timestamps)} timestamps, "
+            f"{len(self.column_names)} feature columns"
         )
 
     # ------------------------------------------------------------------
     # Data loading
     # ------------------------------------------------------------------
-    def _load_data(self) -> Tuple[List[np.ndarray], List[float], List[datetime]]:
+    def _load_data(self) -> Tuple[List[np.ndarray], List[float], List[datetime], List[str]]:
         """Fetch wide_vectors and compute raw next‑period returns."""
         conn = psycopg2.connect(
             host=self.db_config.host,
@@ -119,6 +120,7 @@ class TradingDataset(Dataset):
                         wv.time,
                         wv.vector,
                         wv.vector_size,
+                        wv.column_names,
                         c.close
                     FROM wide_vectors wv
                     JOIN candles_1s c ON c.time = wv.time AND c.symbol_id = %s
@@ -132,13 +134,14 @@ class TradingDataset(Dataset):
                 vectors_raw: List[np.ndarray] = []
                 closes: List[float] = []
                 timestamps: List[datetime] = []
+                column_names: List[str] = []
                 prev_size: Optional[int] = None
 
                 while True:
                     batch = cur.fetchmany(5000)
                     if not batch:
                         break
-                    for ts, vector_json, vec_size, close in batch:
+                    for ts, vector_json, vec_size, cols_json, close in batch:
                         if isinstance(vector_json, str):
                             vec = np.array(json.loads(vector_json), dtype=np.float32)
                         else:
@@ -161,9 +164,18 @@ class TradingDataset(Dataset):
                         vectors_raw.append(vec)
                         closes.append(float(close))
                         timestamps.append(ts)
+                        if not column_names and cols_json is not None:
+                            if isinstance(cols_json, str):
+                                column_names = json.loads(cols_json)
+                            elif isinstance(cols_json, list):
+                                column_names = list(cols_json)
 
         finally:
             conn.close()
+
+        # Fallback: build generic names if DB didn't provide them
+        if not column_names and vectors_raw:
+            column_names = [f"feat_{i}" for i in range(len(vectors_raw[0]))]
 
         # ------------------------------------------------------------------
         # Compute raw future returns
@@ -225,7 +237,7 @@ class TradingDataset(Dataset):
         vectors_out = [X[i] for i in range(len(X))]
         targets_out = y.tolist()
 
-        return vectors_out, targets_out, timestamps
+        return vectors_out, targets_out, timestamps, column_names
 
     # ------------------------------------------------------------------
     # Dataset protocol

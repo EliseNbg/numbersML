@@ -60,6 +60,7 @@ class WideVectorService:
         self._active_symbols: List[Tuple[int, str]] = active_symbols or []
         self._indicator_keys: List[str] = []
         self._external_provider = self._load_external_provider()
+        self._last_known: Dict[str, Dict[str, float]] = {}
 
     async def load_symbols(self) -> None:
         """Load active symbols from DB."""
@@ -74,6 +75,28 @@ class WideVectorService:
             self._active_symbols = [(r['id'], r['symbol']) for r in rows]
 
         logger.info(f"Loaded {len(self._active_symbols)} active symbols")
+
+    async def _load_indicator_schema(self) -> None:
+        """Load fixed global indicator key list from DB (run once).
+
+        Uses the superset of all indicator keys ever stored in candle_indicators
+        so the wide-vector schema never shifts between timesteps.
+        """
+        if self._indicator_keys:
+            return
+        async with self.db_pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT DISTINCT jsonb_array_elements_text(indicator_keys) AS k
+                FROM candle_indicators
+                WHERE indicator_keys IS NOT NULL
+                ORDER BY k
+                """
+            )
+            self._indicator_keys = [r['k'] for r in rows if r['k']]
+        logger.info(
+            f"Loaded fixed indicator schema: {len(self._indicator_keys)} keys"
+        )
 
     @staticmethod
     def _load_external_provider():
@@ -113,6 +136,11 @@ class WideVectorService:
         if not self._active_symbols:
             logger.warning("No active symbols")
             return None
+
+        # Load fixed indicator schema once — prevents column index shifts
+        # when different timesteps have different subsets of indicators.
+        if not self._indicator_keys:
+            await self._load_indicator_schema()
 
         symbol_ids = [sid for sid, _ in self._active_symbols]
         symbol_names = [sname for _, sname in self._active_symbols]
@@ -154,7 +182,6 @@ class WideVectorService:
                 }
 
             indicator_data: Dict[str, Dict[str, float]] = {}
-            all_indicator_keys: set = set()
             for r in indicator_rows:
                 values_raw = r['values']
                 if isinstance(values_raw, str):
@@ -167,8 +194,6 @@ class WideVectorService:
                     k: float(v) if v is not None else 0.0
                     for k, v in values.items()
                 }
-                if r['indicator_keys']:
-                    all_indicator_keys.update(r['indicator_keys'])
 
             # 5. Forward-fill: use last known values for symbols without candles
             if symbols_without_candles:
@@ -190,7 +215,7 @@ class WideVectorService:
                     symbol_name = r['symbol']
                     candle_data[symbol_name] = {
                         'close': float(r['close']),
-                        'volume': 0.0,  # No trades this second
+                        'volume': float(r['volume']),
                     }
 
                 # Last known indicators
@@ -218,33 +243,47 @@ class WideVectorService:
                         k: float(v) if v is not None else 0.0
                         for k, v in values.items()
                     }
-                    if r['indicator_keys']:
-                        all_indicator_keys.update(r['indicator_keys'])
 
-            # 4. Build flat vector
-            sorted_indicator_keys = sorted(all_indicator_keys)
+            # 4. Update forward-fill cache with current + fallback data
+            for sname, cd in candle_data.items():
+                if sname not in self._last_known:
+                    self._last_known[sname] = {}
+                for feat in self.CANDLE_FEATURES:
+                    val = cd.get(feat)
+                    if val is not None and not (isinstance(val, float) and math.isnan(val)):
+                        self._last_known[sname][feat] = float(val)
+
+            for sname, ind in indicator_data.items():
+                if sname not in self._last_known:
+                    self._last_known[sname] = {}
+                for ikey, val in ind.items():
+                    if val is not None and not (isinstance(val, float) and math.isnan(val)):
+                        self._last_known[sname][ikey] = float(val)
+
+            # 5. Build flat vector from cache using FIXED schema
+            # (self._indicator_keys was loaded once at startup)
+            sorted_indicator_keys = self._indicator_keys
             vector: List[float] = []
             column_names: List[str] = []
 
             for sid, sname in self._active_symbols:
-                cd = candle_data.get(sname, {})
-                ind = indicator_data.get(sname, {})
+                lk = self._last_known.get(sname, {})
                 col_sname = sname.replace('/', '_')
 
                 # Candle features
                 for feat in self.CANDLE_FEATURES:
-                    vector.append(cd.get(feat, 0.0))
+                    vector.append(lk.get(feat, 0.0))
                     column_names.append(f"{col_sname}_{feat}")
 
                 # Indicator features
                 for ikey in sorted_indicator_keys:
-                    vector.append(ind.get(ikey, 0.0))
+                    vector.append(lk.get(ikey, 0.0))
                     column_names.append(f"{col_sname}_{ikey}")
 
             if not vector:
                 return None
 
-            # 5. Call external data provider
+            # 6. Call external data provider
             # Pass both candles and indicators to the provider
             external_features: Dict[str, float] = {}
             if self._external_provider:
@@ -295,7 +334,7 @@ class WideVectorService:
                 len(sorted_indicator_keys),
             )
 
-            # 6. Set processed flag
+            # 7. Set processed flag
             await conn.execute(
                 """
                 UPDATE candles_1s SET processed = true
