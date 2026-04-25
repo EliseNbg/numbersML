@@ -77,23 +77,67 @@ class WideVectorService:
         logger.info(f"Loaded {len(self._active_symbols)} active symbols")
 
     async def _load_indicator_schema(self) -> None:
-        """Load fixed global indicator key list from DB (run once).
+        """Load fixed global indicator key list from active definitions (run once).
 
-        Uses the superset of all indicator keys ever stored in candle_indicators
-        so the wide-vector schema never shifts between timesteps.
+        Queries active indicator definitions and computes all expected output keys,
+        ensuring the wide-vector schema is stable and matches what indicators produce.
+        Multi-output indicators (BollingerBands, MACD) contribute multiple keys.
         """
         if self._indicator_keys:
             return
         async with self.db_pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT DISTINCT unnest(indicator_keys) AS k
-                FROM candle_indicators
-                WHERE indicator_keys IS NOT NULL AND array_length(indicator_keys, 1) > 0
-                ORDER BY k
+                SELECT name, class_name, params
+                FROM indicator_definitions
+                WHERE is_active = true
+                ORDER BY name
                 """
             )
-            self._indicator_keys = [r['k'] for r in rows if r['k']]
+            indicator_keys: List[str] = []
+            for r in rows:
+                name = r['name']
+                class_name = r['class_name']
+                # Determine expected output keys based on indicator type
+                if class_name == 'BollingerBandsIndicator':
+                    # Produces: upper, middle, lower, std (4 sub-keys, no base 'value')
+                    params = r['params']
+                    if isinstance(params, str):
+                        import json as json_module
+                        params = json_module.loads(params)
+                    elif not isinstance(params, dict):
+                        params = {}
+                    period = params.get('period', 20)
+                    std_dev = params.get('std_dev', 2)
+                    base = f"bb_{period}_{std_dev}"
+                    indicator_keys.extend([
+                        f"{base}_upper",
+                        f"{base}_middle",
+                        f"{base}_lower",
+                        f"{base}_std",
+                    ])
+                elif class_name == 'MACDIndicator':
+                    # Produces: macd, signal, histogram (3 sub-keys, no base 'value')
+                    params = r['params']
+                    if isinstance(params, str):
+                        import json as json_module
+                        params = json_module.loads(params)
+                    elif not isinstance(params, dict):
+                        params = {}
+                    fast = params.get('fast_period', 12)
+                    slow = params.get('slow_period', 26)
+                    signal = params.get('signal_period', 9)
+                    base = f"macd_{fast}_{slow}_{signal}"
+                    indicator_keys.extend([
+                        f"{base}_macd",
+                        f"{base}_signal",
+                        f"{base}_histogram",
+                    ])
+                else:
+                    # Single-output indicators: ATR, EMA, RSI, SMA, etc.
+                    # They produce a single 'value' key which uses the base name
+                    indicator_keys.append(name)
+            self._indicator_keys = sorted(indicator_keys)
         logger.info(
             f"Loaded fixed indicator schema: {len(self._indicator_keys)} keys"
         )

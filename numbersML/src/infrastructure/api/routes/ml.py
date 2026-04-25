@@ -405,7 +405,7 @@ async def predict(
         targets = []
 
     # Run prediction on wide vectors
-    np, torch, _, _, _ = _get_torch_and_model()
+    _, torch, _, _, _ = _get_torch_and_model()
     predictions = []
     vectors = []  # Initialize vectors list
     
@@ -613,7 +613,7 @@ async def _run_prediction_and_save(
         ]
 
         # Run prediction
-        np, torch, _, _, _ = _get_torch_and_model()
+        _, torch, _, _, _ = _get_torch_and_model()
         predictions = []
         vectors = []
 
