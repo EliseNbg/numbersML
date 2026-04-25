@@ -17,7 +17,7 @@ Architecture:
     - Sets processed=true on candles_1s after wide vector is stored
 """
 
-import orjson as json
+import json
 import logging
 import math
 from datetime import datetime, timezone
@@ -370,7 +370,7 @@ class WideVectorService:
                     created_at = NOW()
                 """,
                 candle_time,
-                 json.dumps(vector).decode(),
+                 json.dumps(vector),
                 column_names,
                 symbol_names,
                 len(vector),

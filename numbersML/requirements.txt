@@ -10,6 +10,7 @@ click==8.1.7
 pyyaml==6.0.1
 jsonschema==4.20.0
 aiohttp==3.9.1
+orjson==3.11.8
 
 # Dashboard (FastAPI)
 fastapi==0.109.0

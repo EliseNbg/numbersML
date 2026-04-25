@@ -22,7 +22,7 @@ Usage:
 import argparse
 import asyncio
 import asyncpg
-import orjson as json
+import json
 import logging
 import sys
 from datetime import datetime, timedelta, timezone

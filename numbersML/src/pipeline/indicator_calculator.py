@@ -9,7 +9,7 @@ import importlib
 import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Type
-import orjson as json
+import json
 
 import asyncpg
 import numpy as np
