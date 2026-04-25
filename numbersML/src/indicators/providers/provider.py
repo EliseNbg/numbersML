@@ -20,6 +20,7 @@ Usage:
     # Production
     provider = DatabaseIndicatorProvider(db_pool)
     rsi = provider.get_indicator('rsi_14')
+    result = rsi.calculate(prices, volumes)
     
     # Tests
     provider = PythonIndicatorProvider({'rsi_14': RSIIndicator})
@@ -34,7 +35,8 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Type, Any
 import logging
 
-from ..base import Indicator, IndicatorResult
+from ..base import Indicator
+from ..base import IndicatorResult
 
 logger = logging.getLogger(__name__)
 
@@ -101,5 +103,29 @@ class IIndicatorProvider(ABC):
         
         Returns:
             Indicator class or None if not available
+        """
+        pass
+    
+    @abstractmethod
+    async def list_indicators_async(self) -> List[str]:
+        """
+        Async version to list all available indicator names.
+        
+        Returns:
+            List of indicator names
+        """
+        pass
+    
+    @abstractmethod
+    async def get_indicator_async(self, name: str, **params: Any) -> Optional[Indicator]:
+        """
+        Async version to get indicator instance by name.
+        
+        Args:
+            name: Indicator name (e.g., 'rsi_14')
+            **params: Optional parameters to override defaults
+        
+        Returns:
+            Indicator instance or None if not available
         """
         pass

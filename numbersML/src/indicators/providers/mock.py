@@ -20,6 +20,8 @@ from typing import Dict, List, Optional, Type, Any
 import logging
 import numpy as np
 
+from typing_extensions import override
+
 from ..base import Indicator, IndicatorResult
 from .provider import IIndicatorProvider
 
@@ -221,3 +223,13 @@ class MockIndicatorProvider(IIndicatorProvider):
         """
         self._custom_values[name] = value
         logger.debug(f"Set mock value for {name}: {value}")
+
+    @override
+    async def list_indicators_async(self) -> List[str]:
+        """Async version of list_indicators."""
+        return self.list_indicators()
+    
+    @override
+    async def get_indicator_async(self, name: str, **params: Any) -> Optional[Indicator]:
+        """Async version of get_indicator."""
+        return self.get_indicator(name, **params)

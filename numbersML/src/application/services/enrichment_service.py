@@ -128,7 +128,8 @@ class EnrichmentService:
         logger.info("Initializing indicators from provider...")
         
         # Get list of indicators from provider
-        indicator_names = self.indicator_provider.list_indicators()
+        # Use async version since _init_indicators is already async
+        indicator_names = await self.indicator_provider.list_indicators_async()
         logger.info(f"Provider has {len(indicator_names)} indicators: {indicator_names}")
         
         # Load each indicator
@@ -136,7 +137,7 @@ class EnrichmentService:
         loaded = 0
         
         for name in indicator_names:
-            indicator = self.indicator_provider.get_indicator(name)
+            indicator = await self.indicator_provider.get_indicator_async(name)
             if indicator:
                 self._indicators[name] = indicator
                 logger.debug(f"Loaded indicator: {name}")

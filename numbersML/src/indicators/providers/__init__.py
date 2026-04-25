@@ -22,9 +22,11 @@ Usage:
 from .provider import IIndicatorProvider
 from .python import PythonIndicatorProvider
 from .mock import MockIndicatorProvider
+from .database import DatabaseIndicatorProvider
 
 __all__ = [
     'IIndicatorProvider',
     'PythonIndicatorProvider',
     'MockIndicatorProvider',
+    'DatabaseIndicatorProvider',
 ]

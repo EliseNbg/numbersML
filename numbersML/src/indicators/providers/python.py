@@ -28,6 +28,8 @@ Example:
 from typing import Dict, List, Optional, Type, Any
 import logging
 
+from typing_extensions import override
+
 from ..base import Indicator
 from .provider import IIndicatorProvider
 
@@ -219,3 +221,13 @@ class PythonIndicatorProvider(IIndicatorProvider):
         """
         self._indicators.clear()
         logger.debug("Cleared all registered indicators")
+
+    @override
+    async def list_indicators_async(self) -> List[str]:
+        """Async version of list_indicators."""
+        return self.list_indicators()
+    
+    @override
+    async def get_indicator_async(self, name: str, **params: Any) -> Optional[Indicator]:
+        """Async version of get_indicator."""
+        return self.get_indicator(name, **params)

@@ -24,6 +24,7 @@ async def _init_utc(conn):
 
 
 from src.application.services.enrichment_service import EnrichmentService
+from src.indicators.providers import PythonIndicatorProvider, MockIndicatorProvider, DatabaseIndicatorProvider
 
 
 # Test database URL
@@ -242,10 +243,12 @@ class TestIndicatorActivation:
             if count == 0:
                 pytest.skip("No indicators in database - indicator_definitions is empty")
         
-        # Create service
+        # Create service - use indicator_provider to load from DB
+        from src.indicators.providers import DatabaseIndicatorProvider
+        provider = DatabaseIndicatorProvider(db_pool)
         service = EnrichmentService(
             db_pool=db_pool,
-            indicator_names=[],  # Will load from DB
+            indicator_provider=provider,
         )
         
         # Initialize indicators (loads from DB)
