@@ -35,8 +35,7 @@ from typing import List, Dict, Optional
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -69,9 +68,10 @@ class HistoricalBackfill:
         self.dry_run = dry_run
 
         self._stats: Dict[str, int] = {
-            'symbols_processed': 0,
-            'records_inserted': 0,
-            'errors': 0,
+            "symbols_processed": 0,
+            "records_inserted": 0,
+            "indicators_calculated": 0,
+            "errors": 0,
         }
 
     async def run(self) -> Dict:
@@ -114,20 +114,22 @@ class HistoricalBackfill:
 
             # Backfill each symbol
             for i, sym_row in enumerate(symbols, 1):
-                symbol_id = sym_row['id']
-                symbol = sym_row['symbol']
-                binance_symbol = symbol.replace('/', '')
+                symbol_id = sym_row["id"]
+                symbol = sym_row["symbol"]
+                binance_symbol = symbol.replace("/", "")
 
                 print(f"[{i}/{len(symbols)}] Backfilling {symbol}...")
                 try:
-                    inserted = await self._backfill_symbol(db_pool, symbol_id, binance_symbol, symbol)
-                    self._stats['records_inserted'] += inserted
-                    self._stats['symbols_processed'] += 1
+                    inserted = await self._backfill_symbol(
+                        db_pool, symbol_id, binance_symbol, symbol
+                    )
+                    self._stats["records_inserted"] += inserted
+                    self._stats["symbols_processed"] += 1
                     print(f"  Inserted {inserted:,} records")
                 except Exception as e:
                     print(f"  Error backfilling {symbol}: {e}")
                     logger.error(f"Error backfilling {symbol}: {e}", exc_info=True)
-                    self._stats['errors'] += 1
+                    self._stats["errors"] += 1
                     continue
 
             self._print_summary()
@@ -160,16 +162,36 @@ class HistoricalBackfill:
                 SELECT COUNT(*) FROM candles_1s
                 WHERE symbol_id = $1 AND time BETWEEN $2 AND $3
                 """,
-                symbol_id, start_time, end_time,
+                symbol_id,
+                start_time,
+                end_time,
             )
             if existing_count > 0:
                 print(f"  Found {existing_count:,} existing records in time range")
+
+            # Check checkpoint (skip if already backfilled)
+            checkpoint = await conn.fetchrow(
+                "SELECT value FROM system_config WHERE key = $1",
+                f"backfill_checkpoint_{binance_symbol}",
+            )
+            if checkpoint and not self.symbol_filter:
+                checkpoint_data = checkpoint["value"]
+                if isinstance(checkpoint_data, str):
+                    import json as _json
+
+                    checkpoint_data = _json.loads(checkpoint_data)
+                days_backfilled = checkpoint_data.get("days", 0)
+                if days_backfilled >= self.days:
+                    print(f"  ⏭️  Skipping (already backfilled {days_backfilled} days)")
+                    return 0
 
         # Fetch klines from Binance
         end_time = datetime.now(timezone.utc)
         start_time = end_time - timedelta(days=self.days)
 
-        print(f"  Fetching klines from {start_time.strftime('%Y-%m-%d %H:%M')} to {end_time.strftime('%H:%M')}...")
+        print(
+            f"  Fetching klines from {start_time.strftime('%Y-%m-%d %H:%M')} to {end_time.strftime('%H:%M')}..."
+        )
         klines = await self._fetch_klines(binance_symbol, start_time, end_time)
         print(f"  Fetched {len(klines):,} klines")
 
@@ -196,13 +218,15 @@ class HistoricalBackfill:
         current_time = start_time
 
         async with aiohttp.ClientSession() as session:
+            consecutive_errors = 0
+            max_consecutive_errors = 10
             while current_time < end_time:
                 try:
                     params = {
-                        'symbol': symbol,
-                        'interval': '1s',
-                        'startTime': int(current_time.timestamp() * 1000),
-                        'limit': 1000,
+                        "symbol": symbol,
+                        "interval": "1s",
+                        "startTime": int(current_time.timestamp() * 1000),
+                        "limit": 1000,
                     }
 
                     async with session.get(
@@ -212,8 +236,16 @@ class HistoricalBackfill:
                     ) as response:
                         if response.status != 200:
                             logger.error(f"Binance API error: {response.status}")
+                            consecutive_errors += 1
+                            if consecutive_errors >= max_consecutive_errors:
+                                logger.error(
+                                    f"Too many consecutive errors ({consecutive_errors}), stopping"
+                                )
+                                break
                             await asyncio.sleep(1)
                             continue
+
+                        consecutive_errors = 0
 
                         klines = await response.json()
 
@@ -232,10 +264,16 @@ class HistoricalBackfill:
                         await asyncio.sleep(0.1)
 
                         if len(all_klines) % 10000 == 0:
-                            print(f"    Fetched {len(all_klines):,} klines...", end='\r')
+                            print(f"    Fetched {len(all_klines):,} klines...", end="\r")
 
                 except Exception as e:
                     logger.error(f"Error fetching klines: {e}")
+                    consecutive_errors += 1
+                    if consecutive_errors >= max_consecutive_errors:
+                        logger.error(
+                            f"Too many consecutive errors ({consecutive_errors}), stopping"
+                        )
+                        break
                     await asyncio.sleep(1)
 
         print()
@@ -258,19 +296,21 @@ class HistoricalBackfill:
         async with pool.acquire() as conn:
             for i in range(0, len(klines), batch_size):
                 batch = []
-                for kline in klines[i:i + batch_size]:
+                for kline in klines[i : i + batch_size]:
                     # Parse kline: [time, open, high, low, close, volume,
                     #               quote_volume, ...]
-                    batch.append((
-                        datetime.fromtimestamp(kline[0] / 1000, tz=timezone.utc),
-                        symbol_id,
-                        Decimal(kline[1]),   # open
-                        Decimal(kline[2]),   # high
-                        Decimal(kline[3]),   # low
-                        Decimal(kline[4]),   # close
-                        Decimal(kline[5]),   # volume
-                        Decimal(kline[7]),   # quote_volume
-                    ))
+                    batch.append(
+                        (
+                            datetime.fromtimestamp(kline[0] / 1000, tz=timezone.utc),
+                            symbol_id,
+                            Decimal(kline[1]),  # open
+                            Decimal(kline[2]),  # high
+                            Decimal(kline[3]),  # low
+                            Decimal(kline[4]),  # close
+                            Decimal(kline[5]),  # volume
+                            Decimal(kline[7]),  # quote_volume
+                        )
+                    )
 
                 await conn.executemany(
                     """
@@ -285,10 +325,38 @@ class HistoricalBackfill:
 
                 total_inserted += len(batch)
                 if total_inserted % 10000 == 0:
-                    print(f"    Inserted {total_inserted:,}/{len(klines):,}...", end='\r')
+                    print(f"    Inserted {total_inserted:,}/{len(klines):,}...", end="\r")
 
         print()
         return total_inserted
+
+    def _is_eu_compliant(self, ticker: Dict) -> bool:
+        """
+        Check if symbol is EU-compliant.
+
+        Args:
+            ticker: Ticker data from Binance
+
+        Returns:
+            True if EU-compliant
+        """
+        symbol = ticker.get("symbol", "")
+
+        # Exclude leveraged tokens
+        if "UP" in symbol or "DOWN" in symbol:
+            return False
+
+        # Exclude non-USDT/major-stablecoin pairs (for EU compliance)
+        # Accept USDT, USDC, EUR - reject BUSD, GBP, etc.
+        if not any(symbol.endswith(x) for x in ("USDT", "USDC", "EUR")):
+            return False
+
+        # Exclude low volume (< 1M USDT)
+        quote_volume = float(ticker.get("quoteVolume", 0))
+        if quote_volume < 1_000_000:
+            return False
+
+        return True
 
     def _print_summary(self) -> None:
         """Print backfill summary."""
@@ -304,7 +372,7 @@ class HistoricalBackfill:
         print("  python3 -m src.cli.recalculate --all --from 'YYYY-MM-DD HH:MM:SS'")
         print()
 
-        if self._stats['errors'] > 0:
+        if self._stats["errors"] > 0:
             print(f"Backfill completed with {self._stats['errors']} errors")
         else:
             print("Backfill completed successfully!")
@@ -313,7 +381,7 @@ class HistoricalBackfill:
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description='Backfill historical data from Binance into candles_1s',
+        description="Backfill historical data from Binance into candles_1s",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -334,17 +402,16 @@ After backfill, recalculate indicators:
         """,
     )
 
-    parser.add_argument('--days', type=int, default=3,
-                        help='Days to backfill (default: 3)')
-    parser.add_argument('--symbol', type=str,
-                        help='Specific symbol (e.g., BTC/USDC)')
-    parser.add_argument('--dry-run', action='store_true',
-                        help="Don't insert data")
-    parser.add_argument('--db-url', type=str,
-                        default='postgresql://crypto:crypto_secret@localhost:5432/crypto_trading',
-                        help='Database URL')
-    parser.add_argument('-v', '--verbose', action='store_true',
-                        help='Enable verbose logging')
+    parser.add_argument("--days", type=int, default=3, help="Days to backfill (default: 3)")
+    parser.add_argument("--symbol", type=str, help="Specific symbol (e.g., BTC/USDC)")
+    parser.add_argument("--dry-run", action="store_true", help="Don't insert data")
+    parser.add_argument(
+        "--db-url",
+        type=str,
+        default="postgresql://crypto:crypto_secret@localhost:5432/crypto_trading",
+        help="Database URL",
+    )
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
 
     return parser.parse_args()
 
@@ -373,5 +440,5 @@ def main() -> None:
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
