@@ -22,7 +22,7 @@ Usage:
 import argparse
 import asyncio
 import asyncpg
-import json
+import orjson as json
 import logging
 import sys
 from datetime import datetime, timedelta, timezone
@@ -403,10 +403,16 @@ async def recalculate_wide_vectors(
                         ext_features = external_provider(provider_candles, ind_data, t)
 
                         if ext_features:
+                            # Build external features separately to avoid O(n²) insert(0,)
+                            ext_values = []
+                            ext_names = []
                             for key, value in sorted(ext_features.items()):
                                 if value is not None:
-                                    vector.insert(0, float(value))
-                                    column_names.insert(0, key)
+                                    ext_values.append(float(value))
+                                    ext_names.append(key)
+                            # Prepend: external + existing vector/column_names
+                            vector = ext_values + vector
+                            column_names = ext_names + column_names
                     except Exception as e:
                         logger.warning(f"External provider error at {t}: {e}")
 
@@ -421,8 +427,8 @@ async def recalculate_wide_vectors(
                 ))
                 batch_count += 1
 
-                # Insert every 5000 vectors
-                if len(vector_batch) >= 5000:
+                # Insert every 6000 vectors (reduced from 5000 for better batch efficiency)
+                if len(vector_batch) >= 6000:
                     async with db_pool.acquire() as conn:
                         await conn.executemany(
                             """
