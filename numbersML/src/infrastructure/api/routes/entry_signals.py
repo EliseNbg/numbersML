@@ -5,8 +5,11 @@ Provides real time entry probability from the trained model.
 """
 
 import logging
+from datetime import datetime, timezone
 from fastapi import APIRouter, Query, Depends
 from typing import Optional
+
+import numpy as np
 
 from ml.entry_model import EntryPointModel
 from src.infrastructure.database import get_db_pool_async

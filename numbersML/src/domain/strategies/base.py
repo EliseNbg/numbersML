@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
 from typing import Dict, List, Optional, Any
+from uuid import UUID
 import logging
 
 logger = logging.getLogger(__name__)
@@ -474,7 +475,7 @@ class StrategyManager:
 
     def __init__(self) -> None:
         """Initialize strategy manager."""
-        self._strategies: Dict[str, Strategy] = {}
+        self._strategies: Dict[UUID, Strategy] = {}
         self._running: bool = False
         logger.info("StrategyManager initialized")
 
@@ -494,7 +495,7 @@ class StrategyManager:
         self._strategies[strategy.id] = strategy
         logger.info(f"Added strategy: {strategy.id}")
 
-    def remove_strategy(self, strategy_id: str) -> Optional[Strategy]:
+    def remove_strategy(self, strategy_id: UUID) -> Optional[Strategy]:
         """
         Remove strategy from manager.
 
@@ -509,11 +510,11 @@ class StrategyManager:
             logger.info(f"Removed strategy: {strategy_id}")
         return strategy
 
-    def get_strategy(self, strategy_id: str) -> Optional[Strategy]:
+    def get_strategy(self, strategy_id: UUID) -> Optional[Strategy]:
         """Get strategy by ID."""
         return self._strategies.get(strategy_id)
 
-    def list_strategies(self) -> List[str]:
+    def list_strategies(self) -> List[UUID]:
         """Get list of strategy IDs."""
         return list(self._strategies.keys())
 

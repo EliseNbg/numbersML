@@ -11,7 +11,7 @@ from src.domain.models.symbol import Symbol
 from src.domain.repositories.base import Repository
 
 
-class SymbolRepository(Repository[Symbol]):
+class SymbolRepository(Repository[Symbol, int]):
     """
     PostgreSQL implementation of SymbolRepository.
     
