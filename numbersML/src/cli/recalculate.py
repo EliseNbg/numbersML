@@ -163,9 +163,9 @@ async def load_indicator_schema(db_pool: asyncpg.Pool) -> List[str]:
     async with db_pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT DISTINCT jsonb_array_elements_text(indicator_keys) AS k
+            SELECT DISTINCT unnest(indicator_keys) AS k
             FROM candle_indicators
-            WHERE indicator_keys IS NOT NULL
+            WHERE indicator_keys IS NOT NULL AND array_length(indicator_keys, 1) > 0
             ORDER BY k
             """
         )
