@@ -353,7 +353,6 @@ async def recalculate_wide_vectors(
                             if t not in by_time:
                                 by_time[t] = {}
                             by_time[t][sname] = dict(last_indicator_cache[sname])
-                            all_keys.update(last_indicator_cache[sname].keys())
 
         if missing_count > 0:
             logger.info(f"  Filled {missing_count} symbol-time gaps with forward-filled data")
