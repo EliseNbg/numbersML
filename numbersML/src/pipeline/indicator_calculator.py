@@ -10,7 +10,10 @@ import json
 import logging
 from collections import deque
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    pass
 
 import asyncpg
 import numpy as np
@@ -50,12 +53,14 @@ class IndicatorCalculator:
     async def load_definitions(self) -> None:
         """Load active indicator definitions from DB."""
         async with self.db_pool.acquire() as conn:
-            rows = await conn.fetch("""
+            rows = await conn.fetch(
+                """
                 SELECT name, class_name, module_path, params
                 FROM indicator_definitions
                 WHERE is_active = true
                 ORDER BY name
-                """)
+                """
+            )
             self._definitions = []
             for r in rows:
                 params = r["params"]
@@ -136,8 +141,11 @@ class IndicatorCalculator:
             }
 
     async def _fetch_candles(
-        self, symbol_id: int, limit: int = DEFAULT_CANDLE_WINDOW
-    ) -> dict[str, np.ndarray] | None:
+        self,
+        symbol_id: int,
+        limit: int = DEFAULT_CANDLE_WINDOW,
+        before_time: datetime | None = None,
+    ) -> dict[str, np.ndarray]:
         """Fetch recent candles using ring buffer, replenishing from DB if needed.
 
         Uses in-memory ring buffer per symbol to avoid repeated DB queries.
@@ -161,7 +169,16 @@ class IndicatorCalculator:
                 )
 
             if not rows:
-                return None
+                # Return empty arrays instead of None
+                return {
+                    "time": np.array([], dtype=object),
+                    "open": np.array([], dtype=np.float64),
+                    "high": np.array([], dtype=np.float64),
+                    "low": np.array([], dtype=np.float64),
+                    "close": np.array([], dtype=np.float64),
+                    "volume": np.array([], dtype=np.float64),
+                    "quote_volume": np.array([], dtype=np.float64),
+                }
 
             rows = list(reversed(rows))
             buf["times"].clear()
@@ -180,13 +197,13 @@ class IndicatorCalculator:
                 buf["volumes"].append(float(r["volume"]))
 
         return {
-            "time": list(buf["times"]),
-            "open": np.array(buf["opens"]),
-            "high": np.array(buf["highs"]),
-            "low": np.array(buf["lows"]),
-            "close": np.array(buf["closes"]),
-            "volume": np.array(buf["volumes"]),
-            "quote_volume": np.array([0.0] * len(buf["times"])),
+            "time": np.array(list(buf["times"]), dtype=object),
+            "open": np.array(buf["opens"], dtype=np.float64),
+            "high": np.array(buf["highs"], dtype=np.float64),
+            "low": np.array(buf["lows"], dtype=np.float64),
+            "close": np.array(buf["closes"], dtype=np.float64),
+            "volume": np.array(buf["volumes"], dtype=np.float64),
+            "quote_volume": np.array([0.0] * len(buf["times"]), dtype=np.float64),
         }
 
     async def calculate(self, symbol: str, symbol_id: int | None = None) -> int:
@@ -257,8 +274,22 @@ class IndicatorCalculator:
         if symbol_id is None:
             return 0
 
+        # Flush buffer before fetching to ensure fresh historical context.
+        # During recalculation, reusing a stale buffer leads to corrupted indicators
+        # because the buffer accumulates a mix of old and new data across calls.
+        if symbol_id in self._candle_buffers:
+            buf = self._candle_buffers[symbol_id]
+            buf["times"].clear()
+            buf["opens"].clear()
+            buf["highs"].clear()
+            buf["lows"].clear()
+            buf["closes"].clear()
+            buf["volumes"].clear()
+
         # Fetch historical candles (excluding current)
-        candles = await self._fetch_candles(symbol_id, limit=self.DEFAULT_CANDLE_WINDOW - 1)
+        candles = await self._fetch_candles(
+            symbol_id, limit=self.DEFAULT_CANDLE_WINDOW - 1, before_time=time
+        )
 
         if candles is None or len(candles["close"]) < 1:
             # First candle ever - can't calculate indicators yet
@@ -274,15 +305,12 @@ class IndicatorCalculator:
         buf["closes"].append(float(close))
         buf["volumes"].append(float(volume))
 
-        # Re-fetch to get updated buffer as arrays
-        candles = await self._fetch_candles(symbol_id, self._max_indicator_period)
-
         prices = candles["close"]
         volumes = candles["volume"]
         highs = candles["high"]
         lows = candles["low"]
         opens = candles["open"]
-        latest_time = candles["time"][-1]
+        latest_time = list(buf["times"])[-1]
         latest_price = float(prices[-1])
         latest_volume = float(volumes[-1])
 

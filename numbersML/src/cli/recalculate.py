@@ -2,12 +2,8 @@
 """
 Recalculation CLI for indicators and wide vectors.
 
-Resets the `processed` flag on candles_1s and recalculates indicators
-and/or wide vectors for the specified time range.
-
+Recalculates indicators and/or wide vectors for the specified time range.
 Usage:
-    # Reset processed flag for last hour
-    python3 -m src.cli.recalculate --reset --from "2026-03-29 00:00:00" --to "2026-03-29 01:00:00"
 
     # Recalculate indicators only
     python3 -m src.cli.recalculate --indicators --from "2026-03-29 00:00:00"
@@ -51,37 +47,6 @@ async def get_symbol_ids(
             "SELECT id FROM symbols WHERE is_active = true AND is_allowed = true",
         )
     return [r["id"] for r in rows]
-
-
-async def reset_processed(
-    conn: asyncpg.Connection,
-    symbol_ids: list[int],
-    from_time: datetime,
-    to_time: datetime | None,
-) -> int:
-    """Reset processed flag for candles in time range."""
-    if to_time:
-        result = await conn.execute(
-            """
-            UPDATE candles_1s SET processed = false
-            WHERE symbol_id = ANY($1) AND time >= $2 AND time <= $3
-            """,
-            symbol_ids,
-            from_time,
-            to_time,
-        )
-    else:
-        result = await conn.execute(
-            """
-            UPDATE candles_1s SET processed = false
-            WHERE symbol_id = ANY($1) AND time >= $2
-            """,
-            symbol_ids,
-            from_time,
-        )
-    count = int(result.split()[-1])
-    logger.info(f"Reset processed flag for {count} candles")
-    return count
 
 
 async def recalculate_indicators(
@@ -129,7 +94,7 @@ async def recalculate_indicators(
                 JOIN symbols s ON s.id = c.symbol_id
                 WHERE c.symbol_id = ANY($1)
                   AND c.time >= $2 AND c.time < $3
-                  AND c.processed = false
+
                 ORDER BY c.time, c.symbol_id
                 """,
                 symbol_ids,
@@ -162,6 +127,7 @@ async def recalculate_indicators(
         logger.info(
             f"Processing {len(unprocessed)} unprocessed candle(s) across {len(by_time)} time points in batch"
         )
+        logger.debug(f"Time range: {min(by_time.keys())} to {max(by_time.keys())}")
 
         # Calculate indicators for each time point and symbol
         for t, symbols_at_time in by_time.items():
@@ -191,12 +157,14 @@ async def load_indicator_schema(db_pool: asyncpg.Pool) -> list[str]:
     redundant indicator_keys array and ensures schema consistency.
     """
     async with db_pool.acquire() as conn:
-        rows = await conn.fetch("""
+        rows = await conn.fetch(
+            """
             SELECT DISTINCT jsonb_object_keys(values) AS k
             FROM candle_indicators
             WHERE values IS NOT NULL
             ORDER BY k
-            """)
+            """
+        )
         schema = [r["k"] for r in rows if r["k"]]
     logger.info(f"Loaded fixed indicator schema: {len(schema)} keys")
     return schema
@@ -521,7 +489,6 @@ async def main() -> None:
         default=None,
         help="End time (YYYY-MM-DD HH:MM:SS), default: now",
     )
-    parser.add_argument("--reset", action="store_true", help="Reset processed flag only")
     parser.add_argument("--indicators", action="store_true", help="Recalculate indicators only")
     parser.add_argument("--vectors-only", action="store_true", help="Recalculate wide vectors only")
     parser.add_argument(
@@ -529,9 +496,6 @@ async def main() -> None:
     )
 
     args = parser.parse_args()
-
-    if not any([args.reset, args.indicators, args.vectors_only, args.all]):
-        parser.error("Must specify --reset, --indicators, --vectors-only, or --all")
 
     from_time = datetime.fromisoformat(args.from_time)
     if from_time.tzinfo is None:
@@ -547,10 +511,6 @@ async def main() -> None:
         async with pool.acquire() as conn:
             symbol_ids = await get_symbol_ids(conn, symbols)
             logger.info(f"Processing {len(symbol_ids)} symbols")
-
-            if args.reset:
-                count = await reset_processed(conn, symbol_ids, from_time, to_time)
-                logger.info(f"Reset {count} candles")
 
             if args.indicators or args.all:
                 count = await recalculate_indicators(pool, symbol_ids, from_time, to_time)
