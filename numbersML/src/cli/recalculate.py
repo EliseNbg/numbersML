@@ -122,7 +122,7 @@ async def recalculate_indicators(
             # Get unprocessed candles for this batch with symbol info
             unprocessed = await conn.fetch(
                 """
-                SELECT c.time, c.symbol_id, s.symbol
+                SELECT c.time, c.symbol_id, s.symbol, c.open, c.high, c.low, c.close, c.volume
                 FROM candles_1s c
                 JOIN symbols s ON s.id = c.symbol_id
                 WHERE c.symbol_id = ANY($1)
@@ -153,7 +153,11 @@ async def recalculate_indicators(
                 count = await calc.calculate_with_candle(
                     symbol=si['symbol'],
                     time=t,
-                    open=0, high=0, low=0, close=0, volume=0,
+                    open=si['open'],
+                    high=si['high'],
+                    low=si['low'],
+                    close=si['close'],
+                    volume=si['volume'],
                     symbol_id=si['symbol_id'],
                 )
                 total_count += count
