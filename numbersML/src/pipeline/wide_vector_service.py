@@ -14,14 +14,13 @@ Architecture:
     - Called once per second from _ticker_loop after tick_all() returns
     - Reads from candles_1s and candle_indicators (DB snapshot)
     - No synchronization - reads whatever is in DB at call time
-    - Sets processed=true on candles_1s after wide vector is stored
 """
 
 import json
 import logging
 import math
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Any, Optional
 
 import asyncpg
 
@@ -41,12 +40,12 @@ class WideVectorService:
     """
 
     # Features per symbol: close, volume + all indicator keys
-    CANDLE_FEATURES = ['close', 'volume']
+    CANDLE_FEATURES = ["close", "volume"]
 
     def __init__(
         self,
         db_pool: asyncpg.Pool,
-        active_symbols: Optional[List[Tuple[int, str]]] = None,
+        active_symbols: Optional[list[tuple[int, str]]] = None,
     ) -> None:
         """
         Initialize wide vector service.
@@ -57,10 +56,10 @@ class WideVectorService:
                             If None, loaded from DB on first generate().
         """
         self.db_pool = db_pool
-        self._active_symbols: List[Tuple[int, str]] = active_symbols or []
-        self._indicator_keys: Optional[List[str]] = None  # None=unloaded, []=no indicators
+        self._active_symbols: list[tuple[int, str]] = active_symbols or []
+        self._indicator_keys: Optional[list[str]] = None  # None=unloaded, []=no indicators
         self._external_provider = self._load_external_provider()
-        self._last_known: Dict[str, Dict[str, float]] = {}
+        self._last_known: dict[str, dict[str, float]] = {}
 
     async def load_symbols(self) -> None:
         """Load active symbols from DB."""
@@ -72,7 +71,7 @@ class WideVectorService:
                 ORDER BY symbol
                 """
             )
-            self._active_symbols = [(r['id'], r['symbol']) for r in rows]
+            self._active_symbols = [(r["id"], r["symbol"]) for r in rows]
 
         logger.info(f"Loaded {len(self._active_symbols)} active symbols")
 
@@ -94,53 +93,57 @@ class WideVectorService:
                 ORDER BY name
                 """
             )
-            indicator_keys: List[str] = []
+            indicator_keys: list[str] = []
             for r in rows:
-                name = r['name']
-                class_name = r['class_name']
+                name = r["name"]
+                class_name = r["class_name"]
                 # Determine expected output keys based on indicator type
-                if class_name == 'BollingerBandsIndicator':
+                if class_name == "BollingerBandsIndicator":
                     # Produces: upper, middle, lower, std (4 sub-keys, no base 'value')
-                    params = r['params']
+                    params = r["params"]
                     if isinstance(params, str):
                         import json as json_module
+
                         params = json_module.loads(params)
                     elif not isinstance(params, dict):
                         params = {}
-                    period = params.get('period', 20)
-                    std_dev = params.get('std_dev', 2)
+                    period = params.get("period", 20)
+                    std_dev = params.get("std_dev", 2)
                     base = f"bb_{period}_{std_dev}"
-                    indicator_keys.extend([
-                        f"{base}_upper",
-                        f"{base}_middle",
-                        f"{base}_lower",
-                        f"{base}_std",
-                    ])
-                elif class_name == 'MACDIndicator':
+                    indicator_keys.extend(
+                        [
+                            f"{base}_upper",
+                            f"{base}_middle",
+                            f"{base}_lower",
+                            f"{base}_std",
+                        ]
+                    )
+                elif class_name == "MACDIndicator":
                     # Produces: macd, signal, histogram (3 sub-keys, no base 'value')
-                    params = r['params']
+                    params = r["params"]
                     if isinstance(params, str):
                         import json as json_module
+
                         params = json_module.loads(params)
                     elif not isinstance(params, dict):
                         params = {}
-                    fast = params.get('fast_period', 12)
-                    slow = params.get('slow_period', 26)
-                    signal = params.get('signal_period', 9)
+                    fast = params.get("fast_period", 12)
+                    slow = params.get("slow_period", 26)
+                    signal = params.get("signal_period", 9)
                     base = f"macd_{fast}_{slow}_{signal}"
-                    indicator_keys.extend([
-                        f"{base}_macd",
-                        f"{base}_signal",
-                        f"{base}_histogram",
-                    ])
+                    indicator_keys.extend(
+                        [
+                            f"{base}_macd",
+                            f"{base}_signal",
+                            f"{base}_histogram",
+                        ]
+                    )
                 else:
                     # Single-output indicators: ATR, EMA, RSI, SMA, etc.
                     # They produce a single 'value' key which uses the base name
                     indicator_keys.append(name)
             self._indicator_keys = sorted(indicator_keys)
-        logger.info(
-            f"Loaded fixed indicator schema: {len(self._indicator_keys)} keys"
-        )
+        logger.info(f"Loaded fixed indicator schema: {len(self._indicator_keys)} keys")
 
     @staticmethod
     def _load_external_provider():
@@ -152,6 +155,7 @@ class WideVectorService:
         """
         try:
             from src.external.data_provider import get_features
+
             logger.info("Loaded external data provider")
             return get_features
         except (ImportError, AttributeError):
@@ -161,7 +165,7 @@ class WideVectorService:
     async def generate(
         self,
         candle_time: datetime,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[dict[str, Any]]:
         """
         Generate wide vector for a specific candle time.
 
@@ -198,7 +202,8 @@ class WideVectorService:
                 JOIN symbols s ON s.id = c.symbol_id
                 WHERE c.symbol_id = ANY($1) AND c.time = $2
                 """,
-                symbol_ids, candle_time,
+                symbol_ids,
+                candle_time,
             )
 
             # 2. Read indicators for current second
@@ -209,40 +214,42 @@ class WideVectorService:
                 JOIN symbols s ON s.id = ci.symbol_id
                 WHERE ci.symbol_id = ANY($1) AND ci.time = $2
                 """,
-                symbol_ids, candle_time,
+                symbol_ids,
+                candle_time,
             )
 
             # 3. Forward-fill missing data: use last known values for symbols without candles
-            symbols_with_candles = {r['symbol'] for r in candle_rows} if candle_rows else set()
-            symbols_without_candles = [sname for _, sname in self._active_symbols
-                                       if sname not in symbols_with_candles]
+            symbols_with_candles = {r["symbol"] for r in candle_rows} if candle_rows else set()
+            symbols_without_candles = [
+                sname for _, sname in self._active_symbols if sname not in symbols_with_candles
+            ]
 
             # 4. Build lookup dicts for current second data
-            candle_data: Dict[str, Dict[str, float]] = {}
+            candle_data: dict[str, dict[str, float]] = {}
             for r in candle_rows:
-                candle_data[r['symbol']] = {
-                    'close': float(r['close']),
-                    'volume': float(r['volume']),
+                candle_data[r["symbol"]] = {
+                    "close": float(r["close"]),
+                    "volume": float(r["volume"]),
                 }
 
-            indicator_data: Dict[str, Dict[str, float]] = {}
+            indicator_data: dict[str, dict[str, float]] = {}
             for r in indicator_rows:
-                values_raw = r['values']
+                values_raw = r["values"]
                 if isinstance(values_raw, str):
                     values = json.loads(values_raw)
                 elif isinstance(values_raw, dict):
                     values = values_raw
                 else:
                     values = {}
-                indicator_data[r['symbol']] = {
-                    k: float(v) if v is not None else 0.0
-                    for k, v in values.items()
+                indicator_data[r["symbol"]] = {
+                    k: float(v) if v is not None else 0.0 for k, v in values.items()
                 }
 
             # 5. Forward-fill: use last known values for symbols without candles
             if symbols_without_candles:
-                missing_ids = [sid for sid, sname in self._active_symbols
-                               if sname in symbols_without_candles]
+                missing_ids = [
+                    sid for sid, sname in self._active_symbols if sname in symbols_without_candles
+                ]
                 # Last known candles
                 last_candle_rows = await conn.fetch(
                     """
@@ -253,13 +260,14 @@ class WideVectorService:
                     WHERE c.symbol_id = ANY($1) AND c.time < $2
                     ORDER BY c.symbol_id, c.time DESC
                     """,
-                    missing_ids, candle_time,
+                    missing_ids,
+                    candle_time,
                 )
                 for r in last_candle_rows:
-                    symbol_name = r['symbol']
+                    symbol_name = r["symbol"]
                     candle_data[symbol_name] = {
-                        'close': float(r['close']),
-                        'volume': float(r['volume']),
+                        "close": float(r["close"]),
+                        "volume": float(r["volume"]),
                     }
 
                 # Last known indicators
@@ -272,11 +280,12 @@ class WideVectorService:
                     WHERE ci.symbol_id = ANY($1) AND ci.time < $2
                     ORDER BY ci.symbol_id, ci.time DESC
                     """,
-                    missing_ids, candle_time,
+                    missing_ids,
+                    candle_time,
                 )
                 for r in last_indicator_rows:
-                    symbol_name = r['symbol']
-                    values_raw = r['values']
+                    symbol_name = r["symbol"]
+                    values_raw = r["values"]
                     if isinstance(values_raw, str):
                         values = json.loads(values_raw)
                     elif isinstance(values_raw, dict):
@@ -284,8 +293,7 @@ class WideVectorService:
                     else:
                         values = {}
                     indicator_data[symbol_name] = {
-                        k: float(v) if v is not None else 0.0
-                        for k, v in values.items()
+                        k: float(v) if v is not None else 0.0 for k, v in values.items()
                     }
 
             # 4. Update forward-fill cache with current + fallback data
@@ -307,12 +315,12 @@ class WideVectorService:
             # 5. Build flat vector from cache using FIXED schema
             # (self._indicator_keys was loaded once at startup)
             sorted_indicator_keys = self._indicator_keys
-            vector: List[float] = []
-            column_names: List[str] = []
+            vector: list[float] = []
+            column_names: list[str] = []
 
-            for sid, sname in self._active_symbols:
+            for _sid, sname in self._active_symbols:
                 lk = self._last_known.get(sname, {})
-                col_sname = sname.replace('/', '_')
+                col_sname = sname.replace("/", "_")
 
                 # Candle features
                 for feat in self.CANDLE_FEATURES:
@@ -329,13 +337,12 @@ class WideVectorService:
 
             # 6. Call external data provider
             # Pass both candles and indicators to the provider
-            external_features: Dict[str, float] = {}
+            external_features: dict[str, float] = {}
             if self._external_provider:
                 try:
                     # Build normalized candles dict for provider (BTC_USDC, ETH_USDC, ...)
                     provider_candles = {
-                        sname.replace('/', '_'): cd
-                        for sname, cd in candle_data.items()
+                        sname.replace("/", "_"): cd for sname, cd in candle_data.items()
                     }
                     external_features = self._external_provider(
                         provider_candles, indicator_data, candle_time
@@ -348,9 +355,9 @@ class WideVectorService:
             # This ensures they are always at fixed indices
             if external_features:
                 for key, value in sorted(external_features.items()):
-                    if value is not None and not (isinstance(value, float) and (
-                        math.isnan(value) or math.isinf(value)
-                    )):
+                    if value is not None and not (
+                        isinstance(value, float) and (math.isnan(value) or math.isinf(value))
+                    ):
                         vector.insert(0, float(value))
                         column_names.insert(0, key)
 
@@ -370,7 +377,7 @@ class WideVectorService:
                     created_at = NOW()
                 """,
                 candle_time,
-                 json.dumps(vector),
+                json.dumps(vector),
                 column_names,
                 symbol_names,
                 len(vector),
@@ -378,33 +385,24 @@ class WideVectorService:
                 len(sorted_indicator_keys),
             )
 
-            # 7. Set processed flag
-            await conn.execute(
-                """
-                UPDATE candles_1s SET processed = true
-                WHERE symbol_id = ANY($1) AND time = $2
-                """,
-                symbol_ids, candle_time,
+            logger.debug(
+                f"Generated wide vector for {candle_time}: "
+                f"{len(vector)} features, {len(self._active_symbols)} symbols"
             )
 
-        logger.debug(
-            f"Generated wide vector for {candle_time}: "
-            f"{len(vector)} features, {len(self._active_symbols)} symbols"
-        )
-
         return {
-            'time': candle_time,
-            'vector': vector,
-            'column_names': column_names,
-            'symbol_count': len(self._active_symbols),
-            'indicator_count': len(sorted_indicator_keys),
-            'vector_size': len(vector),
+            "time": candle_time,
+            "vector": vector,
+            "column_names": column_names,
+            "symbol_count": len(self._active_symbols),
+            "indicator_count": len(sorted_indicator_keys),
+            "vector_size": len(vector),
         }
 
     async def get_vector(
         self,
         candle_time: datetime,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[dict[str, Any]]:
         """
         Read stored wide vector from DB.
 
@@ -427,7 +425,7 @@ class WideVectorService:
         if not row:
             return None
 
-        vector_raw = row['vector']
+        vector_raw = row["vector"]
         if isinstance(vector_raw, str):
             vector = json.loads(vector_raw)
         elif isinstance(vector_raw, list):
@@ -436,11 +434,11 @@ class WideVectorService:
             vector = []
 
         return {
-            'time': row['time'],
-            'vector': vector,
-            'column_names': list(row['column_names']),
-            'symbols': list(row['symbols']),
-            'vector_size': row['vector_size'],
-            'symbol_count': row['symbol_count'],
-            'indicator_count': row['indicator_count'],
+            "time": row["time"],
+            "vector": vector,
+            "column_names": list(row["column_names"]),
+            "symbols": list(row["symbols"]),
+            "vector_size": row["vector_size"],
+            "symbol_count": row["symbol_count"],
+            "indicator_count": row["indicator_count"],
         }

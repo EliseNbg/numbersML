@@ -348,7 +348,6 @@ CREATE TABLE "public"."candles_1s" (
     "last_trade_id" bigint DEFAULT 0 NOT NULL,
     "created_at" timestamp without time zone DEFAULT "now"(),
     "updated_at" timestamp without time zone DEFAULT "now"(),
-    "processed" boolean DEFAULT false NOT NULL,
     "target_value" "jsonb",
     "predicted_value" "jsonb"
 );
@@ -1535,13 +1534,6 @@ CREATE INDEX "idx_candle_indicators_time_symbol" ON "public"."candle_indicators"
 --
 
 CREATE INDEX "idx_candle_indicators_values" ON "public"."candle_indicators" USING "gin" ("values");
-
-
---
--- Name: idx_candles_1s_not_processed; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX "idx_candles_1s_not_processed" ON "public"."candles_1s" USING "btree" ("time") WHERE ("processed" = false);
 
 
 --

@@ -49,10 +49,9 @@ class TestHistoricalBackfill:
         assert backfill.dry_run is True
         assert backfill.symbol_filter is None
         assert backfill._stats == {
-            'symbols_processed': 0,
-            'records_inserted': 0,
-            'indicators_calculated': 0,
-            'errors': 0,
+            "symbols_processed": 0,
+            "records_inserted": 0,
+            "errors": 0,
         }
 
     def test_backfill_with_symbol_filter(self) -> None:
@@ -60,54 +59,54 @@ class TestHistoricalBackfill:
         backfill = HistoricalBackfill(
             db_url=DB_URL,
             days=3,
-            symbol_filter='BTC/USDT',
+            symbol_filter="BTC/USDT",
         )
-        assert backfill.symbol_filter == 'BTC/USDT'
+        assert backfill.symbol_filter == "BTC/USDT"
         assert backfill.days == 3
 
     def test_is_eu_compliant_valid(self, backfill: HistoricalBackfill) -> None:
         """Test EU compliance check for valid symbol."""
         # USDC is EU compliant (USDT is NOT)
         ticker = {
-            'symbol': 'BTCUSDC',
-            'quoteVolume': '10000000',  # 10M USDC
+            "symbol": "BTCUSDC",
+            "quoteVolume": "10000000",  # 10M USDC
         }
         assert backfill._is_eu_compliant(ticker) is True
-        
+
         # EUR is also EU compliant
         ticker = {
-            'symbol': 'BTCEUR',
-            'quoteVolume': '10000000',  # 10M EUR
+            "symbol": "BTCEUR",
+            "quoteVolume": "10000000",  # 10M EUR
         }
         assert backfill._is_eu_compliant(ticker) is True
 
     def test_is_eu_compliant_leveraged_token(self, backfill: HistoricalBackfill) -> None:
         """Test EU compliance rejects leveraged tokens."""
         ticker = {
-            'symbol': 'BTCUPUSDT',
-            'quoteVolume': '10000000',
+            "symbol": "BTCUPUSDT",
+            "quoteVolume": "10000000",
         }
         assert backfill._is_eu_compliant(ticker) is False
 
         ticker = {
-            'symbol': 'BTCDOWNUSDT',
-            'quoteVolume': '10000000',
+            "symbol": "BTCDOWNUSDT",
+            "quoteVolume": "10000000",
         }
         assert backfill._is_eu_compliant(ticker) is False
 
     def test_is_eu_compliant_low_volume(self, backfill: HistoricalBackfill) -> None:
         """Test EU compliance rejects low volume symbols."""
         ticker = {
-            'symbol': 'LOWVOLUSDT',
-            'quoteVolume': '500000',  # 500K USDT (< 1M)
+            "symbol": "LOWVOLUSDT",
+            "quoteVolume": "500000",  # 500K USDT (< 1M)
         }
         assert backfill._is_eu_compliant(ticker) is False
 
     def test_is_eu_compliant_non_usdt(self, backfill: HistoricalBackfill) -> None:
         """Test EU compliance rejects non-USDT pairs."""
         ticker = {
-            'symbol': 'BTCBUSD',
-            'quoteVolume': '10000000',
+            "symbol": "BTCBUSD",
+            "quoteVolume": "10000000",
         }
         assert backfill._is_eu_compliant(ticker) is False
 
@@ -134,7 +133,9 @@ class TestBackfillIntegration:
                 ON CONFLICT (symbol) DO UPDATE SET is_active = true, is_allowed = true
                 RETURNING id
                 """,
-                'TEST/USDT', 'TEST', 'USDT'
+                "TEST/USDT",
+                "TEST",
+                "USDT",
             )
             yield symbol_id
 
@@ -142,7 +143,7 @@ class TestBackfillIntegration:
             await conn.execute(
                 "DELETE FROM system_config WHERE key = 'backfill_checkpoint_TESTUSDT'"
             )
-            
+
             # Disable and disallow the test symbol after test
             await conn.execute(
                 """
@@ -157,7 +158,7 @@ class TestBackfillIntegration:
         backfill = HistoricalBackfill(
             db_url=DB_URL,
             days=1,
-            symbol_filter='BTC/USDT',
+            symbol_filter="BTC/USDT",
             dry_run=True,
         )
 
@@ -165,10 +166,10 @@ class TestBackfillIntegration:
         stats = await backfill.run()
 
         # Should have processed symbol
-        assert stats['symbols_processed'] >= 0  # May fail if no data
+        assert stats["symbols_processed"] >= 0  # May fail if no data
 
         # Should NOT have inserted records (dry run)
-        assert stats['records_inserted'] == 0
+        assert stats["records_inserted"] == 0
 
     @pytest.mark.asyncio
     async def test_checkpoint_storage(self, db_pool: asyncpg.Pool, setup_test_symbol: int) -> None:
@@ -187,35 +188,34 @@ class TestBackfillIntegration:
                     version = system_config.version + 1
                 """,
                 "backfill_checkpoint_TESTUSDT",
-                json.dumps({
-                    'last_time': datetime.now(timezone.utc).isoformat(),
-                    'days': 1,
-                    'records': 86400,
-                }),
+                json.dumps(
+                    {
+                        "last_time": datetime.now(timezone.utc).isoformat(),
+                        "days": 1,
+                        "records": 86400,
+                    }
+                ),
                 "Test checkpoint",
             )
 
             # Verify checkpoint was saved
             checkpoint = await conn.fetchrow(
-                "SELECT value FROM system_config WHERE key = $1",
-                "backfill_checkpoint_TESTUSDT"
+                "SELECT value FROM system_config WHERE key = $1", "backfill_checkpoint_TESTUSDT"
             )
 
             assert checkpoint is not None
             # JSONB is returned as string, parse it
-            checkpoint_value = checkpoint['value']
+            checkpoint_value = checkpoint["value"]
             if isinstance(checkpoint_value, str):
                 checkpoint_value = json.loads(checkpoint_value)
-            
-            assert checkpoint_value['days'] == 1
-            assert checkpoint_value['records'] == 86400
+
+            assert checkpoint_value["days"] == 1
+            assert checkpoint_value["records"] == 86400
 
     @pytest.mark.asyncio
     @pytest.mark.timeout(600)  # 10 minutes for backfill
     async def test_backfill_resume_from_checkpoint(
-        self,
-        db_pool: asyncpg.Pool,
-        setup_test_symbol: int
+        self, db_pool: asyncpg.Pool, setup_test_symbol: int
     ) -> None:
         """Test backfill skips already backfilled symbols."""
         symbol_id = setup_test_symbol
@@ -232,11 +232,13 @@ class TestBackfillIntegration:
                     version = system_config.version + 1
                 """,
                 "backfill_checkpoint_TESTUSDT",
-                json.dumps({
-                    'last_time': datetime.now(timezone.utc).isoformat(),
-                    'days': 7,  # More than our test (1 day)
-                    'records': 604800,
-                }),
+                json.dumps(
+                    {
+                        "last_time": datetime.now(timezone.utc).isoformat(),
+                        "days": 7,  # More than our test (1 day)
+                        "records": 604800,
+                    }
+                ),
                 "Test checkpoint",
             )
 
@@ -244,7 +246,7 @@ class TestBackfillIntegration:
         backfill = HistoricalBackfill(
             db_url=DB_URL,
             days=1,
-            symbol_filter='TEST/USDT',
+            symbol_filter="TEST/USDT",
             dry_run=True,
         )
 
@@ -253,7 +255,7 @@ class TestBackfillIntegration:
 
         # Should have skipped due to checkpoint
         # (In dry-run mode, it will still show as processed but with 0 records)
-        assert stats['symbols_processed'] >= 0
+        assert stats["symbols_processed"] >= 0
 
 
 class TestBackfillDataValidation:
@@ -273,13 +275,13 @@ class TestBackfillDataValidation:
         # [time, open, high, low, close, volume, close_time, quote_volume, ...]
         kline = [
             1711065600000,  # time (ms)
-            "50000.00",     # open
-            "50100.00",     # high
-            "49900.00",     # low
-            "50050.00",     # close
-            "100.00",       # volume
+            "50000.00",  # open
+            "50100.00",  # high
+            "49900.00",  # low
+            "50050.00",  # close
+            "100.00",  # volume
             1711065600999,  # close_time
-            "5005000.00",   # quote_volume
+            "5005000.00",  # quote_volume
         ]
 
         # Parse time
@@ -288,6 +290,7 @@ class TestBackfillDataValidation:
 
         # Parse prices
         from decimal import Decimal
+
         open_price = Decimal(kline[1])
         high_price = Decimal(kline[2])
         low_price = Decimal(kline[3])
@@ -306,5 +309,5 @@ class TestBackfillDataValidation:
         assert low_price <= close_price
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

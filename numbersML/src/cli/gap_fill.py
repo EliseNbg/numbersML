@@ -24,24 +24,24 @@ Usage:
 import asyncio
 import logging
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Optional, List
+from typing import Optional
 
+import aiohttp
 import asyncpg
 import click
-import aiohttp
 
-from src.pipeline.ticket import PipelineStep, BACKFILL_STEPS
-from src.pipeline.indicator_calculator import IndicatorCalculator
-from src.pipeline.wide_vector_service import WideVectorService
 from src.infrastructure.database import _init_utc
+from src.pipeline.indicator_calculator import IndicatorCalculator
+from src.pipeline.ticket import BACKFILL_STEPS, PipelineStep
+from src.pipeline.wide_vector_service import WideVectorService
 
 BINANCE_API_BASE = "https://api.binance.com/api/v3"
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,7 @@ async def detect_gaps(
     db_pool: asyncpg.Pool,
     symbol_filter: Optional[str] = None,
     hours: int = 24,
-) -> List[CandleGap]:
+) -> list[CandleGap]:
     """
     Detect gaps in candles_1s table.
 
@@ -94,7 +94,8 @@ async def detect_gaps(
                   AND c.time > NOW() - INTERVAL '1 hour' * $2
                 ORDER BY c.symbol_id, c.time
                 """,
-                symbol_filter, hours,
+                symbol_filter,
+                hours,
             )
         else:
             rows = await conn.fetch(
@@ -110,19 +111,21 @@ async def detect_gaps(
                 hours,
             )
 
-    gaps: List[CandleGap] = []
+    gaps: list[CandleGap] = []
     for row in rows:
-        if row['prev_time'] is None:
+        if row["prev_time"] is None:
             continue
-        gap_sec = (row['time'] - row['prev_time']).total_seconds()
+        gap_sec = (row["time"] - row["prev_time"]).total_seconds()
         if gap_sec > 2:  # More than 1 missing second
-            gaps.append(CandleGap(
-                symbol_id=row['symbol_id'],
-                symbol=row['symbol'],
-                gap_start=row['prev_time'],
-                gap_end=row['time'],
-                gap_seconds=int(gap_sec) - 1,
-            ))
+            gaps.append(
+                CandleGap(
+                    symbol_id=row["symbol_id"],
+                    symbol=row["symbol"],
+                    gap_start=row["prev_time"],
+                    gap_end=row["time"],
+                    gap_seconds=int(gap_sec) - 1,
+                )
+            )
 
     return gaps
 
@@ -136,15 +139,15 @@ async def fill_gap(
 
     Returns number of candles inserted.
     """
-    binance_symbol = gap.symbol.replace('/', '')
+    binance_symbol = gap.symbol.replace("/", "")
     start_time = gap.gap_start + timedelta(seconds=1)
     end_time = gap.gap_end - timedelta(seconds=1)
 
     # Ensure both are timezone-aware UTC
     if start_time.tzinfo is None:
-        start_time = start_time.replace(tzinfo=timezone.utc)
+        start_time = start_time.replace(tzinfo=UTC)
     if end_time.tzinfo is None:
-        end_time = end_time.replace(tzinfo=timezone.utc)
+        end_time = end_time.replace(tzinfo=UTC)
 
     if start_time >= end_time:
         return 0
@@ -156,11 +159,11 @@ async def fill_gap(
         while current < end_time:
             try:
                 params = {
-                    'symbol': binance_symbol,
-                    'interval': '1s',
-                    'startTime': int(current.timestamp() * 1000),
-                    'endTime': int(end_time.timestamp() * 1000),
-                    'limit': 1000,
+                    "symbol": binance_symbol,
+                    "interval": "1s",
+                    "startTime": int(current.timestamp() * 1000),
+                    "endTime": int(end_time.timestamp() * 1000),
+                    "limit": 1000,
                 }
 
                 async with session.get(
@@ -177,7 +180,7 @@ async def fill_gap(
                         break
 
                     all_klines.extend(klines)
-                    current = datetime.fromtimestamp(klines[-1][0] / 1000 + 1, tz=timezone.utc)
+                    current = datetime.fromtimestamp(klines[-1][0] / 1000 + 1, tz=UTC)
 
                     await asyncio.sleep(0.1)
 
@@ -191,14 +194,14 @@ async def fill_gap(
     # Insert into candles_1s
     records = [
         (
-            datetime.fromtimestamp(k[0] / 1000, tz=timezone.utc),
+            datetime.fromtimestamp(k[0] / 1000, tz=UTC),
             gap.symbol_id,
-            Decimal(k[1]),   # open
-            Decimal(k[2]),   # high
-            Decimal(k[3]),   # low
-            Decimal(k[4]),   # close
-            Decimal(k[5]),   # volume
-            Decimal(k[7]),   # quote_volume
+            Decimal(k[1]),  # open
+            Decimal(k[2]),  # high
+            Decimal(k[3]),  # low
+            Decimal(k[4]),  # close
+            Decimal(k[5]),  # volume
+            Decimal(k[7]),  # quote_volume
         )
         for k in all_klines
     ]
@@ -208,8 +211,8 @@ async def fill_gap(
             """
             INSERT INTO candles_1s (
                 time, symbol_id, open, high, low, close,
-                volume, quote_volume, processed
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false)
+                volume, quote_volume
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (time, symbol_id) DO NOTHING
             """,
             records,
@@ -219,15 +222,18 @@ async def fill_gap(
 
 
 @click.command()
-@click.option('--db-url', envvar='DATABASE_URL',
-              default='postgresql://crypto:crypto_secret@localhost:5432/crypto_trading')
-@click.option('--detect', is_flag=True, help='Only detect gaps, do not fill')
-@click.option('--dry-run', is_flag=True, help='Show what would be done')
-@click.option('--symbol', help='Filter by symbol (e.g., BTC/USDC)')
-@click.option('--critical-only', is_flag=True, help='Only fill gaps > 60 seconds')
-@click.option('--hours', default=None, type=int, help='Look back N hours')
-@click.option('--days', default=None, type=int, help='Look back N days')
-@click.option('--verbose', '-v', is_flag=True)
+@click.option(
+    "--db-url",
+    envvar="DATABASE_URL",
+    default="postgresql://crypto:crypto_secret@localhost:5432/crypto_trading",
+)
+@click.option("--detect", is_flag=True, help="Only detect gaps, do not fill")
+@click.option("--dry-run", is_flag=True, help="Show what would be done")
+@click.option("--symbol", help="Filter by symbol (e.g., BTC/USDC)")
+@click.option("--critical-only", is_flag=True, help="Only fill gaps > 60 seconds")
+@click.option("--hours", default=None, type=int, help="Look back N hours")
+@click.option("--days", default=None, type=int, help="Look back N days")
+@click.option("--verbose", "-v", is_flag=True)
 def main(
     db_url: str,
     detect: bool,
@@ -248,9 +254,7 @@ def main(
     elif hours is None:
         hours = 24
 
-    exit_code = asyncio.run(
-        _run(db_url, detect, dry_run, symbol, critical_only, hours)
-    )
+    exit_code = asyncio.run(_run(db_url, detect, dry_run, symbol, critical_only, hours))
     sys.exit(exit_code)
 
 
@@ -347,7 +351,7 @@ async def _run(
 
             for row in times:
                 try:
-                    result = await wvs.generate(row['time'])
+                    result = await wvs.generate(row["time"])
                     if result:
                         vector_count += 1
                 except Exception as e:
@@ -362,14 +366,14 @@ async def _run(
         await db_pool.close()
 
 
-async def _get_active_symbols(db_pool: asyncpg.Pool) -> List[tuple]:
+async def _get_active_symbols(db_pool: asyncpg.Pool) -> list[tuple]:
     """Get active symbol IDs and names."""
     async with db_pool.acquire() as conn:
         rows = await conn.fetch(
             "SELECT id, symbol FROM symbols WHERE is_active = true ORDER BY symbol"
         )
-    return [(r['id'], r['symbol']) for r in rows]
+    return [(r["id"], r["symbol"]) for r in rows]
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -3,10 +3,7 @@
 Historical Data Backfill from Binance.
 
 Fetches 1-second klines for active symbols and populates:
-- candles_1s (1-sec OHLCV data, processed=false for later recalculation)
-
-After backfill, run:
-    python3 -m src.cli.recalculate --all --from "YYYY-MM-DD HH:MM:SS"
+- candles_1s (1-sec OHLCV data)
 
 Usage:
     # Backfill last 3 days (default) for all active symbols
@@ -22,16 +19,16 @@ Usage:
     python -m src.cli.backfill --days 3 --dry-run
 """
 
-import asyncio
-import asyncpg
 import argparse
+import asyncio
 import logging
 import sys
-import json
-import aiohttp
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import List, Dict, Optional
+from typing import Optional
+
+import aiohttp
+import asyncpg
 
 # Configure logging
 logging.basicConfig(
@@ -50,9 +47,6 @@ async def _init_utc(conn):
 class HistoricalBackfill:
     """
     Backfill historical data from Binance into candles_1s table.
-
-    Writes 1-second candles with processed=false so indicators and
-    wide vectors can be recalculated later using src.cli.recalculate.
     """
 
     def __init__(
@@ -67,14 +61,13 @@ class HistoricalBackfill:
         self.symbol_filter = symbol_filter
         self.dry_run = dry_run
 
-        self._stats: Dict[str, int] = {
+        self._stats: dict[str, int] = {
             "symbols_processed": 0,
             "records_inserted": 0,
-            "indicators_calculated": 0,
             "errors": 0,
         }
 
-    async def run(self) -> Dict:
+    async def run(self) -> dict:
         """Run backfill process."""
         print(f"Starting historical backfill ({self.days} days)")
         print(f"Database: {self.db_url.split('@')[-1]}")
@@ -154,7 +147,7 @@ class HistoricalBackfill:
         """Backfill single symbol. Returns number of records inserted."""
         async with pool.acquire() as conn:
             # Check existing records
-            end_time = datetime.now(timezone.utc)
+            end_time = datetime.now(UTC)
             start_time = end_time - timedelta(days=self.days)
 
             existing_count = await conn.fetchval(
@@ -186,7 +179,7 @@ class HistoricalBackfill:
                     return 0
 
         # Fetch klines from Binance
-        end_time = datetime.now(timezone.utc)
+        end_time = datetime.now(UTC)
         start_time = end_time - timedelta(days=self.days)
 
         print(
@@ -212,9 +205,9 @@ class HistoricalBackfill:
         symbol: str,
         start_time: datetime,
         end_time: datetime,
-    ) -> List[list]:
+    ) -> list[list]:
         """Fetch 1-second klines from Binance REST API."""
-        all_klines: List[list] = []
+        all_klines: list[list] = []
         current_time = start_time
 
         async with aiohttp.ClientSession() as session:
@@ -257,7 +250,7 @@ class HistoricalBackfill:
                         # Advance time
                         current_time = datetime.fromtimestamp(
                             klines[-1][0] / 1000 + 1,
-                            tz=timezone.utc,
+                            tz=UTC,
                         )
 
                         # Rate limiting
@@ -283,12 +276,10 @@ class HistoricalBackfill:
         self,
         pool: asyncpg.Pool,
         symbol_id: int,
-        klines: List[list],
+        klines: list[list],
     ) -> int:
         """
         Insert klines into candles_1s table.
-
-        Sets processed=false so recalculate.py can compute indicators later.
         """
         batch_size = 1000
         total_inserted = 0
@@ -301,7 +292,7 @@ class HistoricalBackfill:
                     #               quote_volume, ...]
                     batch.append(
                         (
-                            datetime.fromtimestamp(kline[0] / 1000, tz=timezone.utc),
+                            datetime.fromtimestamp(kline[0] / 1000, tz=UTC),
                             symbol_id,
                             Decimal(kline[1]),  # open
                             Decimal(kline[2]),  # high
@@ -316,8 +307,8 @@ class HistoricalBackfill:
                     """
                     INSERT INTO candles_1s (
                         time, symbol_id, open, high, low, close,
-                        volume, quote_volume, processed
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false)
+                        volume, quote_volume
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                     ON CONFLICT (time, symbol_id) DO NOTHING
                     """,
                     batch,
@@ -330,7 +321,7 @@ class HistoricalBackfill:
         print()
         return total_inserted
 
-    def _is_eu_compliant(self, ticker: Dict) -> bool:
+    def _is_eu_compliant(self, ticker: dict) -> bool:
         """
         Check if symbol is EU-compliant.
 
