@@ -30,7 +30,7 @@ import asyncpg
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ async def get_symbol_ids(
         rows = await conn.fetch(
             "SELECT id FROM symbols WHERE is_active = true AND is_allowed = true",
         )
-    return [r['id'] for r in rows]
+    return [r["id"] for r in rows]
 
 
 async def reset_processed(
@@ -67,7 +67,9 @@ async def reset_processed(
             UPDATE candles_1s SET processed = false
             WHERE symbol_id = ANY($1) AND time >= $2 AND time <= $3
             """,
-            symbol_ids, from_time, to_time,
+            symbol_ids,
+            from_time,
+            to_time,
         )
     else:
         result = await conn.execute(
@@ -75,7 +77,8 @@ async def reset_processed(
             UPDATE candles_1s SET processed = false
             WHERE symbol_id = ANY($1) AND time >= $2
             """,
-            symbol_ids, from_time,
+            symbol_ids,
+            from_time,
         )
     count = int(result.split()[-1])
     logger.info(f"Reset processed flag for {count} candles")
@@ -130,7 +133,9 @@ async def recalculate_indicators(
                   AND c.processed = false
                 ORDER BY c.time, c.symbol_id
                 """,
-                symbol_ids, current_start, current_end,
+                symbol_ids,
+                current_start,
+                current_end,
             )
 
         if not unprocessed:
@@ -140,25 +145,37 @@ async def recalculate_indicators(
         # Group by time
         by_time: dict = {}
         for r in unprocessed:
-            t = r['time']
+            t = r["time"]
             if t not in by_time:
                 by_time[t] = []
-            by_time[t].append({'symbol_id': r['symbol_id'], 'symbol': r['symbol']})
+            by_time[t].append(
+                {
+                    "symbol_id": r["symbol_id"],
+                    "symbol": r["symbol"],
+                    "open": float(r["open"]),
+                    "high": float(r["high"]),
+                    "low": float(r["low"]),
+                    "close": float(r["close"]),
+                    "volume": float(r["volume"]),
+                }
+            )
 
-        logger.info(f"Processing {len(unprocessed)} unprocessed candle(s) across {len(by_time)} time points in batch")
+        logger.info(
+            f"Processing {len(unprocessed)} unprocessed candle(s) across {len(by_time)} time points in batch"
+        )
 
         # Calculate indicators for each time point and symbol
         for t, symbols_at_time in by_time.items():
             for si in symbols_at_time:
                 count = await calc.calculate_with_candle(
-                    symbol=si['symbol'],
+                    symbol=si["symbol"],
                     time=t,
-                    open=si['open'],
-                    high=si['high'],
-                    low=si['low'],
-                    close=si['close'],
-                    volume=si['volume'],
-                    symbol_id=si['symbol_id'],
+                    open=si["open"],
+                    high=si["high"],
+                    low=si["low"],
+                    close=si["close"],
+                    volume=si["volume"],
+                    symbol_id=si["symbol_id"],
                 )
                 total_count += count
 
@@ -175,15 +192,13 @@ async def load_indicator_schema(db_pool: asyncpg.Pool) -> list[str]:
     redundant indicator_keys array and ensures schema consistency.
     """
     async with db_pool.acquire() as conn:
-        rows = await conn.fetch(
-            """
+        rows = await conn.fetch("""
             SELECT DISTINCT jsonb_object_keys(values) AS k
             FROM candle_indicators
             WHERE values IS NOT NULL
             ORDER BY k
-            """
-        )
-        schema = [r['k'] for r in rows if r['k']]
+            """)
+        schema = [r["k"] for r in rows if r["k"]]
     logger.info(f"Loaded fixed indicator schema: {len(schema)} keys")
     return schema
 
@@ -232,13 +247,15 @@ async def recalculate_wide_vectors(
         async with db_pool.acquire() as conn:
             indicator_rows = await conn.fetch(
                 """
-                SELECT ci.symbol_id, s.symbol, ci.time, ci.values, ci.indicator_keys
+                SELECT ci.symbol_id, s.symbol, ci.time, ci.values
                 FROM candle_indicators ci
                 JOIN symbols s ON s.id = ci.symbol_id
                 WHERE ci.symbol_id = ANY($1) AND ci.time >= $2 AND ci.time < $3
                 ORDER BY ci.time, ci.symbol_id
                 """,
-                symbol_ids, current_start, current_end,
+                symbol_ids,
+                current_start,
+                current_end,
             )
 
         if not indicator_rows:
@@ -249,17 +266,17 @@ async def recalculate_wide_vectors(
         # Group by time (using fixed global schema, not per-batch dynamic keys)
         by_time: dict = {}
         for r in indicator_rows:
-            t = r['time']
+            t = r["time"]
             if t not in by_time:
                 by_time[t] = {}
-            values_raw = r['values']
+            values_raw = r["values"]
             if isinstance(values_raw, str):
                 values = json.loads(values_raw)
             elif isinstance(values_raw, dict):
                 values = values_raw
             else:
                 values = {}
-            by_time[t][r['symbol']] = values
+            by_time[t][r["symbol"]] = values
 
         sorted_indicator_keys = fixed_indicator_keys  # Use fixed schema, not per-batch
         logger.info(f"  Found {len(by_time)} time points with indicators")
@@ -274,17 +291,19 @@ async def recalculate_wide_vectors(
                 WHERE c.symbol_id = ANY($1) AND c.time >= $2 AND c.time < $3
                 ORDER BY c.time, c.symbol_id
                 """,
-                symbol_ids, current_start, current_end,
+                symbol_ids,
+                current_start,
+                current_end,
             )
 
         candle_by_time: dict = {}
         for r in candle_rows:
-            t = r['time']
+            t = r["time"]
             if t not in candle_by_time:
                 candle_by_time[t] = {}
-            candle_by_time[t][r['symbol']] = {
-                'close': float(r['close']),
-                'volume': float(r['volume']),
+            candle_by_time[t][r["symbol"]] = {
+                "close": float(r["close"]),
+                "volume": float(r["volume"]),
             }
 
         # === FILL GAPS: Load ALL historical data ONCE, then forward-fill in memory ===
@@ -307,41 +326,42 @@ async def recalculate_wide_vectors(
                     WHERE c.symbol_id = ANY($1) AND c.time < $2
                     ORDER BY c.symbol_id, c.time DESC
                     """,
-                    all_symbol_ids, current_start,
+                    all_symbol_ids,
+                    current_start,
                 )
 
                 last_indicators = await conn.fetch(
                     """
                     SELECT DISTINCT ON (ci.symbol_id) ci.symbol_id, s.symbol,
-                           ci.values, ci.indicator_keys
+                           ci.values
                     FROM candle_indicators ci
                     JOIN symbols s ON s.id = ci.symbol_id
                     WHERE ci.symbol_id = ANY($1) AND ci.time < $2
                     ORDER BY ci.symbol_id, ci.time DESC
                     """,
-                    all_symbol_ids, current_start,
+                    all_symbol_ids,
+                    current_start,
                 )
 
             # Build forward-fill cache from last known data
             last_candle_cache = {}
             for r in last_candles:
-                last_candle_cache[r['symbol']] = {
-                    'close': float(r['close']),
-                    'volume': 0.0,
+                last_candle_cache[r["symbol"]] = {
+                    "close": float(r["close"]),
+                    "volume": 0.0,
                 }
 
             last_indicator_cache = {}
             for r in last_indicators:
-                values_raw = r['values']
+                values_raw = r["values"]
                 if isinstance(values_raw, str):
                     values = json.loads(values_raw)
                 elif isinstance(values_raw, dict):
                     values = values_raw
                 else:
                     values = {}
-                last_indicator_cache[r['symbol']] = {
-                    k: float(v) if v is not None else 0.0
-                    for k, v in values.items()
+                last_indicator_cache[r["symbol"]] = {
+                    k: float(v) if v is not None else 0.0 for k, v in values.items()
                 }
 
             # Forward-fill gaps in MEMORY (no more DB queries!)
@@ -352,8 +372,7 @@ async def recalculate_wide_vectors(
                 if t in by_time:
                     symbols_at_time.update(by_time[t].keys())
 
-                missing = [sname for _, sname in active_symbols
-                           if sname not in symbols_at_time]
+                missing = [sname for _, sname in active_symbols if sname not in symbols_at_time]
 
                 if missing:
                     # Use last known candle (from cache)
@@ -379,6 +398,7 @@ async def recalculate_wide_vectors(
         external_provider = None
         try:
             from src.external.data_provider import get_features
+
             external_provider = get_features
             logger.info("External data provider loaded for recalculation")
         except (ImportError, AttributeError):
@@ -394,10 +414,10 @@ async def recalculate_wide_vectors(
             for sid, sname in active_symbols:
                 cd = cd_data.get(sname, {})
                 ind = ind_data.get(sname, {})
-                col_sname = sname.replace('/', '_')
+                col_sname = sname.replace("/", "_")
 
                 # Candle features
-                for feat in ['close', 'volume']:
+                for feat in ["close", "volume"]:
                     vector.append(cd.get(feat, 0.0))
                     column_names.append(f"{col_sname}_{feat}")
 
@@ -411,8 +431,7 @@ async def recalculate_wide_vectors(
                 if external_provider:
                     try:
                         provider_candles = {
-                            sname.replace('/', '_'): cd
-                            for sname, cd in cd_data.items()
+                            sname.replace("/", "_"): cd for sname, cd in cd_data.items()
                         }
                         ext_features = external_provider(provider_candles, ind_data, t)
 
@@ -430,15 +449,17 @@ async def recalculate_wide_vectors(
                     except Exception as e:
                         logger.warning(f"External provider error at {t}: {e}")
 
-                vector_batch.append((
-                    t,
-                    json.dumps(vector),
-                    column_names,
-                    symbol_names,
-                    len(vector),
-                    len(active_symbols),
-                    len(sorted_indicator_keys),
-                ))
+                vector_batch.append(
+                    (
+                        t,
+                        json.dumps(vector),
+                        column_names,
+                        symbol_names,
+                        len(vector),
+                        len(active_symbols),
+                        len(sorted_indicator_keys),
+                    )
+                )
                 batch_count += 1
 
                 # Insert every 6000 vectors (reduced from 5000 for better batch efficiency)
@@ -484,36 +505,28 @@ async def recalculate_wide_vectors(
 
 
 async def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Recalculate indicators and wide vectors"
+    parser = argparse.ArgumentParser(description="Recalculate indicators and wide vectors")
+    parser.add_argument(
+        "--symbols",
+        type=str,
+        default=None,
+        help='Comma-separated symbol list (e.g., "BTC/USDC,ETH/USDC")',
     )
     parser.add_argument(
-        '--symbols', type=str, default=None,
-        help='Comma-separated symbol list (e.g., "BTC/USDC,ETH/USDC")'
+        "--from", dest="from_time", type=str, required=True, help="Start time (YYYY-MM-DD HH:MM:SS)"
     )
     parser.add_argument(
-        '--from', dest='from_time', type=str, required=True,
-        help='Start time (YYYY-MM-DD HH:MM:SS)'
+        "--to",
+        dest="to_time",
+        type=str,
+        default=None,
+        help="End time (YYYY-MM-DD HH:MM:SS), default: now",
     )
+    parser.add_argument("--reset", action="store_true", help="Reset processed flag only")
+    parser.add_argument("--indicators", action="store_true", help="Recalculate indicators only")
+    parser.add_argument("--vectors-only", action="store_true", help="Recalculate wide vectors only")
     parser.add_argument(
-        '--to', dest='to_time', type=str, default=None,
-        help='End time (YYYY-MM-DD HH:MM:SS), default: now'
-    )
-    parser.add_argument(
-        '--reset', action='store_true',
-        help='Reset processed flag only'
-    )
-    parser.add_argument(
-        '--indicators', action='store_true',
-        help='Recalculate indicators only'
-    )
-    parser.add_argument(
-        '--vectors-only', action='store_true',
-        help='Recalculate wide vectors only'
-    )
-    parser.add_argument(
-        '--all', action='store_true',
-        help='Recalculate both indicators and wide vectors'
+        "--all", action="store_true", help="Recalculate both indicators and wide vectors"
     )
 
     args = parser.parse_args()
@@ -527,7 +540,7 @@ async def main() -> None:
     to_time = datetime.fromisoformat(args.to_time) if args.to_time else None
     if to_time and to_time.tzinfo is None:
         to_time = to_time.replace(tzinfo=UTC)
-    symbols = [s.strip() for s in args.symbols.split(',')] if args.symbols else None
+    symbols = [s.strip() for s in args.symbols.split(",")] if args.symbols else None
 
     pool = await asyncpg.create_pool(DB_URL, min_size=2, max_size=5)
 
@@ -546,7 +559,9 @@ async def main() -> None:
 
             if args.vectors_only or args.all:
                 # Load active symbols
-                service_from_wvs = __import__('src.pipeline.wide_vector_service', fromlist=['WideVectorService']).WideVectorService(pool)
+                service_from_wvs = __import__(
+                    "src.pipeline.wide_vector_service", fromlist=["WideVectorService"]
+                ).WideVectorService(pool)
                 await service_from_wvs.load_symbols()
                 active = service_from_wvs._active_symbols
                 count = await recalculate_wide_vectors(
@@ -558,5 +573,5 @@ async def main() -> None:
         await pool.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())
