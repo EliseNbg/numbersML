@@ -29,6 +29,9 @@ from src.infrastructure.api.routes import (
     indicators_router,
     config_router,
     pipeline_router,
+    strategies_router,
+    market_router,
+    strategy_backtest_router,
 )
 from src.infrastructure.api.routes.candles import router as candles_router
 from src.infrastructure.api.routes.target_values import router as target_values_router
@@ -74,11 +77,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             init=_init_utc,
         )
         set_db_pool(db_pool)
-        
+
         # Initialize pipeline manager
         pipeline_manager = PipelineManager(db_pool)
         set_pipeline_manager(pipeline_manager)
-        
+
         logger.info("Database pool created successfully")
         logger.info("Pipeline manager initialized")
 
@@ -99,7 +102,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 def create_app() -> FastAPI:
     """
     Create and configure FastAPI application.
-    
+
     Returns:
         Configured FastAPI application
     """
@@ -121,7 +124,7 @@ Currently no authentication. Add authentication middleware for production use.
         version="1.0.0",
         lifespan=lifespan,
     )
-    
+
     # Configure CORS for local development
     app.add_middleware(
         CORSMiddleware,
@@ -135,18 +138,21 @@ Currently no authentication. Add authentication middleware for production use.
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
+
     # Include API routers
     app.include_router(dashboard_router)
     app.include_router(symbols_router)
     app.include_router(indicators_router)
     app.include_router(config_router)
     app.include_router(pipeline_router)
+    app.include_router(strategies_router)
+    app.include_router(market_router)
+    app.include_router(strategy_backtest_router)
     app.include_router(candles_router)
     app.include_router(target_values_router)
     app.include_router(ml_router)
     app.include_router(backtest_router)
-    
+
     # Mount static files for frontend (dashboard)
     # Note: Frontend files will be created in Step 022.6
     try:
@@ -158,13 +164,13 @@ Currently no authentication. Add authentication middleware for production use.
         logger.info("Frontend static files mounted at /dashboard")
     except Exception:
         logger.warning("Frontend directory not found - dashboard UI not available")
-    
+
     # Root endpoint
     @app.get("/", tags=["root"])
     async def root() -> dict:
         """
         Root endpoint.
-        
+
         Returns:
             Welcome message and links
         """
@@ -175,13 +181,13 @@ Currently no authentication. Add authentication middleware for production use.
             "redoc": "/redoc",
             "dashboard": "/dashboard",
         }
-    
+
     # Health check endpoint
     @app.get("/health", tags=["health"])
     async def health_check() -> dict:
         """
         Health check endpoint.
-        
+
         Returns:
             Health status
         """
@@ -190,14 +196,14 @@ Currently no authentication. Add authentication middleware for production use.
             db_status = "connected"
         except RuntimeError:
             db_status = "disconnected"
-        
+
         return {
             "status": "healthy",
             "database": db_status,
         }
-    
+
     logger.info("FastAPI application created successfully")
-    
+
     return app
 
 
@@ -207,7 +213,7 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     uvicorn.run(
         "app:app",
         host="0.0.0.0",
