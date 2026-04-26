@@ -171,14 +171,15 @@ async def load_indicator_schema(db_pool: asyncpg.Pool) -> list[str]:
     """Load fixed global indicator key list from DB (run once).
 
     Uses the superset of all indicator keys ever stored in candle_indicators
-    so the wide-vector schema never shifts between batches.
+    by extracting keys from the values JSONB column. This avoids storing
+    redundant indicator_keys array and ensures schema consistency.
     """
     async with db_pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT DISTINCT unnest(indicator_keys) AS k
+            SELECT DISTINCT jsonb_object_keys(values) AS k
             FROM candle_indicators
-            WHERE indicator_keys IS NOT NULL AND array_length(indicator_keys, 1) > 0
+            WHERE values IS NOT NULL
             ORDER BY k
             """
         )

@@ -276,6 +276,9 @@ class TestIndicatorCalculator:
         args = mock_conn.execute.call_args[0]
         assert args[2] == 1  # symbol_id
         assert args[3] == 50000.0  # price
-        # Check that indicator_keys (arg 6) is derived from values keys
-        assert "rsi" in args[6]
-        assert "sma" in args[6]
+        # Check no indicator_keys parameter (it is derived internally in repo)
+        values_json = args[5]
+        import json
+        values = json.loads(values_json)
+        assert "rsi" in values
+        assert "sma" in values

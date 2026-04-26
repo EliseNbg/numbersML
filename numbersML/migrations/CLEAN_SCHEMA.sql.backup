@@ -303,6 +303,7 @@ CREATE TABLE public.candle_indicators (
     price numeric(20,10) NOT NULL,
     volume numeric(20,10) NOT NULL,
     "values" jsonb DEFAULT '{}'::jsonb NOT NULL,
+    indicator_keys text[] NOT NULL,
     indicator_version integer DEFAULT 1 NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL
@@ -1368,7 +1369,7 @@ ALTER TABLE ONLY public.wide_vectors
 -- Name: idx_candle_indicators_keys; Type: INDEX; Schema: public; Owner: -
 --
 
--- idx_candle_indicators_keys removed - indicator_keys column dropped (use jsonb_object_keys(values))
+CREATE INDEX idx_candle_indicators_keys ON public.candle_indicators USING gin (indicator_keys);
 
 
 --

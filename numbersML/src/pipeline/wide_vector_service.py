@@ -204,7 +204,7 @@ class WideVectorService:
             # 2. Read indicators for current second
             indicator_rows = await conn.fetch(
                 """
-                SELECT ci.symbol_id, s.symbol, ci.values, ci.indicator_keys
+                SELECT ci.symbol_id, s.symbol, ci.values
                 FROM candle_indicators ci
                 JOIN symbols s ON s.id = ci.symbol_id
                 WHERE ci.symbol_id = ANY($1) AND ci.time = $2
@@ -266,7 +266,7 @@ class WideVectorService:
                 last_indicator_rows = await conn.fetch(
                     """
                     SELECT DISTINCT ON (ci.symbol_id) ci.symbol_id, s.symbol,
-                           ci.values, ci.indicator_keys
+                           ci.values
                     FROM candle_indicators ci
                     JOIN symbols s ON s.id = ci.symbol_id
                     WHERE ci.symbol_id = ANY($1) AND ci.time < $2

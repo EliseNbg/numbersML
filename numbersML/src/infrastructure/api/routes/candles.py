@@ -84,7 +84,7 @@ async def get_candle_indicators(
         
         rows = await conn.fetch(
             """
-            SELECT time, price, values, indicator_keys
+            SELECT time, price, values
             FROM candle_indicators
             WHERE symbol_id = $1
             ORDER BY time DESC
@@ -98,7 +98,7 @@ async def get_candle_indicators(
             'time': int(r['time'].timestamp()),
             'price': float(r['price']),
             'values': r['values'] if isinstance(r['values'], dict) else (json.loads(r['values']) if r['values'] else {}),
-            'keys': r['indicator_keys'] or [],
+            'keys': list(r['values'].keys()) if isinstance(r['values'], dict) else (list(json.loads(r['values']).keys()) if r['values'] else []),
         }
         for r in reversed(rows)
     ]

@@ -381,7 +381,7 @@ class IndicatorRepository:
         Store indicator calculation result in candle_indicators table.
 
         This centralizes the write logic for indicator results, ensuring
-        consistent handling of the indicator_keys field derived from
+        consistent storage of indicator results
         indicator_values.
 
         Args:
@@ -397,15 +397,14 @@ class IndicatorRepository:
                     """
                     INSERT INTO candle_indicators (
                         time, symbol_id, price, volume,
-                        values, indicator_keys, indicator_version
+                        values, indicator_version
                     ) VALUES (
-                        $1, $2, $3, $4, $5, $6, 1
+                        $1, $2, $3, $4, $5, 1
                     )
                     ON CONFLICT (symbol_id, time) DO UPDATE SET
                         price = EXCLUDED.price,
                         volume = EXCLUDED.volume,
                         values = EXCLUDED.values,
-                        indicator_keys = EXCLUDED.indicator_keys,
                         updated_at = NOW()
                     """,
                     time,
@@ -413,7 +412,6 @@ class IndicatorRepository:
                     Decimal(str(price)),
                     Decimal(str(volume)),
                     json.dumps(indicator_values),
-                    sorted(indicator_values.keys()),
                 )
         except Exception as e:
             logger.error(
@@ -443,7 +441,6 @@ class IndicatorRepository:
                         Decimal(str(price)),
                         Decimal(str(volume)),
                         json.dumps(indicator_values),
-                        sorted(indicator_values.keys()),
                     )
                     for time, symbol_id, price, volume, indicator_values in results
                 ]
@@ -451,15 +448,14 @@ class IndicatorRepository:
                     """
                     INSERT INTO candle_indicators (
                         time, symbol_id, price, volume,
-                        values, indicator_keys, indicator_version
+                        values, indicator_version
                     ) VALUES (
-                        $1, $2, $3, $4, $5, $6, 1
+                        $1, $2, $3, $4, $5, 1
                     )
                     ON CONFLICT (symbol_id, time) DO UPDATE SET
                         price = EXCLUDED.price,
                         volume = EXCLUDED.volume,
                         values = EXCLUDED.values,
-                        indicator_keys = EXCLUDED.indicator_keys,
                         updated_at = NOW()
                     """,
                     records,
