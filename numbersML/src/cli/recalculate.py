@@ -79,6 +79,7 @@ async def recalculate_indicators(
     batch_size = timedelta(hours=1)
     current_start = from_time
     total_count = 0
+    processed_in_batch = 0
 
     logger.info(f"Processing indicators in 1h batches from {from_time} to {to_time}")
 
@@ -131,18 +132,21 @@ async def recalculate_indicators(
 
         # Calculate indicators for each time point and symbol
         for t, symbols_at_time in by_time.items():
-            for si in symbols_at_time:
-                count = await calc.calculate_with_candle(
-                    symbol=si["symbol"],
-                    time=t,
-                    open=si["open"],
-                    high=si["high"],
-                    low=si["low"],
-                    close=si["close"],
-                    volume=si["volume"],
-                    symbol_id=si["symbol_id"],
-                )
-                total_count += count
+             for si in symbols_at_time:
+                 count = await calc.calculate_with_candle(
+                     symbol=si["symbol"],
+                     time=t,
+                     open=si["open"],
+                     high=si["high"],
+                     low=si["low"],
+                     close=si["close"],
+                     volume=si["volume"],
+                     symbol_id=si["symbol_id"],
+                 )
+                 total_count += count
+                 processed_in_batch += 1
+                 if processed_in_batch % 100 == 0:
+                     print('.', end='', flush=True)
 
         current_start = current_end
 
