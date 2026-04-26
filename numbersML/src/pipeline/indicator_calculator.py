@@ -76,7 +76,11 @@ class IndicatorCalculator:
                         "params": params,
                     }
                 )
-        logger.info(f"Loaded {len(self._definitions)} indicator definitions")
+        # Update max indicator period based on loaded definitions
+        self._max_indicator_period = self._calculate_max_period()
+        logger.info(
+            f"Loaded {len(self._definitions)} indicator definitions (max period: {self._max_indicator_period})"
+        )
 
     def _get_indicator_class(self, class_name: str, module_path: str) -> type[Indicator] | None:
         """Dynamically import and cache indicator class."""
@@ -156,17 +160,31 @@ class IndicatorCalculator:
 
         if len(buf["times"]) < self._max_indicator_period:
             async with self.db_pool.acquire() as conn:
-                rows = await conn.fetch(
-                    """
-                    SELECT time, open, high, low, close, volume, quote_volume
-                    FROM "candles_1s"
-                    WHERE symbol_id = $1
-                    ORDER BY time DESC
-                    LIMIT $2
-                    """,
-                    symbol_id,
-                    self._max_indicator_period,
-                )
+                if before_time is not None:
+                    rows = await conn.fetch(
+                        """
+                        SELECT time, open, high, low, close, volume, quote_volume
+                        FROM "candles_1s"
+                        WHERE symbol_id = $1 AND time < $2
+                        ORDER BY time DESC
+                        LIMIT $3
+                        """,
+                        symbol_id,
+                        before_time,
+                        self._max_indicator_period,
+                    )
+                else:
+                    rows = await conn.fetch(
+                        """
+                        SELECT time, open, high, low, close, volume, quote_volume
+                        FROM "candles_1s"
+                        WHERE symbol_id = $1
+                        ORDER BY time DESC
+                        LIMIT $2
+                        """,
+                        symbol_id,
+                        self._max_indicator_period,
+                    )
 
             if not rows:
                 # Return empty arrays instead of None
@@ -286,9 +304,9 @@ class IndicatorCalculator:
             buf["closes"].clear()
             buf["volumes"].clear()
 
-        # Fetch historical candles (excluding current)
+        # Fetch historical candles (excluding current) - need enough history for longest indicator
         candles = await self._fetch_candles(
-            symbol_id, limit=self.DEFAULT_CANDLE_WINDOW - 1, before_time=time
+            symbol_id, limit=self._max_indicator_period - 1, before_time=time
         )
 
         if candles is None or len(candles["close"]) < 1:
@@ -305,14 +323,15 @@ class IndicatorCalculator:
         buf["closes"].append(float(close))
         buf["volumes"].append(float(volume))
 
-        prices = candles["close"]
-        volumes = candles["volume"]
-        highs = candles["high"]
-        lows = candles["low"]
-        opens = candles["open"]
+        # Combine historical candles with the current candle
+        prices = np.append(candles["close"], close)
+        volumes = np.append(candles["volume"], volume)
+        highs = np.append(candles["high"], high)
+        lows = np.append(candles["low"], low)
+        opens = np.append(candles["open"], open)
         latest_time = list(buf["times"])[-1]
-        latest_price = float(prices[-1])
-        latest_volume = float(volumes[-1])
+        latest_price = float(close)
+        latest_volume = float(volume)
 
         return await self._run_indicators(
             symbol=symbol,

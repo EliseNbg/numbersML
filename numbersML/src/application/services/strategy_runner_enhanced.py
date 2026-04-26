@@ -1,17 +1,19 @@
 """
-Enhanced Strategy Runner - extends StrategyRunner with lifecycle and risk controls.
+Enhanced Strategy Runner - extends StrategyRunner with lifecycle, risk, and observability controls.
 
 Wraps StrategyRunner to add:
 - Per-strategy error isolation (failures don't crash global runner)
 - Runtime activation/deactivation coordination
 - Risk rule enforcement before signal generation
+- Comprehensive telemetry and metrics collection
+- Audit logging for all critical events
 - Graceful cancellation and cleanup
 """
 
 import asyncio
 import logging
 from typing import Dict, List, Optional, Any, Set
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from src.domain.strategies.base import (
     Strategy,
@@ -28,30 +30,52 @@ from src.domain.strategies.runtime import (
 from src.infrastructure.redis.message_bus import MessageBus
 from src.application.services.strategy_lifecycle import StrategyLifecycleService
 from src.application.services.strategy_runner import StrategyRunner, ChannelManager
+from src.application.services.risk_guardrails import (
+    RiskGuardrailService,
+    get_risk_guardrail_service,
+)
+from src.application.services.strategy_telemetry import (
+    StrategyTelemetryService,
+    get_telemetry_service,
+)
+from src.application.services.audit_logger import (
+    AuditLogger,
+    AuditEventType,
+    AuditSeverity,
+    get_audit_logger,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class EnhancedStrategyRunner(StrategyRunner):
-    """Enhanced strategy runner with lifecycle and risk controls.
+    """Enhanced strategy runner with lifecycle, risk, and observability controls.
     
     Extends StrategyRunner to add:
     - Per-strategy error isolation via per-strategy exception handling
     - Coordination with StrategyLifecycleService for state tracking
-    - Risk rule enforcement (max errors, position limits)
+    - RiskGuardrailService for hard safety limits and kill switches
+    - StrategyTelemetryService for comprehensive metrics collection
+    - AuditLogger for immutable audit trail
     - Graceful shutdown with cancellation scopes
     
     Architecture:
         Redis Pub/Sub
             → EnhancedStrategyRunner (per-strategy error isolation)
-                → StrategyLifecycleService (state + risk validation)
-                    → StrategyManager (tick processing)
-                        → Individual Strategies
+                → StrategyLifecycleService (state management)
+                    → RiskGuardrailService (safety validation)
+                        → StrategyTelemetryService (metrics)
+                            → AuditLogger (audit trail)
+                                → StrategyManager (tick processing)
+                                    → Individual Strategies
     """
 
     def __init__(
         self,
         lifecycle_service: StrategyLifecycleService,
+        risk_service: Optional[RiskGuardrailService] = None,
+        telemetry_service: Optional[StrategyTelemetryService] = None,
+        audit_logger: Optional[AuditLogger] = None,
         redis_url: str = "redis://localhost:6379",
         symbols: Optional[List[str]] = None,
     ) -> None:
@@ -59,6 +83,9 @@ class EnhancedStrategyRunner(StrategyRunner):
         
         Args:
             lifecycle_service: Coordinates lifecycle, state, and risk rules
+            risk_service: Hard risk guardrails and kill switches
+            telemetry_service: Metrics and telemetry collection
+            audit_logger: Audit trail logging
             redis_url: Redis connection URL
             symbols: Symbols to subscribe to
         """
@@ -69,10 +96,20 @@ class EnhancedStrategyRunner(StrategyRunner):
             symbols=symbols,
         )
         self._lifecycle = lifecycle_service
+        self._risk = risk_service or get_risk_guardrail_service()
+        self._telemetry = telemetry_service or get_telemetry_service()
+        self._audit = audit_logger or get_audit_logger()
+        
         self._running = False
         # Track per-strategy tick processing tasks for cancellation
         self._strategy_tasks: Dict[UUID, asyncio.Task] = {}
-        logger.info("EnhancedStrategyRunner initialized")
+        
+        # Register for telemetry
+        for strategy_id in lifecycle_service._strategy_manager._strategies.keys():
+            self._telemetry.register_strategy(strategy_id)
+            self._risk.register_strategy(strategy_id)
+        
+        logger.info("EnhancedStrategyRunner initialized with observability and safety controls")
 
     async def start(self) -> None:
         """Start enhanced strategy runner."""
@@ -92,7 +129,7 @@ class EnhancedStrategyRunner(StrategyRunner):
         logger.info(f"EnhancedStrategyRunner started with {len(symbols)} symbols")
 
     async def _on_tick_enhanced(self, message: Dict[str, Any]) -> None:
-        """Handle incoming tick with per-strategy error isolation.
+        """Handle incoming tick with per-strategy error isolation and safety checks.
         
         Each strategy processes the tick independently. If one fails,
         it doesn't affect others. Failures are recorded but don't crash
@@ -104,6 +141,12 @@ class EnhancedStrategyRunner(StrategyRunner):
         try:
             tick = EnrichedTick.from_message(message)
             self._stats['ticks_received'] += 1
+            
+            # Check global kill switch
+            global_status = self._risk.get_global_status()
+            if global_status['global_kill_active']:
+                logger.warning(f"Tick dropped - global kill active: {global_status['global_kill_reason']}")
+                return
 
             # Get all active (RUNNING) strategies
             active_strategies = [
@@ -129,6 +172,13 @@ class EnhancedStrategyRunner(StrategyRunner):
                         str(e),
                         {"tick_symbol": tick.symbol, "tick_time": tick.time.isoformat()},
                     )
+                    # Record in telemetry
+                    self._telemetry.record_error(
+                        strategy_id=strategy_id,
+                        error_type=type(e).__name__,
+                        error_message=str(e),
+                        context={"tick_symbol": tick.symbol},
+                    )
                     self._stats['errors'] += 1
 
         except Exception as e:
@@ -143,7 +193,8 @@ class EnhancedStrategyRunner(StrategyRunner):
     ) -> None:
         """Process a single tick through a specific strategy.
         
-        Includes risk rule enforcement before signal generation.
+        Includes hard risk guardrail enforcement before signal generation
+        and comprehensive telemetry collection.
         
         Args:
             strategy_id: ID of strategy to process
@@ -152,6 +203,8 @@ class EnhancedStrategyRunner(StrategyRunner):
         Raises:
             Exception: Any error during processing (will be caught upstream)
         """
+        start_time = asyncio.get_event_loop().time()
+        
         strategy = self._lifecycle._strategy_manager.get_strategy(strategy_id)
         if not strategy:
             return
@@ -159,22 +212,64 @@ class EnhancedStrategyRunner(StrategyRunner):
         # Check if strategy should process this symbol
         if tick.symbol not in strategy.symbols:
             return
+        
+        # Check data freshness with risk guardrails
+        data_fresh, stale_reason = await self._risk.check_data_freshness(
+            strategy_id=strategy_id,
+            data_timestamp=tick.time,
+        )
+        if not data_fresh:
+            logger.warning(f"Strategy {strategy_id} blocked: {stale_reason}")
+            self._telemetry.record_guardrail_block(strategy_id, "stale_data", stale_reason)
+            return
 
         # Generate signal (strategy-specific logic)
         signal = strategy.process_tick(tick)
+        
+        # Record tick processing
+        processing_time_ms = (asyncio.get_event_loop().time() - start_time) * 1000
+        self._telemetry.record_tick_processed(strategy_id, tick.time, processing_time_ms)
 
         if signal:
-            # Check risk rules before publishing
-            is_allowed, reason = await self._lifecycle.is_order_allowed(
+            # Record signal generation in telemetry
+            self._telemetry.record_signal(
                 strategy_id=strategy_id,
-                order=None,  # Would create Order from signal in production
-                current_positions={},  # Would fetch from portfolio
-                daily_pnl=0.0,  # Would fetch from P&L service
+                signal_id=str(uuid4()),
+                symbol=signal.symbol,
+                signal_type=signal.signal_type.value,
+                confidence=signal.confidence,
+                indicators_used=list(tick.indicators.keys()) if tick.indicators else [],
+            )
+            
+            # Check hard risk guardrails before publishing
+            notional = float(signal.price) * 0.1  # Example position size
+            is_allowed, reason = await self._risk.check_order_allowed(
+                strategy_id=strategy_id,
+                symbol=signal.symbol,
+                side=signal.signal_type.value,
+                quantity=0.1,
+                price=float(signal.price),
+                notional=notional,
             )
 
             if not is_allowed:
                 logger.warning(
-                    f"Signal from {strategy_id} blocked by risk rules: {reason}"
+                    f"Signal from {strategy_id} blocked by guardrail: {reason}"
+                )
+                self._telemetry.record_guardrail_block(strategy_id, "guardrail", reason)
+                return
+
+            # Check legacy risk rules (backward compatibility)
+            is_allowed_old, reason_old = await self._lifecycle.is_order_allowed(
+                strategy_id=strategy_id,
+                order=None,
+                current_positions={},
+                daily_pnl=0.0,
+            )
+
+            if not is_allowed_old:
+                logger.warning(
+                    f"Signal from {strategy_id} blocked by lifecycle risk: {reason_old}"
                 )
                 return
 
@@ -182,53 +277,105 @@ class EnhancedStrategyRunner(StrategyRunner):
             await self._publish_signal(signal)
             self._stats['signals_generated'] += 1
 
-    async def activate_strategy(self, strategy_id: UUID, **kwargs) -> bool:
-        """Activate a strategy via lifecycle service.
+    async def activate_strategy(self, strategy_id: UUID, actor: str = "system", **kwargs) -> bool:
+        """Activate a strategy via lifecycle service with audit logging.
         
         Args:
             strategy_id: Strategy to activate
+            actor: Who triggered the activation
             **kwargs: Passed to lifecycle service
             
         Returns:
             True if activation succeeded
         """
-        return await self._lifecycle.activate_strategy(strategy_id, **kwargs)
+        # Register with observability services if not already
+        self._telemetry.register_strategy(strategy_id)
+        self._risk.register_strategy(strategy_id)
+        
+        success = await self._lifecycle.activate_strategy(strategy_id, **kwargs)
+        
+        if success and self._audit:
+            await self._audit.log_strategy_lifecycle(
+                strategy_id=strategy_id,
+                transition="activated",
+                actor_id=actor,
+                new_status="active",
+            )
+        
+        return success
 
-    async def deactivate_strategy(self, strategy_id: UUID, **kwargs) -> bool:
-        """Deactivate a strategy via lifecycle service.
+    async def deactivate_strategy(self, strategy_id: UUID, actor: str = "system", **kwargs) -> bool:
+        """Deactivate a strategy via lifecycle service with audit logging.
         
         Args:
             strategy_id: Strategy to deactivate
+            actor: Who triggered the deactivation
             **kwargs: Passed to lifecycle service
             
         Returns:
             True if deactivation succeeded
         """
-        return await self._lifecycle.deactivate_strategy(strategy_id, **kwargs)
+        success = await self._lifecycle.deactivate_strategy(strategy_id, **kwargs)
+        
+        if success and self._audit:
+            await self._audit.log_strategy_lifecycle(
+                strategy_id=strategy_id,
+                transition="deactivated",
+                actor_id=actor,
+                new_status="inactive",
+            )
+        
+        # Clean up observability
+        self._risk.unregister_strategy(strategy_id)
+        self._telemetry.unregister_strategy(strategy_id)
+        
+        return success
 
-    async def pause_strategy(self, strategy_id: UUID, **kwargs) -> bool:
-        """Pause a strategy via lifecycle service.
+    async def pause_strategy(self, strategy_id: UUID, actor: str = "system", **kwargs) -> bool:
+        """Pause a strategy via lifecycle service with audit logging.
         
         Args:
             strategy_id: Strategy to pause
+            actor: Who triggered the pause
             **kwargs: Passed to lifecycle service
             
         Returns:
             True if pause succeeded
         """
-        return await self._lifecycle.pause_strategy(strategy_id, **kwargs)
+        success = await self._lifecycle.pause_strategy(strategy_id, **kwargs)
+        
+        if success and self._audit:
+            await self._audit.log_strategy_lifecycle(
+                strategy_id=strategy_id,
+                transition="paused",
+                actor_id=actor,
+                new_status="paused",
+            )
+        
+        return success
 
-    async def resume_strategy(self, strategy_id: UUID, **kwargs) -> bool:
-        """Resume a strategy via lifecycle service.
+    async def resume_strategy(self, strategy_id: UUID, actor: str = "system", **kwargs) -> bool:
+        """Resume a strategy via lifecycle service with audit logging.
         
         Args:
             strategy_id: Strategy to resume
+            actor: Who triggered the resume
             **kwargs: Passed to lifecycle service
             
         Returns:
             True if resume succeeded
         """
-        return await self._lifecycle.resume_strategy(strategy_id, **kwargs)
+        success = await self._lifecycle.resume_strategy(strategy_id, **kwargs)
+        
+        if success and self._audit:
+            await self._audit.log_strategy_lifecycle(
+                strategy_id=strategy_id,
+                transition="resumed",
+                actor_id=actor,
+                new_status="active",
+            )
+        
+        return success
 
     async def stop(self) -> None:
         """Stop runner with graceful cancellation of all tasks.
