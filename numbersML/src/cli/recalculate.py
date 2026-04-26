@@ -21,12 +21,12 @@ Usage:
 
 import argparse
 import asyncio
-import asyncpg
 import json
 import logging
-import sys
-from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Tuple
+from datetime import UTC, datetime, timedelta
+from typing import Optional
+
+import asyncpg
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,8 +39,8 @@ DB_URL = "postgresql://crypto:crypto_secret@localhost:5432/crypto_trading"
 
 async def get_symbol_ids(
     conn: asyncpg.Connection,
-    symbols: Optional[List[str]],
-) -> List[int]:
+    symbols: Optional[list[str]],
+) -> list[int]:
     """Get symbol IDs from names or all active."""
     if symbols:
         rows = await conn.fetch(
@@ -56,7 +56,7 @@ async def get_symbol_ids(
 
 async def reset_processed(
     conn: asyncpg.Connection,
-    symbol_ids: List[int],
+    symbol_ids: list[int],
     from_time: datetime,
     to_time: Optional[datetime],
 ) -> int:
@@ -84,7 +84,7 @@ async def reset_processed(
 
 async def recalculate_indicators(
     db_pool: asyncpg.Pool,
-    symbol_ids: List[int],
+    symbol_ids: list[int],
     from_time: datetime,
     to_time: Optional[datetime] = None,
 ) -> int:
@@ -106,7 +106,7 @@ async def recalculate_indicators(
 
     # Determine time range
     if to_time is None:
-        to_time = datetime.now(timezone.utc)
+        to_time = datetime.now(UTC)
 
     # Process in 1-hour chunks
     batch_size = timedelta(hours=1)
@@ -119,15 +119,16 @@ async def recalculate_indicators(
         current_end = min(current_start + batch_size, to_time)
 
         async with db_pool.acquire() as conn:
-            # Get unprocessed candles for this batch
+            # Get unprocessed candles for this batch with symbol info
             unprocessed = await conn.fetch(
                 """
-                SELECT DISTINCT c.time
+                SELECT c.time, c.symbol_id, s.symbol
                 FROM candles_1s c
+                JOIN symbols s ON s.id = c.symbol_id
                 WHERE c.symbol_id = ANY($1)
                   AND c.time >= $2 AND c.time < $3
                   AND c.processed = false
-                ORDER BY c.time
+                ORDER BY c.time, c.symbol_id
                 """,
                 symbol_ids, current_start, current_end,
             )
@@ -136,25 +137,33 @@ async def recalculate_indicators(
             current_start = current_end
             continue
 
-        times = [r['time'] for r in unprocessed]
-        logger.info(f"Processing {len(times)} unprocessed time points in batch")
+        # Group by time
+        by_time: dict = {}
+        for r in unprocessed:
+            t = r['time']
+            if t not in by_time:
+                by_time[t] = []
+            by_time[t].append({'symbol_id': r['symbol_id'], 'symbol': r['symbol']})
 
-        # Calculate indicators for each time point
-        for t in times:
-            count = await calc.calculate_with_candle(
-                symbol='',
-                time=t,
-                open=0, high=0, low=0, close=0, volume=0,
-                symbol_id=symbol_ids[0] if symbol_ids else None,
-            )
-            total_count += count
+        logger.info(f"Processing {len(unprocessed)} unprocessed candle(s) across {len(by_time)} time points in batch")
+
+        # Calculate indicators for each time point and symbol
+        for t, symbols_at_time in by_time.items():
+            for si in symbols_at_time:
+                count = await calc.calculate_with_candle(
+                    symbol=si['symbol'],
+                    time=t,
+                    open=0, high=0, low=0, close=0, volume=0,
+                    symbol_id=si['symbol_id'],
+                )
+                total_count += count
 
         current_start = current_end
 
     return total_count
 
 
-async def load_indicator_schema(db_pool: asyncpg.Pool) -> List[str]:
+async def load_indicator_schema(db_pool: asyncpg.Pool) -> list[str]:
     """Load fixed global indicator key list from DB (run once).
 
     Uses the superset of all indicator keys ever stored in candle_indicators
@@ -176,8 +185,8 @@ async def load_indicator_schema(db_pool: asyncpg.Pool) -> List[str]:
 
 async def recalculate_wide_vectors(
     db_pool: asyncpg.Pool,
-    symbol_ids: List[int],
-    active_symbols: List[Tuple[int, str]],
+    symbol_ids: list[int],
+    active_symbols: list[tuple[int, str]],
     from_time: datetime,
     to_time: Optional[datetime] = None,
     batch_hours: int = 1,
@@ -195,7 +204,7 @@ async def recalculate_wide_vectors(
     symbol_names = [sname for _, sname in active_symbols]
 
     if to_time is None:
-        to_time = datetime.now(timezone.utc)
+        to_time = datetime.now(UTC)
 
     # Load fixed global schema ONCE before processing batches
     # Prevents column index shifts when different batches have different keys
@@ -509,10 +518,10 @@ async def main() -> None:
 
     from_time = datetime.fromisoformat(args.from_time)
     if from_time.tzinfo is None:
-        from_time = from_time.replace(tzinfo=timezone.utc)
+        from_time = from_time.replace(tzinfo=UTC)
     to_time = datetime.fromisoformat(args.to_time) if args.to_time else None
     if to_time and to_time.tzinfo is None:
-        to_time = to_time.replace(tzinfo=timezone.utc)
+        to_time = to_time.replace(tzinfo=UTC)
     symbols = [s.strip() for s in args.symbols.split(',')] if args.symbols else None
 
     pool = await asyncpg.create_pool(DB_URL, min_size=2, max_size=5)

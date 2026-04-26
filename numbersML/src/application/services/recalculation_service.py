@@ -291,53 +291,39 @@ class RecalculationService:
         indicator: Any = None,
     ) -> None:
         """Store indicator results using batch insert."""
-        async with self.db_pool.acquire() as conn:
-            # Build all records first
-            records = []
-            prefix = result.name
+        # Build all records first
+        records = []
+        prefix = result.name
 
-            for i, tick in enumerate(ticks):
-                # Get indicator values for this tick
-                indicator_values = {}
-                val_to_store = None
-                
-                # Find valid value for this tick index (take last valid found, like calculator)
-                for key, values in result.values.items():
-                    if i < len(values):
-                        val = values[i]
-                        if not np.isnan(val) and not np.isinf(val):
-                            val_to_store = float(val)
+        for i, tick in enumerate(ticks):
+            # Get indicator values for this tick
+            indicator_values = {}
+            val_to_store = None
+            
+            # Find valid value for this tick index (take last valid found, like calculator)
+            for key, values in result.values.items():
+                if i < len(values):
+                    val = values[i]
+                    if not np.isnan(val) and not np.isinf(val):
+                        val_to_store = float(val)
 
-                # Always store the key, even if value is None (warmup period)
-                indicator_values[prefix] = val_to_store
+            # Always store the key, even if value is None (warmup period)
+            indicator_values[prefix] = val_to_store
 
-                if indicator_values:
-                    records.append((
-                        tick['time'],
-                        symbol_id,
-                        tick['price'],
-                        tick['quantity'],
-                        json.dumps(indicator_values),
-                        list(indicator_values.keys()),
-                    ))
+            if indicator_values:
+                records.append((
+                    tick['time'],
+                    symbol_id,
+                    tick['price'],
+                    tick['quantity'],
+                    indicator_values,
+                ))
 
-            # Batch insert all records at once
-            if records:
-                await conn.executemany(
-                    """
-                    INSERT INTO candle_indicators (
-                        time, symbol_id, price, volume,
-                        values, indicator_keys, indicator_version
-                    ) VALUES (
-                        $1, $2, $3, $4, $5, $6, 1
-                    )
-                    ON CONFLICT (time, symbol_id) DO UPDATE SET
-                        values = EXCLUDED.values,
-                        indicator_keys = EXCLUDED.indicator_keys,
-                        updated_at = NOW()
-                    """,
-                    records,
-                )
+        # Batch insert all records at once
+        if records:
+            from src.infrastructure.repositories.indicator_repo import IndicatorRepository
+            repo = IndicatorRepository(self.db_pool)
+            await repo.store_indicator_results_batch(records)
     
     async def _get_active_symbols(self) -> List[tuple]:
         """Get all active symbols."""

@@ -6,10 +6,10 @@ fetches recent candles, calculates indicators, and writes results to latest_indi
 """
 
 import importlib
-import logging
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any, Type
 import json
+import logging
+from datetime import datetime
+from typing import Any, Optional
 
 import asyncpg
 import numpy as np
@@ -22,24 +22,24 @@ logger = logging.getLogger(__name__)
 class IndicatorCalculator:
     """
     Calculates registered indicators on incoming candles.
-    
+
     Loads indicator definitions from DB, caches indicator class instances,
     fetches candle history, runs calculations, and writes results.
-    
+
     Example:
         >>> calc = IndicatorCalculator(db_pool)
         >>> await calc.load_definitions()
         >>> await calc.calculate('BTC/USDC', symbol_id=58)
     """
-    
+
     # How many recent candles to use for calculation
     DEFAULT_CANDLE_WINDOW = 200
 
     def __init__(self, db_pool: asyncpg.Pool) -> None:
         self.db_pool = db_pool
-        self._definitions: List[Dict[str, Any]] = []
-        self._class_cache: Dict[str, Type[Indicator]] = {}
-        self._symbol_id_cache: Dict[str, int] = {}
+        self._definitions: list[dict[str, Any]] = []
+        self._class_cache: dict[str, type[Indicator]] = {}
+        self._symbol_id_cache: dict[str, int] = {}
 
     async def load_definitions(self) -> None:
         """Load active indicator definitions from DB."""
@@ -54,20 +54,22 @@ class IndicatorCalculator:
             )
             self._definitions = []
             for r in rows:
-                params = r['params']
+                params = r["params"]
                 if isinstance(params, str):
                     params = json.loads(params)
                 elif not isinstance(params, dict):
                     params = {}
-                self._definitions.append({
-                    'name': r['name'],
-                    'class_name': r['class_name'],
-                    'module_path': r['module_path'],
-                    'params': params,
-                })
+                self._definitions.append(
+                    {
+                        "name": r["name"],
+                        "class_name": r["class_name"],
+                        "module_path": r["module_path"],
+                        "params": params,
+                    }
+                )
         logger.info(f"Loaded {len(self._definitions)} indicator definitions")
 
-    def _get_indicator_class(self, class_name: str, module_path: str) -> Optional[Type[Indicator]]:
+    def _get_indicator_class(self, class_name: str, module_path: str) -> Optional[type[Indicator]]:
         """Dynamically import and cache indicator class."""
         cache_key = f"{module_path}.{class_name}"
         if cache_key in self._class_cache:
@@ -88,16 +90,14 @@ class IndicatorCalculator:
             return self._symbol_id_cache[symbol]
 
         async with self.db_pool.acquire() as conn:
-            symbol_id = await conn.fetchval(
-                "SELECT id FROM symbols WHERE symbol = $1", symbol
-            )
+            symbol_id = await conn.fetchval("SELECT id FROM symbols WHERE symbol = $1", symbol)
             if symbol_id:
                 self._symbol_id_cache[symbol] = symbol_id
             return symbol_id
 
     async def _fetch_candles(
         self, symbol_id: int, limit: int = DEFAULT_CANDLE_WINDOW
-    ) -> Optional[Dict[str, np.ndarray]]:
+    ) -> Optional[dict[str, np.ndarray]]:
         """Fetch recent candles and return as numpy arrays."""
         async with self.db_pool.acquire() as conn:
             rows = await conn.fetch(
@@ -108,7 +108,8 @@ class IndicatorCalculator:
                 ORDER BY time DESC
                 LIMIT $2
                 """,
-                symbol_id, limit,
+                symbol_id,
+                limit,
             )
 
         if not rows:
@@ -118,23 +119,23 @@ class IndicatorCalculator:
         rows = list(reversed(rows))
 
         return {
-            'time': [r['time'] for r in rows],
-            'open': np.array([float(r['open']) for r in rows]),
-            'high': np.array([float(r['high']) for r in rows]),
-            'low': np.array([float(r['low']) for r in rows]),
-            'close': np.array([float(r['close']) for r in rows]),
-            'volume': np.array([float(r['volume']) for r in rows]),
-            'quote_volume': np.array([float(r['quote_volume']) for r in rows]),
+            "time": [r["time"] for r in rows],
+            "open": np.array([float(r["open"]) for r in rows]),
+            "high": np.array([float(r["high"]) for r in rows]),
+            "low": np.array([float(r["low"]) for r in rows]),
+            "close": np.array([float(r["close"]) for r in rows]),
+            "volume": np.array([float(r["volume"]) for r in rows]),
+            "quote_volume": np.array([float(r["quote_volume"]) for r in rows]),
         }
 
     async def calculate(self, symbol: str, symbol_id: Optional[int] = None) -> int:
         """
         Calculate all active indicators for a symbol.
-        
+
         Args:
             symbol: Symbol name (e.g., 'BTC/USDC')
             symbol_id: Symbol ID (fetched if not provided)
-        
+
         Returns:
             Number of indicators calculated
         """
@@ -148,16 +149,16 @@ class IndicatorCalculator:
         if candles is None:
             logger.warning(f"No candles in DB for {symbol} (id={symbol_id})")
             return 0
-        if len(candles['close']) < 2:
+        if len(candles["close"]) < 2:
             logger.warning(f"Only {len(candles['close'])} candles for {symbol}, need >= 2")
             return 0
 
-        prices = candles['close']
-        volumes = candles['volume']
-        highs = candles['high']
-        lows = candles['low']
-        opens = candles['open']
-        latest_time = candles['time'][-1]
+        prices = candles["close"]
+        volumes = candles["volume"]
+        highs = candles["high"]
+        lows = candles["low"]
+        opens = candles["open"]
+        latest_time = candles["time"][-1]
         latest_price = float(prices[-1])
         latest_volume = float(volumes[-1])
 
@@ -187,7 +188,7 @@ class IndicatorCalculator:
     ) -> int:
         """
         Calculate indicators using historical data + current candle directly.
-        
+
         Avoids DB read timing issues by accepting the current candle as parameter.
         """
         if symbol_id is None:
@@ -198,24 +199,24 @@ class IndicatorCalculator:
         # Fetch historical candles (excluding current)
         candles = await self._fetch_candles(symbol_id, limit=self.DEFAULT_CANDLE_WINDOW - 1)
 
-        if candles is None or len(candles['close']) < 1:
+        if candles is None or len(candles["close"]) < 1:
             # First candle ever - can't calculate indicators yet
             return 0
 
         # Append current candle to historical data
-        candles['time'].append(time)
-        candles['open'] = np.append(candles['open'], open)
-        candles['high'] = np.append(candles['high'], high)
-        candles['low'] = np.append(candles['low'], low)
-        candles['close'] = np.append(candles['close'], close)
-        candles['volume'] = np.append(candles['volume'], volume)
+        candles["time"].append(time)
+        candles["open"] = np.append(candles["open"], open)
+        candles["high"] = np.append(candles["high"], high)
+        candles["low"] = np.append(candles["low"], low)
+        candles["close"] = np.append(candles["close"], close)
+        candles["volume"] = np.append(candles["volume"], volume)
 
-        prices = candles['close']
-        volumes = candles['volume']
-        highs = candles['high']
-        lows = candles['low']
-        opens = candles['open']
-        latest_time = candles['time'][-1]
+        prices = candles["close"]
+        volumes = candles["volume"]
+        highs = candles["high"]
+        lows = candles["low"]
+        opens = candles["open"]
+        latest_time = candles["time"][-1]
         latest_price = float(prices[-1])
         latest_volume = float(volumes[-1])
 
@@ -247,20 +248,19 @@ class IndicatorCalculator:
     ) -> int:
         """
         Run all active indicators on prepared data arrays.
-        
+
         Shared implementation used by both calculate() and calculate_with_candle().
         """
         calculated = 0
-        results: Dict[str, Any] = {}
-        indicator_keys: List[str] = []
+        results: dict[str, Any] = {}
 
         for defn in self._definitions:
             try:
-                cls = self._get_indicator_class(defn['class_name'], defn['module_path'])
+                cls = self._get_indicator_class(defn["class_name"], defn["module_path"])
                 if cls is None:
                     continue
 
-                indicator = cls(**defn['params'])
+                indicator = cls(**defn["params"])
                 result: IndicatorResult = indicator.calculate(
                     prices=prices,
                     volumes=volumes,
@@ -273,11 +273,11 @@ class IndicatorCalculator:
                 # Use the name from the indicator definition (e.g. 'rsi_14', 'macd_12_26_9')
                 # instead of the generated class name.  Flatten all sub‑keys so multi‑output
                 # indicators (BollingerBands, MACD…) contribute every series.
-                base_key = defn['name']
+                base_key = defn["name"]
 
                 for sub_key, values in result.values.items():
                     # Build the full key: base + sub_key (e.g. 'bb_20_2_upper')
-                    if sub_key == 'value' or len(result.values) == 1:
+                    if sub_key == "value" or len(result.values) == 1:
                         flat_key = base_key
                     else:
                         flat_key = f"{base_key}_{sub_key}"
@@ -287,13 +287,9 @@ class IndicatorCalculator:
                         if not np.isnan(val) and not np.isinf(val):
                             results[flat_key] = float(val)
                         else:
-                            results[flat_key] = None   # null in JSON
+                            results[flat_key] = None  # null in JSON
                     else:
                         results[flat_key] = None
-
-                    # Ensure uniqueness in keys list
-                    if flat_key not in indicator_keys:
-                        indicator_keys.append(flat_key)
 
                 calculated += 1
 
@@ -308,7 +304,6 @@ class IndicatorCalculator:
                 price=latest_price,
                 volume=latest_volume,
                 values=results,
-                indicator_keys=indicator_keys,
             )
 
         return calculated
@@ -320,26 +315,17 @@ class IndicatorCalculator:
         time: datetime,
         price: float,
         volume: float,
-        values: Dict[str, Any],
-        indicator_keys: List[str],
+        values: dict[str, Any],
     ) -> None:
         """Write indicator results to candle_indicators table."""
-        async with self.db_pool.acquire() as conn:
-            await conn.execute(
-                """
-                INSERT INTO candle_indicators (symbol_id, time, price, volume, values, indicator_keys)
-                VALUES ($1, $2, $3, $4, $5::jsonb, $6)
-                ON CONFLICT (symbol_id, time) DO UPDATE SET
-                    price = EXCLUDED.price,
-                    volume = EXCLUDED.volume,
-                    values = EXCLUDED.values,
-                    indicator_keys = EXCLUDED.indicator_keys,
-                    updated_at = NOW()
-                """,
-                symbol_id,
-                time,
-                price,
-                volume,
-                json.dumps(values),
-                indicator_keys,
-            )
+        # Use repository for centralized write logic
+        from src.infrastructure.repositories.indicator_repo import IndicatorRepository
+
+        repo = IndicatorRepository(self.db_pool)
+        await repo.store_indicator_result(
+            symbol_id=symbol_id,
+            time=time,
+            price=price,
+            volume=volume,
+            indicator_values=values,
+        )

@@ -394,32 +394,17 @@ class EnrichmentService:
             volume: Current volume
             indicator_values: Calculated indicator values
         """
-        async with self.db_pool.acquire() as conn:
-            await conn.execute(
-                """
-                INSERT INTO candle_indicators (
-                    time, symbol_id, price, volume,
-                    values, indicator_keys, indicator_version
-                ) VALUES (
-                    $1, $2, $3, $4, $5, $6, 1
-                )
-                ON CONFLICT (time, symbol_id) DO UPDATE SET
-                    price = EXCLUDED.price,
-                    volume = EXCLUDED.volume,
-                    values = EXCLUDED.values,
-                    indicator_keys = EXCLUDED.indicator_keys,
-                    updated_at = NOW()
-                """,
-                time,
-                symbol_id,
-                Decimal(str(price)),
-                Decimal(str(volume)),
-                json.dumps(indicator_values),
-                list(indicator_values.keys()),
-            )
+        from src.infrastructure.repositories.indicator_repo import IndicatorRepository
+        repo = IndicatorRepository(self.db_pool)
+        await repo.store_indicator_result(
+            symbol_id=symbol_id,
+            time=time,
+            price=price,
+            volume=volume,
+            indicator_values=indicator_values,
+        )
 
-            logger.debug(f"Stored {len(indicator_values)} indicators for symbol {symbol_id}")
-
+        logger.debug(f"Stored {len(indicator_values)} indicators for symbol {symbol_id}")
     async def _notify_enrichment_complete(
         self,
         symbol_id: int,

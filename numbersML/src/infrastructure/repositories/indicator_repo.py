@@ -9,7 +9,9 @@ Dependencies: Domain layer + asyncpg
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from datetime import datetime
+from decimal import Decimal
+from typing import Any, Dict, List, Optional, Tuple
 
 import asyncpg
 
@@ -21,28 +23,28 @@ logger = logging.getLogger(__name__)
 class IndicatorRepository:
     """
     Repository for indicator_definitions table.
-    
+
     Responsibilities:
         - List indicators with filtering
         - Get indicator by name
         - Register new indicators
         - Update indicator configuration
         - Activate/deactivate indicators
-    
+
     Example:
         >>> repo = IndicatorRepository(db_pool)
         >>> indicators = await repo.list_all()
     """
-    
+
     def __init__(self, db_pool: asyncpg.Pool) -> None:
         """
         Initialize with database pool.
-        
+
         Args:
             db_pool: PostgreSQL connection pool
         """
         self.db_pool = db_pool
-    
+
     async def list_all(
         self,
         active_only: bool = False,
@@ -50,11 +52,11 @@ class IndicatorRepository:
     ) -> List[IndicatorConfig]:
         """
         List indicators with optional filters.
-        
+
         Args:
             active_only: If True, return only active indicators
             category: Filter by category (momentum, trend, volatility, volume)
-        
+
         Returns:
             List of indicator configurations
         """
@@ -67,33 +69,33 @@ class IndicatorRepository:
                 FROM indicator_definitions
                 WHERE 1=1
             """
-            
+
             params: List[Any] = []
             param_count = 1
-            
+
             if active_only:
                 query += f" AND is_active = ${param_count}"
                 params.append(True)
                 param_count += 1
-            
+
             if category:
                 query += f" AND category = ${param_count}"
                 params.append(category)
                 param_count += 1
-            
+
             query += " ORDER BY category, name"
-            
+
             rows = await conn.fetch(query, *params)
-            
+
             return [self._row_to_indicator(row) for row in rows]
-    
+
     async def get_by_name(self, name: str) -> Optional[IndicatorConfig]:
         """
         Get indicator by name.
-        
+
         Args:
             name: Indicator name (e.g., 'rsi_14')
-        
+
         Returns:
             Indicator configuration or None if not found
         """
@@ -108,9 +110,9 @@ class IndicatorRepository:
                 """,
                 name,
             )
-            
+
             return self._row_to_indicator(row) if row else None
-    
+
     async def insert(
         self,
         name: str,
@@ -119,12 +121,12 @@ class IndicatorRepository:
         category: str,
         params: Optional[Dict[str, Any]] = None,
         params_schema: Optional[Dict[str, Any]] = None,
-        code_hash: str = 'manual',
+        code_hash: str = "manual",
         is_active: bool = True,
     ) -> bool:
         """
         Register new indicator.
-        
+
         Args:
             name: Unique indicator name
             class_name: Python class name
@@ -133,7 +135,7 @@ class IndicatorRepository:
             params: Indicator parameters (default: empty dict)
             params_schema: Parameters schema (default: empty dict)
             is_active: Whether indicator is active (default: True)
-        
+
         Returns:
             True if registered successfully
         """
@@ -154,17 +156,17 @@ class IndicatorRepository:
                     json.dumps(params_schema or {}),
                     is_active,
                 )
-            
+
             logger.info(f"Registered indicator: {name}")
             return True
-            
+
         except asyncpg.UniqueViolationError:
             logger.error(f"Indicator already exists: {name}")
             return False
         except Exception as e:
             logger.error(f"Failed to register indicator {name}: {e}")
             return False
-    
+
     async def update_active(
         self,
         name: str,
@@ -172,11 +174,11 @@ class IndicatorRepository:
     ) -> bool:
         """
         Update indicator active status.
-        
+
         Args:
             name: Indicator name
             is_active: New active status
-        
+
         Returns:
             True if updated successfully
         """
@@ -191,15 +193,15 @@ class IndicatorRepository:
                     name,
                     is_active,
                 )
-            
+
             status = "activated" if is_active else "deactivated"
             logger.info(f"{status.capitalize()} indicator: {name}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to update indicator {name}: {e}")
             return False
-    
+
     async def update(
         self,
         name: str,
@@ -208,12 +210,12 @@ class IndicatorRepository:
     ) -> bool:
         """
         Update indicator configuration.
-        
+
         Args:
             name: Indicator name
             params: New parameters (optional)
             is_active: New active status (optional)
-        
+
         Returns:
             True if updated successfully
         """
@@ -223,53 +225,53 @@ class IndicatorRepository:
                 updates = ["updated_at = NOW()"]
                 values: List[Any] = [name]
                 param_count = 2
-                
+
                 if params is not None:
                     updates.append(f"params = ${param_count}")
                     values.append(json.dumps(params))
                     param_count += 1
-                
+
                 if is_active is not None:
                     updates.append(f"is_active = ${param_count}")
                     values.append(is_active)
                     param_count += 1
-                
+
                 query = f"""
                     UPDATE indicator_definitions
                     SET {', '.join(updates)}
                     WHERE name = $1
                 """
-                
+
                 await conn.execute(query, *values)
-            
+
             logger.info(f"Updated indicator: {name}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to update indicator {name}: {e}")
             return False
-    
+
     async def delete(self, name: str) -> bool:
         """
         Soft delete indicator (set is_active=false).
-        
+
         Args:
             name: Indicator name
-        
+
         Returns:
             True if deleted successfully
         """
         return await self.update_active(name, False)
-    
+
     async def hard_delete(self, name: str) -> bool:
         """
         Hard delete indicator from database.
-        
+
         WARNING: This permanently removes the indicator!
-        
+
         Args:
             name: Indicator name
-        
+
         Returns:
             True if deleted successfully
         """
@@ -282,18 +284,18 @@ class IndicatorRepository:
                     """,
                     name,
                 )
-            
+
             logger.info(f"Hard deleted indicator: {name}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to delete indicator {name}: {e}")
             return False
-    
+
     async def get_categories(self) -> List[str]:
         """
         Get all indicator categories.
-        
+
         Returns:
             List of unique categories
         """
@@ -305,16 +307,16 @@ class IndicatorRepository:
                 ORDER BY category
                 """
             )
-            
-            return [row['category'] for row in rows]
-    
+
+            return [row["category"] for row in rows]
+
     async def count(self, active_only: bool = False) -> int:
         """
         Count indicators.
-        
+
         Args:
             active_only: If True, count only active indicators
-        
+
         Returns:
             Number of indicators
         """
@@ -334,35 +336,134 @@ class IndicatorRepository:
                     FROM indicator_definitions
                     """
                 )
-            
-            return row['count'] or 0
-    
+
+            return row["count"] or 0
+
     def _row_to_indicator(self, row: asyncpg.Record) -> IndicatorConfig:
         """
         Convert database row to IndicatorConfig.
-        
+
         Args:
             row: Database record
-        
+
         Returns:
             Indicator configuration
         """
         # Parse params (JSONB)
-        raw_params = row['params']
+        raw_params = row["params"]
         if isinstance(raw_params, str):
             params = json.loads(raw_params)
         elif isinstance(raw_params, dict):
             params = raw_params
         else:
             params = raw_params or {}
-        
+
         return IndicatorConfig(
-            name=row['name'],
-            class_name=row['class_name'],
-            module_path=row['module_path'],
-            category=row['category'],
+            name=row["name"],
+            class_name=row["class_name"],
+            module_path=row["module_path"],
+            category=row["category"],
             params=params,
-            is_active=row['is_active'],
-            created_at=row['created_at'],
-            updated_at=row['updated_at'],
+            is_active=row["is_active"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
         )
+
+    async def store_indicator_result(
+        self,
+        symbol_id: int,
+        time: datetime,
+        price: float,
+        volume: float,
+        indicator_values: Dict[str, Any],
+    ) -> None:
+        """
+        Store indicator calculation result in candle_indicators table.
+
+        This centralizes the write logic for indicator results, ensuring
+        consistent handling of the indicator_keys field derived from
+        indicator_values.
+
+        Args:
+            symbol_id: Symbol identifier
+            time: Candle timestamp
+            price: Close price
+            volume: Trade volume
+            indicator_values: Dictionary of indicator name -> value
+        """
+        try:
+            async with self.db_pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO candle_indicators (
+                        time, symbol_id, price, volume,
+                        values, indicator_keys, indicator_version
+                    ) VALUES (
+                        $1, $2, $3, $4, $5, $6, 1
+                    )
+                    ON CONFLICT (symbol_id, time) DO UPDATE SET
+                        price = EXCLUDED.price,
+                        volume = EXCLUDED.volume,
+                        values = EXCLUDED.values,
+                        indicator_keys = EXCLUDED.indicator_keys,
+                        updated_at = NOW()
+                    """,
+                    time,
+                    symbol_id,
+                    Decimal(str(price)),
+                    Decimal(str(volume)),
+                    json.dumps(indicator_values),
+                    sorted(indicator_values.keys()),
+                )
+        except Exception as e:
+            logger.error(
+                f"Failed to store indicator result for symbol {symbol_id} " f"at {time}: {e}"
+            )
+            raise
+
+    async def store_indicator_results_batch(
+        self,
+        results: List[Tuple[datetime, int, float, float, Dict[str, Any]]],
+    ) -> None:
+        """
+        Store multiple indicator results in a batch.
+
+        Args:
+            results: List of (time, symbol_id, price, volume, indicator_values) tuples
+        """
+        if not results:
+            return
+
+        try:
+            async with self.db_pool.acquire() as conn:
+                records = [
+                    (
+                        time,
+                        symbol_id,
+                        Decimal(str(price)),
+                        Decimal(str(volume)),
+                        json.dumps(indicator_values),
+                        sorted(indicator_values.keys()),
+                    )
+                    for time, symbol_id, price, volume, indicator_values in results
+                ]
+                await conn.executemany(
+                    """
+                    INSERT INTO candle_indicators (
+                        time, symbol_id, price, volume,
+                        values, indicator_keys, indicator_version
+                    ) VALUES (
+                        $1, $2, $3, $4, $5, $6, 1
+                    )
+                    ON CONFLICT (symbol_id, time) DO UPDATE SET
+                        price = EXCLUDED.price,
+                        volume = EXCLUDED.volume,
+                        values = EXCLUDED.values,
+                        indicator_keys = EXCLUDED.indicator_keys,
+                        updated_at = NOW()
+                    """,
+                    records,
+                )
+        except Exception as e:
+            logger.error(f"Failed to batch store indicator results: {e}")
+            raise
