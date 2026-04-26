@@ -20,6 +20,9 @@ from src.infrastructure.api.routes.pipeline import router as pipeline_router
 from src.infrastructure.api.routes.strategies import router as strategies_router
 from src.infrastructure.api.routes.market import router as market_router
 from src.infrastructure.api.routes.strategy_backtest import router as strategy_backtest_router
+from src.infrastructure.api.routes.candles import router as candles_router
+from src.infrastructure.api.routes.target_values import router as target_values_router
+from src.infrastructure.api.routes.ml import router as ml_router
 
 
 class TestDashboardRoutes:
@@ -403,7 +406,20 @@ class TestStrategyRoutes:
     @pytest.fixture
     def app(self) -> FastAPI:
         """Create test app with strategy routes."""
+        from unittest.mock import patch, MagicMock
+        import asyncpg
+
         app = FastAPI()
+
+        # Mock the database pool to allow UUID validation without DB errors
+        mock_pool = MagicMock(spec=asyncpg.Pool)
+        mock_conn = MagicMock()
+        mock_pool.acquire.return_value.__aenter__.return_value = mock_conn
+
+        from src.infrastructure.database import set_db_pool
+
+        set_db_pool(mock_pool)
+
         app.include_router(strategies_router)
         return app
 
