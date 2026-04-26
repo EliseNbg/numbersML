@@ -24,7 +24,6 @@ import asyncio
 import json
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Optional
 
 import asyncpg
 
@@ -39,7 +38,7 @@ DB_URL = "postgresql://crypto:crypto_secret@localhost:5432/crypto_trading"
 
 async def get_symbol_ids(
     conn: asyncpg.Connection,
-    symbols: Optional[list[str]],
+    symbols: list[str] | None,
 ) -> list[int]:
     """Get symbol IDs from names or all active."""
     if symbols:
@@ -58,7 +57,7 @@ async def reset_processed(
     conn: asyncpg.Connection,
     symbol_ids: list[int],
     from_time: datetime,
-    to_time: Optional[datetime],
+    to_time: datetime | None,
 ) -> int:
     """Reset processed flag for candles in time range."""
     if to_time:
@@ -89,7 +88,7 @@ async def recalculate_indicators(
     db_pool: asyncpg.Pool,
     symbol_ids: list[int],
     from_time: datetime,
-    to_time: Optional[datetime] = None,
+    to_time: datetime | None = None,
 ) -> int:
     """
     Recalculate indicators for unprocessed candles.
@@ -208,7 +207,7 @@ async def recalculate_wide_vectors(
     symbol_ids: list[int],
     active_symbols: list[tuple[int, str]],
     from_time: datetime,
-    to_time: Optional[datetime] = None,
+    to_time: datetime | None = None,
     batch_hours: int = 1,
 ) -> int:
     """
@@ -411,7 +410,7 @@ async def recalculate_wide_vectors(
             vector = []
             column_names = []
 
-            for sid, sname in active_symbols:
+            for _sid, sname in active_symbols:
                 cd = cd_data.get(sname, {})
                 ind = ind_data.get(sname, {})
                 col_sname = sname.replace("/", "_")

@@ -8,12 +8,14 @@ fetches recent candles, calculates indicators, and writes results to latest_indi
 import importlib
 import json
 import logging
+from collections import deque
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 import numpy as np
 
+from src.domain.services.data_quality import DataQualityGuard
 from src.indicators.base import Indicator, IndicatorResult
 
 logger = logging.getLogger(__name__)
@@ -32,7 +34,8 @@ class IndicatorCalculator:
         >>> await calc.calculate('BTC/USDC', symbol_id=58)
     """
 
-    # How many recent candles to use for calculation
+    # How many recent candles to use for calculation (minimum)
+    # Will be expanded based on active indicator periods
     DEFAULT_CANDLE_WINDOW = 200
 
     def __init__(self, db_pool: asyncpg.Pool) -> None:
@@ -40,18 +43,19 @@ class IndicatorCalculator:
         self._definitions: list[dict[str, Any]] = []
         self._class_cache: dict[str, type[Indicator]] = {}
         self._symbol_id_cache: dict[str, int] = {}
+        self._quality_guard = DataQualityGuard()
+        self._max_indicator_period: int = self.DEFAULT_CANDLE_WINDOW
+        self._candle_buffers: dict[int, dict[str, Any]] = {}
 
     async def load_definitions(self) -> None:
         """Load active indicator definitions from DB."""
         async with self.db_pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
+            rows = await conn.fetch("""
                 SELECT name, class_name, module_path, params
                 FROM indicator_definitions
                 WHERE is_active = true
                 ORDER BY name
-                """
-            )
+                """)
             self._definitions = []
             for r in rows:
                 params = r["params"]
@@ -69,7 +73,7 @@ class IndicatorCalculator:
                 )
         logger.info(f"Loaded {len(self._definitions)} indicator definitions")
 
-    def _get_indicator_class(self, class_name: str, module_path: str) -> Optional[type[Indicator]]:
+    def _get_indicator_class(self, class_name: str, module_path: str) -> type[Indicator] | None:
         """Dynamically import and cache indicator class."""
         cache_key = f"{module_path}.{class_name}"
         if cache_key in self._class_cache:
@@ -84,7 +88,31 @@ class IndicatorCalculator:
             logger.error(f"Failed to import {module_path}.{class_name}: {e}")
             return None
 
-    async def _get_symbol_id(self, symbol: str) -> Optional[int]:
+    def _calculate_max_period(self) -> int:
+        """Calculate the maximum period needed from all indicator definitions."""
+        import re
+
+        max_period = self.DEFAULT_CANDLE_WINDOW
+        for defn in self._definitions:
+            params = defn.get("params", {})
+            class_name = defn.get("class_name", "")
+            for key, value in params.items():
+                if isinstance(value, int | float):
+                    if "macd" in class_name.lower():
+                        if "slow" in key or "fast" in key:
+                            signal = params.get("signal_period", 9)
+                            total = int(value) + int(signal) + 50
+                            max_period = max(max_period, total)
+                        elif "signal" in key:
+                            max_period = max(max_period, int(value) + 50)
+                    else:
+                        max_period = max(max_period, int(value) + 20)
+            name_nums = [int(n) for n in re.findall(r"\d+", defn.get("name", ""))]
+            if name_nums:
+                max_period = max(max_period, max(name_nums) + 50)
+        return max_period
+
+    async def _get_symbol_id(self, symbol: str) -> int | None:
         """Get symbol ID from cache or DB."""
         if symbol in self._symbol_id_cache:
             return self._symbol_id_cache[symbol]
@@ -95,40 +123,73 @@ class IndicatorCalculator:
                 self._symbol_id_cache[symbol] = symbol_id
             return symbol_id
 
+    def _ensure_buffer(self, symbol_id: int) -> None:
+        """Ensure ring buffer exists for symbol."""
+        if symbol_id not in self._candle_buffers:
+            self._candle_buffers[symbol_id] = {
+                "times": deque(maxlen=self._max_indicator_period),
+                "opens": deque(maxlen=self._max_indicator_period),
+                "highs": deque(maxlen=self._max_indicator_period),
+                "lows": deque(maxlen=self._max_indicator_period),
+                "closes": deque(maxlen=self._max_indicator_period),
+                "volumes": deque(maxlen=self._max_indicator_period),
+            }
+
     async def _fetch_candles(
         self, symbol_id: int, limit: int = DEFAULT_CANDLE_WINDOW
-    ) -> Optional[dict[str, np.ndarray]]:
-        """Fetch recent candles and return as numpy arrays."""
-        async with self.db_pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT time, open, high, low, close, volume, quote_volume
-                FROM "candles_1s"
-                WHERE symbol_id = $1
-                ORDER BY time DESC
-                LIMIT $2
-                """,
-                symbol_id,
-                limit,
-            )
+    ) -> dict[str, np.ndarray] | None:
+        """Fetch recent candles using ring buffer, replenishing from DB if needed.
 
-        if not rows:
-            return None
+        Uses in-memory ring buffer per symbol to avoid repeated DB queries.
+        Fills buffer from DB on first access or when empty.
+        """
+        self._ensure_buffer(symbol_id)
+        buf = self._candle_buffers[symbol_id]
 
-        # Reverse to chronological order
-        rows = list(reversed(rows))
+        if len(buf["times"]) < self._max_indicator_period:
+            async with self.db_pool.acquire() as conn:
+                rows = await conn.fetch(
+                    """
+                    SELECT time, open, high, low, close, volume, quote_volume
+                    FROM "candles_1s"
+                    WHERE symbol_id = $1
+                    ORDER BY time DESC
+                    LIMIT $2
+                    """,
+                    symbol_id,
+                    self._max_indicator_period,
+                )
+
+            if not rows:
+                return None
+
+            rows = list(reversed(rows))
+            buf["times"].clear()
+            buf["opens"].clear()
+            buf["highs"].clear()
+            buf["lows"].clear()
+            buf["closes"].clear()
+            buf["volumes"].clear()
+
+            for r in rows:
+                buf["times"].append(r["time"])
+                buf["opens"].append(float(r["open"]))
+                buf["highs"].append(float(r["high"]))
+                buf["lows"].append(float(r["low"]))
+                buf["closes"].append(float(r["close"]))
+                buf["volumes"].append(float(r["volume"]))
 
         return {
-            "time": [r["time"] for r in rows],
-            "open": np.array([float(r["open"]) for r in rows]),
-            "high": np.array([float(r["high"]) for r in rows]),
-            "low": np.array([float(r["low"]) for r in rows]),
-            "close": np.array([float(r["close"]) for r in rows]),
-            "volume": np.array([float(r["volume"]) for r in rows]),
-            "quote_volume": np.array([float(r["quote_volume"]) for r in rows]),
+            "time": list(buf["times"]),
+            "open": np.array(buf["opens"]),
+            "high": np.array(buf["highs"]),
+            "low": np.array(buf["lows"]),
+            "close": np.array(buf["closes"]),
+            "volume": np.array(buf["volumes"]),
+            "quote_volume": np.array([0.0] * len(buf["times"])),
         }
 
-    async def calculate(self, symbol: str, symbol_id: Optional[int] = None) -> int:
+    async def calculate(self, symbol: str, symbol_id: int | None = None) -> int:
         """
         Calculate all active indicators for a symbol.
 
@@ -184,7 +245,7 @@ class IndicatorCalculator:
         low: float,
         close: float,
         volume: float,
-        symbol_id: Optional[int] = None,
+        symbol_id: int | None = None,
     ) -> int:
         """
         Calculate indicators using historical data + current candle directly.
@@ -203,13 +264,18 @@ class IndicatorCalculator:
             # First candle ever - can't calculate indicators yet
             return 0
 
-        # Append current candle to historical data
-        candles["time"].append(time)
-        candles["open"] = np.append(candles["open"], open)
-        candles["high"] = np.append(candles["high"], high)
-        candles["low"] = np.append(candles["low"], low)
-        candles["close"] = np.append(candles["close"], close)
-        candles["volume"] = np.append(candles["volume"], volume)
+        # Add current candle to buffer
+        self._ensure_buffer(symbol_id)
+        buf = self._candle_buffers[symbol_id]
+        buf["times"].append(time)
+        buf["opens"].append(float(open))
+        buf["highs"].append(float(high))
+        buf["lows"].append(float(low))
+        buf["closes"].append(float(close))
+        buf["volumes"].append(float(volume))
+
+        # Re-fetch to get updated buffer as arrays
+        candles = await self._fetch_candles(symbol_id, self._max_indicator_period)
 
         prices = candles["close"]
         volumes = candles["volume"]
@@ -297,6 +363,20 @@ class IndicatorCalculator:
                 logger.error(f"Error calculating {defn['name']} for {symbol}: {e}")
 
         if results:
+            # Validate data quality before storing
+            quality_report = self._quality_guard.validate_indicator_values(
+                symbol_id=symbol_id,
+                symbol=symbol,
+                time=latest_time,
+                values=results,
+            )
+
+            if quality_report.is_critical:
+                logger.error(
+                    f"CRITICAL quality issue for {symbol} at {latest_time}: "
+                    f"{quality_report.issue_count} issues, score={quality_report.quality_score}"
+                )
+
             await self._write_results(
                 symbol=symbol,
                 symbol_id=symbol_id,

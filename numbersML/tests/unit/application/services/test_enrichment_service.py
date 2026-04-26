@@ -134,6 +134,7 @@ class TestEnrichmentService:
         # Store enriched data
         await enrichment_service._store_enriched_data(
             symbol_id=1,
+            symbol="BTC/USDT",
             time=datetime.now(timezone.utc),
             price=50000.0,
             volume=0.001,
