@@ -648,26 +648,30 @@ class AuditLogger:
             return
         
         # Batch insert
+        null_placeholder = '\\N'
         try:
+            import io
+            
+            buffer = io.StringIO()
+            for event in self._event_buffer:
+                old_val = json.dumps(event.old_value) if event.old_value else null_placeholder
+                new_val = json.dumps(event.new_value) if event.new_value else null_placeholder
+                session_val = event.session_id or null_placeholder
+                checksum_val = event.checksum or null_placeholder
+                
+                buffer.write(
+                    f"{event.event_id}\t{event.timestamp.isoformat()}\t"
+                    f"{event.event_type.value}\t{event.severity.value}\t"
+                    f"{event.actor_id}\t{event.actor_type}\t"
+                    f"{event.target_type}\t{event.target_id or ''}\t"
+                    f"{event.action}\t{event.description}\t"
+                    f"{old_val}\t{new_val}\t{session_val}\t"
+                    f"{json.dumps(event.metadata)}\t{checksum_val}\n"
+                )
+            
+            buffer.seek(0)
+            
             async with self.db_pool.acquire() as conn:
-                # Use COPY for efficient batch insert
-                import io
-                
-                buffer = io.StringIO()
-                for event in self._event_buffer:
-                    buffer.write(
-                        f"{event.event_id}\t{event.timestamp.isoformat()}\t"
-                        f"{event.event_type.value}\t{event.severity.value}\t"
-                        f"{event.actor_id}\t{event.actor_type}\t"
-                        f"{event.target_type}\t{event.target_id or ''}\t"
-                        f"{event.action}\t{event.description}\t"
-                        f"{json.dumps(event.old_value) if event.old_value else '\\N'}\t"
-                        f"{json.dumps(event.new_value) if event.new_value else '\\N'}\t"
-                        f"{event.session_id or '\\N'}\t"
-                        f"{json.dumps(event.metadata)}\t{event.checksum or '\\N'}\n"
-                    )
-                
-                buffer.seek(0)
                 await conn.copy_to_table(
                     'audit_log',
                     source=buffer,
