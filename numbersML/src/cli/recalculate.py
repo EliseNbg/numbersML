@@ -51,6 +51,27 @@ async def get_symbol_ids(
     return [r["id"] for r in rows]
 
 
+async def load_indicator_schema(db_pool: asyncpg.Pool) -> list[str]:
+    """Load fixed global indicator key list from DB (run once).
+
+    Uses the superset of all indicator keys ever stored in candle_indicators
+    by extracting keys from the values JSONB column. This avoids storing
+    redundant indicator_keys array and ensures schema consistency.
+    """
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT DISTINCT jsonb_object_keys(values) AS k
+            FROM candle_indicators
+            WHERE values IS NOT NULL
+            ORDER BY k
+            """
+        )
+        schema = [r["k"] for r in rows if r["k"]]
+    logger.info(f"Loaded fixed indicator schema: {len(schema)} keys")
+    return schema
+
+
 async def recalculate_indicators(
     db_pool: asyncpg.Pool,
     symbol_ids: list[int],
@@ -61,14 +82,14 @@ async def recalculate_indicators(
     """
     Recalculate indicators for candles in time range using ring buffer per symbol.
 
-    Reads historical candles for each symbol once, stores them in a ring buffer
-    (max = max indicator period rows), processes candles chronologically,
-    calculates indicators, and adds each candle to the buffer for subsequent calculations.
+    Optimized version:
+    - Pre-creates indicator instances (not per-candle)
+    - Reuses numpy arrays from RingBuffer (no conversion overhead)
+    - Processes candles with minimal object creation
     """
-    from collections import deque
-
     from src.infrastructure.repositories.indicator_repo import IndicatorRepository
     from src.pipeline.indicator_calculator import IndicatorCalculator, IndicatorResult
+    from src.pipeline.indicators_buffer import IndicatorsBuffer
 
     calc = IndicatorCalculator(db_pool)
     await calc.load_definitions()
@@ -89,195 +110,210 @@ async def recalculate_indicators(
     max_period = calc._max_indicator_period
     logger.info(f"Max indicator period: {max_period} seconds")
 
-    # Ring buffer size per symbol: equal to max indicator period (in number of candles)
-    ring_buffer_size = max_period
-    logger.info(f"Using ring buffer size: {ring_buffer_size}")
-
-    # Pre-load all indicator classes once
+    # OPTIMIZATION 1: Pre-create all indicator instances once
+    indicators = []
     for defn in calc._definitions:
-        calc._get_indicator_class(defn["class_name"], defn["module_path"])
+        cls = calc._get_indicator_class(defn["class_name"], defn["module_path"])
+        if cls:
+            indicator = cls(**defn["params"])
+            indicators.append((defn, indicator))
+    
+    logger.info(f"Pre-created {len(indicators)} indicator instances")
 
-    total_count = 0
-    processed_count = 0
     batch_results: list[tuple] = []
     repo = IndicatorRepository(db_pool)
 
-    # For each symbol, fetch candles with lookback once (limit 2500 most recent rows)
-    for sid in symbol_ids:
-        # Fetch candles with lookback (from_time - max_period) to to_time
-        lookback_start = from_time - timedelta(seconds=max_period)
-        async with db_pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT time, open, high, low, close, volume
-                FROM candles_1s
-                WHERE symbol_id = $1
-                  AND time >= $2 AND time <= $3
-                ORDER BY time DESC
-                LIMIT 2500
-                """,
-                sid,
-                lookback_start,
-                to_time,
-            )
-        if not rows:
-            logger.debug(f"No candles for symbol {sid} in range")
-            continue
-
+    # Chunk size for fetching candles (keeps memory bounded)
+    CHUNK_SIZE = 5000
+    
+    # OPTIMIZATION 3: Larger batch insert size (was 1000, now 5000)
+    BATCH_INSERT_SIZE = 5000
+    
+    # OPTIMIZATION 4: Parallel symbol processing
+    MAX_CONCURRENT_SYMBOLS = 4  # Process 4 symbols concurrently
+    
+    logger.info(f"Processing {len(symbol_ids)} symbols with {MAX_CONCURRENT_SYMBOLS} concurrent workers")
+    
+    # Thread-safe batch collection
+    batch_lock = asyncio.Lock()
+    
+    async def insert_batch_if_needed() -> None:
+        """Insert batch if size exceeds threshold (thread-safe)."""
+        nonlocal batch_results
+        async with batch_lock:
+            if len(batch_results) >= BATCH_INSERT_SIZE:
+                await repo.store_indicator_results_batch(batch_results)
+                batch_results = []
+    
+    async def process_symbol(sid: int) -> tuple[int, int]:
+        """Process a single symbol. Returns (processed_count, total_indicator_count)."""
+        nonlocal batch_results
+        
         # Get symbol name
         async with db_pool.acquire() as conn:
             symbol = await conn.fetchval("SELECT symbol FROM symbols WHERE id = $1", sid)
         if not symbol:
             logger.warning(f"Symbol {sid} not found")
-            continue
+            return 0, 0
 
-        # Convert rows to chronological order (since we fetched DESC)
-        rows_list = list(reversed(rows))
-        # Initialize ring buffer for this symbol
-        buffer = deque(maxlen=ring_buffer_size)
-        # Process each candle
-        for row in rows_list:
-            t = row["time"]
-            # Only calculate indicators for candles within the target time range
-            if t < from_time:
-                # Add to buffer as history, but don't calculate
-                buffer.append(row)
-                continue
-            # Ensure we have enough history (at least 2 candles) for calculations
-            if len(buffer) < 1:
-                # Not enough history, add current candle to buffer and continue
-                buffer.append(row)
-                continue
+        buffer = IndicatorsBuffer(db_pool, symbol, max_period)
+        symbol_processed = 0
+        symbol_indicators = 0
 
-            # Build price arrays from buffer (preceding candles) plus current candle
-            all_rows = list(buffer) + [row]
-            prices = np.array([float(r["close"]) for r in all_rows], dtype=np.float64)
-            volumes = np.array([float(r["volume"]) for r in all_rows], dtype=np.float64)
-            highs = np.array([float(r["high"]) for r in all_rows], dtype=np.float64)
-            lows = np.array([float(r["low"]) for r in all_rows], dtype=np.float64)
-            opens_arr = np.array([float(r["open"]) for r in all_rows], dtype=np.float64)
+        # We will fetch candles from lookback_start to to_time in chunks.
+        # lookback_start ensures we have enough history for the first target candle.
+        lookback_start = from_time - timedelta(seconds=max_period)
 
-            # Calculate indicators
-            results: dict[str, Any] = {}
-            for defn in calc._definitions:
-                try:
-                    cls = calc._class_cache.get(f"{defn['module_path']}.{defn['class_name']}")
-                    if cls is None:
-                        continue
+        # Use keyset pagination: fetch rows where time >= cursor, ordered by time ASC.
+        cursor = lookback_start
+        first_target_candle_seen = False
 
-                    indicator = cls(**defn["params"])
-                    result: IndicatorResult = indicator.calculate(
-                        prices=prices,
-                        volumes=volumes,
-                        highs=highs,
-                        lows=lows,
-                        opens=opens_arr,
-                        closes=prices,
-                    )
+        while cursor < to_time:
+            async with db_pool.acquire() as conn:
+                rows = await conn.fetch(
+                    """
+                    SELECT time, open, high, low, close, volume
+                    FROM candles_1s
+                    WHERE symbol_id = $1
+                      AND time >= $2 AND time < $3
+                    ORDER BY time ASC
+                    LIMIT $4
+                    """,
+                    sid,
+                    cursor,
+                    to_time,
+                    CHUNK_SIZE,
+                )
+            if not rows:
+                break
 
-                    for sub_key, values in result.values.items():
-                        if len(result.values) == 1 or sub_key == "value":
-                            flat_key = defn["name"]
-                        else:
-                            flat_key = f"{defn['name']}_{sub_key}"
+            # Process rows in chronological order (they already are ASC)
+            for row in rows:
+                t = row["time"]
+                # Update cursor for next keyset page
+                cursor = t + timedelta(seconds=1)
 
-                        if len(values) > 0:
-                            val = values[-1]
-                            if not np.isnan(val) and not np.isinf(val):
-                                results[flat_key] = float(val)
+                # If this candle is before the target range, just add as history
+                if t < from_time:
+                    await buffer.add_candle(row)
+                    continue
+
+                # First candle in target range: ensure buffer has history
+                if not first_target_candle_seen:
+                    await buffer.initialization(t, row)
+                    first_target_candle_seen = True
+
+                # OPTIMIZATION 2: RingBuffer already stores numpy arrays
+                # Access underlying array directly without np.asarray() conversion
+                closes_arr = np.array(buffer.closes_buff)
+                volumes_arr = np.array(buffer.volumes_buff)
+                highs_arr = np.array(buffer.highs_buff)
+                lows_arr = np.array(buffer.lows_buff)
+                opens_arr = np.array(buffer.opens_buff)
+
+                # Calculate indicators using pre-created instances
+                results: dict[str, Any] = {}
+                for defn, indicator in indicators:
+                    try:
+                        result: IndicatorResult = indicator.calculate(
+                            prices=closes_arr,
+                            volumes=volumes_arr,
+                            highs=highs_arr,
+                            lows=lows_arr,
+                            opens=opens_arr
+                        )
+
+                        for sub_key, values in result.values.items():
+                            if len(result.values) == 1 or sub_key == "value":
+                                flat_key = defn["name"]
+                            else:
+                                flat_key = f"{defn['name']}_{sub_key}"
+
+                            if len(values) > 0:
+                                val = values[-1]
+                                if not np.isnan(val) and not np.isinf(val):
+                                    results[flat_key] = float(val)
+                                else:
+                                    results[flat_key] = None
                             else:
                                 results[flat_key] = None
-                        else:
-                            results[flat_key] = None
 
-                except Exception as e:
-                    logger.error(f"Error calculating {defn['name']} for {symbol}: {e}")
+                    except Exception as e:
+                        logger.error(f"Error calculating {defn['name']} for {symbol}: {e}")
 
-            if results:
-                # Data quality check
-                if with_quality_guard:
-                    quality_report = calc._quality_guard.validate_indicator_values(
-                        symbol_id=sid,
-                        symbol=symbol,
-                        time=t,
-                        values=results,
-                    )
-
-                    if quality_report.is_critical:
-                        logger.error(
-                            f"CRITICAL quality issue for {symbol} at {t}: "
-                            f"{quality_report.issue_count} issues, score={quality_report.quality_score}"
+                if results:
+                    # Data quality check
+                    if with_quality_guard:
+                        quality_report = calc._quality_guard.validate_indicator_values(
+                            symbol_id=sid,
+                            symbol=symbol,
+                            time=t,
+                            values=results,
                         )
-                        # Add to buffer and continue without storing results
-                        buffer.append(row)
-                        continue
 
-                batch_results.append(
-                    (
-                        t,
-                        sid,
-                        float(row["close"]),
-                        float(row["volume"]),
-                        results,
+                        if quality_report.is_critical:
+                            logger.error(
+                                f"CRITICAL quality issue for {symbol} at {t}: "
+                                f"{quality_report.issue_count} issues, score={quality_report.quality_score}"
+                            )
+                            # Add to buffer and continue without storing results
+                            await buffer.add_candle(row)
+                            continue
+
+                    batch_results.append(
+                        (
+                            t,
+                            sid,
+                            float(row["close"]),
+                            float(row["volume"]),
+                            results,
+                        )
                     )
-                )
 
-            # Update counters
-            processed_count += 1
-            # Count how many indicators were calculated (approximate)
-            total_count += len(
-                [
-                    k
-                    for k in calc._definitions
-                    if k["name"]
-                    in [
-                        rn.split("_")[0] if "_" in rn else rn.split("_")[0] for rn in results.keys()
-                    ]
-                ]
-            )
+                # Update counters (local to symbol)
+                symbol_processed += 1
+                symbol_indicators += len(results)
 
-            # Add current candle to buffer for future calculations
-            buffer.append(row)
+                # Add current candle to buffer for future calculations
+                await buffer.add_candle(row)
 
-            # Progress indicator: print '.' every 100 candles
-            if processed_count % 100 == 0:
-                print(".", end="", flush=True)
+                # Progress indicator: print '.' every 100 candles (per symbol)
+                if symbol_processed % 100 == 0:
+                    print(".", end="", flush=True)
 
-            # Periodically insert batch results to avoid memory buildup
-            if len(batch_results) >= 1000:
-                await repo.store_indicator_results_batch(batch_results)
-                batch_results = []
-                logger.info(f"  Inserted batch, total processed: {processed_count}")
+                # Periodically insert batch results (thread-safe)
+                await insert_batch_if_needed()
 
-        # End of symbol loop
-        logger.debug(f"Finished processing symbol {sid} ({len(rows_list)} candles)")
+        logger.info(f"Finished symbol {symbol}: {symbol_processed} candles, {symbol_indicators} indicators")
+        return symbol_processed, symbol_indicators
+    
+    # Process symbols with limited concurrency
+    from asyncio import Semaphore, gather
+    sem = Semaphore(MAX_CONCURRENT_SYMBOLS)
+    
+    async def process_with_limit(sid: int) -> tuple[int, int]:
+        async with sem:
+            return await process_symbol(sid)
+    
+    # Run all symbols in parallel with concurrency limit
+    import time
+    start_time = time.time()
+    results = await gather(*[process_with_limit(sid) for sid in symbol_ids])
+    
+    # Aggregate results
+    total_processed = sum(r[0] for r in results)
+    total_indicators = sum(r[1] for r in results)
+    elapsed = time.time() - start_time
+    
+    logger.info(f"Processed {total_processed} candles across {len(symbol_ids)} symbols in {elapsed:.1f}s")
+    logger.info(f"Rate: {total_processed/elapsed:.0f} candles/second")
 
     # Insert remaining batch results
     if batch_results:
         await repo.store_indicator_results_batch(batch_results)
         batch_results = []
 
-    logger.info(f"Total candles processed: {processed_count}")
-    return total_count
-
-
-async def load_indicator_schema(db_pool: asyncpg.Pool) -> list[str]:
-    """Load fixed global indicator key list from DB (run once).
-
-    Uses the superset of all indicator keys ever stored in candle_indicators
-    by extracting keys from the values JSONB column. This avoids storing
-    redundant indicator_keys array and ensures schema consistency.
-    """
-    async with db_pool.acquire() as conn:
-        rows = await conn.fetch("""
-            SELECT DISTINCT jsonb_object_keys(values) AS k
-            FROM candle_indicators
-            WHERE values IS NOT NULL
-            ORDER BY k
-            """)
-        schema = [r["k"] for r in rows if r["k"]]
-    logger.info(f"Loaded fixed indicator schema: {len(schema)} keys")
-    return schema
+    return total_indicators
 
 
 async def recalculate_wide_vectors(

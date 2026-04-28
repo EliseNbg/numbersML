@@ -20,6 +20,7 @@ import numpy as np
 
 from src.domain.services.data_quality import DataQualityGuard
 from src.indicators.base import Indicator, IndicatorResult
+from src.pipeline.indicators_buffer import IndicatorsBuffer
 
 logger = logging.getLogger(__name__)
 
@@ -380,7 +381,6 @@ class IndicatorCalculator:
                     highs=highs,
                     lows=lows,
                     opens=opens,
-                    closes=prices,
                 )
 
                 # Use the name from the indicator definition (e.g. 'rsi_14', 'macd_12_26_9')
