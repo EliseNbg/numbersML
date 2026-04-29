@@ -22,9 +22,19 @@ def event_loop():
 @pytest.fixture(scope="session")
 async def db_pool():
     """Create a database connection pool for the test session."""
-    pool = await asyncpg.create_pool(DB_URL, min_size=2, max_size=10)
-    yield pool
-    await pool.close()
+    last_error = None
+    for attempt in range(10):  # Retry up to 10 times
+        try:
+            pool = await asyncpg.create_pool(DB_URL, min_size=2, max_size=10)
+            yield pool
+            await pool.close()
+            return
+        except Exception as e:
+            last_error = e
+            print(f"DB connection attempt {attempt + 1} failed: {e}")
+            await asyncio.sleep(1)
+    
+    raise last_error or Exception("Failed to connect to database after 10 attempts")
 
 
 @pytest.fixture(autouse=True)

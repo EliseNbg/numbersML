@@ -130,7 +130,7 @@ async def recalculate_indicators(
     BATCH_INSERT_SIZE = 5000
     
     # OPTIMIZATION 4: Parallel symbol processing
-    MAX_CONCURRENT_SYMBOLS = 4  # Process 4 symbols concurrently
+    MAX_CONCURRENT_SYMBOLS = 8  # Process 8 symbols concurrently
     
     logger.info(f"Processing {len(symbol_ids)} symbols with {MAX_CONCURRENT_SYMBOLS} concurrent workers")
     
@@ -235,9 +235,12 @@ async def recalculate_indicators(
                                 if not np.isnan(val) and not np.isinf(val):
                                     results[flat_key] = float(val)
                                 else:
+                                    logger.error(f"1.Error calculating indicator {flat_key} for {symbol}, time:{t}")
                                     results[flat_key] = None
                             else:
                                 results[flat_key] = None
+                                logger.error(f"2.Error calculating indicator {flat_key} for {symbol}, time:{t}")
+                                    
 
                     except Exception as e:
                         logger.error(f"Error calculating {defn['name']} for {symbol}: {e}")
