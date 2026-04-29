@@ -81,7 +81,7 @@ jobs:
             --cov-report=term-missing \
             --cov-fail-under=75
         env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          TEST_DB_URL: postgresql://test:test@localhost:5432/test
           REDIS_URL: redis://localhost:6379
 
       - name: Upload coverage
@@ -96,6 +96,21 @@ jobs:
   safety-tests:
     name: Safety Critical Tests
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
     steps:
       - uses: actions/checkout@v4
 
@@ -114,6 +129,8 @@ jobs:
           pytest tests/unit/application/services/test_safety_guardrails.py -v
           pytest tests/unit/application/services/test_strategy_lifecycle.py -v
           pytest tests/unit/application/services/test_llm_strategy_service.py -v
+        env:
+          TEST_DB_URL: postgresql://test:test@localhost:5432/test
 
   # ============================================================================
   # Stage 4: API Contract Tests
@@ -182,7 +199,7 @@ asyncio.run(init_db())
           pytest tests/unit/infrastructure/api/test_routes.py -v
           pytest tests/integration/api/ -v --timeout=60
         env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          TEST_DB_URL: postgresql://test:test@localhost:5432/test
 
   # ============================================================================
   # Stage 5: E2E Workflow Test
@@ -226,7 +243,7 @@ asyncio.run(init_db())
         run: |
           pytest tests/e2e/test_strategy_workflow.py -v --timeout=120
         env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          TEST_DB_URL: postgresql://test:test@localhost:5432/test
           REDIS_URL: redis://localhost:6379
 
   # ============================================================================
@@ -235,6 +252,21 @@ asyncio.run(init_db())
   rollback-test:
     name: Rollback Procedure Test
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
     steps:
       - uses: actions/checkout@v4
 
@@ -251,6 +283,8 @@ asyncio.run(init_db())
       - name: Test emergency stop procedures
         run: |
           pytest tests/unit/application/services/test_safety_guardrails.py::TestEmergencyStopService -v
+        env:
+          TEST_DB_URL: postgresql://test:test@localhost:5432/test
 
   # ============================================================================
   # Final Gate

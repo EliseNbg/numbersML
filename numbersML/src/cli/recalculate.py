@@ -174,7 +174,7 @@ async def recalculate_indicators(
             async with db_pool.acquire() as conn:
                 rows = await conn.fetch(
                     """
-                    SELECT time, open, high, low, close, volume
+                    SELECT time, high, low, close, volume
                     FROM candles_1s
                     WHERE symbol_id = $1
                       AND time >= $2 AND time < $3
