@@ -12,12 +12,14 @@ from numpy_ringbuffer import RingBuffer
 
 class IndicatorsBuffer:
     """
-    Ring buffers for OHLCV data of a single symbol.
+    Ring buffers for HLCV data of a single symbol (open prices not needed).
 
-    Maintains separate ring buffers for open, high, low, close, and volume,
+    Maintains separate ring buffers for high, low, close, and volume,
     each with capacity equal to the maximum indicator period (in seconds).
     Buffers are always kept filled (no NaN gaps) to ensure indicator
     calculations never produce NaN/inf due to insufficient history.
+
+    Note: Open prices are not stored since no indicator uses them.
     """
 
     def __init__(self, dbconn, symbol: str, max_indicator_period: int) -> None:
@@ -34,9 +36,9 @@ class IndicatorsBuffer:
         self.max_indicator_period = max_indicator_period
 
         # Ring buffers with capacity = max_indicator_period candles
+        # opens_buff excluded - no indicator uses open prices
         self.closes_buff = RingBuffer(capacity=max_indicator_period, dtype=np.float64)
         self.volumes_buff = RingBuffer(capacity=max_indicator_period, dtype=np.float64)
-        self.opens_buff = RingBuffer(capacity=max_indicator_period, dtype=np.float64)
         self.highs_buff = RingBuffer(capacity=max_indicator_period, dtype=np.float64)
         self.lows_buff = RingBuffer(capacity=max_indicator_period, dtype=np.float64)
 
@@ -80,8 +82,8 @@ class IndicatorsBuffer:
 
         Args:
             candle: dict with keys open, high, low, close, volume
+            (open is ignored - not used by any indicator)
         """
-        self.opens_buff.append(float(candle["open"]))
         self.highs_buff.append(float(candle["high"]))
         self.lows_buff.append(float(candle["low"]))
         self.closes_buff.append(float(candle["close"]))
@@ -140,7 +142,6 @@ class IndicatorsBuffer:
 
     def _clear_all(self) -> None:
         """Reset all ring buffers to empty."""
-        self.opens_buff = RingBuffer(capacity=self.max_indicator_period, dtype=np.float64)
         self.highs_buff = RingBuffer(capacity=self.max_indicator_period, dtype=np.float64)
         self.lows_buff = RingBuffer(capacity=self.max_indicator_period, dtype=np.float64)
         self.closes_buff = RingBuffer(capacity=self.max_indicator_period, dtype=np.float64)
@@ -150,7 +151,6 @@ class IndicatorsBuffer:
         """Load rows into ring buffers (assumes rows are chronological)."""
         self._clear_all()
         for r in rows:
-            self.opens_buff.append(float(r["open"]))
             self.highs_buff.append(float(r["high"]))
             self.lows_buff.append(float(r["low"]))
             self.closes_buff.append(float(r["close"]))
@@ -160,7 +160,6 @@ class IndicatorsBuffer:
         """Fill buffers by repeating the same candle max_indicator_period times."""
         self._clear_all()
         for _ in range(self.max_indicator_period):
-            self.opens_buff.append(float(candle["open"]))
             self.highs_buff.append(float(candle["high"]))
             self.lows_buff.append(float(candle["low"]))
             self.closes_buff.append(float(candle["close"]))

@@ -37,7 +37,6 @@ class TestIndicatorsBuffer:
         assert buffer.max_indicator_period == max_period
         assert buffer.closes_buff.maxlen == max_period
         assert buffer.volumes_buff.maxlen == max_period
-        assert buffer.opens_buff.maxlen == max_period
         assert buffer.highs_buff.maxlen == max_period
         assert buffer.lows_buff.maxlen == max_period
         # Buffers should be empty initially
@@ -236,10 +235,7 @@ class TestIndicatorsBuffer:
         buffer._fill_with_candle(candle)
 
         assert len(buffer.closes_buff) == max_period
-        np.testing.assert_array_almost_equal(
-            buffer.closes_buff, np.full(max_period, candle["close"])
-        )
-        np.testing.assert_array_almost_equal(buffer.opens_buff, np.full(max_period, candle["open"]))
+        np.testing.assert_array_almost_equal(buffer.closes_buff, np.full(max_period, candle["close"]))
         np.testing.assert_array_almost_equal(
             buffer.volumes_buff, np.full(max_period, candle["volume"])
         )

@@ -156,6 +156,8 @@ async def recalculate_indicators(
             logger.warning(f"Symbol {sid} not found")
             return 0, 0
 
+        logger.info(f"Start processed {symbol} from {from_time} max_period:{max_period}.")
+
         buffer = IndicatorsBuffer(db_pool, symbol, max_period)
         symbol_processed = 0
         symbol_indicators = 0
@@ -204,12 +206,12 @@ async def recalculate_indicators(
                     first_target_candle_seen = True
 
                 # OPTIMIZATION 2: RingBuffer already stores numpy arrays
-                # Access underlying array directly without np.asarray() conversion
-                closes_arr = np.array(buffer.closes_buff)
-                volumes_arr = np.array(buffer.volumes_buff)
-                highs_arr = np.array(buffer.highs_buff)
-                lows_arr = np.array(buffer.lows_buff)
-                opens_arr = np.array(buffer.opens_buff)
+                # Use asarray to avoid copy and deprecation warning with numpy 2.0
+                # Note: opens_buff is not used - no indicator requires open prices
+                closes_arr = np.asarray(buffer.closes_buff)
+                volumes_arr = np.asarray(buffer.volumes_buff)
+                highs_arr = np.asarray(buffer.highs_buff)
+                lows_arr = np.asarray(buffer.lows_buff)
 
                 # Calculate indicators using pre-created instances
                 results: dict[str, Any] = {}
@@ -220,7 +222,6 @@ async def recalculate_indicators(
                             volumes=volumes_arr,
                             highs=highs_arr,
                             lows=lows_arr,
-                            opens=opens_arr
                         )
 
                         for sub_key, values in result.values.items():
