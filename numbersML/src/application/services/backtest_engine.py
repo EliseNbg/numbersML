@@ -268,42 +268,40 @@ class BacktestMetricsCalculator:
         """Calculate all metrics from backtest data."""
         metrics = BacktestMetrics()
         
-        if not trades or len(equity_curve) < 2:
+        if not equity_curve:
             return metrics
         
         # Basic counts
-        metrics.total_trades = len([t for t in trades if t.exit_time is not None])
         closed_trades = [t for t in trades if t.exit_time is not None]
+        metrics.total_trades = len(closed_trades)
         
-        if not closed_trades:
-            return metrics
+        if closed_trades:
+            # PnL statistics
+            winning_trades = [t for t in closed_trades if t.pnl > 0]
+            losing_trades = [t for t in closed_trades if t.pnl < 0]
+            
+            metrics.winning_trades = len(winning_trades)
+            metrics.losing_trades = len(losing_trades)
+            metrics.win_rate = metrics.winning_trades / metrics.total_trades if metrics.total_trades > 0 else 0
+            metrics.loss_rate = 1 - metrics.win_rate
+            
+            # PnL amounts
+            gross_profit = sum(t.pnl for t in winning_trades)
+            gross_loss = abs(sum(t.pnl for t in losing_trades))
+            
+            metrics.avg_trade = sum(t.pnl for t in closed_trades) / len(closed_trades)
+            metrics.avg_win = gross_profit / len(winning_trades) if winning_trades else 0
+            metrics.avg_loss = gross_loss / len(losing_trades) if losing_trades else 0
+            
+            metrics.largest_win = max((t.pnl for t in winning_trades), default=0)
+            metrics.largest_loss = min((t.pnl for t in losing_trades), default=0)
+            
+            metrics.profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf')
+            
+            # Expectancy
+            metrics.expectancy = (metrics.win_rate * metrics.avg_win) - (metrics.loss_rate * abs(metrics.avg_loss))
         
-        # PnL statistics
-        winning_trades = [t for t in closed_trades if t.pnl > 0]
-        losing_trades = [t for t in closed_trades if t.pnl < 0]
-        
-        metrics.winning_trades = len(winning_trades)
-        metrics.losing_trades = len(losing_trades)
-        metrics.win_rate = metrics.winning_trades / metrics.total_trades if metrics.total_trades > 0 else 0
-        metrics.loss_rate = 1 - metrics.win_rate
-        
-        # PnL amounts
-        gross_profit = sum(t.pnl for t in winning_trades)
-        gross_loss = abs(sum(t.pnl for t in losing_trades))
-        
-        metrics.avg_trade = sum(t.pnl for t in closed_trades) / len(closed_trades)
-        metrics.avg_win = gross_profit / len(winning_trades) if winning_trades else 0
-        metrics.avg_loss = gross_loss / len(losing_trades) if losing_trades else 0
-        
-        metrics.largest_win = max((t.pnl for t in winning_trades), default=0)
-        metrics.largest_loss = min((t.pnl for t in losing_trades), default=0)
-        
-        metrics.profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf')
-        
-        # Expectancy
-        metrics.expectancy = (metrics.win_rate * metrics.avg_win) - (metrics.loss_rate * abs(metrics.avg_loss))
-        
-        # Returns
+        # Returns (can be calculated without trades if equity curve exists)
         final_equity = equity_curve[-1].equity
         metrics.total_return = final_equity - initial_balance
         metrics.total_return_pct = (metrics.total_return / initial_balance) * 100

@@ -263,8 +263,8 @@ class TestBacktestMetricsCalculator:
             end_time=datetime(2024, 1, 5),
         )
         
-        # Max drawdown from peak of 11000 to 9500 = (11000-9500)/11000 = 13.6%
-        assert abs(metrics.max_drawdown_pct - 13.6) < 1.0
+        # Max drawdown from peak of 11000 to 9500 = (11000-9500)/11000 = 13.636%
+        assert abs(metrics.max_drawdown_pct - 13.636) < 0.1
 
     def test_sharpe_ratio(self):
         """Test Sharpe ratio calculation."""
@@ -277,7 +277,7 @@ class TestBacktestMetricsCalculator:
         
         for i in range(100):
             # Small daily gains
-            equity += np.random.normal(10, 50)
+            equity += 10 + (i % 5)  # Deterministic growth
             equity_curve.append(EquityPoint(
                 base_time + timedelta(days=i),
                 equity, equity, 0, 0
@@ -293,7 +293,7 @@ class TestBacktestMetricsCalculator:
         )
         
         # Should have some Sharpe ratio
-        assert metrics.sharpe_ratio is not None
+        assert metrics.sharpe_ratio != 0
         assert metrics.volatility_annualized > 0
 
     def test_no_trades(self):
@@ -302,7 +302,7 @@ class TestBacktestMetricsCalculator:
         
         metrics = calc.calculate(
             trades=[],
-            equity_curve=[],
+            equity_curve=[EquityPoint(datetime(2024, 1, 1), 10000, 10000, 0, 0), EquityPoint(datetime(2024, 1, 2), 10000, 10000, 0, 0)],
             initial_balance=10000,
             total_fees=0,
             start_time=datetime(2024, 1, 1),
@@ -317,23 +317,25 @@ class TestBacktestMetricsCalculator:
         calc = BacktestMetricsCalculator()
         
         # Create pattern: 3 wins, 2 losses, 4 wins, 1 loss
+        now = datetime(2024, 1, 1)
         trades = [
-            TradeRecord(pnl=100),  # Win
-            TradeRecord(pnl=100),  # Win
-            TradeRecord(pnl=100),  # Win
-            TradeRecord(pnl=-50),  # Loss
-            TradeRecord(pnl=-50),  # Loss
-            TradeRecord(pnl=100),  # Win
-            TradeRecord(pnl=100),  # Win
-            TradeRecord(pnl=100),  # Win
-            TradeRecord(pnl=100),  # Win
-            TradeRecord(pnl=-50),  # Loss
+            TradeRecord(entry_time=now, pnl=100, exit_time=now + timedelta(minutes=30)),  # Win
+            TradeRecord(entry_time=now, pnl=100, exit_time=now + timedelta(minutes=30)),  # Win
+            TradeRecord(entry_time=now, pnl=100, exit_time=now + timedelta(minutes=30)),  # Win
+            TradeRecord(entry_time=now, pnl=-50, exit_time=now + timedelta(minutes=30)),  # Loss
+            TradeRecord(entry_time=now, pnl=-50, exit_time=now + timedelta(minutes=30)),  # Loss
+            TradeRecord(entry_time=now, pnl=100, exit_time=now + timedelta(minutes=30)),  # Win
+            TradeRecord(entry_time=now, pnl=100, exit_time=now + timedelta(minutes=30)),  # Win
+            TradeRecord(entry_time=now, pnl=100, exit_time=now + timedelta(minutes=30)),  # Win
+            TradeRecord(entry_time=now, pnl=100, exit_time=now + timedelta(minutes=30)),  # Win
+            TradeRecord(entry_time=now, pnl=-50, exit_time=now + timedelta(minutes=30)),  # Loss
         ]
         for i, t in enumerate(trades):
             t.entry_time = datetime(2024, 1, 1) + timedelta(hours=i)
             t.exit_time = t.entry_time + timedelta(minutes=30)
         
         equity_curve = [EquityPoint(datetime(2024, 1, 1), 10000, 10000, 0, 0)]
+        # Need at least 2 points for calculate not to return early if no trades, but here we HAVE trades
         
         metrics = calc.calculate(
             trades=trades,
@@ -456,8 +458,8 @@ class TestBacktestEngine:
         # Should have paid some fees
         assert result.metrics.total_fees > 0
         
-        # Total fees should be roughly 0.1% of traded volume
-        total_fees = sum(t.fees for t in result.trades if t.exit_time)
+        # Total fees should be the sum of all fees from all trade legs
+        total_fees = sum(t.fees for t in result.trades)
         assert abs(result.metrics.total_fees - total_fees) < 0.01
 
     @pytest.mark.asyncio
