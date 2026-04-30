@@ -73,6 +73,17 @@ jobs:
           pip install -r requirements-dev.txt
           pip install -e ".[dev]"
 
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432; then
+              echo "PostgreSQL is ready!"
+              break
+            fi
+            echo "Waiting for PostgreSQL... attempt $i/30"
+            sleep 1
+          done
+
       - name: Run unit tests
         run: |
           pytest tests/unit/ -v \
@@ -124,6 +135,17 @@ jobs:
           pip install -r requirements-dev.txt
           pip install -e ".[dev]"
 
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432; then
+              echo "PostgreSQL is ready!"
+              break
+            fi
+            echo "Waiting for PostgreSQL... attempt $i/30"
+            sleep 1
+          done
+
       - name: Run safety-critical tests
         run: |
           pytest tests/unit/application/services/test_safety_guardrails.py -v
@@ -165,6 +187,17 @@ jobs:
         run: |
           pip install -r requirements-dev.txt
           pip install -e ".[dev]"
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432; then
+              echo "PostgreSQL is ready!"
+              break
+            fi
+            echo "Waiting for PostgreSQL... attempt $i/30"
+            sleep 1
+          done
 
       - name: Start API server
         run: |
@@ -239,6 +272,17 @@ asyncio.run(init_db())
           pip install -r requirements-dev.txt
           pip install -e ".[dev]"
 
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432; then
+              echo "PostgreSQL is ready!"
+              break
+            fi
+            echo "Waiting for PostgreSQL... attempt $i/30"
+            sleep 1
+          done
+
       - name: Run E2E workflow test
         run: |
           pytest tests/e2e/test_strategy_workflow.py -v --timeout=120
@@ -279,6 +323,17 @@ asyncio.run(init_db())
         run: |
           pip install -r requirements-dev.txt
           pip install -e ".[dev]"
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432; then
+              echo "PostgreSQL is ready!"
+              break
+            fi
+            echo "Waiting for PostgreSQL... attempt $i/30"
+            sleep 1
+          done
 
       - name: Test emergency stop procedures
         run: |

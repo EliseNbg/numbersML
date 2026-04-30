@@ -189,6 +189,18 @@ async def recalculate_indicators(
             if not rows:
                 break
 
+            # Bulk fetch existing indicators for this chunk to avoid per-candle DB calls
+            existing_indicator_times = set()
+            chunk_start_time = rows[0]["time"]
+            chunk_end_time = rows[-1]["time"]
+            
+            async with db_pool.acquire() as conn:
+                existing_rows = await conn.fetch(
+                    "SELECT time FROM candle_indicators WHERE symbol_id = $1 AND time >= $2 AND time < $3",
+                    sid, chunk_start_time, chunk_end_time + timedelta(seconds=1)
+                )
+                existing_indicator_times = {row["time"] for row in existing_rows}
+
             # Process rows in chronological order (they already are ASC)
             for row in rows:
                 t = row["time"]
@@ -204,6 +216,13 @@ async def recalculate_indicators(
                 if not first_target_candle_seen:
                     await buffer.initialization(t, row)
                     first_target_candle_seen = True
+
+                # OPTIMIZATION: Skip indicator calculation if already exist for this candle
+                if t in existing_indicator_times:
+                    # Indicators already exist, skip calculation but add to buffer
+                    await buffer.add_candle(row)
+                    symbol_processed += 1
+                    continue
 
                 # OPTIMIZATION 2: RingBuffer already stores numpy arrays
                 # Use asarray to avoid copy and deprecation warning with numpy 2.0
