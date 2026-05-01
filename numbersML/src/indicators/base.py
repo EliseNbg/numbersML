@@ -144,6 +144,52 @@ class Indicator(ABC):
             "description": self.description,
         }
 
+    def calculate_latest(
+        self,
+        prices: np.ndarray,
+        volumes: np.ndarray,
+        highs: Optional[np.ndarray] = None,
+        lows: Optional[np.ndarray] = None,
+        opens: Optional[np.ndarray] = None,
+    ) -> Dict[str, Optional[float]]:
+        """
+        Calculate only the latest (last) indicator value.
+
+        This is an optimized version that only returns the most recent value,
+        useful for real-time calculations where historical values aren't needed.
+
+        Args:
+            prices: Array of prices (close prices, required)
+            volumes: Array of volumes (required)
+            highs: Array of highs (optional)
+            lows: Array of lows (optional)
+            opens: Array of opens (optional)
+
+        Returns:
+            Dictionary with the same keys as calculate(), but only the latest value.
+            NaN values are converted to None.
+        """
+        result = self.calculate(
+            prices=prices,
+            volumes=volumes,
+            highs=highs,
+            lows=lows,
+            opens=opens,
+        )
+
+        latest: Dict[str, Optional[float]] = {}
+        for key, values in result.values.items():
+            if len(values) > 0:
+                val = float(values[-1])
+                if np.isnan(val) or np.isinf(val):
+                    latest[key] = None
+                else:
+                    latest[key] = val
+            else:
+                latest[key] = None
+
+        return latest
+
     @property
     def name(self) -> str:
         """Generate unique name from class and parameters."""

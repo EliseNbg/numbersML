@@ -72,6 +72,91 @@ async def load_indicator_schema(db_pool: asyncpg.Pool) -> list[str]:
     return schema
 
 
+async def _bulk_fetch_existing_indicators(
+    db_pool: asyncpg.Pool,
+    symbol_ids: list[int],
+    from_time: datetime,
+    to_time: datetime,
+) -> dict[int, list[datetime]]:
+    """
+    Bulk fetch existing indicator timestamps for symbols in time range.
+
+    Returns:
+        Dict mapping symbol_id to list of datetime objects.
+    """
+    result: dict[int, list[datetime]] = {}
+
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT symbol_id, time
+            FROM candle_indicators
+            WHERE symbol_id = ANY($1)
+              AND time >= $2
+              AND time < $3
+            ORDER BY symbol_id, time
+            """,
+            symbol_ids,
+            from_time,
+            to_time,
+        )
+
+    for row in rows:
+        sid = row["symbol_id"]
+        if sid not in result:
+            result[sid] = []
+        result[sid].append(row["time"])
+
+    return result
+
+
+async def _bulk_fetch_historical_candles(
+    db_pool: asyncpg.Pool,
+    symbol_ids: list[int],
+    from_time: datetime,
+    to_time: datetime,
+) -> dict[int, list[dict[str, Any]]]:
+    """
+    Bulk fetch historical candles for symbols in time range.
+
+    Returns:
+        Dict mapping symbol_id to list of candle dicts with keys:
+        time, high, low, close, volume
+    """
+    result: dict[int, list[dict[str, Any]]] = {}
+
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT symbol_id, time, high, low, close, volume
+            FROM candles_1s
+            WHERE symbol_id = ANY($1)
+              AND time >= $2
+              AND time < $3
+            ORDER BY symbol_id, time
+            """,
+            symbol_ids,
+            from_time,
+            to_time,
+        )
+
+    for row in rows:
+        sid = row["symbol_id"]
+        if sid not in result:
+            result[sid] = []
+        result[sid].append(
+            {
+                "time": row["time"],
+                "high": float(row["high"]),
+                "low": float(row["low"]),
+                "close": float(row["close"]),
+                "volume": float(row["volume"]),
+            }
+        )
+
+    return result
+
+
 async def recalculate_indicators(
     db_pool: asyncpg.Pool,
     symbol_ids: list[int],
@@ -228,7 +313,7 @@ async def recalculate_indicators(
                 cursor_time = t + timedelta(seconds=1)
                 time_points_processed += 1
                 if time_points_processed % 300 == 0:
-                    print(f"*", end="", flush=True)
+                    print("*", end="", flush=True)
                 continue
 
             # Process each symbol at this time
