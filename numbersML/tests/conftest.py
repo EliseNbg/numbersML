@@ -5,11 +5,20 @@ Provides TEST/USDT setup and cleanup for database tests.
 """
 import asyncio
 import os
+import sys
 
 import asyncpg
 import pytest
 
-DB_URL = os.getenv("TEST_DB_URL", "postgresql://crypto:crypto_secret@localhost:5432/crypto_trading")
+# Add src to path for imports
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+src_path = os.path.join(project_root, 'src')
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
+
+from src.infrastructure.database.config import get_test_db_url
+
+DB_URL = get_test_db_url()
 
 
 @pytest.fixture(scope="session")

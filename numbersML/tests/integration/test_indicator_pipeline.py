@@ -30,6 +30,8 @@ src_path = os.path.join(project_root, 'src')
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
+from src.infrastructure.database.config import get_test_db_url
+
 from src.indicators.momentum import RSIIndicator, StochasticIndicator
 from src.indicators.trend import SMAIndicator, EMAIndicator, MACDIndicator, ADXIndicator, AroonIndicator
 from src.indicators.volatility_volume import (
@@ -42,7 +44,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DB_URL = "postgresql://crypto:crypto_secret@localhost:5432/crypto_trading"
+DB_URL = get_test_db_url()
 
 
 class TestResult:

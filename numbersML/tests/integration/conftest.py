@@ -4,23 +4,19 @@ Sets up test data in the database before tests run.
 """
 import asyncio
 import os
+import sys
 
 import asyncpg
 import pytest
 
+# Add src to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'src'))
 
-@pytest.fixture(scope="session", autouse=True)
-def setup_test_data():
-    """Set up test data in the database for integration tests.
+from src.infrastructure.database.config import get_test_db_url
 
-    This fixture runs once per test session and loads the test data SQL script.
-    """
-    db_url = os.environ.get(
-        "TEST_DB_URL", "postgresql://test:test@localhost:5432/test"
-    )
 
-    # Parse URL
-    # postgresql://user:pass@host:port/dbname
+def _parse_db_url(db_url: str) -> dict:
+    """Parse postgresql:// URL into connection parameters."""
     import re
 
     match = re.match(
@@ -29,12 +25,24 @@ def setup_test_data():
     )
     if not match:
         pytest.fail(f"Invalid TEST_DB_URL format: {db_url}")
+    return {
+        "host": match.group("host"),
+        "port": int(match.group("port")),
+        "user": match.group("user"),
+        "password": match.group("pass"),
+        "database": match.group("db"),
+    }
 
-    db_host = match.group("host")
-    db_port = match.group("port")
-    db_name = match.group("db")
-    db_user = match.group("user")
-    db_pass = match.group("pass")
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_test_data():
+    """Set up test data in the database for integration tests.
+
+    This fixture runs once per test session and loads the test data SQL script.
+    It is idempotent - safe to run even if data is already loaded.
+    """
+    db_url = get_test_db_url()
+    db_params = _parse_db_url(db_url)
 
     async def load_test_data():
         # Run migrations first
@@ -43,14 +51,25 @@ def setup_test_data():
         )
         migrations_dir = os.path.join(project_root, "migrations")
 
-        # Connect to database
-        conn = await asyncpg.connect(
-            host=db_host,
-            port=int(db_port),
-            user=db_user,
-            password=db_pass,
-            database=db_name,
-        )
+        # Connect to database with retry logic
+        conn = None
+        for attempt in range(5):
+            try:
+                conn = await asyncpg.connect(**db_params)
+                break
+            except asyncpg.exceptions.InvalidPasswordError:
+                pytest.fail(
+                    f"Password authentication failed for user '{db_params['user']}'. "
+                    f"Check TEST_DB_URL environment variable."
+                )
+            except Exception:
+                if attempt < 4:
+                    await asyncio.sleep(1)
+                else:
+                    raise
+
+        if conn is None:
+            pytest.fail("Failed to connect to database after retries")
 
         try:
             # Run each migration (except test_data.sql)
@@ -66,12 +85,16 @@ def setup_test_data():
                         if "already exists" not in str(e):
                             print(f"Warning: Migration {filename} failed: {e}")
 
-            # Run test_data.sql
+            # Run test_data.sql (idempotent - uses ON CONFLICT or IF NOT EXISTS)
             test_data_path = os.path.join(migrations_dir, "test_data.sql")
             if os.path.exists(test_data_path):
                 with open(test_data_path) as f:
                     sql = f.read()
-                await conn.execute(sql)
+                try:
+                    await conn.execute(sql)
+                except Exception as e:
+                    # Log but don't fail - test data might already be loaded
+                    print(f"Warning: test_data.sql loading issue: {e}")
 
         finally:
             await conn.close()

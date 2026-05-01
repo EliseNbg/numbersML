@@ -36,7 +36,7 @@ jobs:
         run: mypy src/ --strict
 
   # ============================================================================
-  # Stage 2: Unit Tests
+  # STAGE 2: Unit Tests
   # ============================================================================
   unit-tests:
     name: Unit Tests
@@ -45,9 +45,9 @@ jobs:
       postgres:
         image: postgres:15
         env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: test
+          POSTGRES_USER: crypto
+          POSTGRES_PASSWORD: crypto_secret
+          POSTGRES_DB: crypto_trading
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -92,7 +92,7 @@ jobs:
             --cov-report=term-missing \
             --cov-fail-under=75
         env:
-          TEST_DB_URL: postgresql://test:test@localhost:5432/test
+          TEST_DB_URL: postgresql://crypto:crypto_secret@localhost:5432/crypto_trading
           REDIS_URL: redis://localhost:6379
 
       - name: Upload coverage
@@ -102,7 +102,7 @@ jobs:
           fail_ci_if_error: true
 
   # ============================================================================
-  # Stage 3: Integration Tests
+  # STAGE 3: Integration Tests
   # ============================================================================
   integration-tests:
     name: Integration Tests
@@ -111,9 +111,9 @@ jobs:
       postgres:
         image: postgres:15
         env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: test
+          POSTGRES_USER: crypto
+          POSTGRES_PASSWORD: crypto_secret
+          POSTGRES_DB: crypto_trading
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -159,26 +159,26 @@ jobs:
               continue
             fi
             echo "Running $migration..."
-            psql -h localhost -p 5432 -U test -d test -f "$migration"
+            psql -h localhost -p 5432 -U crypto -d crypto_trading -f "$migration"
           done
         env:
-          PGPASSWORD: test
+          PGPASSWORD: crypto_secret
 
       - name: Load test data
         run: |
-          psql -h localhost -p 5432 -U test -d test -f migrations/test_data.sql
+          psql -h localhost -p 5432 -U crypto -d crypto_trading -f migrations/test_data.sql
         env:
-          PGPASSWORD: test
+          PGPASSWORD: crypto_secret
 
       - name: Run integration tests
         run: |
           pytest -m integration -v --timeout=900
         env:
-          TEST_DB_URL: postgresql://test:test@localhost:5432/test
+          TEST_DB_URL: postgresql://crypto:crypto_secret@localhost:5432/crypto_trading
           REDIS_URL: redis://localhost:6379
 
   # ============================================================================
-  # Stage 4: Safety Critical Tests
+  # STAGE 4: Safety Critical Tests
   # ============================================================================
   safety-tests:
     name: Safety Critical Tests
@@ -187,9 +187,9 @@ jobs:
       postgres:
         image: postgres:15
         env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: test
+          POSTGRES_USER: crypto
+          POSTGRES_PASSWORD: crypto_secret
+          POSTGRES_DB: crypto_trading
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -228,10 +228,10 @@ jobs:
           pytest tests/unit/application/services/test_strategy_lifecycle.py -v
           pytest tests/unit/application/services/test_llm_strategy_service.py -v
         env:
-          TEST_DB_URL: postgresql://test:test@localhost:5432/test
+          TEST_DB_URL: postgresql://crypto:crypto_secret@localhost:5432/crypto_trading
 
   # ============================================================================
-  # Stage 4: API Contract Tests
+  # STAGE 4: API Contract Tests
   # ============================================================================
   api-contract:
     name: API Contract Tests
@@ -240,9 +240,9 @@ jobs:
       postgres:
         image: postgres:15
         env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: test
+          POSTGRES_USER: crypto
+          POSTGRES_PASSWORD: crypto_secret
+          POSTGRES_DB: crypto_trading
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -277,7 +277,7 @@ jobs:
 
       - name: Start API server
         run: |
-          python -c "import asyncio; import asyncpg; from src.infrastructure.api.app import create_app; import uvicorn; asyncio.run(asyncpg.connect('postgresql://test:test@localhost:5432/test').execute('CREATE TABLE IF NOT EXISTS strategy_definitions (id UUID PRIMARY KEY, name VARCHAR(255) NOT NULL, description TEXT, status VARCHAR(50) DEFAULT ''draft'', version INTEGER DEFAULT 1, created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())')); asyncio.run(asyncpg.close())" &
+          python -c "import asyncio; import asyncpg; from src.infrastructure.api.app import create_app; import uvicorn; asyncio.run(asyncpg.connect('postgresql://crypto:crypto_secret@localhost:5432/crypto_trading').execute('CREATE TABLE IF NOT EXISTS strategy_definitions (id UUID PRIMARY KEY, name VARCHAR(255) NOT NULL, description TEXT, status VARCHAR(50) DEFAULT ''draft'', version INTEGER DEFAULT 1, created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())')); asyncio.run(asyncpg.close())" &
           sleep 2
 
       - name: Run API contract tests
@@ -285,10 +285,10 @@ jobs:
           pytest tests/unit/infrastructure/api/test_routes.py -v
           pytest tests/integration/api/ -v --timeout=900
         env:
-          TEST_DB_URL: postgresql://test:test@localhost:5432/test
+          TEST_DB_URL: postgresql://crypto:crypto_secret@localhost:5432/crypto_trading
 
   # ============================================================================
-  # Stage 5: E2E Workflow Test
+  # STAGE 5: E2E Workflow Test
   # ============================================================================
   e2e-test:
     name: E2E Workflow Test
@@ -297,9 +297,9 @@ jobs:
       postgres:
         image: postgres:15
         env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: test
+          POSTGRES_USER: crypto
+          POSTGRES_PASSWORD: crypto_secret
+          POSTGRES_DB: crypto_trading
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -340,11 +340,11 @@ jobs:
         run: |
           pytest tests/e2e/test_strategy_workflow.py -v --timeout=120
         env:
-          TEST_DB_URL: postgresql://test:test@localhost:5432/test
+          TEST_DB_URL: postgresql://crypto:crypto_secret@localhost:5432/crypto_trading
           REDIS_URL: redis://localhost:6379
 
   # ============================================================================
-  # Stage 6: Rollback Test
+  # STAGE 6: Rollback Test
   # ============================================================================
   rollback-test:
     name: Rollback Procedure Test
@@ -353,9 +353,9 @@ jobs:
       postgres:
         image: postgres:15
         env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: test
+          POSTGRES_USER: crypto
+          POSTGRES_PASSWORD: crypto_secret
+          POSTGRES_DB: crypto_trading
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -392,7 +392,7 @@ jobs:
         run: |
           pytest tests/unit/application/services/test_safety_guardrails.py::TestEmergencyStopService -v
         env:
-          TEST_DB_URL: postgresql://test:test@localhost:5432/test
+          TEST_DB_URL: postgresql://crypto:crypto_secret@localhost:5432/crypto_trading
 
   # ============================================================================
   # Final Gate
