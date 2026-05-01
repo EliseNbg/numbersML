@@ -26,6 +26,7 @@ testcontainers==3.7.1
 
 # API testing (for dashboard)
 httpx==0.26.0
+python-multipart==0.0.9
 
 # CLI utilities
 psutil==7.2.2

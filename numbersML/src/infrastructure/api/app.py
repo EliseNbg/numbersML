@@ -32,6 +32,7 @@ from src.infrastructure.api.routes import (
     strategies_router,
     market_router,
     strategy_backtest_router,
+    backup_router,
 )
 from src.infrastructure.api.routes.candles import router as candles_router
 from src.infrastructure.api.routes.target_values import router as target_values_router
@@ -152,6 +153,7 @@ Currently no authentication. Add authentication middleware for production use.
     app.include_router(target_values_router)
     app.include_router(ml_router)
     app.include_router(backtest_router)
+    app.include_router(backup_router)
 
     # Mount static files for frontend (dashboard)
     # Note: Frontend files will be created in Step 022.6

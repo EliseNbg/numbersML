@@ -11,6 +11,7 @@ from .strategy_backtest import router as strategy_backtest_router
 from .candles import router as candles_router
 from .target_values import router as target_values_router
 from .ml import router as ml_router
+from .backup import router as backup_router
 
 __all__ = [
     "dashboard_router",
@@ -24,4 +25,5 @@ __all__ = [
     "candles_router",
     "target_values_router",
     "ml_router",
+    "backup_router",
 ]
