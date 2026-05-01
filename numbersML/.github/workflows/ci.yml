@@ -150,6 +150,26 @@ jobs:
             sleep 1
           done
 
+      - name: Run database migrations
+        run: |
+          for migration in migrations/*.sql; do
+            # Skip test_data.sql as it's not a migration
+            if [[ "$migration" == *"test_data.sql"* ]]; then
+              echo "Skipping $migration (test data)"
+              continue
+            fi
+            echo "Running $migration..."
+            psql -h localhost -p 5432 -U test -d test -f "$migration"
+          done
+        env:
+          PGPASSWORD: test
+
+      - name: Load test data
+        run: |
+          psql -h localhost -p 5432 -U test -d test -f migrations/test_data.sql
+        env:
+          PGPASSWORD: test
+
       - name: Run integration tests
         run: |
           pytest -m integration -v --timeout=900

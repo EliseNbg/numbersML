@@ -16,6 +16,28 @@ docker compose -f docker/docker-compose-infra.yml up -d  # Start Postgres + Redi
 
 Python version is pinned to **3.11** (`.python-version`).
 
+### Test Database Setup
+
+For integration tests, the database needs to be populated with test data:
+
+```bash
+# Load test data into the database
+export DB_HOST=localhost DB_PORT=5432 DB_NAME=crypto_trading DB_USER=crypto DB_PASS=crypto_secret
+./scripts/load_test_data.sh
+
+# Or manually with psql
+psql -h localhost -p 5432 -U crypto -d crypto_trading -f migrations/test_data.sql
+```
+
+The test data SQL script (`migrations/test_data.sql`) creates:
+- Test symbols (BTC/USDC, ETH/USDC, DOGE/USDC, ADA/USDC) marked with `is_test=true`
+- Collection configuration for test symbols
+- Common indicator definitions (RSI, SMA, EMA, MACD, Bollinger Bands)
+- System configuration entries
+- Sample candles and indicators for tests that need existing data
+
+The pytest fixture in `tests/integration/conftest.py` automatically sets up test data when running integration tests.
+
 ---
 
 ## Build, Lint & Test Commands
