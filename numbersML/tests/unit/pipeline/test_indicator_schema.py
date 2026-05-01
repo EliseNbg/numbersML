@@ -100,10 +100,15 @@ class TestIndicatorSchema:
         }
         service._active_symbols = [(1, 'BTC/USDC'), (2, 'ETH/USDC')]
         
-        result = await service.generate(datetime.now(timezone.utc))
+        # Mock external provider to return predictable features
+        mock_external_features = {'ext_feature_1': 0.5, 'ext_feature_2': 0.3}
+        service._external_provider = lambda candles, indicators, candle_time: mock_external_features
         
-        # Expected: 2 symbols × (10 indicators + 2 candle features) = 24 features
-        assert result['vector_size'] == 24
+        result = await service.generate(datetime.now(timezone.utc))
+
+        # Expected: external_features + 2 symbols × (2 candle features + 10 indicators)
+        expected_vector_size = len(mock_external_features) + 2 * (2 + 10)
+        assert result['vector_size'] == expected_vector_size
         assert result['indicator_count'] == 10
         assert result['symbol_count'] == 2
 

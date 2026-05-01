@@ -160,10 +160,14 @@ class TestWideVectorService:
             [(58, "BTC/USDC")],
         )
         service._indicator_keys = []  # Skip schema load
+        # Mock external provider to return predictable features
+        mock_external_features = {'ext_feat': 0.0}
+        service._external_provider = lambda candles, indicators, candle_time: mock_external_features
         result = await service.generate(datetime.now(timezone.utc))
-        # Returns vector with 0.0 values since no data at all
+        # Returns vector with external features + 0.0 values for candle features since no data
+        expected_vector = list(mock_external_features.values()) + [0.0, 0.0]
         assert result is not None
-        assert result["vector"] == [0.0, 0.0]
+        assert result["vector"] == expected_vector
 
     @pytest.mark.asyncio
     async def test_get_vector(self, mock_db_pool: MagicMock) -> None:
