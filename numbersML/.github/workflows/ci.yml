@@ -170,21 +170,12 @@ jobs:
         env:
           PGPASSWORD: crypto_secret
 
-      - name: Debug environment
-        run: |
-          echo "Current directory: $(pwd)"
-          echo "TEST_DB_URL is set: $([ -n "$TEST_DB_URL" ] && echo 'yes' || echo 'no')"
-          echo "Testing database connection..."
-          PGPASSWORD=crypto_secret psql -h localhost -p 5432 -U crypto -d crypto_trading -c "SELECT 1;" || echo "Connection failed"
-
       - name: Run integration tests
         run: |
           pytest -m integration -v --timeout=900
         env:
           TEST_DB_URL: postgresql://crypto:crypto_secret@localhost:5432/crypto_trading
           REDIS_URL: redis://localhost:6379
-          TEST_DATA_LOADED: "1"
-          CI: "true"
 
   # ============================================================================
   # STAGE 4: Safety Critical Tests
@@ -295,8 +286,6 @@ jobs:
           pytest tests/integration/api/ -v --timeout=900
         env:
           TEST_DB_URL: postgresql://crypto:crypto_secret@localhost:5432/crypto_trading
-          TEST_DATA_LOADED: "1"
-          CI: "true"
 
   # ============================================================================
   # STAGE 5: E2E Workflow Test

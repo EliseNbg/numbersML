@@ -44,9 +44,9 @@ def setup_test_data():
     This fixture runs once per test session and loads the test data SQL script.
     It is idempotent - safe to run even if data is already loaded.
     """
-    # Skip if running in CI and test data already loaded via workflow
-    if os.environ.get("CI") and os.environ.get("TEST_DATA_LOADED"):
-        logger.info("Skipping test data setup - already loaded in CI workflow")
+    # Skip if running in GitHub Actions (test data loaded via workflow)
+    if os.environ.get("GITHUB_ACTIONS"):
+        logger.info("Running in GitHub Actions - skipping test data setup (loaded via workflow)")
         yield
         return
 
@@ -67,10 +67,13 @@ def setup_test_data():
                 conn = await asyncpg.connect(**db_params)
                 break
             except asyncpg.exceptions.InvalidPasswordError:
-                pytest.fail(
-                    f"Password authentication failed for user '{db_params['user']}'. "
-                    f"Check TEST_DB_URL environment variable."
-                )
+                # Only fail immediately if not retrying
+                if attempt == 4:
+                    pytest.fail(
+                        f"Password authentication failed for user '{db_params['user']}'. "
+                        f"Check TEST_DB_URL environment variable."
+                    )
+                await asyncio.sleep(1)
             except Exception:
                 if attempt < 4:
                     await asyncio.sleep(1)
