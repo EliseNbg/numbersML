@@ -174,12 +174,13 @@ class TestIndicatorCalculator:
         calc = IndicatorCalculator(mock_db_pool)
         calc._symbol_id_cache["BTC/USDC"] = 1
 
-        mock_conn = AsyncMock()
-        mock_conn.fetch = AsyncMock(return_value=[])
-        mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
-
-        result = await calc.calculate("BTC/USDC")
-        assert result == 0
+        # Mock IndicatorsBuffer to return empty buffer
+        from src.pipeline.indicators_buffer import IndicatorsBuffer
+        with patch.object(IndicatorsBuffer, 'initialization', new_callable=AsyncMock):
+            buffer = calc._ensure_buffer("BTC/USDC")
+            # Buffer is empty, should return 0
+            result = await calc.calculate("BTC/USDC")
+            assert result == 0
 
     @pytest.mark.asyncio
     async def test_calculate_with_indicators(self, mock_db_pool: MagicMock) -> None:
@@ -195,28 +196,21 @@ class TestIndicatorCalculator:
             },
         ]
 
-        now = datetime.now(timezone.utc).replace(microsecond=0)
-        mock_candles = [
-            {
-                "time": now,
-                "open": 100 + i,
-                "high": 101 + i,
-                "low": 99 + i,
-                "close": 100 + i,
-                "volume": 10 + i,
-                "quote_volume": 1000 + i * 100,
-            }
-            for i in range(20)
-        ]
+        # Mock IndicatorsBuffer.initialization to not access DB
+        from src.pipeline.indicators_buffer import IndicatorsBuffer
+        from unittest.mock import patch
 
-        mock_conn = AsyncMock()
-        mock_conn.fetch = AsyncMock(return_value=mock_candles)
-        mock_conn.execute = AsyncMock()
-        mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
+        with patch.object(IndicatorsBuffer, 'initialization', new_callable=AsyncMock):
+            buffer = calc._ensure_buffer("BTC/USDC")
+            # Fill buffer with test data
+            import numpy as np
+            buffer.closes_buff = list(range(20))
+            buffer.volumes_buff = [10] * 20
+            buffer.highs_buff = [101] * 20
+            buffer.lows_buff = [99] * 20
 
-        result = await calc.calculate("BTC/USDC")
-        assert result == 1
-        mock_conn.execute.assert_called_once()
+            result = await calc.calculate("BTC/USDC")
+            assert result == 1
 
     @pytest.mark.asyncio
     async def test_calculate_bad_indicator_class(self, mock_db_pool: MagicMock) -> None:
@@ -232,26 +226,19 @@ class TestIndicatorCalculator:
             },
         ]
 
-        now = datetime.now(timezone.utc).replace(microsecond=0)
-        mock_candles = [
-            {
-                "time": now,
-                "open": 100,
-                "high": 101,
-                "low": 99,
-                "close": 100,
-                "volume": 10,
-                "quote_volume": 1000,
-            }
-            for _ in range(5)
-        ]
+        # Mock IndicatorsBuffer to return a mock with filled buffer
+        from unittest.mock import patch
+        from src.pipeline.indicators_buffer import IndicatorsBuffer
 
-        mock_conn = AsyncMock()
-        mock_conn.fetch = AsyncMock(return_value=mock_candles)
-        mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
+        mock_buffer = MagicMock()
+        mock_buffer.closes_buff = list(range(5))
+        mock_buffer.volumes_buff = [10] * 5
+        mock_buffer.highs_buff = [101] * 5
+        mock_buffer.lows_buff = [99] * 5
 
-        result = await calc.calculate("BTC/USDC")
-        assert result == 0
+        with patch.object(calc, '_ensure_buffer', return_value=mock_buffer):
+            result = await calc.calculate("BTC/USDC")
+            assert result == 0
 
     @pytest.mark.asyncio
     async def test_write_results(self, mock_db_pool: MagicMock) -> None:

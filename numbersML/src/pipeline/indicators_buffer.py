@@ -5,7 +5,8 @@ Provides efficient storage of price/volume series for a single symbol,
 enabling O(1) updates and O(window) access to historical data.
 """
 
-from typing import Optional, Dict, Any
+from typing import Any
+
 import numpy as np
 from numpy_ringbuffer import RingBuffer
 
@@ -43,9 +44,9 @@ class IndicatorsBuffer:
         self.lows_buff = RingBuffer(capacity=max_indicator_period, dtype=np.float64)
 
         # Symbol ID cache (populated on first DB fetch)
-        self._symbol_id: Optional[int] = None
+        self._symbol_id: int | None = None
 
-    async def initialization(self, current_time, current_candle: Dict[str, Any]) -> None:
+    async def initialization(self, current_time, current_candle: dict[str, Any]) -> None:
         """
         Fill buffers with historical candles (or repeat current candle).
 
@@ -76,7 +77,7 @@ class IndicatorsBuffer:
             # Not enough history: repeat current candle to fill capacity
             self._fill_with_candle(current_candle)
 
-    async def add_candle(self, candle: Dict[str, Any]) -> None:
+    async def add_candle(self, candle: dict[str, Any]) -> None:
         """
         Append a new candle to all ring buffers (O(1)).
 
@@ -156,7 +157,7 @@ class IndicatorsBuffer:
             self.closes_buff.append(float(r["close"]))
             self.volumes_buff.append(float(r["volume"]))
 
-    def _fill_with_candle(self, candle: Dict[str, Any]) -> None:
+    def _fill_with_candle(self, candle: dict[str, Any]) -> None:
         """Fill buffers by repeating the same candle max_indicator_period times."""
         self._clear_all()
         for _ in range(self.max_indicator_period):

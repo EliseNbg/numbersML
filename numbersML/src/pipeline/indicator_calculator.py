@@ -8,8 +8,7 @@ fetches recent candles, calculates indicators, and writes results to latest_indi
 import importlib
 import json
 import logging
-from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -49,7 +48,7 @@ class IndicatorCalculator:
         self._symbol_id_cache: dict[str, int] = {}
         self._quality_guard = DataQualityGuard()
         self._max_indicator_period: int = self.DEFAULT_CANDLE_WINDOW
-        self._candle_buffers: dict[int, dict[str, Any]] = {}
+        self._buffers: dict[str, IndicatorsBuffer] = {}
 
     async def load_definitions(self) -> None:
         """Load active indicator definitions from DB."""
@@ -133,97 +132,22 @@ class IndicatorCalculator:
                 self._symbol_id_cache[symbol] = symbol_id
             return symbol_id
 
-    def _ensure_buffer(self, symbol_id: int) -> None:
-        """Ensure ring buffer exists for symbol."""
-        if symbol_id not in self._candle_buffers:
-            self._candle_buffers[symbol_id] = {
-                "times": deque(maxlen=self._max_indicator_period),
-                "opens": deque(maxlen=self._max_indicator_period),
-                "highs": deque(maxlen=self._max_indicator_period),
-                "lows": deque(maxlen=self._max_indicator_period),
-                "closes": deque(maxlen=self._max_indicator_period),
-                "volumes": deque(maxlen=self._max_indicator_period),
-            }
+    def _ensure_buffer(self, symbol: str) -> IndicatorsBuffer:
+        """Ensure IndicatorsBuffer exists for symbol."""
+        if symbol not in self._buffers:
+            self._buffers[symbol] = IndicatorsBuffer(
+                dbconn=self.db_pool,
+                symbol=symbol,
+                max_indicator_period=self._max_indicator_period,
+            )
+        return self._buffers[symbol]
 
-    async def _fetch_candles(
-        self,
-        symbol_id: int,
-        limit: int = DEFAULT_CANDLE_WINDOW,
-        before_time: datetime | None = None,
-    ) -> dict[str, np.ndarray]:
-        """Fetch recent candles using ring buffer, replenishing from DB if needed.
-
-        Uses in-memory ring buffer per symbol to avoid repeated DB queries.
-        Fills buffer from DB on first access or when empty.
-        """
-        self._ensure_buffer(symbol_id)
-        buf = self._candle_buffers[symbol_id]
-
-        if len(buf["times"]) < self._max_indicator_period:
-            async with self.db_pool.acquire() as conn:
-                if before_time is not None:
-                    rows = await conn.fetch(
-                        """
-                        SELECT time, open, high, low, close, volume, quote_volume
-                        FROM "candles_1s"
-                        WHERE symbol_id = $1 AND time < $2
-                        ORDER BY time DESC
-                        LIMIT $3
-                        """,
-                        symbol_id,
-                        before_time,
-                        self._max_indicator_period,
-                    )
-                else:
-                    rows = await conn.fetch(
-                        """
-                        SELECT time, open, high, low, close, volume, quote_volume
-                        FROM "candles_1s"
-                        WHERE symbol_id = $1
-                        ORDER BY time DESC
-                        LIMIT $2
-                        """,
-                        symbol_id,
-                        self._max_indicator_period,
-                    )
-
-            if not rows:
-                # Return empty arrays instead of None
-                return {
-                    "time": np.array([], dtype=object),
-                    "open": np.array([], dtype=np.float64),
-                    "high": np.array([], dtype=np.float64),
-                    "low": np.array([], dtype=np.float64),
-                    "close": np.array([], dtype=np.float64),
-                    "volume": np.array([], dtype=np.float64),
-                    "quote_volume": np.array([], dtype=np.float64),
-                }
-
-            rows = list(reversed(rows))
-            buf["times"].clear()
-            buf["opens"].clear()
-            buf["highs"].clear()
-            buf["lows"].clear()
-            buf["closes"].clear()
-            buf["volumes"].clear()
-
-            for r in rows:
-                buf["times"].append(r["time"])
-                buf["opens"].append(float(r["open"]))
-                buf["highs"].append(float(r["high"]))
-                buf["lows"].append(float(r["low"]))
-                buf["closes"].append(float(r["close"]))
-                buf["volumes"].append(float(r["volume"]))
-
-        return {
-            "time": np.array(list(buf["times"]), dtype=object),
-            "open": np.array(buf["opens"], dtype=np.float64),
-            "high": np.array(buf["highs"], dtype=np.float64),
-            "low": np.array(buf["lows"], dtype=np.float64),
-            "close": np.array(buf["closes"], dtype=np.float64),
-            "volume": np.array(buf["volumes"], dtype=np.float64),
-            "quote_volume": np.array([0.0] * len(buf["times"]), dtype=np.float64),
-        }
+    async def _init_buffer_for_candle(
+        self, buffer: IndicatorsBuffer, candle_time: datetime, candle: dict[str, Any]
+    ) -> None:
+        """Initialize buffer with historical data if not already filled."""
+        if len(buffer.closes_buff) == 0:
+            await buffer.initialization(current_time=candle_time, current_candle=candle)
 
     async def calculate(self, symbol: str, symbol_id: int | None = None) -> int:
         """
@@ -242,20 +166,21 @@ class IndicatorCalculator:
             logger.warning(f"Symbol ID not found for {symbol}")
             return 0
 
-        candles = await self._fetch_candles(symbol_id)
-        if candles is None:
-            logger.warning(f"No candles in DB for {symbol} (id={symbol_id})")
-            return 0
-        if len(candles["close"]) < 2:
-            logger.warning(f"Only {len(candles['close'])} candles for {symbol}, need >= 2")
+        buffer = self._ensure_buffer(symbol)
+        await self._init_buffer_for_candle(
+            buffer, datetime.now(timezone.utc), {"close": 0, "volume": 0, "high": 0, "low": 0}
+        )
+
+        if len(buffer.closes_buff) < 2:
+            logger.warning(f"Only {len(buffer.closes_buff)} candles for {symbol}, need >= 2")
             return 0
 
-        prices = candles["close"]
-        volumes = candles["volume"]
-        highs = candles["high"]
-        lows = candles["low"]
-        opens = candles["open"]
-        latest_time = candles["time"][-1]
+        prices = np.array(buffer.closes_buff)
+        volumes = np.array(buffer.volumes_buff)
+        highs = np.array(buffer.highs_buff)
+        lows = np.array(buffer.lows_buff)
+        opens = np.array([0.0] * len(prices))  # open not stored in IndicatorsBuffer
+        latest_time = datetime.now(timezone.utc)
         latest_price = float(prices[-1])
         latest_volume = float(volumes[-1])
 
@@ -286,51 +211,29 @@ class IndicatorCalculator:
         """
         Calculate indicators using historical data + current candle directly.
 
-        Avoids DB read timing issues by accepting the current candle as parameter.
+        Uses IndicatorsBuffer for O(1) updates and immediate indicator calculation.
         """
         if symbol_id is None:
             symbol_id = await self._get_symbol_id(symbol)
         if symbol_id is None:
             return 0
 
-        # Flush buffer before fetching to ensure fresh historical context.
-        # During recalculation, reusing a stale buffer leads to corrupted indicators
-        # because the buffer accumulates a mix of old and new data across calls.
-        if symbol_id in self._candle_buffers:
-            buf = self._candle_buffers[symbol_id]
-            buf["times"].clear()
-            buf["opens"].clear()
-            buf["highs"].clear()
-            buf["lows"].clear()
-            buf["closes"].clear()
-            buf["volumes"].clear()
+        buffer = self._ensure_buffer(symbol)
 
-        # Fetch historical candles (excluding current) - need enough history for longest indicator
-        candles = await self._fetch_candles(
-            symbol_id, limit=self._max_indicator_period - 1, before_time=time
-        )
+        # Initialize buffer with historical data if not already done
+        candle_dict = {"open": open, "high": high, "low": low, "close": close, "volume": volume}
+        await self._init_buffer_for_candle(buffer, time, candle_dict)
 
-        if candles is None or len(candles["close"]) < 1:
-            # First candle ever - can't calculate indicators yet
-            return 0
+        # Add current candle to buffer (O(1) ring buffer append)
+        buffer.add_candle(candle_dict)
 
-        # Add current candle to buffer
-        self._ensure_buffer(symbol_id)
-        buf = self._candle_buffers[symbol_id]
-        buf["times"].append(time)
-        buf["opens"].append(float(open))
-        buf["highs"].append(float(high))
-        buf["lows"].append(float(low))
-        buf["closes"].append(float(close))
-        buf["volumes"].append(float(volume))
-
-        # Combine historical candles with the current candle
-        prices = np.append(candles["close"], close)
-        volumes = np.append(candles["volume"], volume)
-        highs = np.append(candles["high"], high)
-        lows = np.append(candles["low"], low)
-        opens = np.append(candles["open"], open)
-        latest_time = list(buf["times"])[-1]
+        # Get data from buffer for indicator calculation
+        prices = np.array(buffer.closes_buff)
+        volumes = np.array(buffer.volumes_buff)
+        highs = np.array(buffer.highs_buff)
+        lows = np.array(buffer.lows_buff)
+        opens = np.array([0.0] * len(prices))  # open not stored in IndicatorsBuffer
+        latest_time = time
         latest_price = float(close)
         latest_volume = float(volume)
 
