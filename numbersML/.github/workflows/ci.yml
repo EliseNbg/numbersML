@@ -102,7 +102,63 @@ jobs:
           fail_ci_if_error: true
 
   # ============================================================================
-  # Stage 3: Safety Critical Tests
+  # Stage 3: Integration Tests
+  # ============================================================================
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -e ".[dev]"
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432; then
+              echo "PostgreSQL is ready!"
+              break
+            fi
+            echo "Waiting for PostgreSQL... attempt $i/30"
+            sleep 1
+          done
+
+      - name: Run integration tests
+        run: |
+          pytest -m integration -v --timeout=900
+        env:
+          TEST_DB_URL: postgresql://test:test@localhost:5432/test
+          REDIS_URL: redis://localhost:6379
+
+  # ============================================================================
+  # Stage 4: Safety Critical Tests
   # ============================================================================
   safety-tests:
     name: Safety Critical Tests
@@ -201,36 +257,13 @@ jobs:
 
       - name: Start API server
         run: |
-          python -c "
-import asyncio
-import asyncpg
-from src.infrastructure.api.app import create_app
-import uvicorn
-
-async def init_db():
-    conn = await asyncpg.connect('postgresql://test:test@localhost:5432/test')
-    # Create minimal schema
-    await conn.execute('''
-        CREATE TABLE IF NOT EXISTS strategy_definitions (
-            id UUID PRIMARY KEY,
-            name VARCHAR(255) NOT NULL,
-            description TEXT,
-            status VARCHAR(50) DEFAULT 'draft',
-            version INTEGER DEFAULT 1,
-            created_at TIMESTAMP DEFAULT NOW(),
-            updated_at TIMESTAMP DEFAULT NOW()
-        )
-    ''')
-    await conn.close()
-
-asyncio.run(init_db())
-" &
+          python -c "import asyncio; import asyncpg; from src.infrastructure.api.app import create_app; import uvicorn; asyncio.run(asyncpg.connect('postgresql://test:test@localhost:5432/test').execute('CREATE TABLE IF NOT EXISTS strategy_definitions (id UUID PRIMARY KEY, name VARCHAR(255) NOT NULL, description TEXT, status VARCHAR(50) DEFAULT ''draft'', version INTEGER DEFAULT 1, created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())')); asyncio.run(asyncpg.close())" &
           sleep 2
 
       - name: Run API contract tests
         run: |
           pytest tests/unit/infrastructure/api/test_routes.py -v
-          pytest tests/integration/api/ -v --timeout=60
+          pytest tests/integration/api/ -v --timeout=900
         env:
           TEST_DB_URL: postgresql://test:test@localhost:5432/test
 
@@ -350,6 +383,7 @@ asyncio.run(init_db())
     needs:
       - lint-and-type
       - unit-tests
+      - integration-tests
       - safety-tests
       - api-contract
       - e2e-test
