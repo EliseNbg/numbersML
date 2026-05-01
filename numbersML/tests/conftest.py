@@ -1,7 +1,7 @@
 """
 Pytest fixtures for test suite.
 
-Provides automatic TEST/USDT disallowing after each test.
+Provides TEST/USDT setup and cleanup for database tests.
 """
 import pytest
 import asyncio
@@ -38,34 +38,12 @@ async def db_pool():
     raise last_error or Exception(f"Failed to connect to database after 30 attempts. DB_URL: {DB_URL}")
 
 
-@pytest.fixture(autouse=True)
-async def cleanup_test_usdt(db_pool):
-    """
-    Autouse fixture that ensures TEST/USDT is disallowed after every test.
-    
-    This runs automatically for all tests, providing a safety net to ensure
-    TEST/USDT is never left in an active/allowed state after test execution.
-    """
-    yield
-    
-    # After test: always disallow TEST/USDT
-    try:
-        async with db_pool.acquire() as conn:
-            await conn.execute(
-                "UPDATE symbols SET is_active = false, is_allowed = false "
-                "WHERE symbol = 'TEST/USDT'"
-            )
-    except Exception:
-        pass
-
-
 @pytest.fixture
 async def allow_test_usdt(db_pool):
     """
     Fixture to allow TEST/USDT for testing purposes.
     
-    Activates TEST/USDT before test. The autouse cleanup_test_usdt
-    fixture will disallow it after the test.
+    Activates TEST/USDT before test and disables it after.
     
     Yields:
         int: The symbol ID for TEST/USDT
@@ -89,6 +67,16 @@ async def allow_test_usdt(db_pool):
             )
     
     yield symbol_id
+    
+    # After test: always disallow TEST/USDT
+    try:
+        async with db_pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE symbols SET is_active = false, is_allowed = false "
+                "WHERE symbol = 'TEST/USDT'"
+            )
+    except Exception:
+        pass
 
 
 @pytest.fixture
