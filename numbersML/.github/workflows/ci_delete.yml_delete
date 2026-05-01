@@ -1,0 +1,413 @@
+name: CI - Quality Gates
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # ============================================================================
+  # Stage 1: Code Quality Gates
+  # ============================================================================
+  lint-and-type:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -e ".[dev]"
+
+      - name: Run Ruff linting
+        run: ruff check src/ tests/ --output-format=github
+
+      - name: Run Black format check
+        run: black src/ tests/ --check --diff
+
+      - name: Run mypy type check
+        run: mypy src/ --strict
+
+  # ============================================================================
+  # STAGE 2: Unit Tests
+  # ============================================================================
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: crypto
+          POSTGRES_PASSWORD: crypto_secret
+          POSTGRES_DB: crypto_trading
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -e ".[dev]"
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432; then
+              echo "PostgreSQL is ready!"
+              break
+            fi
+            echo "Waiting for PostgreSQL... attempt $i/30"
+            sleep 1
+          done
+
+      - name: Run unit tests
+        run: |
+          pytest tests/unit/ -v \
+            --cov=src \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=75
+        env:
+          TEST_DB_URL: postgresql://crypto:crypto_secret@localhost:5432/crypto_trading
+          REDIS_URL: redis://localhost:6379
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: true
+
+  # ============================================================================
+  # STAGE 3: Integration Tests
+  # ============================================================================
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: crypto
+          POSTGRES_PASSWORD: crypto_secret
+          POSTGRES_DB: crypto_trading
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -e ".[dev]"
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432; then
+              echo "PostgreSQL is ready!"
+              break
+            fi
+            echo "Waiting for PostgreSQL... attempt $i/30"
+            sleep 1
+          done
+
+      - name: Run database migrations
+        run: |
+          for migration in migrations/*.sql; do
+            # Skip test_data.sql as it's not a migration
+            if [[ "$migration" == *"test_data.sql"* ]]; then
+              echo "Skipping $migration (test data)"
+              continue
+            fi
+            echo "Running $migration..."
+            psql -h localhost -p 5432 -U crypto -d crypto_trading -f "$migration"
+          done
+        env:
+          PGPASSWORD: crypto_secret
+
+      - name: Load test data
+        run: |
+          psql -h localhost -p 5432 -U crypto -d crypto_trading -f migrations/test_data.sql
+        env:
+          PGPASSWORD: crypto_secret
+
+      - name: Run integration tests
+        run: |
+          pytest -m integration -v --timeout=900
+        env:
+          TEST_DB_URL: postgresql://crypto:crypto_secret@localhost:5432/crypto_trading
+          REDIS_URL: redis://localhost:6379
+
+  # ============================================================================
+  # STAGE 4: Safety Critical Tests
+  # ============================================================================
+  safety-tests:
+    name: Safety Critical Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: crypto
+          POSTGRES_PASSWORD: crypto_secret
+          POSTGRES_DB: crypto_trading
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -e ".[dev]"
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432; then
+              echo "PostgreSQL is ready!"
+              break
+            fi
+            echo "Waiting for PostgreSQL... attempt $i/30"
+            sleep 1
+          done
+
+      - name: Run safety-critical tests
+        run: |
+          pytest tests/unit/application/services/test_safety_guardrails.py -v
+          pytest tests/unit/application/services/test_strategy_lifecycle.py -v
+          pytest tests/unit/application/services/test_llm_strategy_service.py -v
+        env:
+          TEST_DB_URL: postgresql://crypto:crypto_secret@localhost:5432/crypto_trading
+
+  # ============================================================================
+  # STAGE 4: API Contract Tests
+  # ============================================================================
+  api-contract:
+    name: API Contract Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: crypto
+          POSTGRES_PASSWORD: crypto_secret
+          POSTGRES_DB: crypto_trading
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -e ".[dev]"
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432; then
+              echo "PostgreSQL is ready!"
+              break
+            fi
+            echo "Waiting for PostgreSQL... attempt $i/30"
+            sleep 1
+          done
+
+      - name: Start API server
+        run: |
+          python -c "import asyncio; import asyncpg; from src.infrastructure.api.app import create_app; import uvicorn; asyncio.run(asyncpg.connect('postgresql://crypto:crypto_secret@localhost:5432/crypto_trading').execute('CREATE TABLE IF NOT EXISTS strategy_definitions (id UUID PRIMARY KEY, name VARCHAR(255) NOT NULL, description TEXT, status VARCHAR(50) DEFAULT ''draft'', version INTEGER DEFAULT 1, created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())')); asyncio.run(asyncpg.close())" &
+          sleep 2
+
+      - name: Run API contract tests
+        run: |
+          pytest tests/unit/infrastructure/api/test_routes.py -v
+          pytest tests/integration/api/ -v --timeout=900
+        env:
+          TEST_DB_URL: postgresql://crypto:crypto_secret@localhost:5432/crypto_trading
+
+  # ============================================================================
+  # STAGE 5: E2E Workflow Test
+  # ============================================================================
+  e2e-test:
+    name: E2E Workflow Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: crypto
+          POSTGRES_PASSWORD: crypto_secret
+          POSTGRES_DB: crypto_trading
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -e ".[dev]"
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432; then
+              echo "PostgreSQL is ready!"
+              break
+            fi
+            echo "Waiting for PostgreSQL... attempt $i/30"
+            sleep 1
+          done
+
+      - name: Run E2E workflow test
+        run: |
+          pytest tests/e2e/test_strategy_workflow.py -v --timeout=120
+        env:
+          TEST_DB_URL: postgresql://crypto:crypto_secret@localhost:5432/crypto_trading
+          REDIS_URL: redis://localhost:6379
+
+  # ============================================================================
+  # STAGE 6: Rollback Test
+  # ============================================================================
+  rollback-test:
+    name: Rollback Procedure Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: crypto
+          POSTGRES_PASSWORD: crypto_secret
+          POSTGRES_DB: crypto_trading
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -e ".[dev]"
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432; then
+              echo "PostgreSQL is ready!"
+              break
+            fi
+            echo "Waiting for PostgreSQL... attempt $i/30"
+            sleep 1
+          done
+
+      - name: Test emergency stop procedures
+        run: |
+          pytest tests/unit/application/services/test_safety_guardrails.py::TestEmergencyStopService -v
+        env:
+          TEST_DB_URL: postgresql://crypto:crypto_secret@localhost:5432/crypto_trading
+
+  # ============================================================================
+  # Final Gate
+  # ============================================================================
+  all-checks-passed:
+    name: All Quality Gates Passed
+    runs-on: ubuntu-latest
+    needs:
+      - lint-and-type
+      - unit-tests
+      - integration-tests
+      - safety-tests
+      - api-contract
+      - e2e-test
+      - rollback-test
+    steps:
+      - name: Report success
+        run: echo "All quality gates passed - ready for deployment"
