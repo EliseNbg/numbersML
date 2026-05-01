@@ -35,7 +35,7 @@ if [ -n "${USE_VENV:-}" ] && [ -f "${PROJECT_DIR}/.venv/bin/python" ]; then
     PYTHON="${PROJECT_DIR}/.venv/bin/python"
     PYTEST="${PROJECT_DIR}/.venv/bin/pytest"
 elif [ -n "${GITHUB_ACTIONS:-}" ]; then
-    # GitHub Actions - use system python3
+    # GitHub Actions - use system python3 and CI database
     PYTHON="python3"
     PYTEST="pytest"
 else
@@ -44,7 +44,12 @@ else
     PYTEST="pytest"
 fi
 
-DB_URL="${DATABASE_URL:-postgresql://crypto:crypto_secret@localhost:5432/crypto_trading}"
+# Use TEST_DB_URL if set (for CI), otherwise default to local dev config
+if [ -n "${TEST_DB_URL:-}" ]; then
+    DB_URL="$TEST_DB_URL"
+else
+    DB_URL="${DATABASE_URL:-postgresql://crypto:crypto_secret@localhost:5432/crypto_trading}"
+fi
 
 # Functions
 log_info() {
@@ -78,9 +83,15 @@ check_infrastructure() {
     if [ -n "${GITHUB_ACTIONS:-}" ]; then
         log_info "Running in GitHub Actions - checking localhost PostgreSQL..."
         
+        # Parse DB_URL using Python for reliability
+        DB_HOST=$(python3 -c "from urllib.parse import urlparse; print(urlparse('$DB_URL').hostname)")
+        DB_PORT=$(python3 -c "from urllib.parse import urlparse; print(urlparse('$DB_URL').port)")
+        DB_USER=$(python3 -c "from urllib.parse import urlparse; print(urlparse('$DB_URL').username)")
+        DB_NAME=$(python3 -c "from urllib.parse import urlparse; print(urlparse('$DB_URL').path.lstrip('/'))")
+        
         # Check PostgreSQL on localhost
-        if ! pg_isready -h localhost -p 5432 -U crypto -d crypto_trading > /dev/null 2>&1; then
-            log_error "PostgreSQL is not ready on localhost:5432"
+        if ! pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" > /dev/null 2>&1; then
+            log_error "PostgreSQL is not ready on ${DB_HOST}:${DB_PORT}"
             exit 2
         fi
         log_success "PostgreSQL is ready (GitHub Actions)"

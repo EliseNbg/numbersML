@@ -76,7 +76,7 @@ def setup_test_data():
         finally:
             await conn.close()
 
-    # Run the async setup
-    asyncio.get_event_loop().run_until_complete(load_test_data())
+    # Run the async setup using asyncio.run() for Python 3.11+ compatibility
+    asyncio.run(load_test_data())
 
     yield
