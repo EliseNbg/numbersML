@@ -87,8 +87,9 @@ async def recalculate_indicators(
     - Reuses numpy arrays from RingBuffer (no conversion overhead)
     - Processes candles with minimal object creation
     """
+    from src.indicators.base import IndicatorResult
     from src.infrastructure.repositories.indicator_repo import IndicatorRepository
-    from src.pipeline.indicator_calculator import IndicatorCalculator, IndicatorResult
+    from src.pipeline.indicator_calculator import IndicatorCalculator
     from src.pipeline.indicators_buffer import IndicatorsBuffer
 
     calc = IndicatorCalculator(db_pool)
@@ -117,122 +118,140 @@ async def recalculate_indicators(
         if cls:
             indicator = cls(**defn["params"])
             indicators.append((defn, indicator))
-    
+
     logger.info(f"Pre-created {len(indicators)} indicator instances")
 
-    batch_results: list[tuple] = []
+    batch_results: list[tuple[datetime, int, float, float, dict[str, Any]]] = []
     repo = IndicatorRepository(db_pool)
 
     # Chunk size for fetching candles (keeps memory bounded)
-    CHUNK_SIZE = 5000
-    
-    # OPTIMIZATION 3: Larger batch insert size (was 1000, now 5000)
-    BATCH_INSERT_SIZE = 5000
-    
-    # OPTIMIZATION 4: Parallel symbol processing
-    MAX_CONCURRENT_SYMBOLS = 8  # Process 8 symbols concurrently
-    
-    logger.info(f"Processing {len(symbol_ids)} symbols with {MAX_CONCURRENT_SYMBOLS} concurrent workers")
-    
-    # Thread-safe batch collection
+    chunk_size = 5000
+
+    batch_insert_size = 5000
+
     batch_lock = asyncio.Lock()
-    
-    async def insert_batch_if_needed() -> None:
-        """Insert batch if size exceeds threshold (thread-safe)."""
-        nonlocal batch_results
-        async with batch_lock:
-            if len(batch_results) >= BATCH_INSERT_SIZE:
-                await repo.store_indicator_results_batch(batch_results)
-                batch_results = []
-    
-    async def process_symbol(sid: int) -> tuple[int, int]:
-        """Process a single symbol. Returns (processed_count, total_indicator_count)."""
-        nonlocal batch_results
-        
-        # Get symbol name
+
+    # Get symbol names for all symbol_ids
+    async with db_pool.acquire() as conn:
+        symbol_rows = await conn.fetch(
+            "SELECT id, symbol FROM symbols WHERE id = ANY($1)",
+            symbol_ids,
+        )
+    symbol_names = {r["id"]: r["symbol"] for r in symbol_rows}
+    valid_sids = [sid for sid in symbol_ids if sid in symbol_names]
+    if not valid_sids:
+        logger.warning("No valid symbols found for given IDs")
+        return 0
+
+    # Initialize buffers for each valid symbol
+    buffers = {}
+    initialized_sids = set()
+    for sid in valid_sids:
+        symbol = symbol_names[sid]
+        buffers[sid] = IndicatorsBuffer(db_pool, symbol, max_period)
+
+    total_processed = 0
+    total_indicators = 0
+
+    lookback_start = from_time - timedelta(seconds=max_period)
+    cursor_time = lookback_start
+
+    logger.info(f"Processing time range {lookback_start} to {to_time}, iterating by time")
+
+    time_points_processed = 0
+
+    while cursor_time < to_time:
+        # Fetch candles across all valid symbols, ordered by time ASC
         async with db_pool.acquire() as conn:
-            symbol = await conn.fetchval("SELECT symbol FROM symbols WHERE id = $1", sid)
-        if not symbol:
-            logger.warning(f"Symbol {sid} not found")
-            return 0, 0
+            rows = await conn.fetch(
+                """
+                SELECT time, symbol_id, high, low, close, volume
+                FROM candles_1s
+                WHERE symbol_id = ANY($1)
+                  AND time >= $2
+                  AND time < $3
+                ORDER BY time ASC
+                LIMIT $4
+                """,
+                valid_sids,
+                cursor_time,
+                to_time,
+                chunk_size,
+            )
+        if not rows:
+            break
 
-        logger.info(f"Start processed {symbol} from {from_time} max_period:{max_period}.")
+        # Group rows by time
+        chunk_by_time: dict[datetime, list[asyncpg.Record]] = {}
+        for row in rows:
+            t = row["time"]
+            if t not in chunk_by_time:
+                chunk_by_time[t] = []
+            chunk_by_time[t].append(row)
 
-        buffer = IndicatorsBuffer(db_pool, symbol, max_period)
-        symbol_processed = 0
-        symbol_indicators = 0
+        # Process each time point in order
+        for t in sorted(chunk_by_time.keys()):
+            t_rows = chunk_by_time[t]
+            sids_at_t = [r["symbol_id"] for r in t_rows]
 
-        # We will fetch candles from lookback_start to to_time in chunks.
-        # lookback_start ensures we have enough history for the first target candle.
-        lookback_start = from_time - timedelta(seconds=max_period)
-
-        # Use keyset pagination: fetch rows where time >= cursor, ordered by time ASC.
-        cursor = lookback_start
-        first_target_candle_seen = False
-
-        while cursor < to_time:
-            async with db_pool.acquire() as conn:
-                rows = await conn.fetch(
-                    """
-                    SELECT time, high, low, close, volume
-                    FROM candles_1s
-                    WHERE symbol_id = $1
-                      AND time >= $2 AND time < $3
-                    ORDER BY time ASC
-                    LIMIT $4
-                    """,
-                    sid,
-                    cursor,
-                    to_time,
-                    CHUNK_SIZE,
-                )
-            if not rows:
-                break
-
-            # Bulk fetch existing indicators for this chunk to avoid per-candle DB calls
-            existing_indicator_times = set()
-            chunk_start_time = rows[0]["time"]
-            chunk_end_time = rows[-1]["time"]
-            
-            async with db_pool.acquire() as conn:
-                existing_rows = await conn.fetch(
-                    "SELECT time FROM candle_indicators WHERE symbol_id = $1 AND time >= $2 AND time < $3",
-                    sid, chunk_start_time, chunk_end_time + timedelta(seconds=1)
-                )
-                existing_indicator_times = {row["time"] for row in existing_rows}
-
-            # Process rows in chronological order (they already are ASC)
-            for row in rows:
-                t = row["time"]
-                # Update cursor for next keyset page
-                cursor = t + timedelta(seconds=1)
-
-                # If this candle is before the target range, just add as history
-                if t < from_time:
+            if t < from_time:
+                # Add to buffers, no calculation
+                for row in t_rows:
+                    sid = row["symbol_id"]
+                    buffer = buffers[sid]
                     await buffer.add_candle(row)
-                    continue
+                cursor_time = t + timedelta(seconds=1)
+                time_points_processed += 1
+                if time_points_processed % 100 == 0:
+                    print(f"_{t}", end="", flush=True)
+                continue
 
-                # First candle in target range: ensure buffer has history
-                if not first_target_candle_seen:
+            # Check existing indicators for this time point
+            async with db_pool.acquire() as conn:
+                existing = await conn.fetch(
+                    "SELECT symbol_id FROM candle_indicators WHERE time = $1 AND symbol_id = ANY($2)",
+                    t,
+                    sids_at_t,
+                )
+            existing_sids = {r["symbol_id"] for r in existing}
+
+            # Skip if all symbols at this time have existing indicators
+            all_exist = all(sid in existing_sids for sid in sids_at_t)
+            if all_exist:
+                for row in t_rows:
+                    sid = row["symbol_id"]
+                    buffer = buffers[sid]
+                    if sid not in initialized_sids:
+                        await buffer.initialization(t, row)
+                        initialized_sids.add(sid)
+                    await buffer.add_candle(row)
+                cursor_time = t + timedelta(seconds=1)
+                time_points_processed += 1
+                if time_points_processed % 300 == 0:
+                    print(f"*", end="", flush=True)
+                continue
+
+            # Process each symbol at this time
+            for row in t_rows:
+                sid = row["symbol_id"]
+                buffer = buffers[sid]
+
+                # Initialize buffer if needed
+                if sid not in initialized_sids:
                     await buffer.initialization(t, row)
-                    first_target_candle_seen = True
+                    initialized_sids.add(sid)
 
-                # OPTIMIZATION: Skip indicator calculation if already exist for this candle
-                if t in existing_indicator_times:
-                    # Indicators already exist, skip calculation but add to buffer
+                # Skip if indicator already exists
+                if sid in existing_sids:
                     await buffer.add_candle(row)
-                    symbol_processed += 1
                     continue
 
-                # OPTIMIZATION 2: RingBuffer already stores numpy arrays
-                # Use asarray to avoid copy and deprecation warning with numpy 2.0
-                # Note: opens_buff is not used - no indicator requires open prices
+                # Calculate indicators
                 closes_arr = np.asarray(buffer.closes_buff)
                 volumes_arr = np.asarray(buffer.volumes_buff)
                 highs_arr = np.asarray(buffer.highs_buff)
                 lows_arr = np.asarray(buffer.lows_buff)
 
-                # Calculate indicators using pre-created instances
                 results: dict[str, Any] = {}
                 for defn, indicator in indicators:
                     try:
@@ -254,32 +273,34 @@ async def recalculate_indicators(
                                 if not np.isnan(val) and not np.isinf(val):
                                     results[flat_key] = float(val)
                                 else:
-                                    logger.error(f"1.Error calculating indicator {flat_key} for {symbol}, time:{t}")
+                                    logger.error(
+                                        f"Indicator {flat_key} for {symbol_names[sid]} at {t}: NaN/inf"
+                                    )
                                     results[flat_key] = None
                             else:
                                 results[flat_key] = None
-                                logger.error(f"2.Error calculating indicator {flat_key} for {symbol}, time:{t}")
-                                    
+                                logger.error(
+                                    f"Indicator {flat_key} for {symbol_names[sid]} at {t}: no values"
+                                )
 
                     except Exception as e:
-                        logger.error(f"Error calculating {defn['name']} for {symbol}: {e}")
+                        logger.error(
+                            f"Error calculating {defn['name']} for {symbol_names[sid]} at {t}: {e}"
+                        )
 
                 if results:
-                    # Data quality check
                     if with_quality_guard:
                         quality_report = calc._quality_guard.validate_indicator_values(
                             symbol_id=sid,
-                            symbol=symbol,
+                            symbol=symbol_names[sid],
                             time=t,
                             values=results,
                         )
-
                         if quality_report.is_critical:
                             logger.error(
-                                f"CRITICAL quality issue for {symbol} at {t}: "
+                                f"CRITICAL quality issue for {symbol_names[sid]} at {t}: "
                                 f"{quality_report.issue_count} issues, score={quality_report.quality_score}"
                             )
-                            # Add to buffer and continue without storing results
                             await buffer.add_candle(row)
                             continue
 
@@ -292,50 +313,33 @@ async def recalculate_indicators(
                             results,
                         )
                     )
+                    total_processed += 1
+                    total_indicators += len(results)
 
-                # Update counters (local to symbol)
-                symbol_processed += 1
-                symbol_indicators += len(results)
-
-                # Add current candle to buffer for future calculations
+                # Add candle to buffer
                 await buffer.add_candle(row)
 
-                # Progress indicator: print '.' every 100 candles (per symbol)
-                if symbol_processed % 100 == 0:
-                    print(".", end="", flush=True)
+                # Insert batch if needed
+                async with batch_lock:
+                    if len(batch_results) >= batch_insert_size:
+                        await repo.store_indicator_results_batch(batch_results)
+                        batch_results = []
 
-                # Periodically insert batch results (thread-safe)
-                await insert_batch_if_needed()
+            # Progress indicator: print per time point
+            time_points_processed += 1
+            if time_points_processed % 300 == 0:
+                print(f".{t}", end="\n", flush=True)
 
-        logger.info(f"Finished symbol {symbol}: {symbol_processed} candles, {symbol_indicators} indicators")
-        return symbol_processed, symbol_indicators
-    
-    # Process symbols with limited concurrency
-    from asyncio import Semaphore, gather
-    sem = Semaphore(MAX_CONCURRENT_SYMBOLS)
-    
-    async def process_with_limit(sid: int) -> tuple[int, int]:
-        async with sem:
-            return await process_symbol(sid)
-    
-    # Run all symbols in parallel with concurrency limit
-    import time
-    start_time = time.time()
-    results = await gather(*[process_with_limit(sid) for sid in symbol_ids])
-    
-    # Aggregate results
-    total_processed = sum(r[0] for r in results)
-    total_indicators = sum(r[1] for r in results)
-    elapsed = time.time() - start_time
-    
-    logger.info(f"Processed {total_processed} candles across {len(symbol_ids)} symbols in {elapsed:.1f}s")
-    logger.info(f"Rate: {total_processed/elapsed:.0f} candles/second")
+            # Update cursor time
+            cursor_time = t + timedelta(seconds=1)
 
     # Insert remaining batch results
     if batch_results:
-        await repo.store_indicator_results_batch(batch_results)
-        batch_results = []
+        async with batch_lock:
+            await repo.store_indicator_results_batch(batch_results)
+            batch_results = []
 
+    logger.info(f"Processed {total_processed} candles, {total_indicators} indicators")
     return total_indicators
 
 
@@ -400,7 +404,7 @@ async def recalculate_wide_vectors(
             continue
 
         # Group by time (using fixed global schema, not per-batch dynamic keys)
-        by_time: dict = {}
+        by_time: dict[datetime, dict[str, Any]] = {}
         for r in indicator_rows:
             t = r["time"]
             if t not in by_time:
@@ -432,7 +436,7 @@ async def recalculate_wide_vectors(
                 current_end,
             )
 
-        candle_by_time: dict = {}
+        candle_by_time: dict[datetime, dict[str, Any]] = {}
         for r in candle_rows:
             t = r["time"]
             if t not in candle_by_time:
@@ -502,7 +506,7 @@ async def recalculate_wide_vectors(
 
             # Forward-fill gaps in MEMORY (no more DB queries!)
             for t in sorted(all_times_set):
-                symbols_at_time = set()
+                symbols_at_time: set[str] = set()
                 if t in candle_by_time:
                     symbols_at_time.update(candle_by_time[t].keys())
                 if t in by_time:
