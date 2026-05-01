@@ -3,6 +3,7 @@ Pytest configuration for integration tests.
 Sets up test data in the database before tests run.
 """
 import asyncio
+import logging
 import os
 import sys
 
@@ -12,7 +13,9 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'src'))
 
-from src.infrastructure.database.config import get_test_db_url
+from src.infrastructure.database.config import get_test_db_url  # noqa: E402
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_db_url(db_url: str) -> dict:
@@ -41,6 +44,12 @@ def setup_test_data():
     This fixture runs once per test session and loads the test data SQL script.
     It is idempotent - safe to run even if data is already loaded.
     """
+    # Skip if running in CI and test data already loaded via workflow
+    if os.environ.get("CI") and os.environ.get("TEST_DATA_LOADED"):
+        logger.info("Skipping test data setup - already loaded in CI workflow")
+        yield
+        return
+
     db_url = get_test_db_url()
     db_params = _parse_db_url(db_url)
 
