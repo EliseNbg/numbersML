@@ -41,7 +41,7 @@ class SMAIndicator(Indicator):
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
-                "period": {"type": "integer", "minimum": 2, "maximum": 3000, "default": 50}
+                "period": {"type": "integer", "minimum": 2, "maximum": 5000, "default": 50}
             },
             "required": ["period"],
         }
@@ -91,7 +91,7 @@ class EMAIndicator(Indicator):
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
-                "period": {"type": "integer", "minimum": 2, "maximum": 3000, "default": 20}
+                "period": {"type": "integer", "minimum": 2, "maximum": 5000, "default": 20}
             },
             "required": ["period"],
         }
@@ -154,9 +154,9 @@ class MACDIndicator(Indicator):
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
-                "fast_period": {"type": "integer", "minimum": 2, "maximum": 600, "default": 12},
-                "slow_period": {"type": "integer", "minimum": 2, "maximum": 860, "default": 26},
-                "signal_period": {"type": "integer", "minimum": 2, "maximum": 300, "default": 9},
+                "fast_period": {"type": "integer", "minimum": 2, "maximum": 5000, "default": 12},
+                "slow_period": {"type": "integer", "minimum": 2, "maximum": 5000, "default": 26},
+                "signal_period": {"type": "integer", "minimum": 2, "maximum": 5000, "default": 9},
             },
             "required": ["fast_period", "slow_period", "signal_period"],
         }
@@ -246,7 +246,7 @@ class ADXIndicator(Indicator):
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
-                "period": {"type": "integer", "minimum": 2, "maximum": 100, "default": 14}
+                "period": {"type": "integer", "minimum": 2, "maximum": 5000, "default": 14}
             },
             "required": ["period"],
         }
@@ -364,7 +364,7 @@ class AroonIndicator(Indicator):
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
-                "period": {"type": "integer", "minimum": 2, "maximum": 100, "default": 25}
+                "period": {"type": "integer", "minimum": 2, "maximum": 5000, "default": 25}
             },
             "required": ["period"],
         }
