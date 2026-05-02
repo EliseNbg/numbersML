@@ -206,18 +206,29 @@
                         colorIndex++;
                     });
 
-                // Add SMA indicators
+                // Add SMA indicators (separate price scale for precision)
                 Object.keys(indicators)
                     .filter(k => k.startsWith('sma_'))
                     .forEach(name => {
                         const series = priceChart.addLineSeries({
                             lineWidth: 1, title: name,
                             color: indicatorColors[colorIndex % indicatorColors.length],
-                            lineStyle: 2
+                            lineStyle: 2,
+                            priceScaleId: 'sma',
+                            priceFormat: {
+                                type: 'custom',
+                                formatter: (price) => price.toFixed(8)
+                            }
                         });
                         series.setData(indicators[name].map(p => ({ time: p.time, value: p.value })));
                         colorIndex++;
                     });
+
+                // Configure separate SMA price scale
+                priceChart.priceScale('sma').applyOptions({
+                    borderColor: '#FF9800',
+                    mode: 0
+                });
 
 
                 // 2. Price + Bollinger Bands (upper, lower, middle)
@@ -232,40 +243,18 @@
                         const series = bbPriceChart.addLineSeries({
                             lineWidth: 1,
                             title: name,
-                            color: name.includes('upper') ? '#f44336' : name.includes('lower') ? '#4CAF50' : '#FF9800'
+                            color: name.includes('upper') ? '#f44336' : name.includes('lower') ? '#4CAF50' : '#FF9800',
+                            priceFormat: {
+                                type: 'price',
+                                precision: 8,
+                                minMove: 0.00000001
+                            }
                         });
                         series.setData(indicators[name].map(p => ({
                             time: p.time,
                             value: p.value
                          })));
                     });
-
-                // 3. Bollinger Bands Standard Deviation
-                const bbStdChart = createChartCard(`${symbol} Bollinger Bands Std Dev`, container);
-                bbStdChart.priceScale('right').applyOptions({
-                    borderColor: '#9C27B0',
-                    mode: 0
-                });
-
-                Object.keys(indicators)
-                    .filter(k => k.startsWith('bb_') && k.endsWith('_std'))
-                    .forEach(name => {
-                        const series = bbStdChart.addLineSeries({
-                            lineWidth: 2,
-                            title: name,
-                            color: '#9C27B0',
-                            priceFormat: {
-                                type: 'price',
-                                precision: 2,
-                                minMove: 0.01
-                            }
-                        });
-                        series.setData(indicators[name].map(p => ({
-                            time: p.time,
-                            value: p.value
-                        })));
-                    });
-
 
                 // 3. MACD
                 const macdChart = createChartCard(`${symbol} MACD`, container);
@@ -287,8 +276,8 @@
                             color: macdColors[macdColorIndex % macdColors.length],
                             priceFormat: {
                                 type: 'price',
-                                precision: 2,
-                                minMove: 0.01
+                                precision: 8,
+                                minMove: 0.00000001
                             }
                         });
                         series.setData(indicators[name].map(p => ({ time: p.time, value: p.value })));
@@ -296,7 +285,97 @@
                     });
 
 
-                // 4. RSI
+                // 4. Volume Indicators
+
+                // 4. Volume Indicators
+                const volumeChart = createChartCard(`${symbol} Volume Indicators`, container);
+                const volumeSeries = volumeChart.addHistogramSeries({ color: '#2196F3', title: 'Volume' });
+                volumeSeries.setData(candles.map(c => ({ time: c.time, value: c.volume })));
+
+                // Add volume indicators (excluding ATR - moved to separate chart)
+                const volumeColors = ['#9C27B0', '#00BCD4', '#FF9800', '#673AB7'];
+                let volColorIdx = 0;
+
+                Object.keys(indicators)
+                    .filter(k => ['obv', 'cmf', 'mfi', 'adi'].includes(k.split('_')[0]))
+                    .forEach(name => {
+                        const series = volumeChart.addLineSeries({
+                            lineWidth: 1, title: name,
+                            color: volumeColors[volColorIdx % volumeColors.length],
+                            priceScaleId: 'right'
+                        });
+
+                        series.setData(indicators[name].map(p => ({ time: p.time, value: p.value })));
+                        
+                        volColorIdx++;
+                    });
+
+                // Fix right scale for volume indicators
+                volumeChart.priceScale('right').applyOptions({
+                    borderColor: '#9C27B0'
+                });
+
+
+                // 5. ATR (Average True Range) - scaled for visibility
+                const atrChart = createChartCard(`${symbol} ATR (×100,000)`, container);
+                atrChart.priceScale('right').applyOptions({
+                    borderColor: '#FF9800',
+                    mode: 0
+                });
+
+                const atrColors = ['#FF9800', '#F44336', '#9C27B0'];
+                let atrColorIdx = 0;
+
+                Object.keys(indicators)
+                    .filter(k => k.startsWith('atr_'))
+                    .forEach(name => {
+                        const series = atrChart.addLineSeries({
+                            lineWidth: 2,
+                            title: name,
+                            color: atrColors[atrColorIdx % atrColors.length],
+                            priceFormat: {
+                                type: 'price',
+                                precision: 4,
+                                minMove: 0.0001
+                            }
+                        });
+                        // Scale ATR by 100,000 to make small values (like DOGE) visible
+                        series.setData(indicators[name].map(p => ({
+                            time: p.time,
+                            value: p.value * 100000
+                        })));
+                        atrColorIdx++;
+                    });
+
+
+                // 6. Bollinger Bands Standard Deviation
+                const bbStdChart = createChartCard(`${symbol} Bollinger Bands Std Dev`, container);
+                bbStdChart.priceScale('right').applyOptions({
+                    borderColor: '#9C27B0',
+                    mode: 0
+                });
+
+                Object.keys(indicators)
+                    .filter(k => k.startsWith('bb_') && k.endsWith('_std'))
+                    .forEach(name => {
+                        const series = bbStdChart.addLineSeries({
+                            lineWidth: 2,
+                            title: name,
+                            color: '#9C27B0',
+                            priceFormat: {
+                                type: 'price',
+                                precision: 8,
+                                minMove: 0.00000001
+                            }
+                        });
+                        series.setData(indicators[name].map(p => ({
+                            time: p.time,
+                            value: p.value
+                        })));
+                    });
+
+
+                // 7. RSI
                 const rsiChart = createChartCard(`${symbol} RSI`, container);
 
                 // RSI always 0-100 fixed scale
@@ -317,46 +396,6 @@
                         series.setData(indicators[name].map(p => ({ time: p.time, value: p.value })));
                     });
 
-
-                // 5. Volume Indicators
-
-
-                // 4. Volume Indicators
-                const volumeChart = createChartCard(`${symbol} Volume Indicators`, container);
-                const volumeSeries = volumeChart.addHistogramSeries({ color: '#2196F3', title: 'Volume' });
-                volumeSeries.setData(candles.map(c => ({ time: c.time, value: c.volume })));
-
-                // Add other volume indicators
-                const volumeColors = ['#9C27B0', '#00BCD4', '#FF9800', '#673AB7'];
-                let volColorIdx = 0;
-
-                Object.keys(indicators)
-                    .filter(k => ['obv', 'cmf', 'mfi', 'adi', 'atr'].includes(k.split('_')[0]))
-                    .forEach(name => {
-                        const series = volumeChart.addLineSeries({
-                            lineWidth: 1, title: name,
-                            color: volumeColors[volColorIdx % volumeColors.length],
-                            priceScaleId: 'right'
-                        });
-
-                        // ATR is normalized, scale to actual price volatility
-                        if (name.startsWith('atr_')) {
-                            const lastPrice = candles[candles.length-1].close;
-                            series.setData(indicators[name].map(p => ({ 
-                                time: p.time, 
-                                value: p.value * lastPrice * 1000 
-                            })));
-                        } else {
-                            series.setData(indicators[name].map(p => ({ time: p.time, value: p.value })));
-                        }
-                        
-                        volColorIdx++;
-                    });
-
-                // Fix right scale for volume indicators
-                volumeChart.priceScale('right').applyOptions({
-                    borderColor: '#9C27B0'
-                });
 
                 charts.forEach(c => c.timeScale().fitContent());
                 status.textContent = 'Loaded successfully';
