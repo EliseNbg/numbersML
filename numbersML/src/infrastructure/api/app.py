@@ -167,6 +167,17 @@ Currently no authentication. Add authentication middleware for production use.
     except Exception:
         logger.warning("Frontend directory not found - dashboard UI not available")
 
+    # Favicon endpoint
+    @app.get("/favicon.ico", tags=["root"])
+    async def favicon() -> FileResponse:
+        """
+        Serve favicon.ico.
+
+        Returns:
+            Favicon file response
+        """
+        return FileResponse("dashboard/favicon.ico")
+
     # Root endpoint
     @app.get("/", tags=["root"])
     async def root() -> dict:
