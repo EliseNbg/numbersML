@@ -16,6 +16,7 @@ orjson==3.11.8
 # Dashboard (FastAPI)
 fastapi==0.109.0
 uvicorn==0.27.0
+python-multipart==0.0.9
 
 # ML (PyTorch - CPU only)
 torch>=2.0.0
