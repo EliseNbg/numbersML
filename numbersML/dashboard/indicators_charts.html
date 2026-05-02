@@ -242,6 +242,10 @@
 
                 // 3. Bollinger Bands Standard Deviation
                 const bbStdChart = createChartCard(`${symbol} Bollinger Bands Std Dev`, container);
+                bbStdChart.priceScale('right').applyOptions({
+                    borderColor: '#9C27B0',
+                    mode: 0
+                });
 
                 Object.keys(indicators)
                     .filter(k => k.startsWith('bb_') && k.endsWith('_std'))
@@ -249,8 +253,18 @@
                         const series = bbStdChart.addLineSeries({
                             lineWidth: 2,
                             title: name,
-                            color: '#9C27B0'
+                            color: '#9C27B0',
+                            priceFormat: {
+                                type: 'price',
+                                precision: 2,
+                                minMove: 0.01
+                            }
                         });
+                        series.setData(indicators[name].map(p => ({
+                            time: p.time,
+                            value: p.value
+                        }));
+                    });
                         series.setData(indicators[name].map(p => ({
                             time: p.time,
                             value: p.value
@@ -260,6 +274,10 @@
 
                 // 3. MACD
                 const macdChart = createChartCard(`${symbol} MACD`, container);
+                macdChart.priceScale('right').applyOptions({
+                    borderColor: '#2196F3',
+                    mode: 0
+                });
 
                 // Add all found MACD indicators
                 const macdColors = ['#2196F3', '#9C27B0', '#4CAF50'];
@@ -271,7 +289,12 @@
                         const series = macdChart.addLineSeries({
                             lineWidth: 2,
                             title: name,
-                            color: macdColors[macdColorIndex % macdColors.length]
+                            color: macdColors[macdColorIndex % macdColors.length],
+                            priceFormat: {
+                                type: 'price',
+                                precision: 2,
+                                minMove: 0.01
+                            }
                         });
                         series.setData(indicators[name].map(p => ({ time: p.time, value: p.value })));
                         macdColorIndex++;
