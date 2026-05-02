@@ -75,7 +75,7 @@ function bindEventListeners() {
     });
     document.getElementById('btn-llm-suggest').addEventListener('click', getLLMSuggestions);
     document.getElementById('btn-backtest').addEventListener('click', () => {
-        window.location.href = `backtest.html?strategy_id=${currentStrategyId}`;
+        window.location.href = `backtest_ml.html?strategy_id=${currentStrategyId}`;
     });
     
     // Modify modal

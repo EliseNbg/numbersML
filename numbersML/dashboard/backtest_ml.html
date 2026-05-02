@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TradingTCN Backtest - numbersML</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        #chart-container { width: 100%; height: 600px; }
+        .card { margin-bottom: 1rem; }
+        .trade-line { stroke-dasharray: 5, 5; stroke-width: 2; }
+        .prediction-series { opacity: 0.7; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/dashboard/index.html">
+                <i class="bi bi-rocket-takeoff"></i> numbersML - TradingTCN Backtest
+            </a>
+            <div class="d-flex gap-2">
+                <a href="/dashboard/index.html" class="btn btn-outline-light btn-sm">Dashboard</a>
+                <a href="/dashboard/symbols.html" class="btn btn-outline-light btn-sm">Symbols</a>
+                <a href="/dashboard/chart.html" class="btn btn-outline-light btn-sm">Chart</a>
+                <a href="/dashboard/indicators_charts.html" class="btn btn-outline-light btn-sm">Indicators</a>
+                <a href="/dashboard/target_value_chart.html" class="btn btn-outline-light btn-sm">Target Value</a>
+            </div>
+        </div>
+    </nav>
+
+        <div class="container-fluid mt-3">
+            <!-- Controls -->
+            <div class="row mb-4">
+                <div class="col-md-2">
+                    <label class="form-label">Symbol</label>
+                    <select class="form-select" id="symbol-select"></select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">TradingTCN Model</label>
+                    <select class="form-select" id="model-select">
+                        <option value="">Loading models...</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Time Range</label>
+                    <select class="form-select" id="time-range">
+                        <option value="86400">1 Day</option>
+                        <option value="259200">3 Days</option>
+                        <option value="604800" selected>7 Days</option>
+                        <option value="2592000">1 Month</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Score Threshold</label>
+                    <input type="number" class="form-control" id="score-threshold" value="0.001" min="-0.1" max="0.1" step="0.001">
+                    <div class="form-text text-muted">
+                      Score Range: <span id="score-min">0.0000</span> → <span id="score-max">0.0000</span>
+                    </div>
+                </div>
+                <div class="col-md-3 d-flex align-items-end gap-2">
+                    <button class="btn btn-primary" id="btn-predict">
+                        <i class="bi bi-rocket-takeoff"></i> Predict & Backtest
+                    </button>
+                    <div id="status" class="text-muted"></div>
+                </div>
+            </div>
+
+            <!-- Training Section -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <i class="bi bi-robot"></i> Train New TradingTCN Model
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                            <div class="col-md-2">
+                                <label class="form-label">Training Hours</label>
+                                <input type="number" class="form-control" id="train-hours" value="720" min="24" max="2000" step="24">
+                                <div class="form-text text-muted">Data window for training</div>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Prediction Horizon</label>
+                                <input type="number" class="form-control" id="train-horizon" value="600" min="60" max="3600" step="60">
+                                <div class="form-text text-muted">Future seconds to predict</div>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Loss Function</label>
+                                <select class="form-select" id="train-loss">
+                                    <option value="pnl" selected>PnL (Recommended)</option>
+                                    <option value="sharpe">Sharpe Ratio</option>
+                                    <option value="risk_adjusted">Risk Adjusted</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Sequence Stride</label>
+                                <input type="number" class="form-control" id="train-stride" value="60" min="1" max="600" step="10">
+                                <div class="form-text text-muted">Downsample factor</div>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Risk Penalty</label>
+                                <input type="number" class="form-control" id="train-risk-penalty" value="0.05" min="0.0" max="1.0" step="0.01">
+                                <div class="form-text text-muted">For risk_adjusted loss</div>
+                            </div>
+                    <div class="col-md-2 d-flex align-items-end gap-2">
+                        <button class="btn btn-success" id="btn-train">
+                            <i class="bi bi-lightning-charge"></i> Train TradingTCN
+                        </button>
+                        <div id="train-status" class="text-muted"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="row mb-3" id="stats-row" style="display: none;">
+            <div class="col-md-2">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Trades</h5>
+                        <h3 id="stat-trades">0</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Win Rate</h5>
+                        <h3 id="stat-winrate">0%</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Return</h5>
+                        <h3 id="stat-return">0%</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Profit Factor</h5>
+                        <h3 id="stat-profitfactor">0</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Max Drawdown</h5>
+                        <h3 id="stat-drawdown">0%</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Avg Trade Duration</h5>
+                        <h3 id="stat-duration">0 min</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chart -->
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-graph-up"></i> <span id="chart-title">Select symbol, TradingTCN model and click Predict & Backtest</span>
+            </div>
+            <div class="card-body p-0">
+                <div id="chart-container"></div>
+            </div>
+        </div>
+
+        <!-- Trade Table -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <i class="bi bi-list-ul"></i> TradingTCN Trade List
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm" id="trades-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Entry Time</th>
+                                <th>Entry Price</th>
+                                <th>Exit Time</th>
+                                <th>Exit Price</th>
+                                <th>PnL %</th>
+                                <th>Duration</th>
+                                <th>Entry Score</th>
+                            </tr>
+                        </thead>
+                        <tbody id="trades-table-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const API_BASE = '/api';
+        let chart = null;
+        let priceSeries = null;
+        let trades = [];
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadSymbols();
+            await loadModels();
+            initChart();
+            setupEventHandlers();
+        });
+
+        async function loadSymbols() {
+            console.log('🔄 Loading symbols from', `${API_BASE}/symbols`);
+            try {
+                const response = await fetch(`${API_BASE}/symbols`);
+                console.log('✅ Symbols response status:', response.status);
+                
+                const symbols = await response.json();
+                console.log('✅ Loaded symbols total:', symbols.length);
+                
+                const activeSymbols = symbols.filter(s => s.is_active);
+                console.log('✅ Active symbols:', activeSymbols.length);
+
+                const select = document.getElementById('symbol-select');
+                select.innerHTML = '<option value="">Select symbol...</option>' +
+                    activeSymbols.map(s => `<option value="${s.symbol}">${s.symbol}</option>`).join('');
+                
+                // Set default value automatically if available
+                if (activeSymbols.length > 0) {
+                    select.value = activeSymbols[0].symbol;
+                    console.log('✅ Default symbol set:', activeSymbols[0].symbol);
+                }
+                    
+                console.log('✅ Symbol select populated');
+                
+            } catch (error) {
+                console.error('❌ Failed to load symbols:', error);
+                alert('Symbols API Fehler: ' + error.message);
+            }
+        }
+
+        async function loadModels() {
+            try {
+                const response = await fetch(`${API_BASE}/backtest_ml/models/trading_tcn`);
+                const models = await response.json();
+
+                const select = document.getElementById('model-select');
+                select.innerHTML = '<option value="">Select model...</option>' +
+                    models.map(m => `<option value="${m.filename}">${m.name} (${m.timestamp})</option>`).join('');
+            } catch (error) {
+                console.error('Failed to load models:', error);
+                document.getElementById('model-select').innerHTML = '<option value="">No TradingTCN models found</option>';
+            }
+        }
+
+        function initChart() {
+            const container = document.getElementById('chart-container');
+
+            chart = LightweightCharts.createChart(container, {
+                layout: { textColor: 'black', background: { type: 'solid', color: 'white' } },
+                grid: {
+                    vertLines: { color: 'rgba(197, 203, 206, 0.5)' },
+                    horzLines: { color: 'rgba(197, 203, 206, 0.5)' },
+                },
+                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+                rightPriceScale: { borderColor: 'rgba(197, 203, 206, 0.8)' },
+                timeScale: { borderColor: 'rgba(197, 203, 206, 0.8)', timeVisible: true, secondsVisible: true },
+            });
+
+            priceSeries = chart.addLineSeries({ color: '#2196F3', lineWidth: 2, title: 'Price' });
+
+            window.addEventListener('resize', () => {
+                chart.applyOptions({ width: container.clientWidth });
+            });
+        }
+
+        async function trainNewModel() {
+            const symbol = document.getElementById('symbol-select').value;
+            const profit = parseFloat(document.getElementById('train-profit').value) / 100;
+            const stop = parseFloat(document.getElementById('train-stop').value) / 100;
+            const hours = parseInt(document.getElementById('train-hours').value);
+            const lookahead = parseInt(document.getElementById('train-lookahead').value) * 60;
+            const threshold = parseFloat(document.getElementById('train-threshold').value);
+            const status = document.getElementById('train-status');
+
+            if (!symbol) {
+                status.textContent = 'Please select symbol';
+                return;
+            }
+
+            status.textContent = 'Training model... this may take several minutes';
+
+            try {
+                const response = await fetch(`${API_BASE}/backtest_ml/train`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        symbol,
+                        profit_target: profit,
+                        stop_loss: stop,
+                        training_hours: hours,
+                        look_ahead: lookahead,
+                        threshold
+                    })
+                });
+
+                const result = await response.json();
+                console.log('✅ Training response:', result);
+                
+                const trainStatus = document.getElementById('train-status');
+
+                if (!response.ok || result.detail) {
+                    trainStatus.textContent = `❌ Fehler: ${JSON.stringify(result.detail || result.error || 'Unbekannter Fehler')}`;
+                } else {
+                    trainStatus.textContent = `✅ Training gestartet! Modell-ID: ${result.model_id}`;
+                    // Aktualisiere Model Liste nach 10 Sekunden automatisch
+                    setTimeout(async () => {
+                        await loadModels();
+                        trainStatus.textContent = '✅ Modelle Liste aktualisiert';
+                    }, 10000);
+                }
+
+            } catch (e) {
+                console.error('Training error:', e);
+                status.textContent = 'Error training model';
+            }
+        }
+
+        function setupEventHandlers() {
+            document.getElementById('btn-predict').addEventListener('click', runBacktest);
+            // ❌ Entfernt doppelter Event Listener
+            // document.getElementById('btn-train').addEventListener('click', trainNewModel);
+        }
+
+        async function runBacktest() {
+            const symbol = document.getElementById('symbol-select').value;
+            const model = document.getElementById('model-select').value;
+            const seconds = parseInt(document.getElementById('time-range').value);
+            const scoreThreshold = parseFloat(document.getElementById('score-threshold').value);
+            const status = document.getElementById('status');
+
+            if (!symbol || !model) {
+                status.textContent = 'Please select symbol and model';
+                return;
+            }
+
+            status.textContent = 'Running TradingTCN backtest...';
+            document.getElementById('stats-row').style.display = 'none';
+
+            try {
+                const url = `${API_BASE}/backtest_ml/trading_tcn?symbol=${encodeURIComponent(symbol)}&model=${encodeURIComponent(model)}&seconds=${seconds}&score_threshold=${scoreThreshold}`;
+                console.log('🚀 TRADINGTCN BACKTEST REQUEST:', url);
+                const response = await fetch(url);
+                const result = await response.json();
+                console.log('🚀 TRADINGTCN BACKTEST RESPONSE:', result);
+
+                // ✅ Display score range statistics
+                if (result.score_stats) {
+                    const scoreMin = document.getElementById('score-min');
+                    const scoreMax = document.getElementById('score-max');
+                    if (scoreMin) scoreMin.textContent = result.score_stats.min.toFixed(6);
+                    if (scoreMax) scoreMax.textContent = result.score_stats.max.toFixed(6);
+                }
+
+                status.textContent = 'TradingTCN backtest complete';
+
+                // Update stats
+                document.getElementById('stat-trades').textContent = result.trades.length;
+                document.getElementById('stat-winrate').textContent = `${(result.metrics.win_rate * 100).toFixed(1)}%`;
+                document.getElementById('stat-return').textContent = `${(result.metrics.total_return * 100).toFixed(2)}%`;
+                document.getElementById('stat-profitfactor').textContent = result.metrics.profit_factor.toFixed(2);
+                document.getElementById('stat-drawdown').textContent = `${(result.metrics.max_drawdown * 100).toFixed(2)}%`;
+                document.getElementById('stat-duration').textContent = `${Math.round(result.metrics.avg_duration / 60)} min`;
+                document.getElementById('stats-row').style.display = 'flex';
+
+                // Update chart
+                priceSeries.setData(result.candles.map(c => ({ time: c.time, value: c.close })));
+
+                // Plot return predictions on separate scale
+                if (window.returnSeries) {
+                    chart.removeSeries(window.returnSeries);
+                }
+                window.returnSeries = chart.addLineSeries({
+                    color: '#2196F3',
+                    lineWidth: 1,
+                    priceScaleId: 'returns',
+                    title: 'Predicted Returns',
+                    lastValueVisible: true
+                });
+
+                // Setup separate scale for returns
+                window.returnSeries.priceScale().applyOptions({
+                    scaleMargins: {
+                        top: 0.70,
+                        bottom: 0.10
+                    },
+                    borderVisible: true
+                });
+
+                window.returnSeries.setData(result.candles.map((c, i) => ({
+                    time: c.time,
+                    value: result.predictions?.returns[i] || 0
+                })));
+
+                // Plot risk predictions
+                if (window.riskSeries) {
+                    chart.removeSeries(window.riskSeries);
+                }
+                window.riskSeries = chart.addLineSeries({
+                    color: '#FF9800',
+                    lineWidth: 1,
+                    priceScaleId: 'risk',
+                    title: 'Predicted Risk',
+                    lastValueVisible: true
+                });
+
+                // Setup separate scale for risk
+                window.riskSeries.priceScale().applyOptions({
+                    scaleMargins: {
+                        top: 0.60,
+                        bottom: 0.20
+                    },
+                    borderVisible: true
+                });
+
+                window.riskSeries.setData(result.candles.map((c, i) => ({
+                    time: c.time,
+                    value: result.predictions?.risks[i] || 0.1
+                })));
+
+                // Clear old markers
+                if (window.tradeMarkers) {
+                    priceSeries.detachPrimitive(window.tradeMarkers);
+                }
+
+                // Trade markers for TradingTCN
+                const maxTrades = 50;
+                const displayTrades = result.trades.slice(-maxTrades);
+
+                console.log('✅ Drawing TradingTCN markers for', displayTrades.length, 'trades');
+
+                const markers = [];
+
+                displayTrades.forEach(trade => {
+                    // Entry marker (circle below bar)
+                    markers.push({
+                        time: trade.entry_time,
+                        position: 'belowBar',
+                        color: '#4CAF50',
+                        shape: 'circle',
+                        text: 'TCN_ENTRY'
+                    });
+
+                    // Exit marker
+                    markers.push({
+                        time: trade.exit_time,
+                        position: 'aboveBar',
+                        color: trade.pnl > 0 ? '#4CAF50' : '#F44336',
+                        shape: 'square',
+                        text: trade.pnl > 0 ? 'TCN_WIN' : 'TCN_LOSS'
+                    });
+                });
+
+                priceSeries.setMarkers(markers);
+                console.log('✅ TradingTCN markers set:', markers.length);
+
+                chart.timeScale().fitContent();
+
+                // Fill trade table with TradingTCN trades
+                const tbody = document.getElementById('trades-table-body');
+                tbody.innerHTML = result.trades.map((trade, idx) => `
+                    <tr class="${trade.pnl > 0 ? 'table-success' : 'table-danger'}">
+                        <td>${idx + 1}</td>
+                        <td>${new Date(trade.entry_time * 1000).toLocaleString()}</td>
+                        <td>${trade.entry_price.toFixed(6)}</td>
+                        <td>${new Date(trade.exit_time * 1000).toLocaleString()}</td>
+                        <td>${trade.exit_price.toFixed(6)}</td>
+                        <td>${(trade.pnl * 100).toFixed(4)}%</td>
+                        <td>${Math.round((trade.exit_time - trade.entry_time) / 60)} min</td>
+                        <td>${trade.score?.toFixed(6) || 'N/A'}</td>
+                    </tr>
+                `).join('');
+
+                trades = result.trades;
+
+            } catch (e) {
+                console.error('TradingTCN backtest error:', e);
+                status.textContent = 'Error running TradingTCN backtest';
+            }
+        }
+
+        // Train TradingTCN Model Button Handler
+        document.getElementById('btn-train').addEventListener('click', async () => {
+            console.log('\n\n🚀 TCN ==============================================');
+            console.log('🚀 TCN TRAIN TRADINGTCN BUTTON PRESSED');
+            console.log('🚀 TCN ==============================================');
+
+            const trainBtn = document.getElementById('btn-train');
+            const trainStatus = document.getElementById('train-status');
+
+            const val_symbol         = document.getElementById('symbol-select').value;
+            const val_hours          = parseInt(document.getElementById('train-hours').value);
+            const val_horizon        = parseInt(document.getElementById('train-horizon').value);
+            const val_loss           = document.getElementById('train-loss').value;
+            const val_stride         = parseInt(document.getElementById('train-stride').value);
+            const val_risk_penalty   = parseFloat(document.getElementById('train-risk-penalty').value);
+
+            console.log('🚀 TCN FORM VALUES:');
+            console.log('   symbol:         ', val_symbol);
+            console.log('   hours:          ', val_hours, 'h');
+            console.log('   horizon:        ', val_horizon, 's');
+            console.log('   loss:           ', val_loss);
+            console.log('   stride:         ', val_stride);
+            console.log('   risk_penalty:   ', val_risk_penalty);
+
+            if (!val_symbol) {
+                trainStatus.textContent = 'Please select symbol first!';
+                console.error('❌ TCN TRAIN: No symbol selected');
+                return;
+            }
+
+            const payload = {
+                symbol: val_symbol,
+                hours: val_hours,
+                horizon: val_horizon,
+                loss: val_loss,
+                stride: val_stride
+            };
+
+            console.log('\n🚀 TCN SENDING TO: /api/backtest_ml/train_trading_tcn');
+            console.log('   Payload:', payload);
+
+            trainBtn.disabled = true;
+            trainBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Training TCN...';
+            trainStatus.textContent = 'TradingTCN training started...';
+
+            try {
+                const response = await fetch(`${API_BASE}/backtest_ml/train_trading_tcn?symbol=${encodeURIComponent(val_symbol)}&hours=${val_hours}&horizon=${val_horizon}&loss=${val_loss}&stride=${val_stride}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                console.log('🚀 TCN RESPONSE STATUS:', response.status);
+                console.log('   RESPONSE OK:', response.ok);
+
+                const result = await response.json();
+
+                if (result.success || result.filename) {
+                    trainStatus.textContent = `✅ TradingTCN trained! Model: ${result.filename || result.model_id}`;
+                    // Refresh model list
+                    loadModels();
+                } else {
+                    trainStatus.textContent = `❌ Training failed: ${result.error || 'Unknown error'}`;
+                }
+
+            } catch (e) {
+                console.error('TradingTCN train error:', e);
+                trainStatus.textContent = 'Connection error during TradingTCN training';
+            } finally {
+                trainBtn.disabled = false;
+                trainBtn.innerHTML = '<i class="bi bi-lightning-charge"></i> Train TradingTCN';
+            }
+        });
+    </script>
+</body>
+</html>

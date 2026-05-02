@@ -292,9 +292,9 @@ Access the web interface at `/dashboard/backtest.html` in the FastAPI app. Selec
 
 ### API endpoints
 
-- `GET /api/backtest/models/trading_tcn` — List available TradingTCN models
-- `GET /api/backtest/trading_tcn?symbol=DASH/USDC&model=trading_tcn_DASH_USDC_20260421_0509.pt&seconds=86400&score_threshold=0.001` — Run backtest
-- `POST /api/backtest/train_trading_tcn` — Train new model
+- `GET /api/backtest_ml/models/trading_tcn` — List available TradingTCN models
+- `GET /api/backtest_ml/trading_tcn?symbol=DASH/USDC&model=trading_tcn_DASH_USDC_20260421_0509.pt&seconds=86400&score_threshold=0.001` — Run backtest
+- `POST /api/backtest_ml/train_trading_tcn` — Train new model
 
 ### Command-line backtesting
 

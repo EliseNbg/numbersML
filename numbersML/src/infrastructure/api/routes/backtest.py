@@ -24,7 +24,7 @@ from ml.entry_model import EntryPointModel
 from ml.config import ModelConfig
 from src.infrastructure.database import get_db_pool_async
 
-router = APIRouter(prefix="/api/backtest", tags=["backtest"])
+router = APIRouter(prefix="/api/backtest_ml", tags=["backtest_ml"])
 logger = logging.getLogger(__name__)
 
 

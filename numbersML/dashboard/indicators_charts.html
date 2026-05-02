@@ -69,8 +69,23 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let charts = [];
+        let isSyncing = false;
 
         const API_BASE = '/api';
+
+        function syncTimeScale(sourceChart, timeRange) {
+            if (isSyncing || !timeRange) return;
+            isSyncing = true;
+            try {
+                charts.forEach(chart => {
+                    if (chart !== sourceChart) {
+                        chart.timeScale().setVisibleRange(timeRange);
+                    }
+                });
+            } finally {
+                isSyncing = false;
+            }
+        }
 
         // Load symbols on page load
         async function loadSymbols() {
@@ -116,6 +131,9 @@
             });
 
             charts.push(chart);
+            chart.timeScale().subscribeVisibleTimeRangeChange((timeRange) => {
+                syncTimeScale(chart, timeRange);
+            });
             return chart;
         }
 
@@ -202,35 +220,41 @@
                     });
 
 
-                // 2. Price + Bollinger Bands
-                const bbChart = createChartCard(`${symbol} Price with Bollinger Bands`, container);
-                const bbPriceSeries = bbChart.addLineSeries({ color: '#2196F3', lineWidth: 2, title: 'Close' });
+                // 2. Price + Bollinger Bands (upper, lower, middle)
+                const bbPriceChart = createChartCard(`${symbol} Price with Bollinger Bands`, container);
+                const bbPriceSeries = bbPriceChart.addLineSeries({ color: '#2196F3', lineWidth: 2, title: 'Close' });
                 bbPriceSeries.setData(candles.map(c => ({ time: c.time, value: c.close })));
 
-                // Bollinger Bands
-                const bbColors = ['#f44336', '#FF9800', '#4CAF50'];
-                let bbColorIdx = 0;
-
-                // BB are normalized 0-1 - denormalize to actual price range
-                const closePrices = candles.map(c => c.close);
-                const minPrice = Math.min(...closePrices);
-                const maxPrice = Math.max(...closePrices);
-                const priceRange = maxPrice - minPrice;
-
+                // Only show bb_20_2 by default (most common)
                 Object.keys(indicators)
-                    .filter(k => k.startsWith('bb_'))
+                    .filter(k => k.startsWith('bb_20_2') && !k.endsWith('_std'))
                     .forEach(name => {
-                        const series = bbChart.addLineSeries({
+                        const series = bbPriceChart.addLineSeries({
                             lineWidth: 1,
                             title: name,
-                            color: bbColors[bbColorIdx % bbColors.length]
+                            color: name.includes('upper') ? '#f44336' : name.includes('lower') ? '#4CAF50' : '#FF9800'
                         });
-                        // Scale normalized BB value back to real price
-                        series.setData(indicators[name].map(p => ({ 
-                            time: p.time, 
-                            value: minPrice + (p.value * priceRange) 
+                        series.setData(indicators[name].map(p => ({
+                            time: p.time,
+                            value: p.value
+                         })));
+                    });
+
+                // 3. Bollinger Bands Standard Deviation
+                const bbStdChart = createChartCard(`${symbol} Bollinger Bands Std Dev`, container);
+
+                Object.keys(indicators)
+                    .filter(k => k.startsWith('bb_') && k.endsWith('_std'))
+                    .forEach(name => {
+                        const series = bbStdChart.addLineSeries({
+                            lineWidth: 2,
+                            title: name,
+                            color: '#9C27B0'
+                        });
+                        series.setData(indicators[name].map(p => ({
+                            time: p.time,
+                            value: p.value
                         })));
-                        bbColorIdx++;
                     });
 
 

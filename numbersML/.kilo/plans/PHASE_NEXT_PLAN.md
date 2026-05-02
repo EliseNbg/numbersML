@@ -235,10 +235,10 @@ POST   /api/market/mode                 - Set mode (test/prod)
 
 ### Backtesting
 ```
-POST   /api/backtest/run                - Run backtest
-GET    /api/backtest/results/{id}       - Get backtest results
-GET    /api/backtest/list               - List all backtests
-POST   /api/backtest/compare            - Compare multiple strategies
+POST   /api/backtest_ml/run                - Run backtest
+GET    /api/backtest_ml/results/{id}       - Get backtest results
+GET    /api/backtest_ml/list               - List all backtests
+POST   /api/backtest_ml/compare            - Compare multiple strategies
 ```
 
 ## Database Schema Details

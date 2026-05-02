@@ -144,6 +144,21 @@ async function loadChartData() {
     }
 }
 
+// Map short indicator names to full database names (e.g., "sma" -> "sma_20")
+function findIndicatorKey(values, shortName) {
+    // Try exact match first
+    if (values[shortName] !== undefined) return shortName;
+
+    // Prefix match: find key that starts with shortName + "_"
+    // Prefer shorter matches (e.g., sma_20 over sma_2000)
+    const prefix = shortName + '_';
+    const matches = Object.keys(values)
+        .filter(key => key.startsWith(prefix))
+        .sort((a, b) => a.length - b.length || a.localeCompare(b));
+
+    return matches.length > 0 ? matches[0] : null;
+}
+
 async function reloadIndicators(symbol, seconds) {
     try {
         const resp = await fetch(`${API_BASE}/candles/indicators?symbol=${encodeURIComponent(symbol)}&seconds=${seconds}`);
@@ -155,8 +170,13 @@ async function reloadIndicators(symbol, seconds) {
         // Update each active indicator overlay
         for (const [name, series] of Object.entries(indicatorSeries)) {
             const data = indicators
-                .filter(i => i.values[name] !== undefined && !isNaN(i.values[name]))
-                .map(i => ({ time: i.time, value: i.values[name] }));
+                .map(i => {
+                    const key = findIndicatorKey(i.values, name);
+                    return key && i.values[key] !== null && !isNaN(i.values[key])
+                        ? { time: i.time, value: i.values[key] }
+                        : null;
+                })
+                .filter(x => x !== null);
 
             if (data.length > 0) {
                 series.setData(data);

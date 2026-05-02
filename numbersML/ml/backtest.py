@@ -233,7 +233,7 @@ if __name__ == '__main__':
     closes = np.array(ds.closes)
     timestamps = np.array([int(t.timestamp()) for t in ds.timestamps])
 
-    # ✅ Exakt gleiche Trading Simulation wie Web API /api/backtest/entry
+    # ✅ Exakt gleiche Trading Simulation wie Web API /api/backtest_ml/entry
     trades = []
     position = 0
     entry_price = 0.0
