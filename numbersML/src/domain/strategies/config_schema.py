@@ -96,10 +96,14 @@ def _validate_rsi_params(params: dict[str, Any]) -> list[ValidationIssue]:
     oversold = params.get("oversold")
     overbought = params.get("overbought")
     if not isinstance(period, int) or period < 2:
-        issues.append(ValidationIssue(path="signal.params.period", message="period must be int >= 2."))
+        issues.append(
+            ValidationIssue(path="signal.params.period", message="period must be int >= 2.")
+        )
     if not isinstance(oversold, (int, float)) or not 0 <= oversold <= 100:
         issues.append(
-            ValidationIssue(path="signal.params.oversold", message="oversold must be number in [0, 100].")
+            ValidationIssue(
+                path="signal.params.oversold", message="oversold must be number in [0, 100]."
+            )
         )
     if not isinstance(overbought, (int, float)) or not 0 <= overbought <= 100:
         issues.append(
@@ -142,9 +146,13 @@ def _validate_macd_params(params: dict[str, Any]) -> list[ValidationIssue]:
     if not isinstance(slow, int) or slow < 2:
         issues.append(ValidationIssue(path="signal.params.slow", message="slow must be int >= 2."))
     if not isinstance(signal, int) or signal < 1:
-        issues.append(ValidationIssue(path="signal.params.signal", message="signal must be int >= 1."))
+        issues.append(
+            ValidationIssue(path="signal.params.signal", message="signal must be int >= 1.")
+        )
     if isinstance(fast, int) and isinstance(slow, int) and fast >= slow:
-        issues.append(ValidationIssue(path="signal.params", message="fast must be lower than slow."))
+        issues.append(
+            ValidationIssue(path="signal.params", message="fast must be lower than slow.")
+        )
     return issues
 
 
@@ -167,7 +175,9 @@ def _validate_sma_cross_params(params: dict[str, Any]) -> list[ValidationIssue]:
     if not isinstance(slow, int) or slow < 2:
         issues.append(ValidationIssue(path="signal.params.slow", message="slow must be int >= 2."))
     if isinstance(fast, int) and isinstance(slow, int) and fast >= slow:
-        issues.append(ValidationIssue(path="signal.params", message="fast must be lower than slow."))
+        issues.append(
+            ValidationIssue(path="signal.params", message="fast must be lower than slow.")
+        )
     return issues
 
 
@@ -186,9 +196,13 @@ def _validate_bollinger_params(params: dict[str, Any]) -> list[ValidationIssue]:
     period = params.get("period")
     std_dev = params.get("std_dev")
     if not isinstance(period, int) or period < 2:
-        issues.append(ValidationIssue(path="signal.params.period", message="period must be int >= 2."))
+        issues.append(
+            ValidationIssue(path="signal.params.period", message="period must be int >= 2.")
+        )
     if not isinstance(std_dev, (int, float)) or std_dev <= 0:
         issues.append(
-            ValidationIssue(path="signal.params.std_dev", message="std_dev must be positive number.")
+            ValidationIssue(
+                path="signal.params.std_dev", message="std_dev must be positive number."
+            )
         )
     return issues

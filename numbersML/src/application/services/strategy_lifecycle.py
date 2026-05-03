@@ -427,18 +427,18 @@ class StrategyLifecycleService:
         Raises:
             NotImplementedError: If signal type not supported
         """
-        # For now, create a generic strategy based on definition
-        from src.domain.strategies.base import TimeFrame
+        # For now, create a generic algorithm based on definition
+        from src.domain.strategies.base import Algorithm, TimeFrame
 
-        class DynamicStrategy(Strategy):
-            """Dynamically created strategy from config."""
+        class DynamicAlgorithm(Algorithm):
+            """Dynamically created algorithm from config."""
 
             def on_tick(self, tick) -> Signal | None:
                 # Placeholder: real implementation would use signal config
                 return None
 
         symbols = getattr(strategy_def, "symbols", ["BTC/USDC"])
-        return DynamicStrategy(
+        return DynamicAlgorithm(
             strategy_id=strategy_def.id,
             symbols=symbols,
             time_frame=TimeFrame.TICK,

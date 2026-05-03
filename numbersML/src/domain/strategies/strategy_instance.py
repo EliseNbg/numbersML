@@ -1,8 +1,8 @@
 """
 StrategyInstance domain entity.
 
-Represents a deployed strategy with specific configuration.
-Links Strategy (logic) with ConfigurationSet (parameters).
+Represents a deployed algorithm with specific configuration.
+Links Algorithm (logic) with ConfigurationSet (parameters).
 Manages lifecycle state, positions, signals, and runtime statistics.
 
 Architecture: Domain Layer (pure Python, no external dependencies)
@@ -17,7 +17,7 @@ from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from src.domain.models.base import Entity
-from src.domain.strategies.base import EnrichedTick, Position, Signal, Strategy
+from src.domain.strategies.base import Algorithm, EnrichedTick, Position, Signal
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +87,7 @@ class RuntimeStats:
 class StrategyInstance(Entity):
     """Domain entity for strategy instances.
 
-    Links a Strategy (logic) with a ConfigurationSet (parameters).
+    Links an Algorithm (logic) with a ConfigurationSet (parameters).
     Manages lifecycle state and tracks runtime statistics.
 
     Lifecycle:
@@ -95,7 +95,7 @@ class StrategyInstance(Entity):
 
     Example:
         >>> instance = StrategyInstance(
-        ...     strategy_id=uuid4(),
+        ...     strategy=RSIAlgorithm(...),
         ...     config_set_id=uuid4(),
         ... )
         >>> instance.can_start()
@@ -107,7 +107,7 @@ class StrategyInstance(Entity):
 
     def __init__(
         self,
-        strategy: Strategy,
+        strategy: Algorithm,
         config_set_id: UUID,
         id: UUID | None = None,
         status: StrategyInstanceState = StrategyInstanceState.STOPPED,
@@ -118,7 +118,7 @@ class StrategyInstance(Entity):
         """Initialize StrategyInstance.
 
         Args:
-            strategy: Strategy object (algorithm logic)
+            strategy: Algorithm object (algorithm logic)
             config_set_id: UUID of the ConfigurationSet
             id: UUID (auto-generated if None)
             status: Initial status (default: STOPPED)
@@ -164,8 +164,8 @@ class StrategyInstance(Entity):
         return self._config_set_id
 
     @property
-    def strategy(self) -> Strategy:
-        """Get strategy object."""
+    def strategy(self) -> Algorithm:
+        """Get algorithm object."""
         return self._strategy
 
     @property

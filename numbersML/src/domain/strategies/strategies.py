@@ -12,16 +12,16 @@ import logging
 from typing import Optional
 
 from src.domain.strategies.base import (
+    Algorithm,
     EnrichedTick,
     Signal,
     SignalType,
-    Strategy,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class RSIStrategy(Strategy):
+class RSIAlgorithm(Algorithm):
     """
     RSI Oversold/Overbought Strategy.
 
@@ -35,7 +35,7 @@ class RSIStrategy(Strategy):
         overbought_threshold: RSI level for sell signal (default: 70)
 
     Example:
-        >>> strategy = RSIStrategy(
+        >>> strategy = RSIAlgorithm(
         ...     strategy_id='rsi_v1',
         ...     symbols=['BTC/USDT'],
         ...     rsi_period=14,
@@ -75,7 +75,7 @@ class RSIStrategy(Strategy):
         self._last_rsi: dict[str, float] = {}
 
         logger.info(
-            f"RSIStrategy initialized: period={rsi_period}, "
+            f"RSIAlgorithm initialized: period={rsi_period}, "
             f"oversold={oversold_threshold}, overbought={overbought_threshold}"
         )
 
@@ -90,7 +90,7 @@ class RSIStrategy(Strategy):
             Signal if RSI crosses threshold, None otherwise
         """
         # Get RSI from indicators
-        rsi_key = f'rsiindicator_period{self.rsi_period}_rsi'
+        rsi_key = f"rsiindicator_period{self.rsi_period}_rsi"
         rsi = tick.get_indicator(rsi_key)
 
         if rsi is None or rsi == 0:
@@ -102,8 +102,7 @@ class RSIStrategy(Strategy):
         # Check for oversold (BUY signal)
         if rsi < self.oversold_threshold:
             logger.info(
-                f"RSI oversold: {rsi:.2f} < {self.oversold_threshold} "
-                f"for {tick.symbol}"
+                f"RSI oversold: {rsi:.2f} < {self.oversold_threshold} " f"for {tick.symbol}"
             )
             return Signal(
                 strategy_id=self.id,
@@ -112,17 +111,16 @@ class RSIStrategy(Strategy):
                 price=tick.price,
                 confidence=self.confidence,
                 metadata={
-                    'rsi': rsi,
-                    'threshold': self.oversold_threshold,
-                    'condition': 'oversold',
+                    "rsi": rsi,
+                    "threshold": self.oversold_threshold,
+                    "condition": "oversold",
                 },
             )
 
         # Check for overbought (SELL signal)
         if rsi > self.overbought_threshold:
             logger.info(
-                f"RSI overbought: {rsi:.2f} > {self.overbought_threshold} "
-                f"for {tick.symbol}"
+                f"RSI overbought: {rsi:.2f} > {self.overbought_threshold} " f"for {tick.symbol}"
             )
             return Signal(
                 strategy_id=self.id,
@@ -131,16 +129,16 @@ class RSIStrategy(Strategy):
                 price=tick.price,
                 confidence=self.confidence,
                 metadata={
-                    'rsi': rsi,
-                    'threshold': self.overbought_threshold,
-                    'condition': 'overbought',
+                    "rsi": rsi,
+                    "threshold": self.overbought_threshold,
+                    "condition": "overbought",
                 },
             )
 
         return None
 
 
-class MACDStrategy(Strategy):
+class MACDAlgorithm(Algorithm):
     """
     MACD Crossover Strategy.
 
@@ -154,7 +152,7 @@ class MACDStrategy(Strategy):
         signal_period: Signal line period (default: 9)
 
     Example:
-        >>> strategy = MACDStrategy(
+        >>> strategy = MACDAlgorithm(
         ...     strategy_id='macd_v1',
         ...     symbols=['BTC/USDT'],
         ...     fast_period=12,
@@ -195,7 +193,7 @@ class MACDStrategy(Strategy):
         self._prev_signal: dict[str, float] = {}
 
         logger.info(
-            f"MACDStrategy initialized: fast={fast_period}, "
+            f"MACDAlgorithm initialized: fast={fast_period}, "
             f"slow={slow_period}, signal={signal_period}"
         )
 
@@ -210,8 +208,8 @@ class MACDStrategy(Strategy):
             Signal if crossover detected, None otherwise
         """
         # Get MACD values from indicators
-        macd_key = f'macdindicator_fast_period{self.fast_period}_slow_period{self.slow_period}_signal_period{self.signal_period}_macd'
-        signal_key = f'macdindicator_fast_period{self.fast_period}_slow_period{self.slow_period}_signal_period{self.signal_period}_signal'
+        macd_key = f"macdindicator_fast_period{self.fast_period}_slow_period{self.slow_period}_signal_period{self.signal_period}_macd"
+        signal_key = f"macdindicator_fast_period{self.fast_period}_slow_period{self.slow_period}_signal_period{self.signal_period}_signal"
 
         macd = tick.get_indicator(macd_key)
         signal_line = tick.get_indicator(signal_key)
@@ -244,11 +242,11 @@ class MACDStrategy(Strategy):
                 price=tick.price,
                 confidence=self.confidence,
                 metadata={
-                    'macd': macd,
-                    'signal': signal_line,
-                    'prev_macd': prev_macd,
-                    'prev_signal': prev_signal,
-                    'condition': 'bullish_crossover',
+                    "macd": macd,
+                    "signal": signal_line,
+                    "prev_macd": prev_macd,
+                    "prev_signal": prev_signal,
+                    "condition": "bullish_crossover",
                 },
             )
 
@@ -265,18 +263,18 @@ class MACDStrategy(Strategy):
                 price=tick.price,
                 confidence=self.confidence,
                 metadata={
-                    'macd': macd,
-                    'signal': signal_line,
-                    'prev_macd': prev_macd,
-                    'prev_signal': prev_signal,
-                    'condition': 'bearish_crossover',
+                    "macd": macd,
+                    "signal": signal_line,
+                    "prev_macd": prev_macd,
+                    "prev_signal": prev_signal,
+                    "condition": "bearish_crossover",
                 },
             )
 
         return None
 
 
-class SMACrossoverStrategy(Strategy):
+class SMACrossoverAlgorithm(Algorithm):
     """
     Simple Moving Average Crossover Strategy.
 
@@ -289,7 +287,7 @@ class SMACrossoverStrategy(Strategy):
         slow_period: Slow SMA period (default: 50)
 
     Example:
-        >>> strategy = SMACrossoverStrategy(
+        >>> strategy = SMACrossoverAlgorithm(
         ...     strategy_id='sma_cross_v1',
         ...     symbols=['BTC/USDT'],
         ...     fast_period=20,
@@ -325,9 +323,7 @@ class SMACrossoverStrategy(Strategy):
         self._prev_fast_sma: dict[str, float] = {}
         self._prev_slow_sma: dict[str, float] = {}
 
-        logger.info(
-            f"SMACrossoverStrategy initialized: fast={fast_period}, slow={slow_period}"
-        )
+        logger.info(f"SMACrossoverAlgorithm initialized: fast={fast_period}, slow={slow_period}")
 
     def on_tick(self, tick: EnrichedTick) -> Optional[Signal]:
         """
@@ -340,8 +336,8 @@ class SMACrossoverStrategy(Strategy):
             Signal if crossover detected, None otherwise
         """
         # Get SMA values
-        fast_key = f'smaindicator_period{self.fast_period}_sma'
-        slow_key = f'smaindicator_period{self.slow_period}_sma'
+        fast_key = f"smaindicator_period{self.fast_period}_sma"
+        slow_key = f"smaindicator_period{self.slow_period}_sma"
 
         fast_sma = tick.get_indicator(fast_key)
         slow_sma = tick.get_indicator(slow_key)
@@ -374,9 +370,9 @@ class SMACrossoverStrategy(Strategy):
                 price=tick.price,
                 confidence=self.confidence,
                 metadata={
-                    'fast_sma': fast_sma,
-                    'slow_sma': slow_sma,
-                    'condition': 'golden_cross',
+                    "fast_sma": fast_sma,
+                    "slow_sma": slow_sma,
+                    "condition": "golden_cross",
                 },
             )
 
@@ -393,16 +389,16 @@ class SMACrossoverStrategy(Strategy):
                 price=tick.price,
                 confidence=self.confidence,
                 metadata={
-                    'fast_sma': fast_sma,
-                    'slow_sma': slow_sma,
-                    'condition': 'death_cross',
+                    "fast_sma": fast_sma,
+                    "slow_sma": slow_sma,
+                    "condition": "death_cross",
                 },
             )
 
         return None
 
 
-class BollingerBandsStrategy(Strategy):
+class BollingerBandsAlgorithm(Algorithm):
     """
     Bollinger Bands Mean Reversion Strategy.
 
@@ -415,7 +411,7 @@ class BollingerBandsStrategy(Strategy):
         std_dev: Standard deviation multiplier (default: 2.0)
 
     Example:
-        >>> strategy = BollingerBandsStrategy(
+        >>> strategy = BollingerBandsAlgorithm(
         ...     strategy_id='bb_v1',
         ...     symbols=['BTC/USDT'],
         ...     period=20,
@@ -447,9 +443,7 @@ class BollingerBandsStrategy(Strategy):
         self.std_dev = std_dev
         self.confidence = confidence
 
-        logger.info(
-            f"BollingerBandsStrategy initialized: period={period}, std_dev={std_dev}"
-        )
+        logger.info(f"BollingerBandsAlgorithm initialized: period={period}, std_dev={std_dev}")
 
     def on_tick(self, tick: EnrichedTick) -> Optional[Signal]:
         """
@@ -462,10 +456,10 @@ class BollingerBandsStrategy(Strategy):
             Signal if price touches bands, None otherwise
         """
         # Get Bollinger Bands values
-        bb_prefix = f'bbindicator_period{self.period}_std_dev{self.std_dev}'
-        upper_key = f'{bb_prefix}_upper'
-        middle_key = f'{bb_prefix}_middle'
-        lower_key = f'{bb_prefix}_lower'
+        bb_prefix = f"bbindicator_period{self.period}_std_dev{self.std_dev}"
+        upper_key = f"{bb_prefix}_upper"
+        middle_key = f"{bb_prefix}_middle"
+        lower_key = f"{bb_prefix}_lower"
 
         upper = tick.get_indicator(upper_key)
         middle = tick.get_indicator(middle_key)
@@ -478,9 +472,7 @@ class BollingerBandsStrategy(Strategy):
 
         # Check if price touches lower band (BUY signal)
         if price <= lower * 1.001:  # Within 0.1% of lower band
-            logger.info(
-                f"Price at lower BB: {price:.2f} <= {lower:.2f} for {tick.symbol}"
-            )
+            logger.info(f"Price at lower BB: {price:.2f} <= {lower:.2f} for {tick.symbol}")
             return Signal(
                 strategy_id=self.id,
                 symbol=tick.symbol,
@@ -488,19 +480,17 @@ class BollingerBandsStrategy(Strategy):
                 price=tick.price,
                 confidence=self.confidence,
                 metadata={
-                    'price': price,
-                    'upper': upper,
-                    'middle': middle,
-                    'lower': lower,
-                    'condition': 'touching_lower_band',
+                    "price": price,
+                    "upper": upper,
+                    "middle": middle,
+                    "lower": lower,
+                    "condition": "touching_lower_band",
                 },
             )
 
         # Check if price touches upper band (SELL signal)
         if price >= upper * 0.999:  # Within 0.1% of upper band
-            logger.info(
-                f"Price at upper BB: {price:.2f} >= {upper:.2f} for {tick.symbol}"
-            )
+            logger.info(f"Price at upper BB: {price:.2f} >= {upper:.2f} for {tick.symbol}")
             return Signal(
                 strategy_id=self.id,
                 symbol=tick.symbol,
@@ -508,18 +498,18 @@ class BollingerBandsStrategy(Strategy):
                 price=tick.price,
                 confidence=self.confidence,
                 metadata={
-                    'price': price,
-                    'upper': upper,
-                    'middle': middle,
-                    'lower': lower,
-                    'condition': 'touching_upper_band',
+                    "price": price,
+                    "upper": upper,
+                    "middle": middle,
+                    "lower": lower,
+                    "condition": "touching_upper_band",
                 },
             )
 
         return None
 
 
-class MultiIndicatorStrategy(Strategy):
+class MultiIndicatorAlgorithm(Algorithm):
     """
     Multi-Indicator Composite Strategy.
 
@@ -533,7 +523,7 @@ class MultiIndicatorStrategy(Strategy):
         - SELL when RSI > 70 AND MACD bearish AND price < SMA
 
     Example:
-        >>> strategy = MultiIndicatorStrategy(
+        >>> strategy = MultiIndicatorAlgorithm(
         ...     strategy_id='multi_v1',
         ...     symbols=['BTC/USDT'],
         ...     require_all_signals=True,
@@ -587,7 +577,7 @@ class MultiIndicatorStrategy(Strategy):
         self._prev_signal: dict[str, float] = {}
 
         logger.info(
-            f"MultiIndicatorStrategy initialized: "
+            f"MultiIndicatorAlgorithm initialized: "
             f"RSI({rsi_period}), MACD({macd_fast},{macd_slow},{macd_signal}), SMA({sma_period})"
         )
 
@@ -605,23 +595,23 @@ class MultiIndicatorStrategy(Strategy):
         price = float(tick.price)
 
         # Get RSI
-        rsi_key = f'rsiindicator_period{self.rsi_period}_rsi'
+        rsi_key = f"rsiindicator_period{self.rsi_period}_rsi"
         rsi = tick.get_indicator(rsi_key)
 
         # Get MACD
         macd_key = (
-            f'macdindicator_fast_period{self.macd_fast}_'
-            f'slow_period{self.macd_slow}_signal_period{self.macd_signal_param}_macd'
+            f"macdindicator_fast_period{self.macd_fast}_"
+            f"slow_period{self.macd_slow}_signal_period{self.macd_signal_param}_macd"
         )
         signal_key = (
-            f'macdindicator_fast_period{self.macd_fast}_'
-            f'slow_period{self.macd_slow}_signal_period{self.macd_signal_param}_signal'
+            f"macdindicator_fast_period{self.macd_fast}_"
+            f"slow_period{self.macd_slow}_signal_period{self.macd_signal_param}_signal"
         )
         macd = tick.get_indicator(macd_key)
         macd_signal = tick.get_indicator(signal_key)
 
         # Get SMA
-        sma_key = f'smaindicator_period{self.sma_period}_sma'
+        sma_key = f"smaindicator_period{self.sma_period}_sma"
         sma = tick.get_indicator(sma_key)
 
         if rsi is None or macd is None or macd_signal is None or sma is None:
@@ -637,16 +627,8 @@ class MultiIndicatorStrategy(Strategy):
         rsi_buy = rsi < self.rsi_oversold
         rsi_sell = rsi > self.rsi_overbought
 
-        macd_buy = (
-            prev_macd is not None
-            and prev_macd <= prev_signal
-            and macd > macd_signal
-        )
-        macd_sell = (
-            prev_macd is not None
-            and prev_macd >= prev_signal
-            and macd < macd_signal
-        )
+        macd_buy = prev_macd is not None and prev_macd <= prev_signal and macd > macd_signal
+        macd_sell = prev_macd is not None and prev_macd >= prev_signal and macd < macd_signal
 
         trend_up = price > sma
         trend_down = price < sma
@@ -659,19 +641,15 @@ class MultiIndicatorStrategy(Strategy):
         if self.require_all_signals:
             # All indicators must agree
             if bullish_count == 3:
-                return self._create_signal(tick, 'strong_buy', rsi, macd, sma)
+                return self._create_signal(tick, "strong_buy", rsi, macd, sma)
             elif bearish_count == 3:
-                return self._create_signal(tick, 'strong_sell', rsi, macd, sma)
+                return self._create_signal(tick, "strong_sell", rsi, macd, sma)
         else:
             # Majority vote (at least 2 out of 3)
             if bullish_count >= 2:
-                return self._create_signal(
-                    tick, 'buy', rsi, macd, sma, bullish_count / 3
-                )
+                return self._create_signal(tick, "buy", rsi, macd, sma, bullish_count / 3)
             elif bearish_count >= 2:
-                return self._create_signal(
-                    tick, 'sell', rsi, macd, sma, bearish_count / 3
-                )
+                return self._create_signal(tick, "sell", rsi, macd, sma, bearish_count / 3)
 
         return None
 
@@ -685,11 +663,7 @@ class MultiIndicatorStrategy(Strategy):
         confidence: Optional[float] = None,
     ) -> Signal:
         """Create signal with metadata."""
-        signal_type = (
-            SignalType.BUY
-            if 'buy' in condition
-            else SignalType.SELL
-        )
+        signal_type = SignalType.BUY if "buy" in condition else SignalType.SELL
 
         return Signal(
             strategy_id=self.id,
@@ -698,9 +672,9 @@ class MultiIndicatorStrategy(Strategy):
             price=tick.price,
             confidence=confidence or self.confidence,
             metadata={
-                'rsi': rsi,
-                'macd': macd,
-                'sma': sma,
-                'condition': condition,
+                "rsi": rsi,
+                "macd": macd,
+                "sma": sma,
+                "condition": condition,
             },
         )

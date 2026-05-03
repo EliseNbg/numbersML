@@ -9,7 +9,7 @@ import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-from src.domain.strategies.base import Strategy, StrategyManager, EnrichedTick, Signal
+from src.domain.strategies.base import StrategyManager, EnrichedTick, Signal
 from src.infrastructure.redis.message_bus import MessageBus, ChannelManager
 
 logger = logging.getLogger(__name__)
