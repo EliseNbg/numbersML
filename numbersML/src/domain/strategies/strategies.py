@@ -8,15 +8,14 @@ Implements example trading strategies:
 - Bollinger Bands Mean Reversion
 """
 
-from typing import Optional
-from decimal import Decimal
 import logging
+from typing import Optional
 
 from src.domain.strategies.base import (
-    Strategy,
     EnrichedTick,
     Signal,
     SignalType,
+    Strategy,
 )
 
 logger = logging.getLogger(__name__)

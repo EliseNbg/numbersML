@@ -3,17 +3,23 @@ StrategyInstance domain entity.
 
 Represents a deployed strategy with specific configuration.
 Links Strategy (logic) with ConfigurationSet (parameters).
+Manages lifecycle state, positions, signals, and runtime statistics.
 
 Architecture: Domain Layer (pure Python, no external dependencies)
 """
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 from enum import StrEnum
-from typing import Any
+from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from src.domain.models.base import Entity
+from src.domain.strategies.base import EnrichedTick, Position, Signal, Strategy
+
+logger = logging.getLogger(__name__)
 
 
 class StrategyInstanceState(StrEnum):
@@ -101,7 +107,7 @@ class StrategyInstance(Entity):
 
     def __init__(
         self,
-        strategy_id: UUID,
+        strategy: Strategy,
         config_set_id: UUID,
         id: UUID | None = None,
         status: StrategyInstanceState = StrategyInstanceState.STOPPED,
@@ -112,7 +118,7 @@ class StrategyInstance(Entity):
         """Initialize StrategyInstance.
 
         Args:
-            strategy_id: UUID of the Strategy
+            strategy: Strategy object (algorithm logic)
             config_set_id: UUID of the ConfigurationSet
             id: UUID (auto-generated if None)
             status: Initial status (default: STOPPED)
@@ -121,16 +127,17 @@ class StrategyInstance(Entity):
             stopped_at: When instance was stopped
 
         Raises:
-            ValueError: If strategy_id or config_set_id is None
+            ValueError: If strategy or config_set_id is None
         """
         super().__init__(id or uuid4())
 
-        if not strategy_id:
-            raise ValueError("strategy_id cannot be None")
+        if not strategy:
+            raise ValueError("strategy cannot be None")
         if not config_set_id:
             raise ValueError("config_set_id cannot be None")
 
-        self._strategy_id = strategy_id
+        self._strategy = strategy
+        self._strategy_id = strategy.id
         self._config_set_id = config_set_id
         self._status = status
         self._runtime_stats = runtime_stats or RuntimeStats()
@@ -138,6 +145,13 @@ class StrategyInstance(Entity):
         self._stopped_at = stopped_at
         self.created_at = datetime.now(UTC)
         self.updated_at = self.created_at
+
+        # State from Strategy (now managed here)
+        self._positions: dict[str, Position] = {}
+        self._signals: list[Signal] = []
+        self._ticks_processed: int = 0
+        self._errors: int = 0
+        self._config: dict[str, Any] = {}
 
     @property
     def strategy_id(self) -> UUID:
@@ -150,6 +164,16 @@ class StrategyInstance(Entity):
         return self._config_set_id
 
     @property
+    def strategy(self) -> Strategy:
+        """Get strategy object."""
+        return self._strategy
+
+    @property
+    def symbols(self) -> list[str]:
+        """Get symbols list."""
+        return self._strategy.symbols.copy()
+
+    @property
     def status(self) -> StrategyInstanceState:
         """Get current status."""
         return self._status
@@ -158,6 +182,21 @@ class StrategyInstance(Entity):
     def runtime_stats(self) -> RuntimeStats:
         """Get runtime statistics (defensive copy not needed - frozen)."""
         return self._runtime_stats
+
+    @property
+    def positions(self) -> dict[str, Position]:
+        """Get current positions."""
+        return self._positions.copy()
+
+    @property
+    def ticks_processed(self) -> int:
+        """Get number of ticks processed."""
+        return self._ticks_processed
+
+    @property
+    def errors(self) -> int:
+        """Get error count."""
+        return self._errors
 
     @property
     def started_at(self) -> datetime | None:
@@ -270,6 +309,130 @@ class StrategyInstance(Entity):
             last_error=kwargs.get("last_error", self._runtime_stats.last_error),
         )
         self.updated_at = datetime.now(UTC)
+
+    def process_tick(self, tick: EnrichedTick) -> Optional[Signal]:
+        """Process tick using strategy logic, handle state/error tracking.
+
+        Args:
+            tick: Enriched tick data
+
+        Returns:
+            Signal if generated, None otherwise
+        """
+        if self._status != StrategyInstanceState.RUNNING:
+            return None
+
+        if tick.symbol not in self._strategy.symbols:
+            return None
+
+        try:
+            self._ticks_processed += 1
+            signal = self._strategy.on_tick(tick)
+
+            if signal:
+                self._signals.append(signal)
+                logger.info(
+                    f"Signal generated: {signal.signal_type.value} "
+                    f"{signal.symbol} @ {signal.price}"
+                )
+
+            return signal
+
+        except Exception as e:
+            logger.error(f"Error processing tick in {self._strategy_id}: {e}")
+            self._errors += 1
+            return None
+
+    def update_position(self, symbol: str, price: Decimal) -> None:
+        """Update position with current price.
+
+        Args:
+            symbol: Trading pair symbol
+            price: Current price
+        """
+        if symbol in self._positions:
+            self._positions[symbol].update_price(price)
+
+    def open_position(
+        self,
+        symbol: str,
+        side: str,
+        quantity: Decimal,
+        price: Decimal,
+    ) -> Position:
+        """Open new position.
+
+        Args:
+            symbol: Trading pair
+            side: LONG or SHORT
+            quantity: Position size
+            price: Entry price
+
+        Returns:
+            New position
+        """
+        position = Position(
+            symbol=symbol,
+            side=side,
+            quantity=quantity,
+            entry_price=price,
+            current_price=price,
+        )
+        self._positions[symbol] = position
+        logger.info(f"Opened {side} position: {quantity} {symbol} @ {price}")
+        return position
+
+    def close_position(self, symbol: str, price: Decimal) -> Optional[Position]:
+        """Close existing position.
+
+        Args:
+            symbol: Trading pair
+            price: Close price
+
+        Returns:
+            Closed position if existed, None otherwise
+        """
+        if symbol not in self._positions:
+            return None
+
+        position = self._positions.pop(symbol)
+        position.update_price(price)
+
+        logger.info(
+            f"Closed position: {position.side} {symbol} "
+            f"PnL: {position.unrealized_pnl} ({position.pnl_percent:.2f}%)"
+        )
+
+        return position
+
+    def get_config(self, key: str, default: Any = None) -> Any:
+        """Get configuration value."""
+        return self._config.get(key, default)
+
+    def set_config(self, key: str, value: Any) -> None:
+        """Set configuration value."""
+        self._config[key] = value
+
+    def get_stats(self) -> dict[str, Any]:
+        """Get strategy statistics.
+
+        Returns:
+            Dictionary with strategy statistics
+        """
+        active_positions = len([p for p in self._positions.values() if p.unrealized_pnl != 0])
+        total_pnl = sum(p.unrealized_pnl for p in self._positions.values())
+
+        return {
+            "strategy_id": str(self._strategy_id),
+            "status": self._status.value,
+            "symbols": self._strategy.symbols,
+            "ticks_processed": self._ticks_processed,
+            "signals_generated": len(self._signals),
+            "active_positions": active_positions,
+            "total_unrealized_pnl": float(total_pnl),
+            "errors": self._errors,
+            "runtime_stats": self._runtime_stats.to_dict(),
+        }
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization.

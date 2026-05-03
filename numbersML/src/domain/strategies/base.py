@@ -5,16 +5,16 @@ Provides the foundation for implementing trading strategies that
 consume enriched tick data via Redis pub/sub.
 """
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Dict, List, Optional, Any
+from typing import Any, Optional
 from uuid import UUID
-import logging
 
-from src.domain.strategies.strategy_instance import StrategyInstanceState
+from src.domain.strategies.strategy_instance import StrategyInstance
 
 logger = logging.getLogger(__name__)
 
@@ -61,11 +61,11 @@ class Signal:
     symbol: str
     signal_type: SignalType
     price: Decimal
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     confidence: float = 0.5
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert signal to dictionary."""
         return {
             "strategy_id": self.strategy_id,
@@ -99,7 +99,7 @@ class Position:
     entry_price: Decimal
     current_price: Decimal = Decimal("0")
     unrealized_pnl: Decimal = Decimal("0")
-    opened_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    opened_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def update_price(self, price: Decimal) -> None:
         """Update current price and calculate PnL."""
@@ -116,7 +116,7 @@ class Position:
             return 0.0
         return float(self.unrealized_pnl / self.entry_price * 100)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert position to dictionary."""
         return {
             "symbol": self.symbol,
@@ -147,17 +147,17 @@ class EnrichedTick:
     price: Decimal
     volume: Decimal
     time: datetime
-    indicators: Dict[str, float] = field(default_factory=dict)
+    indicators: dict[str, float] = field(default_factory=dict)
 
     @classmethod
-    def from_message(cls, message: Dict[str, Any]) -> "EnrichedTick":
+    def from_message(cls, message: dict[str, Any]) -> "EnrichedTick":
         """Create EnrichedTick from Redis message."""
         return cls(
             symbol=message.get("symbol", ""),
             price=Decimal(str(message.get("price", 0))),
             volume=Decimal(str(message.get("volume", 0))),
             time=datetime.fromisoformat(
-                message.get("time", datetime.now(timezone.utc).isoformat())
+                message.get("time", datetime.now(UTC).isoformat())
             ),
             indicators=message.get("indicators", {}),
         )
@@ -193,15 +193,15 @@ class Strategy(ABC):
 
     def __init__(
         self,
-        strategy_id: str,
-        symbols: List[str],
+        strategy_id: UUID,
+        symbols: list[str],
         time_frame: TimeFrame = TimeFrame.TICK,
     ) -> None:
         """
         Initialize strategy.
 
         Args:
-            strategy_id: Unique strategy identifier
+            strategy_id: Unique strategy UUID
             symbols: List of symbols to trade (e.g., ['BTC/USDT'])
             time_frame: Strategy time frame
 
@@ -209,50 +209,30 @@ class Strategy(ABC):
             ValueError: If strategy_id or symbols is empty
         """
         if not strategy_id:
-            raise ValueError("strategy_id cannot be empty")
+            raise ValueError("strategy_id cannot be None")
         if not symbols:
             raise ValueError("symbols list cannot be empty")
 
-        self._strategy_id: str = strategy_id
-        self._symbols: List[str] = symbols
+        self._strategy_id: UUID = strategy_id
+        self._symbols: list[str] = symbols
         self._time_frame: TimeFrame = time_frame
-
-        # State
-        self._state: StrategyInstanceState = StrategyInstanceState.STOPPED
-        self._positions: Dict[str, Position] = {}
-        self._signals: List[Signal] = []
-        self._ticks_processed: int = 0
-        self._errors: int = 0
-
-        # Configuration
-        self._config: Dict[str, Any] = {}
 
         logger.info(f"Strategy {strategy_id} initialized for {len(symbols)} symbols")
 
     @property
-    def id(self) -> str:
+    def id(self) -> UUID:
         """Get strategy ID."""
         return self._strategy_id
 
     @property
-    def symbols(self) -> List[str]:
+    def symbols(self) -> list[str]:
         """Get symbols list."""
         return self._symbols.copy()
 
     @property
-    def state(self) -> StrategyInstanceState:
-        """Get strategy state."""
-        return self._state
-
-    @property
-    def positions(self) -> Dict[str, Position]:
-        """Get current positions."""
-        return self._positions.copy()
-
-    @property
-    def ticks_processed(self) -> int:
-        """Get number of ticks processed."""
-        return self._ticks_processed
+    def time_frame(self) -> TimeFrame:
+        """Get time frame."""
+        return self._time_frame
 
     @abstractmethod
     def on_tick(self, tick: EnrichedTick) -> Optional[Signal]:
@@ -277,307 +257,121 @@ class Strategy(ABC):
         """
         pass
 
-    async def initialize(self) -> bool:
-        """
-        Initialize strategy.
-
-        Called before start(). Load configuration,
-        validate parameters, setup resources.
-
-        Returns:
-            True if initialization successful
-
-        Example:
-            >>> await strategy.initialize()
-            True
-        """
-        logger.info(f"Initializing strategy {self._strategy_id}")
-        self._state = StrategyInstanceState.RUNNING
-        return True
-
-    async def start(self) -> None:
-        """
-        Start strategy.
-
-        Begins processing ticks. Called after initialize().
-        """
-        logger.info(f"Starting strategy {self._strategy_id}")
-        self._state = StrategyInstanceState.RUNNING
-
-    async def stop(self) -> None:
-        """
-        Stop strategy.
-
-        Stops processing ticks. Cleanup resources.
-        """
-        logger.info(f"Stopping strategy {self._strategy_id}")
-        self._state = StrategyInstanceState.STOPPED
-
-    async def pause(self) -> None:
-        """Pause strategy."""
-        logger.info(f"Pausing strategy {self._strategy_id}")
-        self._state = StrategyInstanceState.PAUSED
-
-    async def resume(self) -> None:
-        """Resume paused strategy."""
-        logger.info(f"Resuming strategy {self._strategy_id}")
-        self._state = StrategyInstanceState.RUNNING
-
-    def process_tick(self, tick: EnrichedTick) -> Optional[Signal]:
-        """
-        Process tick with state management.
-
-        Wrapper around on_tick() that handles state and error tracking.
-
-        Args:
-            tick: Enriched tick data
-
-        Returns:
-            Signal if generated, None otherwise
-        """
-        if self._state != StrategyInstanceState.RUNNING:
-            return None
-
-        if tick.symbol not in self._symbols:
-            return None
-
-        try:
-            self._ticks_processed += 1
-            signal = self.on_tick(tick)
-
-            if signal:
-                self._signals.append(signal)
-                logger.info(
-                    f"Signal generated: {signal.signal_type.value} "
-                    f"{signal.symbol} @ {signal.price}"
-                )
-
-            return signal
-
-        except Exception as e:
-            logger.error(f"Error processing tick in {self._strategy_id}: {e}")
-            self._errors += 1
-            return None
-
-    def update_position(self, symbol: str, price: Decimal) -> None:
-        """
-        Update position with current price.
-
-        Args:
-            symbol: Trading pair symbol
-            price: Current price
-        """
-        if symbol in self._positions:
-            self._positions[symbol].update_price(price)
-
-    def open_position(
-        self,
-        symbol: str,
-        side: str,
-        quantity: Decimal,
-        price: Decimal,
-    ) -> Position:
-        """
-        Open new position.
-
-        Args:
-            symbol: Trading pair
-            side: LONG or SHORT
-            quantity: Position size
-            price: Entry price
-
-        Returns:
-            New position
-        """
-        position = Position(
-            symbol=symbol,
-            side=side,
-            quantity=quantity,
-            entry_price=price,
-            current_price=price,
-        )
-        self._positions[symbol] = position
-        logger.info(f"Opened {side} position: {quantity} {symbol} @ {price}")
-        return position
-
-    def close_position(self, symbol: str, price: Decimal) -> Optional[Position]:
-        """
-        Close existing position.
-
-        Args:
-            symbol: Trading pair
-            price: Close price
-
-        Returns:
-            Closed position if existed, None otherwise
-        """
-        if symbol not in self._positions:
-            return None
-
-        position = self._positions.pop(symbol)
-        position.update_price(price)
-
-        logger.info(
-            f"Closed position: {position.side} {symbol} "
-            f"PnL: {position.unrealized_pnl} ({position.pnl_percent:.2f}%)"
-        )
-
-        return position
-
-    def get_config(self, key: str, default: Any = None) -> Any:
-        """Get configuration value."""
-        return self._config.get(key, default)
-
-    def set_config(self, key: str, value: Any) -> None:
-        """Set configuration value."""
-        self._config[key] = value
-
-    def get_stats(self) -> Dict[str, Any]:
-        """
-        Get strategy statistics.
-
-        Returns:
-            Dictionary with strategy statistics
-        """
-        active_positions = len([p for p in self._positions.values() if p.unrealized_pnl != 0])
-        total_pnl = sum(p.unrealized_pnl for p in self._positions.values())
-
-        return {
-            "strategy_id": self._strategy_id,
-            "state": self._state.value,
-            "symbols": self._symbols,
-            "ticks_processed": self._ticks_processed,
-            "signals_generated": len(self._signals),
-            "active_positions": active_positions,
-            "total_unrealized_pnl": float(total_pnl),
-            "errors": self._errors,
-        }
-
 
 class StrategyManager:
     """
-    Manages multiple strategies.
+    Manages multiple strategy instances.
 
     Purpose:
-        - Start/stop multiple strategies
-        - Route enriched ticks to strategies
+        - Start/stop multiple instances
+        - Route enriched ticks to instances
         - Aggregate signals
-        - Monitor strategy health
-
-    Example:
-        >>> manager = StrategyManager()
-        >>> manager.add_strategy(rsi_strategy)
-        >>> manager.add_strategy(macd_strategy)
-        >>> await manager.start_all()
-        >>> # Process ticks
-        >>> for tick in ticks:
-        ...     signals = manager.process_tick(tick)
+        - Monitor instance health
     """
 
     def __init__(self) -> None:
         """Initialize strategy manager."""
-        self._strategies: Dict[UUID, Strategy] = {}
+        self._instances: dict[UUID, StrategyInstance] = {}
         self._running: bool = False
         logger.info("StrategyManager initialized")
 
-    def add_strategy(self, strategy: Strategy) -> None:
+    def add_instance(self, instance: StrategyInstance) -> None:
         """
-        Add strategy to manager.
+        Add strategy instance to manager.
 
         Args:
-            strategy: Strategy instance to add
+            instance: StrategyInstance to add
 
         Raises:
-            ValueError: If strategy ID already exists
+            ValueError: If instance ID already exists
         """
-        if strategy.id in self._strategies:
-            raise ValueError(f"Strategy {strategy.id} already exists")
+        if instance.id in self._instances:
+            raise ValueError(f"StrategyInstance {instance.id} already exists")
 
-        self._strategies[strategy.id] = strategy
-        logger.info(f"Added strategy: {strategy.id}")
+        self._instances[instance.id] = instance
+        logger.info(f"Added strategy instance: {instance.id}")
 
-    def remove_strategy(self, strategy_id: UUID) -> Optional[Strategy]:
+    def remove_instance(self, instance_id: UUID) -> Optional[StrategyInstance]:
         """
-        Remove strategy from manager.
+        Remove strategy instance from manager.
 
         Args:
-            strategy_id: Strategy ID to remove
+            instance_id: StrategyInstance ID to remove
 
         Returns:
-            Removed strategy if existed, None otherwise
+            Removed instance if existed, None otherwise
         """
-        strategy = self._strategies.pop(strategy_id, None)
-        if strategy:
-            logger.info(f"Removed strategy: {strategy_id}")
-        return strategy
+        instance = self._instances.pop(instance_id, None)
+        if instance:
+            logger.info(f"Removed strategy instance: {instance_id}")
+        return instance
 
-    def get_strategy(self, strategy_id: UUID) -> Optional[Strategy]:
-        """Get strategy by ID."""
-        return self._strategies.get(strategy_id)
+    def get_instance(self, instance_id: UUID) -> Optional[StrategyInstance]:
+        """Get strategy instance by ID."""
+        return self._instances.get(instance_id)
 
-    def list_strategies(self) -> List[UUID]:
-        """Get list of strategy IDs."""
-        return list(self._strategies.keys())
+    def list_instances(self) -> list[UUID]:
+        """Get list of strategy instance IDs."""
+        return list(self._instances.keys())
 
     async def start_all(self) -> None:
-        """Start all strategies."""
-        logger.info(f"Starting {len(self._strategies)} strategies")
+        """Start all strategy instances."""
+        logger.info(f"Starting {len(self._instances)} strategy instances")
         self._running = True
 
-        for strategy in self._strategies.values():
+        for instance in self._instances.values():
             try:
-                await strategy.initialize()
-                await strategy.start()
+                instance.start()
             except Exception as e:
-                logger.error(f"Failed to start strategy {strategy.id}: {e}")
+                logger.error(f"Failed to start instance {instance.id}: {e}")
 
     async def stop_all(self) -> None:
-        """Stop all strategies."""
-        logger.info("Stopping all strategies")
+        """Stop all strategy instances."""
+        logger.info("Stopping all strategy instances")
         self._running = False
 
-        for strategy in self._strategies.values():
+        for instance in self._instances.values():
             try:
-                await strategy.stop()
+                instance.stop()
             except Exception as e:
-                logger.error(f"Error stopping strategy {strategy.id}: {e}")
+                logger.error(f"Error stopping instance {instance.id}: {e}")
 
-    def process_tick(self, tick: EnrichedTick) -> List[Signal]:
+    def process_tick(self, tick: EnrichedTick) -> list[Signal]:
         """
-        Process tick through all strategies.
+        Process tick through all strategy instances.
 
         Args:
             tick: Enriched tick data
 
         Returns:
-            List of signals generated by all strategies
+            List of signals generated by all instances
         """
         if not self._running:
             return []
 
         signals = []
 
-        for strategy in self._strategies.values():
+        for instance in self._instances.values():
             try:
-                signal = strategy.process_tick(tick)
+                signal = instance.process_tick(tick)
                 if signal:
                     signals.append(signal)
             except Exception as e:
-                logger.error(f"Error in strategy {strategy.id}: {e}")
+                logger.error(f"Error in instance {instance.id}: {e}")
 
         return signals
 
-    def get_all_signals(self) -> List[Signal]:
-        """Get all signals from all strategies."""
+    def get_all_signals(self) -> list[Signal]:
+        """Get all signals from all strategy instances."""
         signals = []
-        for strategy in self._strategies.values():
-            signals.extend(strategy._signals)
+        for instance in self._instances.values():
+            signals.extend(instance._signals)
         return signals
 
-    def get_stats(self) -> Dict[str, Any]:
-        """Get statistics for all strategies."""
+    def get_stats(self) -> dict[str, Any]:
+        """Get statistics for all strategy instances."""
         return {
             "running": self._running,
-            "strategy_count": len(self._strategies),
-            "strategies": {sid: strat.get_stats() for sid, strat in self._strategies.items()},
+            "instance_count": len(self._instances),
+            "instances": {sid: inst.get_stats() for sid, inst in self._instances.items()},
         }

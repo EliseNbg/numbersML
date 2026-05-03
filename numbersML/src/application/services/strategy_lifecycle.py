@@ -12,21 +12,20 @@ and infrastructure services.
 """
 
 import logging
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from src.domain.repositories.runtime_event_repository import StrategyRuntimeEventRepository
 from src.domain.repositories.strategy_repository import StrategyRepository
 from src.domain.strategies.base import (
     Signal,
-    Strategy,
     StrategyManager,
 )
 from src.domain.strategies.config import StrategyDefinition
-from src.domain.strategies.instance import StrategyInstanceState
-from src.domain.strategies.runtime import (
+from src.domain.strategies.runtime import StrategyLifecycleEvent
+from src.domain.strategies.strategy_instance import (
     VALID_TRANSITIONS,
-    StrategyLifecycleEvent,
-    StrategyRuntimeState,
+    StrategyInstance,
+    StrategyInstanceState,
 )
 
 logger = logging.getLogger(__name__)
@@ -71,8 +70,8 @@ class StrategyLifecycleService:
         self._strategy_manager = strategy_manager
         self._actor = actor
 
-        # Runtime state tracking: strategy_id -> StrategyRuntimeState
-        self._runtime_states: dict[UUID, StrategyRuntimeState] = {}
+        # Runtime state tracking: instance_id -> StrategyInstance
+        self._instances: dict[UUID, StrategyInstance] = {}
 
         logger.info("StrategyLifecycleService initialized")
 
@@ -103,22 +102,21 @@ class StrategyLifecycleService:
         if strategy_def is None:
             raise ValueError(f"Strategy {strategy_id} not found")
 
-        # Get or create runtime state
-        runtime_state = self._runtime_states.get(strategy_id)
-        if runtime_state is None:
-            runtime_state = StrategyRuntimeState(
-                strategy_id=strategy_id,
-                strategy_name=strategy_def.name,
-                state=StrategyInstanceState.STOPPED,
-                version=version or strategy_def.current_version,
+        # Get or create strategy instance
+        instance = self._instances.get(strategy_id)
+        if instance is None:
+            instance = StrategyInstance(
+                strategy=await self._load_strategy(strategy_id, version or strategy_def.current_version),
+                config_set_id=uuid4(),  # TODO: link to actual config set
+                status=StrategyInstanceState.STOPPED,
             )
-            self._runtime_states[strategy_id] = runtime_state
+            self._instances[strategy_id] = instance
         else:
             # Validate transition
-            if not runtime_state.can_transition_to(StrategyInstanceState.RUNNING):
+            if not instance.can_start():
                 raise ValueError(
                     f"Cannot activate strategy {strategy_id}: "
-                    f"invalid transition from {runtime_state.state.value} to RUNNING"
+                    f"invalid transition from {instance.status.value} to RUNNING"
                 )
 
         # Load and register strategy instance
@@ -148,9 +146,9 @@ class StrategyLifecycleService:
             raise RuntimeError(f"Strategy start failed: {e}") from e
 
         # Transition state
-        old_state = runtime_state.state
-        new_state = runtime_state.transition_to(StrategyInstanceState.RUNNING)
-        self._runtime_states[strategy_id] = new_state
+        old_state = instance.status
+        instance.start()
+        new_state = instance
 
         # Persist event
         await self._record_lifecycle_event(
@@ -159,10 +157,10 @@ class StrategyLifecycleService:
             from_state=old_state,
             to_state=StrategyInstanceState.RUNNING,
             trigger="activate",
-            details={"version": new_state.version, **(metadata or {})},
+            details={"version": strategy_def.current_version, **(metadata or {})},
         )
 
-        logger.info(f"Strategy {strategy_id} activated (version {new_state.version})")
+        logger.info(f"Strategy {strategy_id} activated")
         return True
 
     async def deactivate_strategy(
@@ -184,7 +182,7 @@ class StrategyLifecycleService:
         Raises:
             ValueError: If strategy not found or transition invalid
         """
-        runtime_state = self._runtime_states.get(strategy_id)
+        runtime_state = self._instances.get(strategy_id)
         if runtime_state is None:
             raise ValueError(f"No runtime state for strategy {strategy_id}")
 
@@ -204,7 +202,7 @@ class StrategyLifecycleService:
 
         # Update state
         new_state = runtime_state.transition_to(StrategyInstanceState.STOPPED)
-        self._runtime_states[strategy_id] = new_state
+        self._instances[strategy_id] = new_state
 
         # Persist event
         if strategy_def:
@@ -239,7 +237,7 @@ class StrategyLifecycleService:
         Raises:
             ValueError: If strategy not found or transition invalid
         """
-        runtime_state = self._runtime_states.get(strategy_id)
+        runtime_state = self._instances.get(strategy_id)
         if runtime_state is None:
             raise ValueError(f"No runtime state for strategy {strategy_id}")
 
@@ -259,7 +257,7 @@ class StrategyLifecycleService:
 
         # Update state
         new_state = runtime_state.transition_to(StrategyInstanceState.PAUSED)
-        self._runtime_states[strategy_id] = new_state
+        self._instances[strategy_id] = new_state
 
         # Persist event
         if strategy_def:
@@ -294,7 +292,7 @@ class StrategyLifecycleService:
         Raises:
             ValueError: If strategy not found or transition invalid
         """
-        runtime_state = self._runtime_states.get(strategy_id)
+        runtime_state = self._instances.get(strategy_id)
         if runtime_state is None:
             raise ValueError(f"No runtime state for strategy {strategy_id}")
 
@@ -314,7 +312,7 @@ class StrategyLifecycleService:
 
         # Update state
         new_state = runtime_state.transition_to(StrategyInstanceState.RUNNING)
-        self._runtime_states[strategy_id] = new_state
+        self._instances[strategy_id] = new_state
 
         # Persist event
         if strategy_def:
@@ -351,7 +349,7 @@ class StrategyLifecycleService:
         Raises:
             ValueError: If strategy not found
         """
-        runtime_state = self._runtime_states.get(strategy_id)
+        runtime_state = self._instances.get(strategy_id)
         if runtime_state is None:
             raise ValueError(f"No runtime state for strategy {strategy_id}")
 
@@ -371,7 +369,7 @@ class StrategyLifecycleService:
 
         # Update state with error info
         new_state = runtime_state.record_error(error)
-        self._runtime_states[strategy_id] = new_state
+        self._instances[strategy_id] = new_state
 
         strategy_def = await self._strategy_repo.get_by_id(strategy_id)
         if strategy_def:
@@ -392,11 +390,11 @@ class StrategyLifecycleService:
         strategy_id: UUID,
     ) -> StrategyRuntimeState | None:
         """Get current runtime state for a strategy."""
-        return self._runtime_states.get(strategy_id)
+        return self._instances.get(strategy_id)
 
-    async def get_all_runtime_states(self) -> list[StrategyRuntimeState]:
+    async def get_all_instances(self) -> list[StrategyRuntimeState]:
         """Get runtime states for all strategies."""
-        return list(self._runtime_states.values())
+        return list(self._instances.values())
 
     async def get_lifecycle_events(
         self,
@@ -469,7 +467,7 @@ class StrategyLifecycleService:
 
     def get_stats(self) -> dict:
         """Get lifecycle service statistics."""
-        states = self._runtime_states.values()
+        states = self._instances.values()
         return {
             "total_strategies": len(states),
             "running": sum(1 for s in states if s.state == StrategyInstanceState.RUNNING),

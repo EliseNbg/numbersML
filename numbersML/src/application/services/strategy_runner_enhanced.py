@@ -12,37 +12,29 @@ Wraps StrategyRunner to add:
 
 import asyncio
 import logging
-from typing import Dict, List, Optional, Any, Set
+from typing import Any, Optional
 from uuid import UUID, uuid4
 
-from src.domain.strategies.base import (
-    Strategy,
-    StrategyManager,
-    EnrichedTick,
-    Signal,
-    StrategyState,
+from src.application.services.audit_logger import (
+    AuditLogger,
+    get_audit_logger,
 )
-from src.domain.strategies.runtime import (
-    StrategyRuntimeState,
-    RuntimeState,
-    StrategyLifecycleEvent,
-)
-from src.infrastructure.redis.message_bus import MessageBus
-from src.application.services.strategy_lifecycle import StrategyLifecycleService
-from src.application.services.strategy_runner import StrategyRunner, ChannelManager
 from src.application.services.risk_guardrails import (
     RiskGuardrailService,
     get_risk_guardrail_service,
 )
+from src.application.services.strategy_lifecycle import StrategyLifecycleService
+from src.application.services.strategy_runner import ChannelManager, StrategyRunner
 from src.application.services.strategy_telemetry import (
     StrategyTelemetryService,
     get_telemetry_service,
 )
-from src.application.services.audit_logger import (
-    AuditLogger,
-    AuditEventType,
-    AuditSeverity,
-    get_audit_logger,
+from src.domain.strategies.base import (
+    EnrichedTick,
+)
+from src.domain.strategies.runtime import (
+    RuntimeState,
+    StrategyRuntimeState,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,7 +69,7 @@ class EnhancedStrategyRunner(StrategyRunner):
         telemetry_service: Optional[StrategyTelemetryService] = None,
         audit_logger: Optional[AuditLogger] = None,
         redis_url: str = "redis://localhost:6379",
-        symbols: Optional[List[str]] = None,
+        symbols: Optional[list[str]] = None,
     ) -> None:
         """Initialize enhanced runner.
 
@@ -102,7 +94,7 @@ class EnhancedStrategyRunner(StrategyRunner):
 
         self._running = False
         # Track per-strategy tick processing tasks for cancellation
-        self._strategy_tasks: Dict[UUID, asyncio.Task] = {}
+        self._strategy_tasks: dict[UUID, asyncio.Task] = {}
 
         # Register for telemetry
         for strategy_id in lifecycle_service._strategy_manager._strategies.keys():
@@ -128,7 +120,7 @@ class EnhancedStrategyRunner(StrategyRunner):
         self._running = True
         logger.info(f"EnhancedStrategyRunner started with {len(symbols)} symbols")
 
-    async def _on_tick_enhanced(self, message: Dict[str, Any]) -> None:
+    async def _on_tick_enhanced(self, message: dict[str, Any]) -> None:
         """Handle incoming tick with per-strategy error isolation and safety checks.
 
         Each strategy processes the tick independently. If one fails,
@@ -421,6 +413,6 @@ class EnhancedStrategyRunner(StrategyRunner):
         """Get runtime state for a strategy."""
         return self._lifecycle._runtime_states.get(strategy_id)
 
-    def get_all_runtime_states(self) -> List[StrategyRuntimeState]:
+    def get_all_runtime_states(self) -> list[StrategyRuntimeState]:
         """Get runtime states for all strategies."""
         return list(self._lifecycle._runtime_states.values())

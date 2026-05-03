@@ -1,95 +1,18 @@
 """
-Strategy runtime lifecycle domain models and events.
+Strategy runtime lifecycle domain events and snapshots.
 
-Provides runtime state tracking, lifecycle events, and state transition
-validation for strategies during execution.
+Provides lifecycle event tracking and runtime snapshots for strategies.
 """
 
+import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime
+from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from src.domain.strategies.strategy_instance import StrategyInstanceState
 
-import logging
-
 logger = logging.getLogger(__name__)
-
-
-VALID_TRANSITIONS: Dict[StrategyInstanceState, set[StrategyInstanceState]] = {
-    StrategyInstanceState.STOPPED: {StrategyInstanceState.RUNNING},
-    StrategyInstanceState.RUNNING: {
-        StrategyInstanceState.PAUSED,
-        StrategyInstanceState.STOPPED,
-        StrategyInstanceState.ERROR,
-    },
-    StrategyInstanceState.PAUSED: {
-        StrategyInstanceState.RUNNING,
-        StrategyInstanceState.STOPPED,
-    },
-    StrategyInstanceState.ERROR: {StrategyInstanceState.STOPPED},
-}
-
-
-@dataclass
-class StrategyRuntimeState:
-    """Runtime state of an active strategy instance.
-
-    Tracks the operational lifecycle of a strategy during execution.
-    Separate from the persisted StrategyDefinition (which is about
-    configuration and versioning).
-    """
-
-    strategy_id: UUID
-    strategy_name: str
-    state: StrategyInstanceState = StrategyInstanceState.STOPPED
-    version: int = 1
-    error_count: int = 0
-    last_error: Optional[str] = None
-    last_state_change: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-    def can_transition_to(self, new_state: StrategyInstanceState) -> bool:
-        """Check if transition to new state is valid."""
-        return new_state in VALID_TRANSITIONS.get(self.state, set())
-
-    def transition_to(self, new_state: StrategyInstanceState) -> "StrategyRuntimeState":
-        """Create new state with updated runtime state.
-
-        Raises:
-            ValueError: If transition is not valid
-        """
-        if not self.can_transition_to(new_state):
-            raise ValueError(
-                f"Invalid state transition: {self.state.value} -> {new_state.value}. "
-                f"Valid transitions from {self.state.value}: "
-                f"{[s.value for s in VALID_TRANSITIONS.get(self.state, set())]}"
-            )
-        return StrategyRuntimeState(
-            strategy_id=self.strategy_id,
-            strategy_name=self.strategy_name,
-            state=new_state,
-            version=self.version,
-            error_count=self.error_count,
-            last_error=self.last_error,
-            last_state_change=datetime.now(timezone.utc),
-            metadata=self.metadata,
-        )
-
-    def record_error(self, error: str) -> "StrategyRuntimeState":
-        """Record an error and transition to ERROR state."""
-        return StrategyRuntimeState(
-            strategy_id=self.strategy_id,
-            strategy_name=self.strategy_name,
-            state=StrategyInstanceState.ERROR,
-            version=self.version,
-            error_count=self.error_count + 1,
-            last_error=error,
-            last_state_change=datetime.now(timezone.utc),
-            metadata=self.metadata,
-        )
 
 
 @dataclass(frozen=True)
@@ -106,8 +29,8 @@ class StrategyLifecycleEvent:
     to_state: StrategyInstanceState
     trigger: str  # "system", "api", "error", etc.
     event_id: UUID = field(default_factory=uuid4)
-    occurred_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    details: Dict[str, Any] = field(default_factory=dict)
+    occurred_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    details: dict[str, Any] = field(default_factory=dict)
 
     @property
     def event_type(self) -> str:
