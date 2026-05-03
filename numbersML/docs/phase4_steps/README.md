@@ -11,7 +11,7 @@ Phase 4 focuses on creating a robust, decoupled management system for trading st
 - ✅ **Step 1** (`STEP_01_CONFIGSET_DOMAIN.md`): Completed - ConfigurationSet domain model, entity implementation, TDD tests
 - ✅ **Step 2** (`STEP_02_CONFIGSET_REPOSITORY.md`): Completed - ConfigurationSet repository, PostgreSQL implementation, migrations
 - ✅ **Step 3** (`STEP_03_CONFIGSET_API.md`): Completed - FastAPI routes for config sets, request/response models
-- 🔜 **Step 4** (`STEP_04_STRATEGY_INSTANCE_DOMAIN.md`): Not started - StrategyInstance domain model, linking strategy to config
+- ✅ **Step 4** (`STEP_04_STRATEGY_INSTANCE_DOMAIN.md`): Completed - StrategyInstance domain model, linking strategy to config
 - 🔜 **Step 5** (`STEP_05_STRATEGY_INSTANCE_REPO_API.md`): Not started - StrategyInstance repository and API, start/stop endpoints
 - 🔜 **Step 6** (`STEP_06_BACKTEST_SERVICE.md`): Not started - BacktestEngine updates, MarketService integration, no-recalculation rule
 - 🔜 **Step 7** (`STEP_07_BACKTEST_API.md`): Not started - Backtest API endpoints, job tracking, progress reporting
