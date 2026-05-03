@@ -17,8 +17,8 @@ from src.domain.strategies.base import (
     EnrichedTick,
     SignalType,
     TimeFrame,
-    StrategyState,
 )
+from src.domain.strategies.strategy_instance import StrategyInstanceState
 
 
 class TestSignalType:
@@ -44,15 +44,15 @@ class TestTimeFrame:
         assert TimeFrame.DAY.value == "1D"
 
 
-class TestStrategyState:
-    """Test StrategyState enum."""
-
+class TestStrategyInstanceState:
+    """Test StrategyInstanceState enum."""
+    
     def test_strategy_state_values(self) -> None:
         """Test strategy state enum values."""
-        assert StrategyState.STOPPED.value == "STOPPED"
-        assert StrategyState.RUNNING.value == "RUNNING"
-        assert StrategyState.PAUSED.value == "PAUSED"
-        assert StrategyState.ERROR.value == "ERROR"
+        assert StrategyInstanceState.STOPPED.value == "stopped"
+        assert StrategyInstanceState.RUNNING.value == "running"
+        assert StrategyInstanceState.PAUSED.value == "paused"
+        assert StrategyInstanceState.ERROR.value == "error"
 
 
 class TestSignal:
@@ -234,7 +234,7 @@ class TestStrategy:
 
         assert strategy.id == 'test'
         assert strategy.symbols == ['BTC/USDT']
-        assert strategy.state == StrategyState.STOPPED
+        assert strategy.state == StrategyInstanceState.STOPPED
         assert strategy.ticks_processed == 0
 
     def test_strategy_validation_empty_id(self) -> None:
@@ -261,16 +261,16 @@ class TestStrategy:
             symbols=['BTC/USDT'],
         )
 
-        assert strategy.state == StrategyState.STOPPED
+        assert strategy.state == StrategyInstanceState.STOPPED
 
         await strategy.initialize()
-        assert strategy.state == StrategyState.RUNNING
+        assert strategy.state == StrategyInstanceState.RUNNING
 
         await strategy.start()
-        assert strategy.state == StrategyState.RUNNING
+        assert strategy.state == StrategyInstanceState.RUNNING
 
         await strategy.stop()
-        assert strategy.state == StrategyState.STOPPED
+        assert strategy.state == StrategyInstanceState.STOPPED
 
     @pytest.mark.asyncio
     async def test_strategy_pause_resume(self) -> None:
@@ -281,13 +281,13 @@ class TestStrategy:
         )
 
         await strategy.initialize()
-        assert strategy.state == StrategyState.RUNNING
+        assert strategy.state == StrategyInstanceState.RUNNING
 
         await strategy.pause()
-        assert strategy.state == StrategyState.PAUSED
+        assert strategy.state == StrategyInstanceState.PAUSED
 
         await strategy.resume()
-        assert strategy.state == StrategyState.RUNNING
+        assert strategy.state == StrategyInstanceState.RUNNING
 
     def test_strategy_process_tick(self) -> None:
         """Test strategy processes tick."""
@@ -355,7 +355,7 @@ class TestStrategy:
         stats = strategy.get_stats()
 
         assert stats['strategy_id'] == 'test'
-        assert stats['state'] == 'STOPPED'
+        assert stats['state'] == 'stopped'
         assert len(stats['symbols']) == 2
         assert stats['ticks_processed'] == 0
         assert stats['signals_generated'] == 0
@@ -429,13 +429,13 @@ class TestStrategyManager:
 
         await manager.start_all()
 
-        assert manager.get_strategy('test1').state == StrategyState.RUNNING
-        assert manager.get_strategy('test2').state == StrategyState.RUNNING
+        assert manager.get_strategy('test1').state == StrategyInstanceState.RUNNING
+        assert manager.get_strategy('test2').state == StrategyInstanceState.RUNNING
 
         await manager.stop_all()
 
-        assert manager.get_strategy('test1').state == StrategyState.STOPPED
-        assert manager.get_strategy('test2').state == StrategyState.STOPPED
+        assert manager.get_strategy('test1').state == StrategyInstanceState.STOPPED
+        assert manager.get_strategy('test2').state == StrategyInstanceState.STOPPED
 
     def test_manager_process_tick(self) -> None:
         """Test processing tick through multiple strategies."""

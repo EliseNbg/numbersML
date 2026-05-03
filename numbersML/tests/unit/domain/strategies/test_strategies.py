@@ -13,7 +13,7 @@ from src.domain.strategies.base import (
     EnrichedTick,
     Signal,
     SignalType,
-    StrategyState,
+    StrategyInstanceState,
 )
 from src.domain.strategies.strategies import (
     RSIStrategy,

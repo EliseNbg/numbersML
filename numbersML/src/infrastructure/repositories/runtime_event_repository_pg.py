@@ -218,8 +218,8 @@ class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
         payload = row["event_payload"]
         if isinstance(payload, str):
             payload = json.loads(payload)
-        from_state = RuntimeState(payload.get("from_state", "STOPPED"))
-        to_state = RuntimeState(payload.get("to_state", "STOPPED"))
+        from_state = StrategyInstanceState(payload.get("from_state", "STOPPED"))
+        to_state = StrategyInstanceState(payload.get("to_state", "STOPPED"))
         return StrategyLifecycleEvent(
             event_id=row["id"],
             strategy_id=row["strategy_id"],

@@ -14,11 +14,14 @@ from typing import Dict, List, Optional, Any
 from uuid import UUID
 import logging
 
+from src.domain.strategies.strategy_instance import StrategyInstanceState
+
 logger = logging.getLogger(__name__)
 
 
 class SignalType(Enum):
     """Type of trading signal."""
+
     BUY = "BUY"
     SELL = "SELL"
     HOLD = "HOLD"
@@ -28,6 +31,7 @@ class SignalType(Enum):
 
 class TimeFrame(Enum):
     """Strategy time frame."""
+
     TICK = "TICK"
     SECOND = "1S"
     MINUTE = "1M"
@@ -36,14 +40,6 @@ class TimeFrame(Enum):
     HOUR = "1H"
     FOUR_HOUR = "4H"
     DAY = "1D"
-
-
-class StrategyState(Enum):
-    """Strategy running state."""
-    STOPPED = "STOPPED"
-    RUNNING = "RUNNING"
-    PAUSED = "PAUSED"
-    ERROR = "ERROR"
 
 
 @dataclass
@@ -60,6 +56,7 @@ class Signal:
         confidence: Signal confidence (0.0-1.0)
         metadata: Additional signal data
     """
+
     strategy_id: str
     symbol: str
     signal_type: SignalType
@@ -71,13 +68,13 @@ class Signal:
     def to_dict(self) -> Dict[str, Any]:
         """Convert signal to dictionary."""
         return {
-            'strategy_id': self.strategy_id,
-            'symbol': self.symbol,
-            'signal_type': self.signal_type.value,
-            'price': float(self.price),
-            'timestamp': self.timestamp.isoformat(),
-            'confidence': self.confidence,
-            'metadata': self.metadata,
+            "strategy_id": self.strategy_id,
+            "symbol": self.symbol,
+            "signal_type": self.signal_type.value,
+            "price": float(self.price),
+            "timestamp": self.timestamp.isoformat(),
+            "confidence": self.confidence,
+            "metadata": self.metadata,
         }
 
 
@@ -95,18 +92,19 @@ class Position:
         unrealized_pnl: Unrealized profit/loss
         opened_at: Position open time
     """
+
     symbol: str
     side: str  # LONG or SHORT
     quantity: Decimal
     entry_price: Decimal
-    current_price: Decimal = Decimal('0')
-    unrealized_pnl: Decimal = Decimal('0')
+    current_price: Decimal = Decimal("0")
+    unrealized_pnl: Decimal = Decimal("0")
     opened_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def update_price(self, price: Decimal) -> None:
         """Update current price and calculate PnL."""
         self.current_price = price
-        if self.side == 'LONG':
+        if self.side == "LONG":
             self.unrealized_pnl = (price - self.entry_price) * self.quantity
         else:  # SHORT
             self.unrealized_pnl = (self.entry_price - price) * self.quantity
@@ -121,14 +119,14 @@ class Position:
     def to_dict(self) -> Dict[str, Any]:
         """Convert position to dictionary."""
         return {
-            'symbol': self.symbol,
-            'side': self.side,
-            'quantity': float(self.quantity),
-            'entry_price': float(self.entry_price),
-            'current_price': float(self.current_price),
-            'unrealized_pnl': float(self.unrealized_pnl),
-            'pnl_percent': self.pnl_percent,
-            'opened_at': self.opened_at.isoformat(),
+            "symbol": self.symbol,
+            "side": self.side,
+            "quantity": float(self.quantity),
+            "entry_price": float(self.entry_price),
+            "current_price": float(self.current_price),
+            "unrealized_pnl": float(self.unrealized_pnl),
+            "pnl_percent": self.pnl_percent,
+            "opened_at": self.opened_at.isoformat(),
         }
 
 
@@ -144,6 +142,7 @@ class EnrichedTick:
         time: Tick timestamp
         indicators: Dictionary of indicator values
     """
+
     symbol: str
     price: Decimal
     volume: Decimal
@@ -151,14 +150,16 @@ class EnrichedTick:
     indicators: Dict[str, float] = field(default_factory=dict)
 
     @classmethod
-    def from_message(cls, message: Dict[str, Any]) -> 'EnrichedTick':
+    def from_message(cls, message: Dict[str, Any]) -> "EnrichedTick":
         """Create EnrichedTick from Redis message."""
         return cls(
-            symbol=message.get('symbol', ''),
-            price=Decimal(str(message.get('price', 0))),
-            volume=Decimal(str(message.get('volume', 0))),
-            time=datetime.fromisoformat(message.get('time', datetime.now(timezone.utc).isoformat())),
-            indicators=message.get('indicators', {}),
+            symbol=message.get("symbol", ""),
+            price=Decimal(str(message.get("price", 0))),
+            volume=Decimal(str(message.get("volume", 0))),
+            time=datetime.fromisoformat(
+                message.get("time", datetime.now(timezone.utc).isoformat())
+            ),
+            indicators=message.get("indicators", {}),
         )
 
     def get_indicator(self, name: str, default: float = 0.0) -> float:
@@ -217,7 +218,7 @@ class Strategy(ABC):
         self._time_frame: TimeFrame = time_frame
 
         # State
-        self._state: StrategyState = StrategyState.STOPPED
+        self._state: StrategyInstanceState = StrategyInstanceState.STOPPED
         self._positions: Dict[str, Position] = {}
         self._signals: List[Signal] = []
         self._ticks_processed: int = 0
@@ -239,7 +240,7 @@ class Strategy(ABC):
         return self._symbols.copy()
 
     @property
-    def state(self) -> StrategyState:
+    def state(self) -> StrategyInstanceState:
         """Get strategy state."""
         return self._state
 
@@ -291,7 +292,7 @@ class Strategy(ABC):
             True
         """
         logger.info(f"Initializing strategy {self._strategy_id}")
-        self._state = StrategyState.RUNNING
+        self._state = StrategyInstanceState.RUNNING
         return True
 
     async def start(self) -> None:
@@ -301,7 +302,7 @@ class Strategy(ABC):
         Begins processing ticks. Called after initialize().
         """
         logger.info(f"Starting strategy {self._strategy_id}")
-        self._state = StrategyState.RUNNING
+        self._state = StrategyInstanceState.RUNNING
 
     async def stop(self) -> None:
         """
@@ -310,17 +311,17 @@ class Strategy(ABC):
         Stops processing ticks. Cleanup resources.
         """
         logger.info(f"Stopping strategy {self._strategy_id}")
-        self._state = StrategyState.STOPPED
+        self._state = StrategyInstanceState.STOPPED
 
     async def pause(self) -> None:
         """Pause strategy."""
         logger.info(f"Pausing strategy {self._strategy_id}")
-        self._state = StrategyState.PAUSED
+        self._state = StrategyInstanceState.PAUSED
 
     async def resume(self) -> None:
         """Resume paused strategy."""
         logger.info(f"Resuming strategy {self._strategy_id}")
-        self._state = StrategyState.RUNNING
+        self._state = StrategyInstanceState.RUNNING
 
     def process_tick(self, tick: EnrichedTick) -> Optional[Signal]:
         """
@@ -334,7 +335,7 @@ class Strategy(ABC):
         Returns:
             Signal if generated, None otherwise
         """
-        if self._state != StrategyState.RUNNING:
+        if self._state != StrategyInstanceState.RUNNING:
             return None
 
         if tick.symbol not in self._symbols:
@@ -442,14 +443,14 @@ class Strategy(ABC):
         total_pnl = sum(p.unrealized_pnl for p in self._positions.values())
 
         return {
-            'strategy_id': self._strategy_id,
-            'state': self._state.value,
-            'symbols': self._symbols,
-            'ticks_processed': self._ticks_processed,
-            'signals_generated': len(self._signals),
-            'active_positions': active_positions,
-            'total_unrealized_pnl': float(total_pnl),
-            'errors': self._errors,
+            "strategy_id": self._strategy_id,
+            "state": self._state.value,
+            "symbols": self._symbols,
+            "ticks_processed": self._ticks_processed,
+            "signals_generated": len(self._signals),
+            "active_positions": active_positions,
+            "total_unrealized_pnl": float(total_pnl),
+            "errors": self._errors,
         }
 
 
@@ -576,10 +577,7 @@ class StrategyManager:
     def get_stats(self) -> Dict[str, Any]:
         """Get statistics for all strategies."""
         return {
-            'running': self._running,
-            'strategy_count': len(self._strategies),
-            'strategies': {
-                sid: strat.get_stats()
-                for sid, strat in self._strategies.items()
-            },
+            "running": self._running,
+            "strategy_count": len(self._strategies),
+            "strategies": {sid: strat.get_stats() for sid, strat in self._strategies.items()},
         }

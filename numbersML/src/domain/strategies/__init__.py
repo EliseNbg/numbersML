@@ -12,6 +12,8 @@ Sample Strategies:
     - MultiIndicatorStrategy: Composite strategy
 """
 
+from src.domain.strategies.strategy_instance import StrategyInstanceState
+
 from src.domain.strategies.base import (
     Strategy,
     StrategyManager,
@@ -20,7 +22,6 @@ from src.domain.strategies.base import (
     EnrichedTick,
     SignalType,
     TimeFrame,
-    StrategyState,
 )
 
 from src.domain.strategies.strategies import (
@@ -33,26 +34,25 @@ from src.domain.strategies.strategies import (
 
 __all__ = [
     # Base classes
-    'Strategy',
-    'StrategyManager',
-    'Signal',
-    'Position',
-    'EnrichedTick',
-    'SignalType',
-    'TimeFrame',
-    'StrategyState',
+    "Strategy",
+    "StrategyManager",
+    "Signal",
+    "Position",
+    "EnrichedTick",
+    "SignalType",
+    "TimeFrame",
+    "StrategyInstanceState",
     # Sample strategies
-    'RSIStrategy',
-    'MACDStrategy',
-    'SMACrossoverStrategy',
-    'BollingerBandsStrategy',
-    'MultiIndicatorStrategy',
+    "RSIStrategy",
+    "MACDStrategy",
+    "SMACrossoverStrategy",
+    "BollingerBandsStrategy",
+    "MultiIndicatorStrategy",
 ]
 
 from src.domain.strategies.runtime import (
     StrategyRuntimeState,
     StrategyLifecycleEvent,
-    RuntimeState,
     VALID_TRANSITIONS,
 )
 from src.domain.strategies.strategy_config import (
@@ -60,11 +60,12 @@ from src.domain.strategies.strategy_config import (
     StrategyDefinition,
 )
 
-__all__.extend([
-    "StrategyRuntimeState",
-    "StrategyLifecycleEvent", 
-    "RuntimeState",
-    "VALID_TRANSITIONS",
-    "StrategyConfigVersion",
-    "StrategyDefinition",
-])
+__all__.extend(
+    [
+        "StrategyRuntimeState",
+        "StrategyLifecycleEvent",
+        "VALID_TRANSITIONS",
+        "StrategyConfigVersion",
+        "StrategyDefinition",
+    ]
+)
