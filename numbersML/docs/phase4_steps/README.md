@@ -15,7 +15,7 @@ Phase 4 focuses on creating a robust, decoupled management system for trading st
 - ✅ **Step 5** (`STEP_05_STRATEGY_INSTANCE_REPO_API.md`): Completed - StrategyInstance repository and API, start/stop endpoints
 - ✅ **Step 6** (`STEP_06_BACKTEST_SERVICE.md`): Completed - BacktestService implementation, candle loading, metrics calculation, unit tests
 - ✅ **Step 7** (`STEP_07_BACKTEST_API.md`): Completed - Backtest API endpoints, job tracking, progress reporting, real BacktestService integration
-- 🔜 **Step 8** (`STEP_08_DASHBOARD_CONFIG_SETS.md`): Not started - Dashboard UI for config set CRUD, dynamic parameter editing
+- ✅ **Step 8** (`STEP_08_DASHBOARD_CONFIG_SETS.md`): Completed - Dashboard UI for config set CRUD, dynamic parameter editing
 - 🔜 **Step 9** (`STEP_09_DASHBOARD_INSTANCES.md`): Not started - Dashboard UI for strategy instances, hot-plug toggle, real-time stats
 - 🔜 **Step 10** (`STEP_10_DASHBOARD_BACKTEST.md`): Not started - Backtest result page, charts, metrics table, time range selector
 - 🔜 **Step 11** (`STEP_11_GRID_STRATEGY.md`): Not started - SimpleGridAlgorithm implementation, buy/sell grid logic
