@@ -32,6 +32,7 @@ from src.infrastructure.api.routes import (
     strategies_router,
     market_router,
     strategy_backtest_router,
+    config_sets_router,
     backup_router,
 )
 from src.infrastructure.api.routes.candles import router as candles_router
@@ -149,6 +150,7 @@ Currently no authentication. Add authentication middleware for production use.
     app.include_router(strategies_router)
     app.include_router(market_router)
     app.include_router(strategy_backtest_router)
+    app.include_router(config_sets_router)
     app.include_router(candles_router)
     app.include_router(target_values_router)
     app.include_router(ml_router)

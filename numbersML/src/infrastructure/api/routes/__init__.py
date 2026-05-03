@@ -12,6 +12,7 @@ from .candles import router as candles_router
 from .target_values import router as target_values_router
 from .ml import router as ml_router
 from .backup import router as backup_router
+from .config_sets import router as config_sets_router
 
 __all__ = [
     "dashboard_router",
@@ -26,4 +27,5 @@ __all__ = [
     "target_values_router",
     "ml_router",
     "backup_router",
+    "config_sets_router",
 ]
