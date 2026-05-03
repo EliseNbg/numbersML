@@ -11,8 +11,8 @@ Dependencies: Application services, Domain models
 """
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -24,10 +24,11 @@ except ImportError:
     from pydantic import validator as field_validator
 
 from src.domain.market.order import Order, OrderSide, OrderStatus, OrderType
-from src.domain.strategies.base import Position
 from src.domain.services.market_service import MarketService
-from src.infrastructure.market.market_service_factory import create_market_service
+from src.domain.strategies.base import Position
+from src.infrastructure.api.auth import AuthContext, require_trader
 from src.infrastructure.database import get_db_pool_async
+from src.infrastructure.market.market_service_factory import create_market_service
 
 router = APIRouter(prefix="/api/market", tags=["market"])
 
@@ -81,12 +82,10 @@ class OrderCreateRequest(BaseModel):
     side: OrderSide = Field(..., description="BUY or SELL")
     order_type: OrderType = Field(default=OrderType.LIMIT, description="Order type")
     quantity: float = Field(..., gt=0, description="Order quantity")
-    price: Optional[float] = Field(
-        None, gt=0, description="Limit price (required for LIMIT orders)"
-    )
+    price: float | None = Field(None, gt=0, description="Limit price (required for LIMIT orders)")
     time_in_force: str = Field(default="GTC", description="Time in force: GTC, IOC, FOK")
-    strategy_id: Optional[UUID] = Field(None, description="Associated strategy ID")
-    metadata: Optional[Dict[str, Any]] = None
+    strategy_id: UUID | None = Field(None, description="Associated strategy ID")
+    metadata: dict[str, Any] | None = None
 
     @field_validator("price")
     def validate_price_for_limit_orders(cls, v, info):
@@ -103,15 +102,15 @@ class OrderResponse(BaseModel):
     side: OrderSide
     order_type: OrderType
     quantity: float
-    price: Optional[float]
+    price: float | None
     filled_quantity: float
     remaining_quantity: float
     status: OrderStatus
     time_in_force: str
-    strategy_id: Optional[UUID]
+    strategy_id: UUID | None
     created_at: datetime
     updated_at: datetime
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
     @classmethod
     def from_domain(cls, order: Order) -> "OrderResponse":
@@ -166,7 +165,7 @@ try:
 except ImportError:
     from pydantic import validator as field_validator
 
-# Override field_validator for older pydantic
+    # Override field_validator for older pydantic
     pass
 
 
@@ -193,15 +192,15 @@ async def get_market_service(mode: str = "paper") -> MarketService:
 
 @router.get(
     "/balances",
-    response_model=List[BalanceResponse],
+    response_model=list[BalanceResponse],
     summary="Get account balances",
     description="Get all account balances (free, locked, total) per asset.",
 )
 async def get_balances(
-    asset: Optional[str] = None,
+    asset: str | None = None,
     mode: str = "paper",
     market_service: MarketService = Depends(get_market_service),
-) -> List[BalanceResponse]:
+) -> list[BalanceResponse]:
     """
     Get all account balances.
 
@@ -293,15 +292,15 @@ async def get_balance(
 
 @router.get(
     "/positions",
-    response_model=List[PositionResponse],
+    response_model=list[PositionResponse],
     summary="Get all positions",
     description="Get all open trading positions.",
 )
 async def get_positions(
-    symbol: Optional[str] = None,
+    symbol: str | None = None,
     mode: str = "paper",
     market_service: MarketService = Depends(get_market_service),
-) -> List[PositionResponse]:
+) -> list[PositionResponse]:
     """
     Get all open trading positions.
 
@@ -392,6 +391,7 @@ async def create_order(
     request: OrderCreateRequest,
     mode: str = "paper",
     market_service: MarketService = Depends(get_market_service),
+    auth: AuthContext = Depends(require_trader),
 ) -> OrderResponse:
     """
     Create and submit a new order.
@@ -441,17 +441,17 @@ async def create_order(
 
 @router.get(
     "/orders",
-    response_model=List[OrderResponse],
+    response_model=list[OrderResponse],
     summary="List orders",
     description="List all orders with optional filtering.",
 )
 async def list_orders(
-    symbol: Optional[str] = None,
-    status: Optional[str] = None,
-    strategy_id: Optional[UUID] = None,
+    symbol: str | None = None,
+    status: str | None = None,
+    strategy_id: UUID | None = None,
     mode: str = "paper",
     market_service: MarketService = Depends(get_market_service),
-) -> List[OrderResponse]:
+) -> list[OrderResponse]:
     """
     List all orders with optional filtering.
 
@@ -535,7 +535,7 @@ async def get_order(
 
 @router.delete(
     "/orders/{order_id}",
-    response_model=Dict[str, Any],
+    response_model=dict[str, Any],
     summary="Cancel order",
     description="Cancel an open order.",
 )
@@ -543,7 +543,8 @@ async def cancel_order(
     order_id: str,
     mode: str = "paper",
     market_service: MarketService = Depends(get_market_service),
-) -> Dict[str, Any]:
+    auth: AuthContext = Depends(require_trader),
+) -> dict[str, Any]:
     """
     Cancel an open order.
 
@@ -586,17 +587,17 @@ async def cancel_order(
 
 @router.get(
     "/trades",
-    response_model=List[TradeResponse],
+    response_model=list[TradeResponse],
     summary="List trades",
     description="List all trades with optional filtering.",
 )
 async def list_trades(
-    symbol: Optional[str] = None,
-    start_time: Optional[datetime] = None,
-    end_time: Optional[datetime] = None,
+    symbol: str | None = None,
+    start_time: datetime | None = None,
+    end_time: datetime | None = None,
     mode: str = "paper",
     market_service: MarketService = Depends(get_market_service),
-) -> List[TradeResponse]:
+) -> list[TradeResponse]:
     """
     List all trades with optional filtering.
 
@@ -688,7 +689,7 @@ async def get_ticker(
             price_change_24h=float(ticker.get("price_change_24h", 0)),
             high_24h=float(ticker.get("high_24h", 0)),
             low_24h=float(ticker.get("low_24h", 0)),
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
 
     except KeyError:

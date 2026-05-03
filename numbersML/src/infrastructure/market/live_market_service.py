@@ -1,7 +1,7 @@
 """Live trading market service backed by exchange client."""
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
@@ -28,6 +28,10 @@ class LiveMarketService(MarketService):
     async def get_balance(self, asset: str) -> Balance:
         # Placeholder until account endpoint is implemented by exchange adapter.
         return Balance(asset=asset, free=Decimal("0"), locked=Decimal("0"))
+
+    async def get_balances(self) -> dict[str, dict[str, Decimal]]:
+        """Return all balances (placeholder until exchange adapter implements account endpoint)."""
+        return {}
 
     async def get_positions(self) -> list[Position]:
         # Placeholder until account endpoint is implemented by exchange adapter.
@@ -57,7 +61,7 @@ class LiveMarketService(MarketService):
         canceled = await self._exchange_client.cancel_order(order.symbol, order.external_order_id)
         if canceled:
             order.status = OrderStatus.CANCELED
-            order.updated_at = datetime.now(timezone.utc)
+            order.updated_at = datetime.now(UTC)
         return canceled
 
     async def get_order_status(self, order_id: str) -> Order | None:
@@ -108,7 +112,7 @@ class LiveMarketService(MarketService):
 
     @staticmethod
     def _default_client_order_id(request: OrderRequest) -> str:
-        ts = int(datetime.now(timezone.utc).timestamp() * 1000)
+        ts = int(datetime.now(UTC).timestamp() * 1000)
         return f"{request.symbol.replace('/', '')}-{request.side.value.lower()}-{ts}"
 
     def _from_exchange_payload(
@@ -129,7 +133,7 @@ class LiveMarketService(MarketService):
         filled_qty = Decimal(str(payload.get("executedQty", "0")))
         avg_price = payload.get("avgPrice")
         avg_fill_price = Decimal(str(avg_price)) if avg_price not in (None, "") else None
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         order = Order(
             id=fallback_id or uuid4(),
             symbol=request.symbol,
@@ -144,7 +148,9 @@ class LiveMarketService(MarketService):
             created_at=now,
             updated_at=now,
             client_order_id=client_order_id,
-            external_order_id=str(payload.get("orderId")) if payload.get("orderId") is not None else None,
+            external_order_id=(
+                str(payload.get("orderId")) if payload.get("orderId") is not None else None
+            ),
             metadata={"exchange_payload": payload},
         )
         return order

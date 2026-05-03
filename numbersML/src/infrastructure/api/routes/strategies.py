@@ -14,15 +14,21 @@ Dependencies: Application services, Domain models
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
+from src.application.services.llm_strategy_service import LLMStrategyService
 from src.domain.repositories.runtime_event_repository import StrategyRuntimeEventRepository
 from src.domain.repositories.strategy_repository import StrategyRepository
 from src.domain.strategies.strategy_config import StrategyConfigVersion, StrategyDefinition
+from src.infrastructure.api.auth import (
+    AuthContext,
+    check_live_mode_policy,
+    require_trader,
+)
 from src.infrastructure.database import get_db_pool_async
 from src.infrastructure.repositories.runtime_event_repository_pg import (
     StrategyRuntimeEventRepositoryPG,
@@ -42,11 +48,11 @@ logger = logging.getLogger(__name__)
 class StrategyConfigSchema(BaseModel):
     """Canonical strategy configuration schema."""
 
-    meta: Dict[str, Any] = Field(default_factory=dict)
-    universe: Dict[str, Any] = Field(default_factory=dict)
-    signal: Dict[str, Any] = Field(default_factory=dict)
-    risk: Dict[str, Any] = Field(default_factory=dict)
-    execution: Dict[str, Any] = Field(default_factory=dict)
+    meta: dict[str, Any] = Field(default_factory=dict)
+    universe: dict[str, Any] = Field(default_factory=dict)
+    signal: dict[str, Any] = Field(default_factory=dict)
+    risk: dict[str, Any] = Field(default_factory=dict)
+    execution: dict[str, Any] = Field(default_factory=dict)
     mode: str = Field(default="paper", pattern="^(paper|live)$")
     status: str = Field(default="draft", pattern="^(draft|validated|active|paused|archived)$")
 
@@ -59,17 +65,17 @@ class StrategyConfigSchema(BaseModel):
 
 class StrategyCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
-    description: Optional[str] = None
+    description: str | None = None
     mode: str = Field(default="paper", pattern="^(paper|live)$")
     config: StrategyConfigSchema
     created_by: str = Field(default="system", max_length=255)
 
 
 class StrategyUpdateRequest(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    description: Optional[str] = None
-    mode: Optional[str] = Field(None, pattern="^(paper|live)$")
-    config_version: Optional[int] = Field(None, ge=1)
+    name: str | None = Field(None, min_length=1, max_length=255)
+    description: str | None = None
+    mode: str | None = Field(None, pattern="^(paper|live)$")
+    config_version: int | None = Field(None, ge=1)
 
 
 class StrategyVersionCreateRequest(BaseModel):
@@ -79,15 +85,15 @@ class StrategyVersionCreateRequest(BaseModel):
 
 
 class StrategyActivateRequest(BaseModel):
-    version: Optional[int] = Field(None, ge=1)
-    metadata: Optional[Dict[str, Any]] = None
+    version: int | None = Field(None, ge=1)
+    metadata: dict[str, Any] | None = None
 
 
 # Response models
 class StrategyResponse(BaseModel):
     id: UUID
     name: str
-    description: Optional[str]
+    description: str | None
     mode: str
     status: str
     current_version: int
@@ -114,7 +120,7 @@ class StrategyVersionResponse(BaseModel):
     strategy_id: UUID
     version: int
     schema_version: int
-    config: Dict[str, Any]
+    config: dict[str, Any]
     is_active: bool
     created_by: str
     created_at: datetime
@@ -137,19 +143,19 @@ class StrategyRuntimeStateResponse(BaseModel):
     strategy_name: str
     state: str
     version: int
-    last_error: Optional[str] = None
+    last_error: str | None = None
     error_count: int = 0
-    last_state_change: Optional[datetime] = None
+    last_state_change: datetime | None = None
 
 
 class LifecycleEventResponse(BaseModel):
     strategy_id: UUID
     strategy_name: str
     strategy_version: int
-    from_state: Optional[str]
+    from_state: str | None
     to_state: str
     trigger: str
-    details: Dict[str, Any]
+    details: dict[str, Any]
     occurred_at: datetime
 
 
@@ -170,6 +176,16 @@ async def get_event_repo() -> StrategyRuntimeEventRepository:
         return StrategyRuntimeEventRepositoryPG(conn)
 
 
+async def get_llm_service() -> LLMStrategyService:
+    """Get LLMStrategyService instance."""
+    db_pool = await get_db_pool_async()
+    async with db_pool.acquire() as conn:
+        from src.infrastructure.repositories.strategy_repository_pg import StrategyRepositoryPG
+
+        repo = StrategyRepositoryPG(conn)
+        return LLMStrategyService(strategy_repository=repo)
+
+
 # ============================================================================
 # Strategy Endpoints
 # ============================================================================
@@ -180,7 +196,6 @@ async def create_strategy(
     req: StrategyCreateRequest,
 ) -> StrategyResponse:
     try:
-        from datetime import timezone
 
         repo = await get_strategy_repo()
         s = StrategyDefinition(
@@ -205,8 +220,8 @@ async def create_strategy(
 
 @router.get("", response_model=list[StrategyResponse])
 async def list_strategies(
-    status: Optional[str] = None,
-    mode: Optional[str] = None,
+    status: str | None = None,
+    mode: str | None = None,
     repo: StrategyRepository = Depends(get_strategy_repo),
 ) -> list[StrategyResponse]:
     strategies = await repo.get_all()
@@ -342,8 +357,18 @@ async def activate_strategy(
     strategy_id: UUID,
     req: StrategyActivateRequest,
     svc=Depends(get_lifecycle_service),
+    auth: AuthContext = Depends(require_trader),
 ) -> dict[str, Any]:
     try:
+        # Get strategy to check mode for policy
+        repo = await get_strategy_repo()
+        s = await repo.get_by_id(strategy_id)
+        if not s:
+            raise HTTPException(status_code=404, detail=f"Strategy {strategy_id} not found")
+
+        # Policy check: live mode requires admin
+        check_live_mode_policy(s.mode, auth)
+
         ok = await svc.activate_strategy(strategy_id, req.version, req.metadata or {})
         if not ok:
             raise HTTPException(status_code=500, detail="Failed to activate")
@@ -360,8 +385,9 @@ async def activate_strategy(
 @router.post("/{strategy_id}/deactivate", response_model=dict[str, Any])
 async def deactivate_strategy(
     strategy_id: UUID,
-    req: Optional[Dict[str, Any]] = None,
+    req: dict[str, Any] | None = None,
     svc=Depends(get_lifecycle_service),
+    auth: AuthContext = Depends(require_trader),
 ) -> dict[str, Any]:
     try:
         ok = await svc.deactivate_strategy(strategy_id, req or {})
@@ -380,8 +406,9 @@ async def deactivate_strategy(
 @router.post("/{strategy_id}/pause", response_model=dict[str, Any])
 async def pause_strategy(
     strategy_id: UUID,
-    req: Optional[Dict[str, Any]] = None,
+    req: dict[str, Any] | None = None,
     svc=Depends(get_lifecycle_service),
+    auth: AuthContext = Depends(require_trader),
 ) -> dict[str, Any]:
     try:
         ok = await svc.pause_strategy(strategy_id, req or {})
@@ -400,8 +427,9 @@ async def pause_strategy(
 @router.post("/{strategy_id}/resume", response_model=dict[str, Any])
 async def resume_strategy(
     strategy_id: UUID,
-    req: Optional[Dict[str, Any]] = None,
+    req: dict[str, Any] | None = None,
     svc=Depends(get_lifecycle_service),
+    auth: AuthContext = Depends(require_trader),
 ) -> dict[str, Any]:
     try:
         ok = await svc.resume_strategy(strategy_id, req or {})
@@ -492,22 +520,125 @@ async def get_lifecycle_events(
 # ============================================================================
 
 
-@router.post("/generate", summary="Generate strategy config (placeholder)")
-async def generate_strategy_config(req: Dict[str, Any]) -> dict[str, Any]:
-    return {
-        "message": "LLM generation placeholder",
-        "note": "Integrate with OpenAI/Anthropic APIs for production use",
-        "config": StrategyConfigSchema().dict(),
-    }
+class LLMGenerateRequest(BaseModel):
+    """Request model for LLM strategy generation."""
+
+    description: str = Field(
+        ..., min_length=10, description="Natural language strategy description"
+    )
+    symbols: list[str] = Field(default_factory=lambda: ["BTC/USDC"], description="Trading symbols")
+    timeframe: str = Field(default="1M", description="Candle timeframe")
+    mode: str = Field(default="paper", pattern="^(paper|live)$")
+    created_by: str = Field(default="llm", max_length=255)
 
 
-@router.post("/{strategy_id}/modify", summary="Modify strategy via LLM (placeholder)")
-async def modify_strategy(strategy_id: UUID, req: Dict[str, Any]) -> dict[str, Any]:
+class LLMModifyRequest(BaseModel):
+    """Request model for LLM strategy modification."""
+
+    change_request: str = Field(..., min_length=5, description="Natural language change request")
+    modified_by: str = Field(default="llm", max_length=255)
+
+
+@router.post("/generate", summary="Generate strategy config via LLM")
+async def generate_strategy_config(
+    req: LLMGenerateRequest,
+    llm_svc=Depends(get_llm_service),
+    auth: AuthContext = Depends(require_trader),
+) -> dict[str, Any]:
+    """Generate strategy configuration from natural language using LLM."""
+    result = await llm_svc.generate_config(
+        description=req.description,
+        symbols=req.symbols,
+        timeframe=req.timeframe,
+        mode=req.mode,
+        created_by=req.created_by,
+    )
+
+    if not result.success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": result.error_message,
+                "issues": [{"path": i.path, "message": i.message} for i in result.issues],
+                "raw_response": result.raw_response,
+            },
+        )
+
+    # Save as draft strategy
+    try:
+        strategy = await llm_svc.save_generated_strategy(
+            config=result.config,
+            created_by=req.created_by,
+        )
+        return {
+            "message": "Strategy generated successfully",
+            "strategy_id": str(strategy.id),
+            "config": result.config,
+            "validation_issues": [{"path": i.path, "message": i.message} for i in result.issues],
+        }
+    except Exception as e:
+        logger.error(f"Failed to save generated strategy: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save strategy: {str(e)}",
+        )
+
+
+@router.post("/{strategy_id}/modify", summary="Modify strategy via LLM")
+async def modify_strategy(
+    strategy_id: UUID,
+    req: LLMModifyRequest,
+    llm_svc=Depends(get_llm_service),
+    auth: AuthContext = Depends(require_trader),
+) -> dict[str, Any]:
+    """Modify existing strategy configuration using LLM."""
     repo = await get_strategy_repo()
     s = await repo.get_by_id(strategy_id)
     if not s:
         raise HTTPException(status_code=404, detail="Strategy not found")
-    return {
-        "message": f"Strategy {strategy_id} modification suggestion",
-        "note": "Integrate with LLM APIs for production use",
-    }
+
+    # Get current config version
+    versions = await repo.list_versions(strategy_id)
+    if not versions:
+        raise HTTPException(status_code=404, detail="No config versions found")
+
+    current_version = versions[-1]
+    existing_config = current_version.config
+
+    result = await llm_svc.modify_config(
+        existing_config=existing_config,
+        change_request=req.change_request,
+        modified_by=req.modified_by,
+    )
+
+    if not result.success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": result.error_message,
+                "issues": [{"path": i.path, "message": i.message} for i in result.issues],
+                "raw_response": result.raw_response,
+            },
+        )
+
+    # Save as new version (draft)
+    try:
+        new_version = await repo.create_version(
+            strategy_id=strategy_id,
+            config=result.config,
+            schema_version=current_version.schema_version,
+            created_by=req.modified_by,
+        )
+        return {
+            "message": "Strategy modified successfully",
+            "strategy_id": str(strategy_id),
+            "version": new_version.version,
+            "config": result.config,
+            "validation_issues": [{"path": i.path, "message": i.message} for i in result.issues],
+        }
+    except Exception as e:
+        logger.error(f"Failed to save modified strategy: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save modified strategy: {str(e)}",
+        )

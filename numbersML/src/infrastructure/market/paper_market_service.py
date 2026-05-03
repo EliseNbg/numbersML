@@ -1,6 +1,6 @@
 """Paper trading market service implementation."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -28,7 +28,20 @@ class PaperMarketService(MarketService):
         self._slippage_bps = slippage_bps
 
     async def get_balance(self, asset: str) -> Balance:
-        return self._balances.get(asset, Balance(asset=asset, free=Decimal("0"), locked=Decimal("0")))
+        return self._balances.get(
+            asset, Balance(asset=asset, free=Decimal("0"), locked=Decimal("0"))
+        )
+
+    async def get_balances(self) -> dict[str, dict[str, Decimal]]:
+        """Return all balances as {asset: {"free": free, "locked": locked, "total": total}}."""
+        return {
+            asset: {
+                "free": balance.free,
+                "locked": balance.locked,
+                "total": balance.free + balance.locked,
+            }
+            for asset, balance in self._balances.items()
+        }
 
     async def get_positions(self) -> list[Position]:
         return list(self._positions.values())
@@ -59,7 +72,7 @@ class PaperMarketService(MarketService):
         if order.status in {OrderStatus.FILLED, OrderStatus.CANCELED, OrderStatus.REJECTED}:
             return False
         order.status = OrderStatus.CANCELED
-        order.updated_at = datetime.now(timezone.utc)
+        order.updated_at = datetime.now(UTC)
         return True
 
     async def get_order_status(self, order_id: str) -> Order | None:
@@ -80,8 +93,10 @@ class PaperMarketService(MarketService):
             return price * (Decimal("1") + ratio)
         return price * (Decimal("1") - ratio)
 
-    def _build_order(self, request: OrderRequest, status: OrderStatus, fill_price: Decimal) -> Order:
-        now = datetime.now(timezone.utc)
+    def _build_order(
+        self, request: OrderRequest, status: OrderStatus, fill_price: Decimal
+    ) -> Order:
+        now = datetime.now(UTC)
         return Order(
             symbol=request.symbol,
             side=request.side,

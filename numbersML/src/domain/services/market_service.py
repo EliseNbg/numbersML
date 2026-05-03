@@ -15,6 +15,10 @@ class MarketService(ABC):
         """Return account balance snapshot for an asset."""
 
     @abstractmethod
+    async def get_balances(self) -> dict[str, dict[str, Decimal]]:
+        """Return all account balances (asset -> {free, locked, total})."""
+
+    @abstractmethod
     async def get_positions(self) -> list[Position]:
         """Return all open positions."""
 
