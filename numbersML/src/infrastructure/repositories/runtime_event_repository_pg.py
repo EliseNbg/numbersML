@@ -1,7 +1,7 @@
 """PostgreSQL implementation of strategy runtime event repository."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -9,12 +9,11 @@ import asyncpg
 
 from src.domain.repositories.runtime_event_repository import StrategyRuntimeEventRepository
 from src.domain.strategies.runtime import StrategyLifecycleEvent
-from src.domain.strategies.strategy_config import StrategyDefinition
 
 
 class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
     """PostgreSQL-backed runtime event repository.
-    
+
     Persists strategy lifecycle events to the strategy_events table.
     Events are append-only and never updated.
     """
@@ -24,10 +23,10 @@ class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
 
     async def save(self, entity: StrategyLifecycleEvent) -> StrategyLifecycleEvent:
         """Persist a lifecycle event.
-        
+
         Args:
             entity: The lifecycle event to persist
-            
+
         Returns:
             The persisted event (unchanged)
         """
@@ -38,7 +37,7 @@ class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
                 event_payload, actor, created_at
             ) VALUES (
                 $1, $2,
-                (SELECT id FROM strategy_versions 
+                (SELECT id FROM strategy_versions
                  WHERE strategy_id = $2 AND version = $3),
                 $4, $5, $6, $7
             )
@@ -48,19 +47,17 @@ class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
             entity.strategy_version,
             entity.event_type,
             json.dumps(entity.details),
-            entity.trigger if hasattr(entity, 'trigger') else 'system',
+            entity.trigger if hasattr(entity, "trigger") else "system",
             entity.occurred_at,
         )
         return entity
 
     async def delete(self, entity_id: UUID) -> bool:
         """Delete an event (soft delete not supported - events are immutable).
-        
+
         Note: This is generally discouraged as events form an audit trail.
         """
-        result = await self.conn.execute(
-            "DELETE FROM strategy_events WHERE id = $1", entity_id
-        )
+        result = await self.conn.execute("DELETE FROM strategy_events WHERE id = $1", entity_id)
         return result == "DELETE 1"
 
     async def get_events_for_strategy(
@@ -152,7 +149,7 @@ class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
             WHERE e.event_type = 'StrategyLifecycleEvent'
             ORDER BY e.strategy_id, e.created_at DESC
         """)
-        return [dict(row) for row in rows]
+        return [dict(r) for r in rows]
 
     async def get_error_events(
         self,
@@ -180,23 +177,30 @@ class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
             query += "2"
             params.append(limit)
         else:
-            query = query.replace("WHERE e.event_type = 'StrategyLifecycleEvent'",
-                                 "WHERE e.event_type = 'StrategyLifecycleEvent'")
+            query = query.replace(
+                "WHERE e.event_type = 'StrategyLifecycleEvent'",
+                "WHERE e.event_type = 'StrategyLifecycleEvent'",
+            )
             query += "1"
             params = [limit]
 
-        rows = await self.conn.fetch(query, *params) if since else await self.conn.fetch(query, limit)
+        rows = (
+            await self.conn.fetch(query, *params) if since else await self.conn.fetch(query, limit)
+        )
         return [self._map_event(row) for row in rows]
 
     async def get_by_id(self, entity_id: UUID) -> StrategyLifecycleEvent | None:
         """Get a single event by ID."""
-        row = await self.conn.fetchrow("""
+        row = await self.conn.fetchrow(
+            """
             SELECT e.*, s.name as strategy_name, sv.version as strategy_version
             FROM strategy_events e
             JOIN strategies s ON e.strategy_id = s.id
             LEFT JOIN strategy_versions sv ON e.strategy_version_id = sv.id
             WHERE e.id = $1
-        """, entity_id)
+        """,
+            entity_id,
+        )
         if row is None:
             return None
         return self._map_event(row)
@@ -236,5 +240,5 @@ class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
 def _coerce_datetime(value: datetime) -> datetime:
     """Normalize datetime values from asyncpg records."""
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
+        return value.replace(tzinfo=UTC)
     return value

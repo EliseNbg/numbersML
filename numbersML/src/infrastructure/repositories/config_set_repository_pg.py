@@ -5,6 +5,7 @@ Uses asyncpg for async database access.
 Follows DDD: Infrastructure layer implements Domain interface.
 """
 
+import json
 import logging
 from typing import Any
 from uuid import UUID
@@ -15,6 +16,18 @@ from src.domain.repositories.config_set_repository import ConfigSetRepository
 from src.domain.strategies.config_set import ConfigurationSet
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_json(value: Any) -> dict[str, Any]:
+    """Parse JSONB column value to dict.
+
+    asyncpg may return JSONB as dict or str depending on codec.
+    """
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        return json.loads(value)
+    return dict(value)  # fallback for other types (e.g., asyncpg.Record)
 
 
 class ConfigSetRepositoryPG(ConfigSetRepository):
@@ -264,7 +277,7 @@ class ConfigSetRepositoryPG(ConfigSetRepository):
         """
         config_set = ConfigurationSet(
             name=row["name"],
-            config=dict(row["config"]),
+            config=_parse_json(row["config"]),  # Handle JSONB column
             description=row["description"],
             id=row["id"],
             is_active=row["is_active"],

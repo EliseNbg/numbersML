@@ -304,7 +304,7 @@ class EnrichmentService:
             )
 
             # Return as list of dicts, ordered by time ascending
-            return [dict(row) for row in rows]
+            return [dict(r) for r in rows]
 
     def _extract_arrays(
         self, tick_history: list[dict[str, Any]]

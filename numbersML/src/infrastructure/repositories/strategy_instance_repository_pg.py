@@ -159,7 +159,7 @@ class StrategyInstanceRepositoryPG(StrategyInstanceRepository):
 
     async def list_all(
         self,
-         status: str | None = None,
+        status: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[StrategyInstance]:
@@ -277,7 +277,7 @@ class StrategyInstanceRepositoryPG(StrategyInstanceRepository):
         from src.domain.strategies.strategy_instance import RuntimeStats
 
         if row["runtime_stats"]:
-            stats_dict = dict(row["runtime_stats"])
+            stats_dict = dict(row["runtime_stats"]) if row["runtime_stats"] else {}
             # Filter out keys not in RuntimeStats.__init__ parameters
             init_params = RuntimeStats.__init__.__code__.co_varnames[1:]  # Skip self
             filtered_stats = {k: v for k, v in stats_dict.items() if k in init_params}
