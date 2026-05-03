@@ -19,7 +19,7 @@ Phase 4 focuses on creating a robust, decoupled management system for trading st
 - ✅ **Step 9** (`STEP_09_DASHBOARD_INSTANCES.md`): Completed - Dashboard UI for strategy instances, hot-plug toggle, real-time stats
 - ✅ **Step 10** (`STEP_10_DASHBOARD_BACKTEST.md`): Completed - Backtest result page, charts, metrics table, time range selector
 - ✅ **Step 11** (`STEP_11_GRID_STRATEGY.md`): Completed - SimpleGridAlgorithm implementation, buy/sell grid logic, unit tests
-- 🔜 **Step 12** (`STEP_12_GRID_TEST_DATA.md`): Not started - Test data setup, TEST/USDT config, synthetic data for positive PnL
+- ✅ **Step 12** (`STEP_12_GRID_TEST_DATA.md`): Completed - Test data setup, TEST/USDT config, synthetic data for positive PnL
 - 🔜 **Step 13** (`STEP_13_PIPELINE_INTEGRATION.md`): Not started - Pipeline integration, strategy execution, signal generation
 - 🔜 **Step 14** (`STEP_14_TESTING_ROLLOUT.md`): Not started - Integration testing, automated tests, rollout checklist
 

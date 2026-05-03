@@ -180,6 +180,55 @@ WHERE s.is_test = true
 ON CONFLICT (symbol_id) DO NOTHING;
 
 -- ============================================
+-- 9. TEST/USDT SYMBOL FOR GRID STRATEGY
+-- ============================================
+
+-- Insert TEST/USDT symbol (if not exists)
+INSERT INTO symbols (
+    symbol, base_asset, quote_asset, status, is_active, is_allowed,
+    price_precision, quantity_precision, tick_size, step_size,
+    min_notional, is_test
+) VALUES (
+    'TEST/USDT', 'TEST', 'USDT', 'TRADING', true, true,
+    2, 6, 0.01, 0.000001, 10.0, true
+) ON CONFLICT (symbol) DO UPDATE SET
+    is_test = EXCLUDED.is_test,
+    is_active = EXCLUDED.is_active,
+    is_allowed = EXCLUDED.is_allowed;
+
+
+-- ============================================
+-- 10. GRID STRATEGY CONFIGURATION SET
+-- ============================================
+
+INSERT INTO configuration_sets (name, description, config, is_active)
+VALUES (
+    'Grid TEST/USDT Default',
+    'Default grid configuration for TEST/USDT with noised sin wave',
+    '{
+        "symbols": ["TEST/USDT"],
+        "grid_levels": 5,
+        "grid_spacing_pct": 1.0,
+        "quantity": 0.01,
+        "initial_balance": 10000.0,
+        "risk": {
+            "max_position_size_pct": 10,
+            "max_daily_loss_pct": 5,
+            "stop_loss_pct": 2.0,
+            "take_profit_pct": 0.5
+        },
+        "execution": {
+            "order_type": "market",
+            "slippage_bps": 10,
+            "fee_bps": 10
+        }
+    }'::jsonb,
+    true
+) ON CONFLICT (name) DO UPDATE SET
+    config = EXCLUDED.config,
+    is_active = EXCLUDED.is_active;
+
+-- ============================================
 -- Done
 -- ============================================
 
