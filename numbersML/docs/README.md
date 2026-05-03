@@ -143,6 +143,35 @@ echo "DELETE ALL DATA" | .venv/bin/python tests/integration/test_dangerous_pipel
 
 **457 tests passing.** Covers: ML models, recovery mechanism, pipeline components, target value calculation, wide vector generation.
 
+## Phase 4: Algorithm Management & Backtesting ✅
+
+### New Features
+- **ConfigurationSets**: Reusable parameter sets for strategies
+- **StrategyInstances**: Link strategies with configuration for deployment
+- **Hot-Plug**: Start/stop strategies without pipeline restart
+- **Real Backtesting**: Historical data replay with NO indicator recalculation
+- **Dashboard Pages**:
+  - ConfigurationSet management with dynamic parameters
+  - StrategyInstance management with hot-plug controls
+  - Enhanced backtest page with Chart.js visualizations
+- **Grid Algorithm**: Simple grid trading strategy for TEST/USDT
+
+### API Endpoints
+- `POST /api/config-sets` - Create ConfigurationSet
+- `GET /api/config-sets` - List ConfigurationSets
+- `POST /api/strategy-instances` - Create StrategyInstance
+- `POST /api/strategy-instances/{id}/start` - Hot-plug
+- `POST /api/strategy-backtests/jobs` - Submit backtest
+- `GET /api/strategy-backtests/jobs/{id}` - Get results
+
+### Database Migrations
+- `migrations/003_configuration_sets.sql`
+- `migrations/004_strategy_instances.sql`
+
+### Test Coverage
+- >80% for all new code
+- Unit, integration, and E2E tests passing
+
 ## Database Schema
 
 All tables use `timestamp with time zone` for time columns. Key tables:

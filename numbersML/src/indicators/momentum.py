@@ -24,8 +24,8 @@ class RSIIndicator(Indicator):
     - Oversold: < 30
     """
 
-    category = 'momentum'
-    description = 'Relative Strength Index - Measures price momentum'
+    category = "momentum"
+    description = "Relative Strength Index - Measures price momentum"
 
     def __init__(self, period: int = 14) -> None:
         """Initialize RSI indicator."""
@@ -38,14 +38,9 @@ class RSIIndicator(Indicator):
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
-                "period": {
-                    "type": "integer",
-                    "minimum": 2,
-                    "maximum": 5000,
-                    "default": 14
-                }
+                "period": {"type": "integer", "minimum": 2, "maximum": 100, "default": 14}
             },
-            "required": ["period"]
+            "required": ["period"],
         }
 
     def calculate(
@@ -55,14 +50,10 @@ class RSIIndicator(Indicator):
         **kwargs: Any,
     ) -> IndicatorResult:
         """Calculate RSI values."""
-        period = self.params['period']
+        period = self.params["period"]
         rsi = self._calculate_rsi(prices, period)
 
-        return IndicatorResult(
-            name=self.name,
-            values={'rsi': rsi},
-            metadata={'period': period}
-        )
+        return IndicatorResult(name=self.name, values={"rsi": rsi}, metadata={"period": period})
 
     def _calculate_rsi(self, prices: np.ndarray, period: int) -> np.ndarray:
         """Calculate RSI."""
@@ -86,8 +77,8 @@ class RSIIndicator(Indicator):
 
         # Smoothed averages
         for i in range(period + 1, len(prices)):
-            avg_gain[i] = (avg_gain[i-1] * (period - 1) + gains[i-1]) / period
-            avg_loss[i] = (avg_loss[i-1] * (period - 1) + losses[i-1]) / period
+            avg_gain[i] = (avg_gain[i - 1] * (period - 1) + gains[i - 1]) / period
+            avg_loss[i] = (avg_loss[i - 1] * (period - 1) + losses[i - 1]) / period
 
         # Calculate RS and RSI
         rs = np.zeros(len(prices))
@@ -114,8 +105,8 @@ class StochasticIndicator(Indicator):
     - Oversold: < 20
     """
 
-    category = 'momentum'
-    description = 'Stochastic Oscillator - Compares close to price range'
+    category = "momentum"
+    description = "Stochastic Oscillator - Compares close to price range"
 
     def __init__(
         self,
@@ -132,20 +123,10 @@ class StochasticIndicator(Indicator):
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
-                "k_period": {
-                    "type": "integer",
-                    "minimum": 2,
-                    "maximum": 5000,
-                    "default": 14
-                },
-                "d_period": {
-                    "type": "integer",
-                    "minimum": 2,
-                    "maximum": 5000,
-                    "default": 3
-                }
+                "k_period": {"type": "integer", "minimum": 2, "maximum": 5000, "default": 14},
+                "d_period": {"type": "integer", "minimum": 2, "maximum": 5000, "default": 3},
             },
-            "required": ["k_period", "d_period"]
+            "required": ["k_period", "d_period"],
         }
 
     def calculate(
@@ -157,8 +138,8 @@ class StochasticIndicator(Indicator):
         **kwargs: Any,
     ) -> IndicatorResult:
         """Calculate Stochastic values."""
-        k_period = self.params['k_period']
-        d_period = self.params['d_period']
+        k_period = self.params["k_period"]
+        d_period = self.params["d_period"]
 
         # Use prices as highs/lows if not provided
         if highs is None:
@@ -166,20 +147,12 @@ class StochasticIndicator(Indicator):
         if lows is None:
             lows = prices
 
-        slowk, slowd = self._calculate_stochastic(
-            highs, lows, prices, k_period, d_period
-        )
+        slowk, slowd = self._calculate_stochastic(highs, lows, prices, k_period, d_period)
 
         return IndicatorResult(
             name=self.name,
-            values={
-                'stoch_k': slowk,
-                'stoch_d': slowd
-            },
-            metadata={
-                'k_period': k_period,
-                'd_period': d_period
-            }
+            values={"stoch_k": slowk, "stoch_d": slowd},
+            metadata={"k_period": k_period, "d_period": d_period},
         )
 
     def _calculate_stochastic(
@@ -195,8 +168,8 @@ class StochasticIndicator(Indicator):
         slowk = np.full(n, np.nan)
 
         for i in range(k_period - 1, n):
-            highest_high = np.max(highs[i-k_period+1:i+1])
-            lowest_low = np.min(lows[i-k_period+1:i+1])
+            highest_high = np.max(highs[i - k_period + 1 : i + 1])
+            lowest_low = np.min(lows[i - k_period + 1 : i + 1])
 
             if highest_high != lowest_low:
                 slowk[i] = 100 * (closes[i] - lowest_low) / (highest_high - lowest_low)
@@ -206,7 +179,7 @@ class StochasticIndicator(Indicator):
         # Calculate %D (SMA of %K)
         slowd = np.full(n, np.nan)
         for i in range(d_period - 1, n):
-            if not np.isnan(slowk[i-d_period+1:i+1]).all():
-                slowd[i] = np.nanmean(slowk[i-d_period+1:i+1])
+            if not np.isnan(slowk[i - d_period + 1 : i + 1]).all():
+                slowd[i] = np.nanmean(slowk[i - d_period + 1 : i + 1])
 
         return slowk, slowd

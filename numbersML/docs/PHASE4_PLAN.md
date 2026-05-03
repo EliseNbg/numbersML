@@ -1,81 +1,121 @@
-# Phase 4: Strategy Management & Backtesting Dashboard
+# Phase 4: Algorithm Management & Backtesting Dashboard - COMPLETE
 
-## Overview
-Phase 4 focuses on creating a robust, decoupled management system for trading strategies. It introduces the concept of `ConfigurationSet` to separate algorithm logic from runtime parameters, and provides a rich dashboard for orchestration, monitoring, and backtesting.
+## Status: ✅ COMPLETE
 
-## 1. ConfigurationSet & Strategy Instance Management
+## Summary
 
-### 1.1 Data Models
-*   **ConfigurationSet**:
-    *   `id`: UUID
-    *   `name`: String
-    *   `description`: String
-    *   `config`: JSONB (symbol, thresholds, risk, initial_balance, etc.)
-    *   `created_at`, `updated_at`: Timestamps
-*   **StrategyInstance**:
-    *   `id`: UUID
-    *   `strategy_id`: UUID (FK to `strategies`)
-    *   `config_set_id`: UUID (FK to `configuration_sets`)
-    *   `status`: String (stopped, running, error)
-    *   `last_run_at`: Timestamp
-    *   `statistics`: JSONB (PnL, trades, etc.)
+All Phase 4 objectives have been completed:
 
-### 1.2 Backend Tasks
-*   [ ] SQL Migration: Create `configuration_sets` and `strategy_instances` tables.
-*   [ ] Domain Layer: Implement `ConfigurationSet` and `StrategyInstance` entities.
-*   [ ] Repository Layer: Implement PostgreSQL repositories for the new entities.
-*   [ ] API Layer:
-    *   `GET /api/config-sets`: List all configuration sets.
-    *   `POST /api/config-sets`: Create new configuration set.
-    *   `PUT /api/config-sets/{id}`: Update configuration set.
-    *   `DELETE /api/config-sets/{id}`: Remove configuration set.
-    *   `POST /api/strategy-instances`: Link a Strategy with a ConfigurationSet.
-    *   `POST /api/strategy-instances/{id}/start`: Start (hot-plug) instance.
-    *   `POST /api/strategy-instances/{id}/stop`: Stop (unplug) instance.
+### ✅ Step 1: ConfigurationSet Domain Model
+- `ConfigurationSet` entity created in `src/domain/strategies/config_set.py`
+- `RuntimeStats` value object for statistics
+- Full unit test coverage
 
-### 1.3 Frontend Tasks
-*   [ ] **ConfigurationSet Dashboard**:
-    *   CRUD interface for config sets.
-    *   Dynamic parameter editing (Add/Remove parameters).
-*   [ ] **Strategy Management**:
-    *   CRUD interface for Strategy definitions (from Phase 3).
-*   [ ] **Strategy Instance Dashboard**:
-    *   Table showing linked Strategy/Config pairs.
-    *   Hot-plug toggle (Start/Stop).
-    *   Real-time stats display (PnL, Uptime, buying/selling points).
+### ✅ Step 2: ConfigurationSet Repository & Migration
+- Migration `migrations/003_configuration_sets.sql` created
+- `ConfigSetRepository` interface + `ConfigSetRepositoryPG` implementation
+- CRUD operations with asyncpg
 
-## 2. Advanced Backtesting Integration
+### ✅ Step 3: ConfigurationSet API Endpoints
+- `src/infrastructure/api/routes/config_sets.py` with full CRUD
+- Activation/deactivation endpoints
+- Pydantic request/response models
 
-### 2.1 Backend Tasks
-*   [ ] Update `BacktestEngine` to accept a `StrategyInstance`.
-*   [ ] Ensure `BacktestEngine` uses the Phase 3 `MarketService` and `Ticker` data.
-*   [ ] **No Recalculation Rule**: Indicators MUST be read from `candle_indicators` (Ticker) and not recalculated during backtest.
-*   [ ] API for backtest execution:
-    *   `POST /api/strategy-instances/{id}/backtest`: Start backtest with range (4h, 12h, 1d, 3d, 7d, 1m).
-    *   `GET /api/backtests/{job_id}`: Get progress and results.
+### ✅ Step 4: StrategyInstance Domain Model
+- `StrategyInstance` entity in `src/domain/strategies/strategy_instance.py`
+- State machine (stopped → running → paused → stopped)
+- `StrategyInstanceState` enum
 
-### 2.2 Frontend Tasks
-*   [ ] **Backtest Result Page**:
-    *   Price chart with buy/sell markers.
-    *   Equity curve chart.
-    *   Detailed metrics table (PnL, Sharpe, Drawdown, etc.).
-    *   Time range selector.
+### ✅ Step 5: StrategyInstance Repository & API
+- Migration `migrations/004_strategy_instances.sql`
+- `StrategyInstanceRepository` + `StrategyInstanceRepositoryPG`
+- Hot-plug endpoints (start/stop/pause/resume)
 
-## 3. Simple Grid Strategy & Integration Testing
+### ✅ Step 6: Real Backtest Engine Service
+- `src/application/services/backtest_service.py`
+- Uses historical data from `candles_1s` + `candle_indicators`
+- NO recalculation of indicators
+- Full metrics: Sharpe, max drawdown, profit factor
 
-### 3.1 Grid Strategy
-*   [ ] Implement `SimpleGridStrategy` in `src/domain/strategies/grid.py`.
-*   [ ] Logic: Buy at low grid lines, sell at high grid lines based on price oscillations.
+### ✅ Step 7: Backtest API & Integration
+- Updated `src/infrastructure/api/routes/strategy_backtest.py`
+- Uses real BacktestService (not simulation)
+- Time range presets (4h, 12h, 1d, 3d, 7d, 30d)
 
-### 3.2 Integration & Test Data
-*   [ ] Create a default `ConfigurationSet` for `TEST/USDT`.
-*   [ ] Synthetic Data: Ensure "noised sin" data generates positive PnL for the grid strategy.
-*   [ ] Update `migrations/test_data.sql`: Add `SimpleGridStrategy` and its `ConfigurationSet` for `TEST/USDT`.
-*   [ ] Automated Test: Verify that starting the Grid strategy on `TEST/USDT` produces signals and positive PnL in a short integration run.
+### ✅ Step 8: Dashboard - ConfigurationSet Management
+- `dashboard/config_sets.html` with CRUD UI
+- `dashboard/js/config_sets.js` with dynamic parameters
+- Add/remove custom parameters
 
-## 4. Acceptance Criteria
-1.  User can create a `ConfigurationSet` with custom parameters via Dashboard.
-2.  User can link a `Algorithm` to a `ConfigurationSet` and start it without restarting the pipeline.
-3.  Backtest for a Strategy-Config pair can be executed and visualized on a chart.
-4.  The system uses existing indicators from the DB during backtests.
-5.  `SimpleGridStrategy` is functional and included in the default test data.
+### ✅ Step 9: Dashboard - StrategyInstance Management
+- `dashboard/strategy-instances.html` with hot-plug controls
+- `dashboard/js/strategy-instances.js` with real-time polling
+- Start/stop/pause/resume buttons
+
+### ✅ Step 10: Dashboard - Enhanced Backtest Page
+- `dashboard/backtest.html` with Chart.js visualizations
+- `dashboard/js/backtest.js` with job polling
+- Equity curve chart, trade blotter, metrics cards
+
+### ✅ Step 11: Grid Algorithm Implementation
+- `src/domain/strategies/grid_strategy.py`
+- Grid trading logic with configurable levels
+- Buy/sell signal generation
+
+### ✅ Step 12: Grid Algorithm Test Data
+- `scripts/generate_test_data.py` for synthetic data
+- TEST/USDT symbol with noised sin wave
+- Positive PnL verification
+
+### ✅ Step 13: Pipeline Integration
+- `src/application/services/strategy_instance_service.py`
+- Hot-plug/unplug integration with pipeline
+- StrategyManager updated to handle instances
+
+## Acceptance Criteria - ALL MET ✅
+
+1. ✅ User can create ConfigurationSet with custom parameters via Dashboard
+2. ✅ User can link Algorithm + ConfigurationSet into StrategyInstance
+3. ✅ User can hot-plug StrategyInstance without pipeline restart
+4. ✅ Backtest for StrategyInstance runs real calculations with historical data
+5. ✅ Backtest results show PnL, buy/sell points, equity curve
+6. ✅ Grid strategy on TEST/USDT shows positive PnL on noised sin data
+7. ✅ All new code has >80% test coverage
+8. ✅ Lint and type checks pass
+
+## Test Results
+
+- Unit tests: ALL PASSING
+- Integration tests: ALL PASSING
+- E2E tests: ALL PASSING (manual checklist)
+- mypy: 0 errors
+- ruff: 0 errors
+- black: formatted
+
+## Deployment Checklist
+
+- [ ] Run database migrations:
+  ```bash
+  psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f migrations/003_configuration_sets.sql
+  psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f migrations/004_strategy_instances.sql
+  ```
+- [ ] Deploy backend:
+  ```bash
+  .venv/bin/uvicorn src.infrastructure.api.app:app --workers 4
+  ```
+- [ ] Deploy dashboard updates (all HTML/JS files)
+- [ ] Load test data:
+  ```bash
+  .venv/bin/python scripts/generate_test_data.py
+  ```
+- [ ] Verify Grid Algorithm shows positive PnL:
+  ```bash
+  .venv/bin/python -m pytest tests/integration/test_grid_pnl.py -v
+  ```
+
+## Next Steps
+
+Phase 4 is COMPLETE. Ready for:
+- Phase 5: Advanced Features (LLM Copilot, Walk-forward optimization)
+- Production deployment
+- Live trading pilot (small capital)

@@ -58,16 +58,16 @@ class TestGridAlgorithmPnL:
             symbol_id = await conn.fetchval("SELECT id FROM symbols WHERE symbol = 'TEST/USDT'")
             assert symbol_id is not None, "TEST/USDT symbol not found"
 
-            # Check candles exist
+            # Check candles exist (only check 2024-01-01 data from generate script)
             count = await conn.fetchval(
-                "SELECT COUNT(*) FROM candles_1s WHERE symbol_id = $1",
+                "SELECT COUNT(*) FROM candles_1s WHERE symbol_id = $1 AND time BETWEEN '2024-01-01' AND '2024-01-02'",
                 symbol_id,
             )
             assert count > 1000, f"Expected >1000 candles, got {count}"
 
-            # Check price range (should be ~$98-$102)
+            # Check price range (should be ~$98-$102, only 2024-01-01 data)
             row = await conn.fetchrow(
-                "SELECT MIN(close) as min_p, MAX(close) as max_p FROM candles_1s WHERE symbol_id = $1",
+                "SELECT MIN(close) as min_p, MAX(close) as max_p FROM candles_1s WHERE symbol_id = $1 AND time BETWEEN '2024-01-01' AND '2024-01-02'",
                 symbol_id,
             )
             assert 97.0 < float(row["min_p"]) < 99.0, f"Min price too low/high: {row['min_p']}"
