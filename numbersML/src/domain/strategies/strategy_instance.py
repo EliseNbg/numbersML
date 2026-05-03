@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 from src.domain.models.base import Entity
@@ -154,7 +154,7 @@ class StrategyInstance(Entity):
         self._ticks_processed: int = 0
         self._errors: int = 0
         self._config: dict[str, Any] = {}
-        self._strategy: Optional[Algorithm] = None
+        self._strategy: Algorithm | None = None
 
     @property
     def strategy_id(self) -> UUID:
@@ -167,18 +167,25 @@ class StrategyInstance(Entity):
         return self._config_set_id
 
     @property
-    def strategy(self) -> "Optional[Algorithm]":
+    def strategy(self) -> "Algorithm | None":
         """Get algorithm object (None if loaded from DB without strategy)."""
         return self._strategy
 
     @property
     def symbols(self) -> list[str]:
         """Get symbols list."""
+        if self._strategy is None:
+            return []
         return self._strategy.symbols.copy()
 
     @property
     def status(self) -> StrategyInstanceState:
         """Get current status."""
+        return self._status
+
+    @property
+    def state(self) -> StrategyInstanceState:
+        """Get current state (alias for status)."""
         return self._status
 
     @property
@@ -276,11 +283,43 @@ class StrategyInstance(Entity):
         self._status = StrategyInstanceState.RUNNING
         self.updated_at = datetime.now(UTC)
 
-    def record_error(self, error: str) -> None:
+    def can_transition_to(self, new_state: StrategyInstanceState) -> bool:
+        """Check if transition to new state is valid."""
+        return new_state in VALID_TRANSITIONS.get(self._status, set())
+
+    def transition_to(self, new_state: StrategyInstanceState) -> "StrategyInstance":
+        """Transition to a new state.
+
+        Args:
+            new_state: Target state
+
+        Returns:
+            Self for chaining
+
+        Raises:
+            ValueError: If transition is not valid
+        """
+        if not self.can_transition_to(new_state):
+            raise ValueError(f"Cannot transition from {self._status.value} to {new_state.value}")
+
+        self._status = new_state
+        self.updated_at = datetime.now(UTC)
+
+        if new_state == StrategyInstanceState.RUNNING:
+            self._started_at = datetime.now(UTC)
+        elif new_state == StrategyInstanceState.STOPPED:
+            self._stopped_at = datetime.now(UTC)
+
+        return self
+
+    def record_error(self, error: str) -> "StrategyInstance":
         """Record an error and transition to ERROR state.
 
         Args:
             error: Error message
+
+        Returns:
+            Self for chaining
         """
         self._status = StrategyInstanceState.ERROR
         self._runtime_stats = RuntimeStats(
@@ -294,6 +333,7 @@ class StrategyInstance(Entity):
             last_error=error,
         )
         self.updated_at = datetime.now(UTC)
+        return self
 
     def update_stats(self, **kwargs: Any) -> None:
         """Update runtime statistics.
@@ -313,7 +353,7 @@ class StrategyInstance(Entity):
         )
         self.updated_at = datetime.now(UTC)
 
-    def process_tick(self, tick: EnrichedTick) -> Optional[Signal]:
+    def process_tick(self, tick: EnrichedTick) -> Signal | None:
         """Process tick using strategy logic, handle state/error tracking.
 
         Args:
@@ -389,7 +429,7 @@ class StrategyInstance(Entity):
         logger.info(f"Opened {side} position: {quantity} {symbol} @ {price}")
         return position
 
-    def close_position(self, symbol: str, price: Decimal) -> Optional[Position]:
+    def close_position(self, symbol: str, price: Decimal) -> Position | None:
         """Close existing position.
 
         Args:
@@ -432,7 +472,7 @@ class StrategyInstance(Entity):
         return {
             "strategy_id": str(self._strategy_id),
             "status": self._status.value,
-            "symbols": self._strategy.symbols,
+            "symbols": self._strategy.symbols if self._strategy else [],
             "ticks_processed": self._ticks_processed,
             "signals_generated": len(self._signals),
             "active_positions": active_positions,

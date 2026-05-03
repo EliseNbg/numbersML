@@ -12,7 +12,7 @@ Wraps StrategyRunner to add:
 
 import asyncio
 import logging
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 from src.application.services.audit_logger import (
@@ -32,9 +32,9 @@ from src.application.services.strategy_telemetry import (
 from src.domain.strategies.base import (
     EnrichedTick,
 )
-from src.domain.strategies.runtime import (
-    RuntimeState,
-    StrategyRuntimeState,
+from src.domain.strategies.strategy_instance import (
+    StrategyInstance,
+    StrategyInstanceState,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,11 +65,11 @@ class EnhancedStrategyRunner(StrategyRunner):
     def __init__(
         self,
         lifecycle_service: StrategyLifecycleService,
-        risk_service: Optional[RiskGuardrailService] = None,
-        telemetry_service: Optional[StrategyTelemetryService] = None,
-        audit_logger: Optional[AuditLogger] = None,
+        risk_service: RiskGuardrailService | None = None,
+        telemetry_service: StrategyTelemetryService | None = None,
+        audit_logger: AuditLogger | None = None,
         redis_url: str = "redis://localhost:6379",
-        symbols: Optional[list[str]] = None,
+        symbols: list[str] | None = None,
     ) -> None:
         """Initialize enhanced runner.
 
@@ -145,8 +145,8 @@ class EnhancedStrategyRunner(StrategyRunner):
             # Get all active (RUNNING) strategies
             active_strategies = [
                 sid
-                for sid in self._lifecycle._runtime_states.keys()
-                if (self._lifecycle._runtime_states[sid].state == RuntimeState.RUNNING)
+                for sid in self._lifecycle._instances.keys()
+                if (self._lifecycle._instances[sid].state == StrategyInstanceState.RUNNING)
             ]
 
             # Process tick through each active strategy with error isolation
@@ -390,7 +390,7 @@ class EnhancedStrategyRunner(StrategyRunner):
                     timeout=5.0,
                     return_when=asyncio.ALL_COMPLETED,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("Some strategy tasks did not complete in time")
             except Exception as e:
                 logger.error(f"Error during task cancellation: {e}")
@@ -409,10 +409,10 @@ class EnhancedStrategyRunner(StrategyRunner):
 
         logger.info("EnhancedStrategyRunner stopped")
 
-    def get_runtime_state(self, strategy_id: UUID) -> Optional[StrategyRuntimeState]:
+    def get_runtime_state(self, strategy_id: UUID) -> StrategyInstance | None:
         """Get runtime state for a strategy."""
-        return self._lifecycle._runtime_states.get(strategy_id)
+        return self._lifecycle._instances.get(strategy_id)
 
-    def get_all_runtime_states(self) -> list[StrategyRuntimeState]:
+    def get_all_runtime_states(self) -> list[StrategyInstance]:
         """Get runtime states for all strategies."""
-        return list(self._lifecycle._runtime_states.values())
+        return list(self._lifecycle._instances.values())

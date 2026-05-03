@@ -12,19 +12,21 @@ and infrastructure services.
 """
 
 import logging
+from typing import Any
 from uuid import UUID, uuid4
 
 from src.domain.repositories.runtime_event_repository import StrategyRuntimeEventRepository
 from src.domain.repositories.strategy_repository import StrategyRepository
 from src.domain.strategies.base import (
+    Algorithm,
+    EnrichedTick,
     Signal,
     StrategyManager,
 )
-from src.domain.strategies.strategy_config import StrategyDefinition
 from src.domain.strategies.runtime import (
     StrategyLifecycleEvent,
-    StrategyRuntimeState,
 )
+from src.domain.strategies.strategy_config import StrategyDefinition
 from src.domain.strategies.strategy_instance import (
     VALID_TRANSITIONS,
     StrategyInstance,
@@ -82,7 +84,7 @@ class StrategyLifecycleService:
         self,
         strategy_id: UUID,
         version: int | None = None,
-        metadata: dict | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Activate a strategy (start processing ticks).
 
@@ -108,12 +110,9 @@ class StrategyLifecycleService:
         # Get or create strategy instance
         instance = self._instances.get(strategy_id)
         if instance is None:
-            instance = StrategyInstance(
-                strategy=await self._load_strategy(
-                    strategy_id, version or strategy_def.current_version
-                ),
-                config_set_id=uuid4(),  # TODO: link to actual config set
-                status=StrategyInstanceState.STOPPED,
+            # Load strategy and create instance
+            instance = await self._load_strategy_instance(
+                strategy_def, version or strategy_def.current_version
             )
             self._instances[strategy_id] = instance
         else:
@@ -124,45 +123,28 @@ class StrategyLifecycleService:
                     f"invalid transition from {instance.status.value} to RUNNING"
                 )
 
-        # Load and register strategy instance
-        try:
-            strategy_instance = await self._load_strategy_instance(
-                strategy_def, runtime_state.version
-            )
-            self._strategy_manager.add_strategy(strategy_instance)
-        except Exception as e:
-            logger.error(f"Failed to load strategy {strategy_id}: {e}")
-            raise RuntimeError(f"Strategy load failed: {e}") from e
-
-        # Initialize strategy
-        try:
-            await strategy_instance.initialize()
-        except Exception as e:
-            logger.error(f"Failed to initialize strategy {strategy_id}: {e}")
-            self._strategy_manager.remove_strategy(strategy_id)
-            raise RuntimeError(f"Strategy initialization failed: {e}") from e
+        # Add to manager (registers for tick processing)
+        self._strategy_manager.add_instance(instance)
 
         # Start the strategy
         try:
-            await strategy_instance.start()
+            instance.start()
         except Exception as e:
             logger.error(f"Failed to start strategy {strategy_id}: {e}")
-            self._strategy_manager.remove_strategy(strategy_id)
+            self._strategy_manager.remove_instance(strategy_id)
             raise RuntimeError(f"Strategy start failed: {e}") from e
 
-        # Transition state
-        old_state = instance.status
-        instance.start()
+        # Record lifecycle event
+        old_state = StrategyInstanceState.STOPPED
         new_state = instance
 
-        # Persist event
         await self._record_lifecycle_event(
             strategy_def=strategy_def,
             runtime_state=new_state,
             from_state=old_state,
             to_state=StrategyInstanceState.RUNNING,
             trigger="activate",
-            details={"version": strategy_def.current_version, **(metadata or {})},
+            details={"version": version or strategy_def.current_version, **(metadata or {})},
         )
 
         logger.info(f"Strategy {strategy_id} activated")
@@ -171,7 +153,7 @@ class StrategyLifecycleService:
     async def deactivate_strategy(
         self,
         strategy_id: UUID,
-        metadata: dict | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Deactivate a strategy (stop processing ticks).
 
@@ -201,7 +183,7 @@ class StrategyLifecycleService:
         old_state = runtime_state.state
 
         # Remove from manager (stops tick processing)
-        removed = self._strategy_manager.remove_strategy(strategy_id)
+        removed = self._strategy_manager.remove_instance(strategy_id)
         if removed is None:
             logger.warning(f"Strategy {strategy_id} not in manager during deactivation")
 
@@ -226,7 +208,7 @@ class StrategyLifecycleService:
     async def pause_strategy(
         self,
         strategy_id: UUID,
-        metadata: dict | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Pause a running strategy.
 
@@ -256,9 +238,9 @@ class StrategyLifecycleService:
         old_state = runtime_state.state
 
         # Pause the strategy instance
-        strategy_instance = self._strategy_manager.get_strategy(strategy_id)
+        strategy_instance = self._strategy_manager.get_instance(strategy_id)
         if strategy_instance:
-            await strategy_instance.pause()
+            strategy_instance.pause()
 
         # Update state
         new_state = runtime_state.transition_to(StrategyInstanceState.PAUSED)
@@ -281,7 +263,7 @@ class StrategyLifecycleService:
     async def resume_strategy(
         self,
         strategy_id: UUID,
-        metadata: dict | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Resume a paused strategy.
 
@@ -311,9 +293,9 @@ class StrategyLifecycleService:
         old_state = runtime_state.state
 
         # Resume the strategy instance
-        strategy_instance = self._strategy_manager.get_strategy(strategy_id)
+        strategy_instance = self._strategy_manager.get_instance(strategy_id)
         if strategy_instance:
-            await strategy_instance.resume()
+            strategy_instance.resume()
 
         # Update state
         new_state = runtime_state.transition_to(StrategyInstanceState.RUNNING)
@@ -337,7 +319,7 @@ class StrategyLifecycleService:
         self,
         strategy_id: UUID,
         error: str,
-        metadata: dict | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Record an error for a strategy and transition to ERROR state.
 
@@ -368,9 +350,9 @@ class StrategyLifecycleService:
             return False
 
         # Pause strategy first
-        strategy_instance = self._strategy_manager.get_strategy(strategy_id)
+        strategy_instance = self._strategy_manager.get_instance(strategy_id)
         if strategy_instance and old_state == StrategyInstanceState.RUNNING:
-            await strategy_instance.pause()
+            strategy_instance.pause()
 
         # Update state with error info
         new_state = runtime_state.record_error(error)
@@ -384,7 +366,7 @@ class StrategyLifecycleService:
                 from_state=old_state,
                 to_state=StrategyInstanceState.ERROR,
                 trigger="error",
-                details={"error": error, **(metadata or {})},
+                details={"error": error} | (metadata or {}),
             )
 
         logger.error(f"Strategy {strategy_id} entered ERROR state: {error}")
@@ -413,7 +395,7 @@ class StrategyLifecycleService:
         self,
         strategy_def: StrategyDefinition,
         version: int,
-    ) -> Strategy:
+    ) -> StrategyInstance:
         """Load a strategy instance from its configuration.
 
         This is a simplified implementation. In production, this would:
@@ -427,27 +409,38 @@ class StrategyLifecycleService:
             version: Config version to use
 
         Returns:
-            Strategy instance
+            StrategyInstance with loaded algorithm
 
         Raises:
             NotImplementedError: If signal type not supported
         """
         # For now, create a generic algorithm based on definition
-        from src.domain.strategies.base import Algorithm, TimeFrame
+        from src.domain.strategies.base import TimeFrame
 
         class DynamicAlgorithm(Algorithm):
             """Dynamically created algorithm from config."""
 
-            def on_tick(self, tick) -> Signal | None:
+            def on_tick(self, tick: EnrichedTick) -> Signal | None:
                 # Placeholder: real implementation would use signal config
                 return None
 
         symbols = getattr(strategy_def, "symbols", ["BTC/USDC"])
-        return DynamicAlgorithm(
+        algorithm = DynamicAlgorithm(
             strategy_id=strategy_def.id,
             symbols=symbols,
             time_frame=TimeFrame.TICK,
         )
+
+        # Create StrategyInstance with the loaded algorithm
+        from src.domain.strategies.strategy_instance import StrategyInstance
+
+        instance = StrategyInstance(
+            strategy_id=strategy_def.id,
+            config_set_id=uuid4(),  # TODO: link to actual config set
+            status=StrategyInstanceState.STOPPED,
+        )
+        instance._strategy = algorithm
+        return instance
 
     async def _record_lifecycle_event(
         self,
@@ -456,13 +449,13 @@ class StrategyLifecycleService:
         from_state: StrategyInstanceState,
         to_state: StrategyInstanceState,
         trigger: str,
-        details: dict | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Record a lifecycle event in the repository."""
         event = StrategyLifecycleEvent(
             strategy_id=strategy_def.id,
             strategy_name=strategy_def.name,
-            strategy_version=runtime_state.version,
+            strategy_version=strategy_def.current_version,
             from_state=from_state,
             to_state=to_state,
             trigger=trigger,
@@ -470,7 +463,7 @@ class StrategyLifecycleService:
         )
         await self._event_repo.save(event)
 
-    def get_stats(self) -> dict:
+    def get_stats(self) -> dict[str, Any]:
         """Get lifecycle service statistics."""
         states = self._instances.values()
         return {
