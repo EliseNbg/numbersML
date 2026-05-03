@@ -228,7 +228,7 @@ class Algorithm(ABC):
         return self._time_frame
 
     @abstractmethod
-    def on_tick(self, tick: EnrichedTick) -> Optional[Signal]:
+    def on_tick(self, tick: EnrichedTick) -> Signal | None:
         """
         Process enriched tick and generate signal.
 
@@ -306,6 +306,10 @@ class StrategyManager:
     def list_instances(self) -> list[UUID]:
         """Get list of strategy instance IDs."""
         return list(self._instances.keys())
+
+    def get_instance_ids(self) -> list[UUID]:
+        """Get list of active instance IDs."""
+        return self.list_instances()
 
     async def start_all(self) -> None:
         """Start all strategy instances."""
