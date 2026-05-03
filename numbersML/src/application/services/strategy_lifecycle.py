@@ -21,7 +21,10 @@ from src.domain.strategies.base import (
     StrategyManager,
 )
 from src.domain.strategies.strategy_config import StrategyDefinition
-from src.domain.strategies.runtime import StrategyLifecycleEvent
+from src.domain.strategies.runtime import (
+    StrategyLifecycleEvent,
+    StrategyRuntimeState,
+)
 from src.domain.strategies.strategy_instance import (
     VALID_TRANSITIONS,
     StrategyInstance,
@@ -390,11 +393,11 @@ class StrategyLifecycleService:
     async def get_runtime_state(
         self,
         strategy_id: UUID,
-    ) -> StrategyRuntimeState | None:
+    ) -> StrategyInstance | None:
         """Get current runtime state for a strategy."""
         return self._instances.get(strategy_id)
 
-    async def get_all_instances(self) -> list[StrategyRuntimeState]:
+    async def get_all_instances(self) -> list[StrategyInstance]:
         """Get runtime states for all strategies."""
         return list(self._instances.values())
 
@@ -449,7 +452,7 @@ class StrategyLifecycleService:
     async def _record_lifecycle_event(
         self,
         strategy_def: StrategyDefinition,
-        runtime_state: StrategyRuntimeState,
+        runtime_state: StrategyInstance,
         from_state: StrategyInstanceState,
         to_state: StrategyInstanceState,
         trigger: str,
