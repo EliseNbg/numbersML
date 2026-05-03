@@ -1,13 +1,13 @@
-# Step 12: Grid Strategy ConfigurationSet & Test Data#
+# Step 12: Grid Algorithm ConfigurationSet & Test Data#
 
 ## Objective#
-Create ConfigurationSet for Grid Strategy and generate noised sin wave test data for TEST/USDT that shows positive PnL.
+Create ConfigurationSet for Grid Algorithm and generate noised sin wave test data for TEST/USDT that shows positive PnL.
 
 ## Context#
-- Step 11 complete: GridStrategy implementation exists#
+- Step 11 complete: GridAlgorithm implementation exists#
 - Step 1-3 complete: ConfigurationSet entity, repository, API exist#
 - Need TEST/USDT symbol with synthetic noised sin wave data#
-- Data must generate positive PnL for Grid Strategy#
+- Data must generate positive PnL for Grid Algorithm#
 
 ## DDD Architecture Decision (ADR)#
 
@@ -20,7 +20,7 @@ Create ConfigurationSet for Grid Strategy and generate noised sin wave test data
 - TEST/USDT symbol (not TEST/USDT - create new if needed)#
 - Price oscillates between $98 and $102 (4% range)#
 - Noised sin wave: price = 100 + 2*sin(t) + noise#
-- Grid Strategy buys at $98-99, sells at $101-102 → positive PnL#
+- Grid Algorithm buys at $98-99, sells at $101-102 → positive PnL#
 - At least 1000 candles for meaningful backtest#
 
 ## TDD Approach#
@@ -35,10 +35,10 @@ Create ConfigurationSet for Grid Strategy and generate noised sin wave test data
 
 ```python
 """
-Generate synthetic test data for Grid Strategy.
+Generate synthetic test data for Grid Algorithm.
 
 Creates noised sin wave price data for TEST/USDT.
-The oscillation allows Grid Strategy to generate positive PnL.
+The oscillation allows Grid Algorithm to generate positive PnL.
 
 Usage:
     .venv/bin/python scripts/generate_test_data.py
@@ -63,7 +63,7 @@ AMPLITUDE = 2.0  # Sin wave amplitude ($2 → 4% range)
 NUM_CANDLES = 5000  # Number of 1-second candles
 NOISE_LEVEL = 0.3  # Price noise (±$0.30)
 
-# Grid Strategy works best with 1-2% oscillations
+# Grid Algorithm works best with 1-2% oscillations
 # At $100 base, amplitude=2 means $98-$102 range
 
 
@@ -97,7 +97,7 @@ async def generate_data():
         )
         logger.info(f"Symbol {SYMBOL} has ID {symbol_id}")
         
-        # 2. Ensure ConfigurationSet exists for Grid Strategy
+        # 2. Ensure ConfigurationSet exists for Grid Algorithm
         config_set_id = await conn.fetchval(
             """
             INSERT INTO configuration_sets (name, description, config, is_active)
@@ -252,7 +252,7 @@ if __name__ == "__main__":
 
 ### 2. Update `migrations/test_data.sql`#
 
-Add TEST/USDT and Grid Strategy ConfigurationSet:
+Add TEST/USDT and Grid Algorithm ConfigurationSet:
 
 ```sql
 -- ============================================
@@ -309,9 +309,9 @@ VALUES (
 
 ```python
 """
-Integration test: Grid Strategy on TEST/USDT noised sin wave.
+Integration test: Grid Algorithm on TEST/USDT noised sin wave.
 
-Verifies that Grid Strategy generates positive PnL.
+Verifies that Grid Algorithm generates positive PnL.
 """
 
 import pytest
@@ -320,35 +320,35 @@ from uuid import UUID
 
 
 @pytest.mark.integration
-class TestGridStrategyPnL:
-    """Test that Grid Strategy shows positive PnL on synthetic data."""
+class TestGridAlgorithmPnL:
+    """Test that Grid Algorithm shows positive PnL on synthetic data."""
     
     @pytest.mark.asyncio
     async def test_grid_backtest_positive_pnl(self):
         """
-        Test running Grid Strategy backtest on TEST/USDT.
+        Test running Grid Algorithm backtest on TEST/USDT.
         
         Prerequisites:
             - TEST/USDT symbol exists with noised sin wave data
-            - Grid Strategy ConfigurationSet exists
-            - GridStrategy implementation exists
+            - Grid Algorithm ConfigurationSet exists
+            - GridAlgorithm implementation exists
         
         Expected:
             - PnL > 0 (positive)
             - At least some trades executed
         """
         from src.application.services.backtest_service import BacktestService
-        from src.domain.strategies.grid_strategy import GridStrategy
+        from src.domain.strategies.grid_strategy import GridAlgorithm
         from src.domain.strategies.strategy_instance import StrategyInstance
         
         # This test requires:
         # 1. Database with test data
-        # 2. GridStrategy registered/loadable
+        # 2. GridAlgorithm registered/loadable
         # 3. BacktestService working
         
         # For now, this is a placeholder
         # In full implementation:
-        # - Load GridStrategy
+        # - Load GridAlgorithm
         # - Create StrategyInstance with Grid config
         # - Run backtest
         # - Assert PnL > 0
@@ -395,25 +395,25 @@ class TestGridStrategyPnL:
 ## LLM Implementation Prompt#
 
 ```text
-You are implementing Step 12 of Phase 4: Grid Strategy ConfigurationSet & Test Data.
+You are implementing Step 12 of Phase 4: Grid Algorithm ConfigurationSet & Test Data.
 
 ## Your Task#
 
-Create ConfigurationSet for Grid Strategy and generate noised sin wave test data.
+Create ConfigurationSet for Grid Algorithm and generate noised sin wave test data.
 
 ## Context#
 
-- Step 11 complete: GridStrategy in src/domain/strategies/grid_strategy.py`
+- Step 11 complete: GridAlgorithm in src/domain/strategies/grid_strategy.py`
 - Step 1-3 complete: ConfigurationSet entity, repository, API exist
 - Need TEST/USDT symbol (not TEST/USDT)
-- Generate data that shows POSITIVE PnL for Grid Strategy#
+- Generate data that shows POSITIVE PnL for Grid Algorithm#
 
 ## Requirements#
 
 1. Create `scripts/generate_test_data.py` with:
    - Connect to PostgreSQL (asyncpg)
    - Create TEST/USDT symbol (is_test=True)
-   - Create ConfigurationSet for Grid Strategy:
+   - Create ConfigurationSet for Grid Algorithm:
      * symbols: ["TEST/USDT"]
      * grid_levels: 5
      * grid_spacing_pct: 1.0
@@ -431,7 +431,7 @@ Create ConfigurationSet for Grid Strategy and generate noised sin wave test data
 
 2. Update `migrations/test_data.sql`:
    - Add TEST/USDT symbol insert
-   - Add Grid Strategy ConfigurationSet insert
+   - Add Grid Algorithm ConfigurationSet insert
    - Use ON CONFLICT DO UPDATE for idempotency#
 
 3. Create test `tests/integration/test_grid_pnl.py`:
@@ -453,11 +453,11 @@ Create ConfigurationSet for Grid Strategy and generate noised sin wave test data
 ## Acceptance Criteria#
 
 1. TEST/USDT symbol created with is_test=True#
-2. ConfigurationSet for Grid Strategy created#
+2. ConfigurationSet for Grid Algorithm created#
 3. 5000 candles generated with noised sin wave#
 4. Price oscillates between $98-$102#
 5. Indicators (RSI) generated for each candle#
-6. Running Grid Strategy backtest shows PnL > 0#
+6. Running Grid Algorithm backtest shows PnL > 0#
 7. Script is idempotent (safe to re-run)#
 8. Test data added to migrations/test_data.sql#
 
@@ -489,7 +489,7 @@ SELECT COUNT(*) FROM candles_1s WHERE symbol_id = (SELECT id FROM symbols WHERE 
 
 - [ ] generate_test_data.py script created#
 - [ ] TEST/USDT symbol created with is_test=True#
-- [ ] Grid Strategy ConfigurationSet created#
+- [ ] Grid Algorithm ConfigurationSet created#
 - [ ] 5000 candles with noised sin wave generated#
 - [ ] Price oscillates $98-$102 (positive PnL for grid)#
 - [ ] Indicators generated for each candle#

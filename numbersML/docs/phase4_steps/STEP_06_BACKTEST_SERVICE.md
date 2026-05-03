@@ -12,7 +12,7 @@ Implement a real backtest engine that uses historical data and existing indicato
 ## DDD Architecture Decision (ADR)
 
 **Decision**: BacktestEngine is an Application Service
-- **Input**: StrategyInstance (Strategy + ConfigurationSet)
+- **Input**: StrategyInstance (Algorithm + ConfigurationSet)
 - **Data Source**: `candles_1s` + `candle_indicators` tables (historical)
 - **Execution**: Replay candles through strategy, simulate trades via PaperMarketService
 - **Output**: BacktestResult with PnL, trades, equity curve, metrics
@@ -53,7 +53,7 @@ from uuid import UUID
 
 import asyncpg
 
-from src.domain.strategies.base import Strategy, Signal, SignalType, EnrichedTick
+from src.domain.strategies.base import Algorithm, Signal, SignalType, EnrichedTick
 from src.domain.strategies.strategy_instance import StrategyInstance, RuntimeStats
 from src.infrastructure.database import get_db_pool_async
 from src.infrastructure.market.paper_market_service import PaperMarketService
@@ -383,7 +383,7 @@ class BacktestService:
         """
         Generate trading signal from tick.
         
-        TODO: Actually load and run the Strategy from instance.strategy_id
+        TODO: Actually load and run the Algorithm from instance.strategy_id
         For now, implement simple RSI-based strategy for testing.
         """
         rsi = tick.get_indicator("rsiindicator_period14_rsi", 50.0)

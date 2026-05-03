@@ -35,7 +35,7 @@ Replace simulated backtest with real implementation:
 
 ```python
 """
-Strategy backtest API endpoints (REAL implementation).
+Algorithm backtest API endpoints (REAL implementation).
 
 Provides REST API for strategy backtesting:
 - Submit backtest job with StrategyInstance

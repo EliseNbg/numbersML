@@ -178,7 +178,7 @@ numbersML/
 
 | Step | Description | Effort | Priority |
 |------|-------------|--------|----------|
-| **012** | Strategy Interface | 3 hours | MEDIUM |
+| **012** | Algorithm Interface | 3 hours | MEDIUM |
 | **013** | Sample Strategies | 4 hours | MEDIUM |
 
 ### LOW PRIORITY (Phase 2/3 per Architecture)
@@ -212,7 +212,7 @@ Focus on reliability and testing:
 
 Focus on strategy integration:
 
-1. **Step 012**: Strategy Interface
+1. **Step 012**: Algorithm Interface
    - Redis subscription interface
    - Strategy base class
    - Signal generation

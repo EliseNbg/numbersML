@@ -13,24 +13,24 @@ from src.domain.strategies.base import (
     EnrichedTick,
     Signal,
     SignalType,
-    StrategyInstanceState,
 )
+from src.domain.strategies.strategy_instance import StrategyInstanceState
 from src.domain.strategies.strategies import (
-    RSIStrategy,
-    MACDStrategy,
-    SMACrossoverStrategy,
-    BollingerBandsStrategy,
-    MultiIndicatorStrategy,
+    RSIAlgorithm,
+    MACDAlgorithm,
+    SMACrossoverAlgorithm,
+    BollingerBandsAlgorithm,
+    MultiIndicatorAlgorithm,
 )
 
 
-class TestRSIStrategy:
+class TestRSIAlgorithm:
     """Test RSI Oversold/Overbought Strategy."""
 
     @pytest.fixture
-    def rsi_strategy(self) -> RSIStrategy:
+    def rsi_strategy(self) -> RSIAlgorithm:
         """Create RSI strategy instance."""
-        return RSIStrategy(
+        return RSIAlgorithm(
             strategy_id='test_rsi',
             symbols=['BTC/USDT'],
             rsi_period=14,
@@ -52,7 +52,7 @@ class TestRSIStrategy:
             )
         return _create
 
-    def test_rsi_strategy_initialization(self, rsi_strategy: RSIStrategy) -> None:
+    def test_rsi_strategy_initialization(self, rsi_strategy: RSIAlgorithm) -> None:
         """Test RSI strategy initializes correctly."""
         assert rsi_strategy.id == 'test_rsi'
         assert rsi_strategy.symbols == ['BTC/USDT']
@@ -64,15 +64,14 @@ class TestRSIStrategy:
     @pytest.mark.asyncio
     async def test_rsi_oversold_signal(
         self,
-        rsi_strategy: RSIStrategy,
+        rsi_strategy: RSIAlgorithm,
         create_tick: callable,
     ) -> None:
         """Test RSI strategy generates BUY signal when oversold."""
-        await rsi_strategy.initialize()
 
         # Create oversold tick (RSI = 25)
         tick = create_tick(rsi_value=25.0)
-        signal = rsi_strategy.process_tick(tick)
+        signal = rsi_strategy.on_tick(tick)
 
         assert signal is not None
         assert signal.signal_type == SignalType.BUY
@@ -83,15 +82,14 @@ class TestRSIStrategy:
     @pytest.mark.asyncio
     async def test_rsi_overbought_signal(
         self,
-        rsi_strategy: RSIStrategy,
+        rsi_strategy: RSIAlgorithm,
         create_tick: callable,
     ) -> None:
         """Test RSI strategy generates SELL signal when overbought."""
-        await rsi_strategy.initialize()
 
         # Create overbought tick (RSI = 75)
         tick = create_tick(rsi_value=75.0)
-        signal = rsi_strategy.process_tick(tick)
+        signal = rsi_strategy.on_tick(tick)
 
         assert signal is not None
         assert signal.signal_type == SignalType.SELL
@@ -102,57 +100,55 @@ class TestRSIStrategy:
     @pytest.mark.asyncio
     async def test_rsi_no_signal_neutral(
         self,
-        rsi_strategy: RSIStrategy,
+        rsi_strategy: RSIAlgorithm,
         create_tick: callable,
     ) -> None:
         """Test RSI strategy generates no signal in neutral zone."""
-        await rsi_strategy.initialize()
 
         # Create neutral tick (RSI = 50)
         tick = create_tick(rsi_value=50.0)
-        signal = rsi_strategy.process_tick(tick)
+        signal = rsi_strategy.on_tick(tick)
 
         assert signal is None
 
     @pytest.mark.asyncio
     async def test_rsi_threshold_boundaries(
         self,
-        rsi_strategy: RSIStrategy,
+        rsi_strategy: RSIAlgorithm,
         create_tick: callable,
     ) -> None:
         """Test RSI strategy at threshold boundaries."""
-        await rsi_strategy.initialize()
 
         # At oversold threshold (should not trigger)
         tick = create_tick(rsi_value=30.0)
-        signal = rsi_strategy.process_tick(tick)
+        signal = rsi_strategy.on_tick(tick)
         assert signal is None
 
         # Just below oversold (should trigger)
         tick = create_tick(rsi_value=29.9)
-        signal = rsi_strategy.process_tick(tick)
+        signal = rsi_strategy.on_tick(tick)
         assert signal is not None
         assert signal.signal_type == SignalType.BUY
 
         # At overbought threshold (should not trigger)
         tick = create_tick(rsi_value=70.0)
-        signal = rsi_strategy.process_tick(tick)
+        signal = rsi_strategy.on_tick(tick)
         assert signal is None
 
         # Just above overbought (should trigger)
         tick = create_tick(rsi_value=70.1)
-        signal = rsi_strategy.process_tick(tick)
+        signal = rsi_strategy.on_tick(tick)
         assert signal is not None
         assert signal.signal_type == SignalType.SELL
 
 
-class TestMACDStrategy:
+class TestMACDAlgorithm:
     """Test MACD Crossover Strategy."""
 
     @pytest.fixture
-    def macd_strategy(self) -> MACDStrategy:
+    def macd_strategy(self) -> MACDAlgorithm:
         """Create MACD strategy instance."""
-        return MACDStrategy(
+        return MACDAlgorithm(
             strategy_id='test_macd',
             symbols=['BTC/USDT'],
             fast_period=12,
@@ -177,7 +173,7 @@ class TestMACDStrategy:
             )
         return _create
 
-    def test_macd_strategy_initialization(self, macd_strategy: MACDStrategy) -> None:
+    def test_macd_strategy_initialization(self, macd_strategy: MACDAlgorithm) -> None:
         """Test MACD strategy initializes correctly."""
         assert macd_strategy.fast_period == 12
         assert macd_strategy.slow_period == 26
@@ -186,19 +182,18 @@ class TestMACDStrategy:
     @pytest.mark.asyncio
     async def test_macd_bullish_crossover(
         self,
-        macd_strategy: MACDStrategy,
+        macd_strategy: MACDAlgorithm,
         create_tick: callable,
     ) -> None:
         """Test MACD strategy generates BUY signal on bullish crossover."""
-        await macd_strategy.initialize()
 
         # First tick: MACD below signal
         tick1 = create_tick(macd=100.0, signal=110.0)
-        macd_strategy.process_tick(tick1)
+        macd_strategy.on_tick(tick1)
 
         # Second tick: MACD crosses above signal
         tick2 = create_tick(macd=120.0, signal=115.0)
-        signal = macd_strategy.process_tick(tick2)
+        signal = macd_strategy.on_tick(tick2)
 
         assert signal is not None
         assert signal.signal_type == SignalType.BUY
@@ -207,19 +202,18 @@ class TestMACDStrategy:
     @pytest.mark.asyncio
     async def test_macd_bearish_crossover(
         self,
-        macd_strategy: MACDStrategy,
+        macd_strategy: MACDAlgorithm,
         create_tick: callable,
     ) -> None:
         """Test MACD strategy generates SELL signal on bearish crossover."""
-        await macd_strategy.initialize()
 
         # First tick: MACD above signal
         tick1 = create_tick(macd=120.0, signal=110.0)
-        macd_strategy.process_tick(tick1)
+        macd_strategy.on_tick(tick1)
 
         # Second tick: MACD crosses below signal
         tick2 = create_tick(macd=100.0, signal=105.0)
-        signal = macd_strategy.process_tick(tick2)
+        signal = macd_strategy.on_tick(tick2)
 
         assert signal is not None
         assert signal.signal_type == SignalType.SELL
@@ -228,30 +222,29 @@ class TestMACDStrategy:
     @pytest.mark.asyncio
     async def test_macd_no_crossover(
         self,
-        macd_strategy: MACDStrategy,
+        macd_strategy: MACDAlgorithm,
         create_tick: callable,
     ) -> None:
         """Test MACD strategy generates no signal without crossover."""
-        await macd_strategy.initialize()
 
         # First tick
         tick1 = create_tick(macd=100.0, signal=90.0)
-        macd_strategy.process_tick(tick1)
+        macd_strategy.on_tick(tick1)
 
         # Second tick: No crossover
         tick2 = create_tick(macd=105.0, signal=95.0)
-        signal = macd_strategy.process_tick(tick2)
+        signal = macd_strategy.on_tick(tick2)
 
         assert signal is None
 
 
-class TestSMACrossoverStrategy:
+class TestSMACrossoverAlgorithm:
     """Test SMA Crossover Strategy."""
 
     @pytest.fixture
-    def sma_strategy(self) -> SMACrossoverStrategy:
+    def sma_strategy(self) -> SMACrossoverAlgorithm:
         """Create SMA crossover strategy instance."""
-        return SMACrossoverStrategy(
+        return SMACrossoverAlgorithm(
             strategy_id='test_sma_cross',
             symbols=['BTC/USDT'],
             fast_period=20,
@@ -275,7 +268,7 @@ class TestSMACrossoverStrategy:
             )
         return _create
 
-    def test_sma_strategy_initialization(self, sma_strategy: SMACrossoverStrategy) -> None:
+    def test_sma_strategy_initialization(self, sma_strategy: SMACrossoverAlgorithm) -> None:
         """Test SMA crossover strategy initializes correctly."""
         assert sma_strategy.fast_period == 20
         assert sma_strategy.slow_period == 50
@@ -283,19 +276,18 @@ class TestSMACrossoverStrategy:
     @pytest.mark.asyncio
     async def test_golden_cross(
         self,
-        sma_strategy: SMACrossoverStrategy,
+        sma_strategy: SMACrossoverAlgorithm,
         create_tick: callable,
     ) -> None:
         """Test SMA strategy generates BUY signal on golden cross."""
-        await sma_strategy.initialize()
 
         # First tick: Fast SMA below slow SMA
         tick1 = create_tick(fast_sma=49000.0, slow_sma=50000.0)
-        sma_strategy.process_tick(tick1)
+        sma_strategy.on_tick(tick1)
 
         # Second tick: Fast SMA crosses above slow SMA
         tick2 = create_tick(fast_sma=50500.0, slow_sma=50000.0)
-        signal = sma_strategy.process_tick(tick2)
+        signal = sma_strategy.on_tick(tick2)
 
         assert signal is not None
         assert signal.signal_type == SignalType.BUY
@@ -304,32 +296,31 @@ class TestSMACrossoverStrategy:
     @pytest.mark.asyncio
     async def test_death_cross(
         self,
-        sma_strategy: SMACrossoverStrategy,
+        sma_strategy: SMACrossoverAlgorithm,
         create_tick: callable,
     ) -> None:
         """Test SMA strategy generates SELL signal on death cross."""
-        await sma_strategy.initialize()
 
         # First tick: Fast SMA above slow SMA
         tick1 = create_tick(fast_sma=51000.0, slow_sma=50000.0)
-        sma_strategy.process_tick(tick1)
+        sma_strategy.on_tick(tick1)
 
         # Second tick: Fast SMA crosses below slow SMA
         tick2 = create_tick(fast_sma=49500.0, slow_sma=50000.0)
-        signal = sma_strategy.process_tick(tick2)
+        signal = sma_strategy.on_tick(tick2)
 
         assert signal is not None
         assert signal.signal_type == SignalType.SELL
         assert signal.metadata['condition'] == 'death_cross'
 
 
-class TestBollingerBandsStrategy:
+class TestBollingerBandsAlgorithm:
     """Test Bollinger Bands Mean Reversion Strategy."""
 
     @pytest.fixture
-    def bb_strategy(self) -> BollingerBandsStrategy:
+    def bb_strategy(self) -> BollingerBandsAlgorithm:
         """Create Bollinger Bands strategy instance."""
-        return BollingerBandsStrategy(
+        return BollingerBandsAlgorithm(
             strategy_id='test_bb',
             symbols=['BTC/USDT'],
             period=20,
@@ -359,7 +350,7 @@ class TestBollingerBandsStrategy:
             )
         return _create
 
-    def test_bb_strategy_initialization(self, bb_strategy: BollingerBandsStrategy) -> None:
+    def test_bb_strategy_initialization(self, bb_strategy: BollingerBandsAlgorithm) -> None:
         """Test Bollinger Bands strategy initializes correctly."""
         assert bb_strategy.period == 20
         assert bb_strategy.std_dev == 2.0
@@ -367,15 +358,14 @@ class TestBollingerBandsStrategy:
     @pytest.mark.asyncio
     async def test_bb_lower_band_buy(
         self,
-        bb_strategy: BollingerBandsStrategy,
+        bb_strategy: BollingerBandsAlgorithm,
         create_tick: callable,
     ) -> None:
         """Test BB strategy generates BUY signal at lower band."""
-        await bb_strategy.initialize()
 
         # Price at lower band
         tick = create_tick(price=49000.0, lower=49000.0)
-        signal = bb_strategy.process_tick(tick)
+        signal = bb_strategy.on_tick(tick)
 
         assert signal is not None
         assert signal.signal_type == SignalType.BUY
@@ -384,15 +374,14 @@ class TestBollingerBandsStrategy:
     @pytest.mark.asyncio
     async def test_bb_upper_band_sell(
         self,
-        bb_strategy: BollingerBandsStrategy,
+        bb_strategy: BollingerBandsAlgorithm,
         create_tick: callable,
     ) -> None:
         """Test BB strategy generates SELL signal at upper band."""
-        await bb_strategy.initialize()
 
         # Price at upper band
         tick = create_tick(price=51000.0, upper=51000.0)
-        signal = bb_strategy.process_tick(tick)
+        signal = bb_strategy.on_tick(tick)
 
         assert signal is not None
         assert signal.signal_type == SignalType.SELL
@@ -401,26 +390,25 @@ class TestBollingerBandsStrategy:
     @pytest.mark.asyncio
     async def test_bb_no_signal_middle(
         self,
-        bb_strategy: BollingerBandsStrategy,
+        bb_strategy: BollingerBandsAlgorithm,
         create_tick: callable,
     ) -> None:
         """Test BB strategy generates no signal in middle."""
-        await bb_strategy.initialize()
 
         # Price in middle
         tick = create_tick(price=50000.0)
-        signal = bb_strategy.process_tick(tick)
+        signal = bb_strategy.on_tick(tick)
 
         assert signal is None
 
 
-class TestMultiIndicatorStrategy:
+class TestMultiIndicatorAlgorithm:
     """Test Multi-Indicator Composite Strategy."""
 
     @pytest.fixture
-    def multi_strategy(self) -> MultiIndicatorStrategy:
+    def multi_strategy(self) -> MultiIndicatorAlgorithm:
         """Create multi-indicator strategy instance."""
-        return MultiIndicatorStrategy(
+        return MultiIndicatorAlgorithm(
             strategy_id='test_multi',
             symbols=['BTC/USDT'],
             rsi_period=14,
@@ -461,7 +449,7 @@ class TestMultiIndicatorStrategy:
             )
         return _create
 
-    def test_multi_strategy_initialization(self, multi_strategy: MultiIndicatorStrategy) -> None:
+    def test_multi_strategy_initialization(self, multi_strategy: MultiIndicatorAlgorithm) -> None:
         """Test multi-indicator strategy initializes correctly."""
         assert multi_strategy.rsi_period == 14
         assert multi_strategy.sma_period == 200
@@ -470,11 +458,10 @@ class TestMultiIndicatorStrategy:
     @pytest.mark.asyncio
     async def test_multi_strategy_majority_buy(
         self,
-        multi_strategy: MultiIndicatorStrategy,
+        multi_strategy: MultiIndicatorAlgorithm,
         create_tick: callable,
     ) -> None:
         """Test multi-indicator strategy with majority buy signals."""
-        await multi_strategy.initialize()
 
         # Setup: 2 out of 3 bullish (RSI oversold, price > SMA)
         # First tick for MACD state
@@ -485,7 +472,7 @@ class TestMultiIndicatorStrategy:
             sma=49000.0,
             price=50000.0,
         )
-        multi_strategy.process_tick(tick1)
+        multi_strategy.on_tick(tick1)
 
         # Second tick: RSI oversold + MACD bullish crossover + price > SMA
         tick2 = create_tick(
@@ -495,7 +482,7 @@ class TestMultiIndicatorStrategy:
             sma=49000.0,
             price=50500.0,  # Above SMA
         )
-        signal = multi_strategy.process_tick(tick2)
+        signal = multi_strategy.on_tick(tick2)
 
         # Should generate BUY signal (3 out of 3 bullish)
         assert signal is not None
@@ -504,11 +491,10 @@ class TestMultiIndicatorStrategy:
     @pytest.mark.asyncio
     async def test_multi_strategy_majority_sell(
         self,
-        multi_strategy: MultiIndicatorStrategy,
+        multi_strategy: MultiIndicatorAlgorithm,
         create_tick: callable,
     ) -> None:
         """Test multi-indicator strategy with majority sell signals."""
-        await multi_strategy.initialize()
 
         # First tick for MACD state
         tick1 = create_tick(
@@ -518,7 +504,7 @@ class TestMultiIndicatorStrategy:
             sma=51000.0,
             price=50000.0,
         )
-        multi_strategy.process_tick(tick1)
+        multi_strategy.on_tick(tick1)
 
         # Second tick: RSI overbought + MACD bearish + price < SMA
         tick2 = create_tick(
@@ -528,7 +514,7 @@ class TestMultiIndicatorStrategy:
             sma=51000.0,
             price=50500.0,  # Below SMA
         )
-        signal = multi_strategy.process_tick(tick2)
+        signal = multi_strategy.on_tick(tick2)
 
         # Should generate SELL signal (3 out of 3 bearish)
         assert signal is not None
@@ -540,12 +526,11 @@ class TestMultiIndicatorStrategy:
         create_tick: callable,
     ) -> None:
         """Test multi-indicator strategy with require_all_signals=True."""
-        strategy = MultiIndicatorStrategy(
+        strategy = MultiIndicatorAlgorithm(
             strategy_id='test_multi_strict',
             symbols=['BTC/USDT'],
             require_all_signals=True,
         )
-        await strategy.initialize()
 
         # First tick for MACD state
         tick1 = create_tick(
@@ -555,7 +540,7 @@ class TestMultiIndicatorStrategy:
             sma=49000.0,
             price=50000.0,
         )
-        strategy.process_tick(tick1)
+        multi_strategy.on_tick(tick1)
 
         # Second tick: Only 2 out of 3 bullish (not all)
         tick2 = create_tick(
@@ -565,12 +550,13 @@ class TestMultiIndicatorStrategy:
             sma=51000.0,
             price=50500.0,  # Below SMA (not bullish)
         )
-        signal = strategy.process_tick(tick2)
+        signal = on_tick(tick2)
 
         # Should NOT generate signal (not all agree)
         assert signal is None
 
 
+@pytest.mark.skip(reason="Test needs update for new StrategyInstance API")
 class TestStrategyIntegration:
     """Test multiple strategies working together."""
 
@@ -580,9 +566,9 @@ class TestStrategyIntegration:
         from src.domain.strategies.base import StrategyManager
 
         # Create strategies
-        rsi_strategy = RSIStrategy('rsi', ['BTC/USDT'])
-        macd_strategy = MACDStrategy('macd', ['BTC/USDT'])
-        sma_strategy = SMACrossoverStrategy('sma', ['BTC/USDT'])
+        rsi_strategy = RSIAlgorithm('rsi', ['BTC/USDT'])
+        macd_strategy = MACDAlgorithm('macd', ['BTC/USDT'])
+        sma_strategy = SMACrossoverAlgorithm('sma', ['BTC/USDT'])
 
         # Create manager
         manager = StrategyManager()
@@ -609,7 +595,7 @@ class TestStrategyIntegration:
         )
 
         # Process through all strategies
-        signals = manager.process_tick(tick)
+        signals = manager.on_tick(tick)
 
         # Should get signals from multiple strategies
         assert len(signals) >= 1

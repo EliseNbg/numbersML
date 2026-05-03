@@ -1,4 +1,4 @@
-# Step 3: Strategy Runtime and Lifecycle
+# Step 3: Algorithm Runtime and Lifecycle
 
 ## Objective
 
@@ -45,7 +45,7 @@ Make strategies executable and controllable at runtime (activate/deactivate/paus
 ## Implementation Prompt (Best Prompt for LLM)
 
 ```text
-Implement Step 3 only: Strategy runtime and lifecycle management.
+Implement Step 3 only: Algorithm runtime and lifecycle management.
 
 Tasks:
 1) Create StrategyLifecycleService with strict state transition rules.

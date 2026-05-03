@@ -1,4 +1,4 @@
-# Step 9: Testing Strategy and Rollout Gates
+# Step 9: Testing Algorithm and Rollout Gates
 
 ## Objective
 

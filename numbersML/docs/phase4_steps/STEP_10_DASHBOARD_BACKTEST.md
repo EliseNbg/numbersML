@@ -113,7 +113,7 @@ HTML page with Chart.js:
         <!-- Header -->
         <div class="row mb-4">
             <div class="col-12">
-                <h1><i class="bi bi-graph-up-arrow"></i> Strategy Backtest</h1>
+                <h1><i class="bi bi-graph-up-arrow"></i> Algorithm Backtest</h1>
                 <p class="text-muted">Test strategy performance on historical data</p>
             </div>
         </div>
@@ -132,7 +132,7 @@ HTML page with Chart.js:
                         <form id="backtest-form">
                             <div class="row">
                                 <div class="col-md-6 mb-3">
-                                    <label class="form-label">Strategy Instance *</label>
+                                    <label class="form-label">Algorithm Instance *</label>
                                     <select class="form-select" id="backtest-instance" required>
                                         <option value="">Select an instance...</option>
                                     </select>
@@ -400,7 +400,7 @@ async function startBacktest() {
     const initialBalance = parseFloat(document.getElementById('initial-balance').value);
     
     if (!instanceId) {
-        showAlert('warning', 'Please select a Strategy Instance');
+        showAlert('warning', 'Please select a Algorithm Instance');
         return;
     }
     

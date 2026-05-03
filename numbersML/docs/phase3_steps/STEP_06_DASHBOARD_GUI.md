@@ -6,7 +6,7 @@ Deliver web GUI workflows to manage strategy lifecycle and control activation fr
 
 ## Scope
 
-- Strategy management UI:
+- Algorithm management UI:
   - list, detail, create, edit, version history
   - validation feedback
   - LLM-assisted create/modify panel

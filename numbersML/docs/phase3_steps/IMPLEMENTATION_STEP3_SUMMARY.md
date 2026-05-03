@@ -1,9 +1,9 @@
-# Step 3 Implementation Summary: Strategy Runtime Lifecycle
+# Step 3 Implementation Summary: Algorithm Runtime Lifecycle
 
 ## Overview
-**Task:** Implement Step 3 of Phase 3 - Strategy Runtime and Lifecycle Management  
+**Task:** Implement Step 3 of Phase 3 - Algorithm Runtime and Lifecycle Management  
 **Repository:** https://github.com/EliseNbg/numbersML  
-**Commit:** `3108e03 feat: Step 3 - Strategy runtime lifecycle management`  
+**Commit:** `3108e03 feat: Step 3 - Algorithm runtime lifecycle management`  
 **Status:** ✅ **COMPLETE**  
 
 ## Acceptance Criteria (All Met)
@@ -135,7 +135,7 @@ CREATE TABLE strategy_events (
 | Test Suite | Tests | Status |
 |-----------|-------|--------|
 | Step 3 lifecycle tests | 20 | ✅ Pass |
-| Strategy domain tests | 54 | ✅ Pass |
+| Algorithm domain tests | 54 | ✅ Pass |
 | Total unit tests | 511 | ✅ Pass |
 | **Regressions** | **0** | ✅ **None** |
 
@@ -208,4 +208,4 @@ await lifecycle.deactivate_strategy(strategy_id)
 - All existing tests pass with zero regressions
 - Wide vector dimension (140 features) is correct: 7 symbols × 20 features/symbol
 - PostgreSQL event persistence tested and working
-- Strategy lifecycle operations validated via unit tests
+- Algorithm lifecycle operations validated via unit tests

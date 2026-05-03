@@ -1,4 +1,4 @@
-# Step 4: LLM Copilot (Create and Modify Strategy Config)
+# Step 4: LLM Copilot (Create and Modify Algorithm Config)
 
 ## Objective
 

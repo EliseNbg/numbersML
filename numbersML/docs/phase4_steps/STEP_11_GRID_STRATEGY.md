@@ -1,17 +1,17 @@
-# Step 11: Grid Strategy Implementation#
+# Step 11: Grid Algorithm Implementation#
 
 ## Objective#
-Implement a simple Grid Strategy that generates positive PnL on noised sin wave data for TEST/USDT.
+Implement a simple Grid Algorithm that generates positive PnL on noised sin wave data for TEST/USDT.
 
 ## Context#
-- Phase 3 complete: Strategy base class in `src/domain/strategies/base.py`#
+- Phase 3 complete: Algorithm base class in `src/domain/strategies/base.py`#
 - Step 4 complete: StrategyInstance entity exists#
 - Need a strategy that works with TEST/USDT synthetic data#
 
 ## DDD Architecture Decision (ADR)#
 
-**Decision**: GridStrategy is a concrete Strategy implementation#
-- **Extends**: `Strategy` base class from Phase 3#
+**Decision**: GridAlgorithm is a concrete Algorithm implementation#
+- **Extends**: `Algorithm` base class from Phase 3#
 - **Logic**: Place buy orders at grid levels below price, sell orders above#
 - **Profit**: From price oscillations in a range#
 - **Grid Levels**: Configurable number of levels and spacing#
@@ -23,7 +23,7 @@ Implement a simple Grid Strategy that generates positive PnL on noised sin wave 
 
 ## TDD Approach#
 
-1. **Red**: Write failing tests for GridStrategy#
+1. **Red**: Write failing tests for GridAlgorithm#
 2. **Green**: Implement strategy to pass tests#
 3. **Refactor**: Add logging, error handling, optimization#
 
@@ -33,13 +33,13 @@ Implement a simple Grid Strategy that generates positive PnL on noised sin wave 
 
 ```python
 """
-Grid Trading Strategy Implementation.
+Grid Trading Algorithm Implementation.
 
 Places buy orders at regular intervals below current price,
 sell orders above current price.
 Profits from price oscillations in a range-bound market.
 
-Follows Phase 3 Strategy base class pattern.
+Follows Phase 3 Algorithm base class pattern.
 """
 
 import logging
@@ -47,7 +47,7 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from src.domain.strategies.base import (
-    Strategy,
+    Algorithm,
     Signal,
     SignalType,
     EnrichedTick,
@@ -56,7 +56,7 @@ from src.domain.strategies.base import (
 logger = logging.getLogger(__name__)
 
 
-class GridStrategy(Strategy):
+class GridAlgorithm(Algorithm):
     """
     Grid trading strategy.
     
@@ -72,7 +72,7 @@ class GridStrategy(Strategy):
         - stop_loss_pct: Stop loss (default: 2.0%)
     
     Example:
-        >>> strategy = GridStrategy(
+        >>> strategy = GridAlgorithm(
         ...     strategy_id="grid-1",
         ...     symbols=["TEST/USDT"],
         ... )
@@ -86,7 +86,7 @@ class GridStrategy(Strategy):
         time_frame: Any = None,
     ) -> None:
         """
-        Initialize GridStrategy.
+        Initialize GridAlgorithm.
         
         Args:
             strategy_id: Unique strategy identifier
@@ -102,7 +102,7 @@ class GridStrategy(Strategy):
         self._höhest_price: Optional[Decimal] = None
         self._lowest_price: Optional[Decimal] = None
         
-        logger.info(f"GridStrategy {strategy_id} initialized for {symbols}")
+        logger.info(f"GridAlgorithm {strategy_id} initialized for {symbols}")
     
     def on_tick(self, tick: EnrichedTick) -> Optional[Signal]:
         """
@@ -308,7 +308,7 @@ class GridStrategy(Strategy):
 
 ```python
 """
-Unit tests for GridStrategy.
+Unit tests for GridAlgorithm.
 
 Follows TDD approach: tests first, then implementation.
 """
@@ -317,14 +317,14 @@ import pytest
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from src.domain.strategies.grid_strategy import GridStrategy
+from src.domain.strategies.grid_strategy import GridAlgorithm
 from src.domain.strategies.base import SignalType, EnrichedTick
 
 
 @pytest.fixture
 def grid_strategy():
-    """Create a GridStrategy for testing."""
-    return GridStrategy(
+    """Create a GridAlgorithm for testing."""
+    return GridAlgorithm(
         strategy_id="test-grid-1",
         symbols=["TEST/USDT"],
     )
@@ -349,11 +349,11 @@ def create_tick():
     return _create
 
 
-class TestGridStrategyInit:
-    """Tests for GridStrategy initialization."""
+class TestGridAlgorithmInit:
+    """Tests for GridAlgorithm initialization."""
     
     def test_create_grid_strategy(self, grid_strategy):
-        """Test creating a GridStrategy."""
+        """Test creating a GridAlgorithm."""
         assert grid_strategy.id == "test-grid-1"
         assert grid_strategy.symbols == ["TEST/USDT"]
         assert grid_strategy.state.value == "STOPPED"
@@ -540,23 +540,23 @@ class TestGridStats:
 ## LLM Implementation Prompt#
 
 ```text
-You are implementing Step 11 of Phase 4: Grid Strategy Implementation.
+You are implementing Step 11 of Phase 4: Grid Algorithm Implementation.
 
 ## Your Task#
 
-Implement a simple Grid Strategy that generates positive PnL on TEST/USDT.
+Implement a simple Grid Algorithm that generates positive PnL on TEST/USDT.
 
 ## Context#
 
-- Phase 3 complete: Strategy base class in src/domain/strategies/base.py`
+- Phase 3 complete: Algorithm base class in src/domain/strategies/base.py`
 - Step 4 complete: StrategyInstance entity exists
 - Grid strategy places buy orders below price, sell above
-- Must follow existing Strategy base class pattern#
+- Must follow existing Algorithm base class pattern#
 
 ## Requirements#
 
 1. Create `src/domain/strategies/grid_strategy.py` with:
-   - GridStrategy class extending Strategy
+   - GridAlgorithm class extending Algorithm
    - __init__(strategy_id, symbols, time_frame)
    - on_tick(tick) -> Optional[Signal]:
      * Initialize grid on first tick
@@ -573,7 +573,7 @@ Implement a simple Grid Strategy that generates positive PnL on TEST/USDT.
    - Google-style docstrings
 
 2. Create `tests/unit/domain/strategies/test_grid_strategy.py` with TDD:
-   - TestGridStrategyInit: creation, initial state
+   - TestGridAlgorithmInit: creation, initial state
    - TestGridInitialization: initialize grid, levels count, rebalance
    - TestBuySignals: buy near grid, no buy with position
    - TestSellSignals: sell at take profit, sell at stop loss
@@ -598,7 +598,7 @@ Implement a simple Grid Strategy that generates positive PnL on TEST/USDT.
 
 ## Acceptance Criteria#
 
-1. GridStrategy extends Strategy base class#
+1. GridAlgorithm extends Algorithm base class#
 2. Grid initializes on first tick with correct levels#
 3. Buy signals generated near grid levels (no position)#
 4. Sell signals generated at take profit or stop loss#
@@ -631,7 +631,7 @@ mypy src/domain/strategies/grid_strategy.py
 
 ## Success Criteria#
 
-- [ ] GridStrategy created extending Strategy base#
+- [ ] GridAlgorithm created extending Algorithm base#
 - [ ] Grid initializes correctly with configurable levels#
 - [ ] Buy signals work (near grid levels)#
 - [ ] Sell signals work (take profit/stop loss)#

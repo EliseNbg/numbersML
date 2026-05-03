@@ -75,7 +75,7 @@ Phase 4 focuses on creating a robust, decoupled management system for trading st
 
 ## 4. Acceptance Criteria
 1.  User can create a `ConfigurationSet` with custom parameters via Dashboard.
-2.  User can link a `Strategy` to a `ConfigurationSet` and start it without restarting the pipeline.
+2.  User can link a `Algorithm` to a `ConfigurationSet` and start it without restarting the pipeline.
 3.  Backtest for a Strategy-Config pair can be executed and visualized on a chart.
 4.  The system uses existing indicators from the DB during backtests.
 5.  `SimpleGridStrategy` is functional and included in the default test data.

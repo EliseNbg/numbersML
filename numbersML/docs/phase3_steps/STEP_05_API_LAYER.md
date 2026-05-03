@@ -6,7 +6,7 @@ Expose strategy lifecycle, market operations, and backtesting through consistent
 
 ## Scope
 
-- Strategy endpoints:
+- Algorithm endpoints:
   - create/list/get/update
   - version history
   - activate/deactivate/pause/resume

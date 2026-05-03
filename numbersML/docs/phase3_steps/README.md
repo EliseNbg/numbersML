@@ -4,9 +4,9 @@ This folder contains independent implementation packets for Phase 3.
 
 ## Progress
 
-- ✅ **Step 1** (`STEP_01_DOMAIN_AND_SCHEMA.md`): COMPLETE - Strategy domain model, schema v1, repository interfaces, PostgreSQL implementation, migrations
+- ✅ **Step 1** (`STEP_01_DOMAIN_AND_SCHEMA.md`): COMPLETE - Algorithm domain model, schema v1, repository interfaces, PostgreSQL implementation, migrations
 - ✅ **Step 2** (`STEP_02_MARKET_SERVICE.md`): COMPLETE - Market service abstraction (paper/live), order execution, position management
-- ✅ **Step 3** (`STEP_03_STRATEGY_RUNTIME_LIFECYCLE.md`): COMPLETE - Strategy lifecycle service, runtime state tracking, error isolation, activation/deactivation/pause/resume
+- ✅ **Step 3** (`STEP_03_STRATEGY_RUNTIME_LIFECYCLE.md`): COMPLETE - Algorithm lifecycle service, runtime state tracking, error isolation, activation/deactivation/pause/resume
 - ✅ **Step 4** (`STEP_04_LLM_COPILOT.md`): COMPLETE - LLM strategy generation/modification, prompt templates, guardrails, validation pipeline
 - ✅ **Step 5** (`STEP_05_API_LAYER.md`): COMPLETE - FastAPI routes for strategies/market/backtesting, auth hooks, LLM endpoints, API tests
 - 🔜 **Step 6** (`STEP_06_DASHBOARD_GUI.md`): Not started

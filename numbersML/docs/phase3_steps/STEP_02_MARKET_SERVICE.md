@@ -26,7 +26,7 @@ Implement a single market execution abstraction with two modes: paper/test and l
 
 ## Out of Scope
 
-- Strategy runner orchestration
+- Algorithm runner orchestration
 - Dashboard UI
 
 ## Dependencies

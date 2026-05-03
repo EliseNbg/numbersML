@@ -1,32 +1,32 @@
 # Step 4: StrategyInstance Domain Model & Schema
 
 ## Objective
-Create the `StrategyInstance` domain entity that links a Strategy with a ConfigurationSet, enabling hot-plug functionality and runtime statistics tracking.
+Create the `StrategyInstance` domain entity that links a Algorithm with a ConfigurationSet, enabling hot-plug functionality and runtime statistics tracking.
 
 ## Context
 - Step 1-3 complete: ConfigurationSet entity, repository, and API endpoints exist
-- Phase 3 complete: Strategy domain models exist (`src/domain/strategies/`)
-- Need to link Strategy + ConfigurationSet for independent operation
+- Phase 3 complete: Algorithm domain models exist (`src/domain/strategies/`)
+- Need to link Algorithm + ConfigurationSet for independent operation
 - StrategyInstance represents a "deployed" strategy with specific configuration
 
 ## DDD Architecture Decision (ADR)
 
 **Decision**: StrategyInstance is a Domain Entity with state machine
-- **Identity**: UUID (not tied to Strategy or ConfigSet alone)
+- **Identity**: UUID (not tied to Algorithm or ConfigSet alone)
 - **State Machine**: stopped → running → paused → stopped (with error state)
 - **Runtime Statistics**: Value object tracking PnL, trades, uptime
 - **Lifecycle**: Managed by StrategyInstanceService (Application layer)
 
 **Key Design Patterns**:
-- StrategyInstance does NOT contain Strategy logic (that's in Strategy entity)
-- StrategyInstance references Strategy by ID and loads config from ConfigurationSet
+- StrategyInstance does NOT contain Algorithm logic (that's in Algorithm entity)
+- StrategyInstance references Algorithm by ID and loads config from ConfigurationSet
 - Hot-plug: Can start/stop without affecting other instances
 
 **Data Structure**:
 ```python
 StrategyInstance:
     id: UUID
-    strategy_id: UUID  # Reference to Strategy
+    strategy_id: UUID  # Reference to Algorithm
     config_set_id: UUID  # Reference to ConfigurationSet
     status: StrategyInstanceState  # stopped, running, paused, error
     runtime_stats: RuntimeStats  # PnL, trades, uptime
@@ -51,7 +51,7 @@ StrategyInstance:
 StrategyInstance domain entity.
 
 Represents a deployed strategy with specific configuration.
-Links Strategy (logic) with ConfigurationSet (parameters).
+Links Algorithm (logic) with ConfigurationSet (parameters).
 
 Architecture: Domain Layer (pure Python, no external dependencies)
 """
@@ -66,7 +66,7 @@ from src.domain.models.base import Entity
 
 
 class StrategyInstanceState(str, Enum):
-    """Strategy instance lifecycle states."""
+    """Algorithm instance lifecycle states."""
     STOPPED = "stopped"
     RUNNING = "running"
     PAUSED = "paused"
@@ -130,7 +130,7 @@ class StrategyInstance(Entity):
     """
     Domain entity for strategy instances.
     
-    Links a Strategy (logic) with a ConfigurationSet (parameters).
+    Links a Algorithm (logic) with a ConfigurationSet (parameters).
     Manages lifecycle state and tracks runtime statistics.
     
     Lifecycle:
@@ -162,7 +162,7 @@ class StrategyInstance(Entity):
         Initialize StrategyInstance.
         
         Args:
-            strategy_id: UUID of the Strategy
+            strategy_id: UUID of the Algorithm
             config_set_id: UUID of the ConfigurationSet
             id: UUID (auto-generated if None)
             status: Initial status (default: STOPPED)
@@ -653,8 +653,8 @@ Create the StrategyInstance domain entity with state machine and runtime statist
 ## Context
 
 - Step 1-3 complete: ConfigurationSet entity, repository, and API exist
-- Phase 3 complete: Strategy domain models in src/domain/strategies/
-- StrategyInstance links Strategy + ConfigurationSet for deployment
+- Phase 3 complete: Algorithm domain models in src/domain/strategies/
+- StrategyInstance links Algorithm + ConfigurationSet for deployment
 - Must follow DDD Entity pattern (extend base Entity class)
 
 ## Requirements

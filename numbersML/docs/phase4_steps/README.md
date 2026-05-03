@@ -1,6 +1,6 @@
 # Phase 4 Step Packets
 
-This folder contains independent implementation packets for Phase 4: Strategy Management & Backtesting Dashboard.
+This folder contains independent implementation packets for Phase 4: Algorithm Management & Backtesting Dashboard.
 
 ## Overview
 
@@ -18,7 +18,7 @@ Phase 4 focuses on creating a robust, decoupled management system for trading st
 - 🔜 **Step 8** (`STEP_08_DASHBOARD_CONFIG_SETS.md`): Not started - Dashboard UI for config set CRUD, dynamic parameter editing
 - 🔜 **Step 9** (`STEP_09_DASHBOARD_INSTANCES.md`): Not started - Dashboard UI for strategy instances, hot-plug toggle, real-time stats
 - 🔜 **Step 10** (`STEP_10_DASHBOARD_BACKTEST.md`): Not started - Backtest result page, charts, metrics table, time range selector
-- 🔜 **Step 11** (`STEP_11_GRID_STRATEGY.md`): Not started - SimpleGridStrategy implementation, buy/sell grid logic
+- 🔜 **Step 11** (`STEP_11_GRID_STRATEGY.md`): Not started - SimpleGridAlgorithm implementation, buy/sell grid logic
 - 🔜 **Step 12** (`STEP_12_GRID_TEST_DATA.md`): Not started - Test data setup, TEST/USDT config, synthetic data for positive PnL
 - 🔜 **Step 13** (`STEP_13_PIPELINE_INTEGRATION.md`): Not started - Pipeline integration, strategy execution, signal generation
 - 🔜 **Step 14** (`STEP_14_TESTING_ROLLOUT.md`): Not started - Integration testing, automated tests, rollout checklist
@@ -105,10 +105,10 @@ Use `SESSION_KICKOFF_TEMPLATE.md` at the start of each implementation session. I
 ## Phase 4 Acceptance Criteria
 
 1. User can create a `ConfigurationSet` with custom parameters via Dashboard
-2. User can link a `Strategy` to a `ConfigurationSet` and start it without restarting the pipeline
-3. Backtest for a Strategy-Config pair can be executed and visualized on a chart
+2. User can link a `Algorithm` to a `ConfigurationSet` and start it without restarting the pipeline
+3. Backtest for a Algorithm-Config pair can be executed and visualized on a chart
 4. The system uses existing indicators from the DB during backtests (no recalculation)
-5. `SimpleGridStrategy` is functional and included in the default test data
+5. `SimpleGridAlgorithm` is functional and included in the default test data
 6. All dashboard features (config sets, instances, backtest) are fully functional
 7. Integration tests verify end-to-end functionality with positive PnL on test data
 

@@ -17,7 +17,7 @@ Comprehensive testing, documentation updates, and production rollout preparation
 - **E2E Tests**: Manual testing checklist (automated with Playwright in future)#
 - **Documentation**: Update all relevant docs#
 
-**Rollout Strategy**:#
+**Rollout Algorithm**:#
 1. Deploy database migrations first#
 2. Deploy backend (API + services)#
 3. Deploy dashboard updates#
@@ -218,7 +218,7 @@ class TestBacktestE2E:
 Update with final implementation status:
 
 ```markdown
-# Phase 4: Strategy Management & Backtesting Dashboard - COMPLETE
+# Phase 4: Algorithm Management & Backtesting Dashboard - COMPLETE
 
 ## Status: ✅ COMPLETE
 
@@ -277,12 +277,12 @@ All Phase 4 objectives have been completed:
 - `dashboard/js/backtest.js` with job polling
 - Equity curve chart, trade blotter, metrics cards
 
-### ✅ Step 11: Grid Strategy Implementation
+### ✅ Step 11: Grid Algorithm Implementation
 - `src/domain/strategies/grid_strategy.py`
 - Grid trading logic with configurable levels
 - Buy/sell signal generation
 
-### ✅ Step 12: Grid Strategy Test Data
+### ✅ Step 12: Grid Algorithm Test Data
 - `scripts/generate_test_data.py` for synthetic data
 - TEST/USDT symbol with noised sin wave
 - Positive PnL verification
@@ -295,7 +295,7 @@ All Phase 4 objectives have been completed:
 ## Acceptance Criteria - ALL MET ✅
 
 1. ✅ User can create ConfigurationSet with custom parameters via Dashboard
-2. ✅ User can link Strategy + ConfigurationSet into StrategyInstance
+2. ✅ User can link Algorithm + ConfigurationSet into StrategyInstance
 3. ✅ User can hot-plug StrategyInstance without pipeline restart
 4. ✅ Backtest for StrategyInstance runs real calculations with historical data
 5. ✅ Backtest results show PnL, buy/sell points, equity curve
@@ -328,7 +328,7 @@ All Phase 4 objectives have been completed:
   ```bash
   .venv/bin/python scripts/generate_test_data.py
   ```
-- [ ] Verify Grid Strategy shows positive PnL:
+- [ ] Verify Grid Algorithm shows positive PnL:
   ```bash
   .venv/bin/python -m pytest tests/integration/test_grid_pnl.py -v
   ```
@@ -346,7 +346,7 @@ Phase 4 is COMPLETE. Ready for:
 Add Phase 4 to main project README:
 
 ```markdown
-## Phase 4: Strategy Management & Backtesting ✅
+## Phase 4: Algorithm Management & Backtesting ✅
 
 ### New Features
 - **ConfigurationSets**: Reusable parameter sets for strategies
@@ -357,7 +357,7 @@ Add Phase 4 to main project README:
   - ConfigurationSet management with dynamic parameters
   - StrategyInstance management with hot-plug controls
   - Enhanced backtest page with Chart.js visualizations
-- **Grid Strategy**: Simple grid trading strategy for TEST/USDT
+- **Grid Algorithm**: Simple grid trading strategy for TEST/USDT
 
 ### API Endpoints
 - `POST /api/config-sets` - Create ConfigurationSet
@@ -404,7 +404,7 @@ class TestFullPhase4Flow:
         """
         # This test requires:
         # - Database with test data
-        # - GridStrategy implemented
+        # - GridAlgorithm implemented
         # - All APIs working
         
         # For now, placeholder
@@ -425,11 +425,11 @@ class TestFullPhase4Flow:
     
     def test_grid_strategy_positive_pnl(self):
         """
-        Test that Grid Strategy shows positive PnL on TEST/USDT.
+        Test that Grid Algorithm shows positive PnL on TEST/USDT.
         
         Prerequisites:
         - TEST/USDT symbol with noised sin wave data
-        - Grid Strategy ConfigurationSet
+        - Grid Algorithm ConfigurationSet
         """
         import subprocess
         import sys

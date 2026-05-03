@@ -11,9 +11,9 @@ Integrate StrategyInstance hot-plug functionality into the running pipeline with
 
 ## DDD Architecture Decision (ADR)#
 
-**Decision**: Pipeline uses StrategyInstance, not just Strategy#
+**Decision**: Pipeline uses StrategyInstance, not just Algorithm#
 - **Input**: StrategyInstance (contains strategy_id + config_set_id)#
-- **Loading**: Load Strategy from strategy_id, Config from config_set_id#
+- **Loading**: Load Algorithm from strategy_id, Config from config_set_id#
 - **State Tracking**: Per-instance statistics in `runtime_stats`#
 - **Hot-Plug**: Add/remove instances without restart#
 
@@ -42,7 +42,7 @@ Add StrategyInstance support to `StrategyManager`:
         """
         Add a StrategyInstance to the manager.
         
-        Loads the Strategy and ConfigurationSet,
+        Loads the Algorithm and ConfigurationSet,
         then adds to active strategies.
         
         Args:
@@ -54,14 +54,14 @@ Add StrategyInstance support to `StrategyManager`:
         if instance.id in self._strategies:
             raise ValueError(f"Instance {instance.id} already exists")
         
-        # TODO: Load Strategy by ID from repository
+        # TODO: Load Algorithm by ID from repository
         # TODO: Load ConfigurationSet by ID from repository
         # For now, assume strategy is already loaded
         
         self._strategies[instance.id] = strategy
         logger.info(f"Instance {instance.id} added to manager")
     
-    async def remove_instance(self, instance_id: UUID) -> Optional[Strategy]:
+    async def remove_instance(self, instance_id: UUID) -> Optional[Algorithm]:
         """
         Remove a StrategyInstance from the manager.
         
@@ -69,7 +69,7 @@ Add StrategyInstance support to `StrategyManager`:
             instance_id: StrategyInstance ID to remove
             
         Returns:
-            Removed Strategy if existed, None otherwise
+            Removed Algorithm if existed, None otherwise
         """
         strategy = self._strategies.pop(instance_id, None)
         if strategy:
@@ -99,7 +99,7 @@ import logging
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from src.domain.strategies.base import StrategyManager, Strategy
+from src.domain.strategies.base import StrategyManager, Algorithm
 from src.domain.strategies.strategy_instance import (
     StrategyInstance,
     StrategyInstanceState,
@@ -132,7 +132,7 @@ class StrategyInstanceService:
         
         Args:
             instance_repo: StrategyInstance repository
-            strategy_repo: Strategy repository
+            strategy_repo: Algorithm repository
             config_set_repo: ConfigSet repository
             strategy_manager: Running StrategyManager
         """

@@ -82,7 +82,7 @@ CREATE TRIGGER trigger_strategy_instances_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_strategy_instance_updated_at();
 
-COMMENT ON TABLE strategy_instances IS 'Links Strategy with ConfigurationSet for deployment';
+COMMENT ON TABLE strategy_instances IS 'Links Algorithm with ConfigurationSet for deployment';
 COMMENT ON COLUMN strategy_instances.runtime_stats IS 'JSONB with PnL, trades, uptime, etc.';
 ```
 
@@ -394,7 +394,7 @@ logger = logging.getLogger(__name__)
 
 # Pydantic Models
 class StrategyInstanceCreateRequest(BaseModel):
-    strategy_id: str = Field(..., description="UUID of the Strategy")
+    strategy_id: str = Field(..., description="UUID of the Algorithm")
     config_set_id: str = Field(..., description="UUID of the ConfigurationSet")
 
 
@@ -449,7 +449,7 @@ async def create_instance(
     req: StrategyInstanceCreateRequest,
     repo: StrategyInstanceRepository = Depends(get_instance_repository),
 ) -> StrategyInstanceResponse:
-    """Create a new StrategyInstance (link Strategy + ConfigurationSet)."""
+    """Create a new StrategyInstance (link Algorithm + ConfigurationSet)."""
     try:
         from uuid import UUID
         strategy_id = UUID(req.strategy_id)

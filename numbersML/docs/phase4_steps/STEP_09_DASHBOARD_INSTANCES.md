@@ -1,7 +1,7 @@
 # Step 9: Dashboard - StrategyInstance Management#
 
 ## Objective#
-Create dashboard page for managing StrategyInstances (linking Strategy + ConfigurationSet) with hot-plug controls.
+Create dashboard page for managing StrategyInstances (linking Algorithm + ConfigurationSet) with hot-plug controls.
 
 ## Context#
 - Step 4-5 complete: StrategyInstance entity, repository, and API exist
@@ -11,13 +11,13 @@ Create dashboard page for managing StrategyInstances (linking Strategy + Configu
 ## DDD Architecture Decision (ADR)#
 
 **Decision**: StrategyInstance dashboard shows linked entities#
-- **Table Columns**: Strategy Name, Config Set Name, Status, Runtime Stats, Actions#
+- **Table Columns**: Algorithm Name, Config Set Name, Status, Runtime Stats, Actions#
 - **Hot-Plug**: Start/Stop/Pause/Resume buttons#
 - **Real-time Stats**: PnL, trades, uptime (poll every 5 seconds)#
 - **Link to Backtest**: Button to navigate to backtest page#
 
 **Key Features**:#
-- Dropdown selectors for Strategy and ConfigurationSet when creating#
+- Dropdown selectors for Algorithm and ConfigurationSet when creating#
 - Status badges with colors (running=green, stopped=gray, paused=yellow, error=red)#
 - Real-time statistics panel#
 - Navigation to backtest page with pre-filled StrategyInstance#
@@ -40,7 +40,7 @@ HTML page following existing pattern:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Strategy Instances - Crypto Trading Dashboard</title>
+    <title>Algorithm Instances - Crypto Trading Dashboard</title>
     
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -101,7 +101,7 @@ HTML page following existing pattern:
         <!-- Header -->
         <div class="row mb-4">
             <div class="col-12">
-                <h1><i class="bi bi-diagram-3"></i> Strategy Instances</h1>
+                <h1><i class="bi bi-diagram-3"></i> Algorithm Instances</h1>
                 <p class="text-muted">Manage deployed strategies with specific configurations</p>
             </div>
         </div>
@@ -136,7 +136,7 @@ HTML page following existing pattern:
             <div class="col-12">
                 <div class="card">
                     <div class="card-header">
-                        <i class="bi bi-list"></i> Strategy Instances
+                        <i class="bi bi-list"></i> Algorithm Instances
                         <span id="instance-count" class="badge bg-secondary ms-2">0</span>
                     </div>
                     <div class="card-body">
@@ -144,7 +144,7 @@ HTML page following existing pattern:
                             <table class="table table-striped table-hover" id="instances-table">
                                 <thead>
                                     <tr>
-                                        <th>Strategy</th>
+                                        <th>Algorithm</th>
                                         <th>Config Set</th>
                                         <th>Status</th>
                                         <th>PnL</th>
@@ -174,13 +174,13 @@ HTML page following existing pattern:
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-diagram-3"></i> Create Strategy Instance</h5>
+                    <h5 class="modal-title"><i class="bi bi-diagram-3"></i> Create Algorithm Instance</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <form id="instance-form">
                         <div class="mb-3">
-                            <label class="form-label">Strategy *</label>
+                            <label class="form-label">Algorithm *</label>
                             <select class="form-select" id="instance-strategy" required>
                                 <option value="">Select a strategy...</option>
                             </select>
@@ -541,7 +541,7 @@ async function saveInstance() {
         
         instanceModal.hide();
         document.getElementById('instance-form').reset();
-        showAlert('success', 'Strategy Instance created successfully');
+        showAlert('success', 'Algorithm Instance created successfully');
         loadInstances();
     } catch (error) {
         showAlert('danger', `Failed to create instance: ${error.message}`);
@@ -775,9 +775,9 @@ Create dashboard page for managing StrategyInstances with hot-plug controls.
 1. Create `dashboard/strategy-instances.html` with:
    - Navigation bar with "Instances" as active item
    - Action bar: New Instance, Refresh, Show Inactive toggle
-   - Table with columns: Strategy, Config Set, Status, PnL, Trades, Uptime, Actions
+   - Table with columns: Algorithm, Config Set, Status, PnL, Trades, Uptime, Actions
    - Create Instance Modal:
-     * Dropdown for Strategy (load from /api/strategies)
+     * Dropdown for Algorithm (load from /api/strategies)
      * Dropdown for ConfigurationSet (load from /api/config-sets)
    - Statistics Modal showing PnL, trades, win rate, uptime, last error
    - Update navigation in ALL dashboard pages to include "Instances" link
@@ -815,7 +815,7 @@ Create dashboard page for managing StrategyInstances with hot-plug controls.
 
 ## Acceptance Criteria#
 
-1. Can create StrategyInstance (link Strategy + ConfigSet)
+1. Can create StrategyInstance (link Algorithm + ConfigSet)
 2. Table shows all instances with correct data
 3. Start/Stop/Pause/Resume buttons work (hot-plug)
 4. Real-time stats polling for running instances

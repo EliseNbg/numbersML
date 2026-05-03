@@ -48,7 +48,7 @@ Create the canonical strategy/backtest data model and persistence layer so every
 - Migrations apply and rollback cleanly.
 - Valid config passes schema validation.
 - Invalid config fails with clear error list.
-- Strategy version increments correctly.
+- Algorithm version increments correctly.
 - Repository tests pass.
 
 ## Implementation Prompt (Best Prompt for LLM)

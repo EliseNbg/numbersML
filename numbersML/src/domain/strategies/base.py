@@ -11,10 +11,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 from uuid import UUID
 
-from src.domain.strategies.strategy_instance import StrategyInstance
+if TYPE_CHECKING:
+    from src.domain.strategies.strategy_instance import StrategyInstance
 
 logger = logging.getLogger(__name__)
 
@@ -267,7 +268,7 @@ class StrategyManager:
         self._running: bool = False
         logger.info("StrategyManager initialized")
 
-    def add_instance(self, instance: StrategyInstance) -> None:
+    def add_instance(self, instance: "StrategyInstance") -> None:
         """
         Add strategy instance to manager.
 
@@ -283,7 +284,7 @@ class StrategyManager:
         self._instances[instance.id] = instance
         logger.info(f"Added strategy instance: {instance.id}")
 
-    def remove_instance(self, instance_id: UUID) -> Optional[StrategyInstance]:
+    def remove_instance(self, instance_id: UUID) -> Optional["StrategyInstance"]:
         """
         Remove strategy instance from manager.
 
@@ -298,7 +299,7 @@ class StrategyManager:
             logger.info(f"Removed strategy instance: {instance_id}")
         return instance
 
-    def get_instance(self, instance_id: UUID) -> Optional[StrategyInstance]:
+    def get_instance(self, instance_id: UUID) -> Optional["StrategyInstance"]:
         """Get strategy instance by ID."""
         return self._instances.get(instance_id)
 
