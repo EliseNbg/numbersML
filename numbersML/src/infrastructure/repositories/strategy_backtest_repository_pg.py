@@ -1,7 +1,7 @@
 """PostgreSQL implementation of strategy backtest repository."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -46,23 +46,22 @@ class StrategyBacktestRepositoryPG:
         Returns:
             Saved backtest record as dictionary
         """
+
         def _json_serializable(v):
             if isinstance(v, datetime):
                 return v.isoformat()
             if isinstance(v, (int, float, str, bool, type(None))):
                 return v
             return str(v)
-        
-        trades_json = json.dumps([
-            {k: _json_serializable(v) for k, v in t.items()}
-            for t in (trades or [])
-        ])
-        equity_json = json.dumps([
-            {k: _json_serializable(v) for k, v in p.items()}
-            for p in (equity_curve or [])
-        ])
+
+        trades_json = json.dumps(
+            [{k: _json_serializable(v) for k, v in t.items()} for t in (trades or [])]
+        )
+        equity_json = json.dumps(
+            [{k: _json_serializable(v) for k, v in p.items()} for p in (equity_curve or [])]
+        )
         metrics_json = json.dumps(metrics)
-        
+
         row = await self.conn.fetchrow(
             """
             INSERT INTO strategy_backtests (
@@ -176,5 +175,5 @@ class StrategyBacktestRepositoryPG:
 def _coerce_datetime(value: datetime) -> datetime:
     """Normalize datetime values from asyncpg records."""
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
+        return value.replace(tzinfo=UTC)
     return value

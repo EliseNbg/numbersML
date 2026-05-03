@@ -12,14 +12,14 @@ Entities:
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Any, Optional
 
 
 @dataclass
 class ConfigEntry:
     """
     Single configuration entry from system_config table.
-    
+
     Attributes:
         id: Unique identifier
         key: Configuration key
@@ -30,7 +30,7 @@ class ConfigEntry:
         version: Version number for optimistic locking
         updated_at: Last update timestamp
         updated_by: User who last updated
-    
+
     Example:
         >>> entry = ConfigEntry(
         ...     id=1,
@@ -40,9 +40,10 @@ class ConfigEntry:
         ...     is_editable=True,
         ... )
     """
+
     id: int
     key: str
-    value: Dict[str, Any]
+    value: dict[str, Any]
     description: Optional[str] = None
     is_sensitive: bool = False
     is_editable: bool = True
@@ -55,7 +56,7 @@ class ConfigEntry:
 class SymbolConfig:
     """
     Symbol configuration from symbols table.
-    
+
     Attributes:
         symbol_id: Unique identifier
         symbol: Symbol string (e.g., 'BTC/USDT')
@@ -66,7 +67,7 @@ class SymbolConfig:
         tick_size: Price precision
         step_size: Quantity precision
         min_notional: Minimum notional value
-    
+
     Example:
         >>> symbol = SymbolConfig(
         ...     symbol_id=1,
@@ -79,6 +80,7 @@ class SymbolConfig:
         >>> symbol.is_collectable
         True
     """
+
     symbol_id: int
     symbol: str
     base_asset: str
@@ -88,22 +90,22 @@ class SymbolConfig:
     tick_size: float = 0.01
     step_size: float = 0.00001
     min_notional: float = 10.0
-    
+
     @property
     def is_collectable(self) -> bool:
         """
         Check if symbol can be collected.
-        
+
         Returns:
             True if active and allowed
         """
         return self.is_active and self.is_allowed
-    
+
     @property
     def display_name(self) -> str:
         """
         Get human-readable symbol name.
-        
+
         Returns:
             Symbol string (e.g., 'BTC/USDT')
         """
@@ -114,7 +116,7 @@ class SymbolConfig:
 class IndicatorConfig:
     """
     Indicator configuration from indicator_definitions table.
-    
+
     Attributes:
         name: Unique indicator name (e.g., 'rsi_14')
         class_name: Python class name (e.g., 'RSIIndicator')
@@ -124,7 +126,7 @@ class IndicatorConfig:
         is_active: Whether indicator is being calculated
         created_at: Creation timestamp
         updated_at: Last update timestamp
-    
+
     Example:
         >>> indicator = IndicatorConfig(
         ...     name='rsi_14',
@@ -137,54 +139,55 @@ class IndicatorConfig:
         >>> indicator.full_class_path
         'src.indicators.momentum.RSIIndicator'
     """
+
     name: str
     class_name: str
     module_path: str
     category: str
-    params: Dict[str, Any] = field(default_factory=dict)
+    params: dict[str, Any] = field(default_factory=dict)
     is_active: bool = True
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    
+
     @property
     def full_class_path(self) -> str:
         """
         Get full Python class path for import.
-        
+
         Returns:
             Full path (e.g., 'src.indicators.momentum.RSIIndicator')
         """
         return f"{self.module_path}.{self.class_name}"
-    
+
     @property
     def display_name(self) -> str:
         """
         Get human-readable indicator name.
-        
+
         Returns:
             Formatted name (e.g., 'RSI (14)')
         """
         # Convert name to readable format
         # e.g., 'rsi_14' → 'RSI (14)'
-        parts = self.name.split('_')
+        parts = self.name.split("_")
         if len(parts) >= 2:
             name = parts[0].upper()
-            params = '_'.join(parts[1:])
+            params = "_".join(parts[1:])
             return f"{name} ({params})"
         return self.name.upper()
-    
+
     @property
     def category_icon(self) -> str:
         """
         Get icon for indicator category.
-        
+
         Returns:
             Bootstrap icon class
         """
         icons = {
-            'momentum': 'bi-speedometer2',
-            'trend': 'bi-graph-up',
-            'volatility': 'bi-activity',
-            'volume': 'bi-bar-chart',
+            "momentum": "bi-speedometer2",
+            "trend": "bi-graph-up",
+            "volatility": "bi-activity",
+            "volume": "bi-bar-chart",
         }
-        return icons.get(self.category, 'bi-gear')
+        return icons.get(self.category, "bi-gear")

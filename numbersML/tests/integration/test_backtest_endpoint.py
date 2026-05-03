@@ -2,7 +2,6 @@
 Integration tests for Backtest API endpoints.
 """
 
-import pytest
 from fastapi.testclient import TestClient
 
 from src.infrastructure.api.app import create_app
@@ -39,4 +38,4 @@ def test_backtest_endpoint_unknown_symbol():
     response = client.get("/api/backtest_ml/entry?symbol=UNKNOWN/XXX&model=test.pkl&seconds=86400")
     assert response.status_code == 200
     data = response.json()
-    assert 'error' in data
+    assert "error" in data

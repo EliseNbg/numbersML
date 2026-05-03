@@ -11,7 +11,7 @@ import json
 import logging
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 import asyncpg
 
@@ -49,7 +49,7 @@ class IndicatorRepository:
         self,
         active_only: bool = False,
         category: Optional[str] = None,
-    ) -> List[IndicatorConfig]:
+    ) -> list[IndicatorConfig]:
         """
         List indicators with optional filters.
 
@@ -63,14 +63,14 @@ class IndicatorRepository:
         async with self.db_pool.acquire() as conn:
             # Build query with optional filters
             query = """
-                SELECT 
+                SELECT
                     name, class_name, module_path, category,
                     params, is_active, created_at, updated_at
                 FROM indicator_definitions
                 WHERE 1=1
             """
 
-            params: List[Any] = []
+            params: list[Any] = []
             param_count = 1
 
             if active_only:
@@ -102,7 +102,7 @@ class IndicatorRepository:
         async with self.db_pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
-                SELECT 
+                SELECT
                     name, class_name, module_path, category,
                     params, is_active, created_at, updated_at
                 FROM indicator_definitions
@@ -119,8 +119,8 @@ class IndicatorRepository:
         class_name: str,
         module_path: str,
         category: str,
-        params: Optional[Dict[str, Any]] = None,
-        params_schema: Optional[Dict[str, Any]] = None,
+        params: Optional[dict[str, Any]] = None,
+        params_schema: Optional[dict[str, Any]] = None,
         code_hash: str = "manual",
         is_active: bool = True,
     ) -> bool:
@@ -205,7 +205,7 @@ class IndicatorRepository:
     async def update(
         self,
         name: str,
-        params: Optional[Dict[str, Any]] = None,
+        params: Optional[dict[str, Any]] = None,
         is_active: Optional[bool] = None,
     ) -> bool:
         """
@@ -223,7 +223,7 @@ class IndicatorRepository:
             async with self.db_pool.acquire() as conn:
                 # Build dynamic update query
                 updates = ["updated_at = NOW()"]
-                values: List[Any] = [name]
+                values: list[Any] = [name]
                 param_count = 2
 
                 if params is not None:
@@ -292,7 +292,7 @@ class IndicatorRepository:
             logger.error(f"Failed to delete indicator {name}: {e}")
             return False
 
-    async def get_categories(self) -> List[str]:
+    async def get_categories(self) -> list[str]:
         """
         Get all indicator categories.
 
@@ -300,13 +300,11 @@ class IndicatorRepository:
             List of unique categories
         """
         async with self.db_pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
+            rows = await conn.fetch("""
                 SELECT DISTINCT category
                 FROM indicator_definitions
                 ORDER BY category
-                """
-            )
+                """)
 
             return [row["category"] for row in rows]
 
@@ -322,20 +320,16 @@ class IndicatorRepository:
         """
         async with self.db_pool.acquire() as conn:
             if active_only:
-                row = await conn.fetchrow(
-                    """
+                row = await conn.fetchrow("""
                     SELECT COUNT(*) as count
                     FROM indicator_definitions
                     WHERE is_active = true
-                    """
-                )
+                    """)
             else:
-                row = await conn.fetchrow(
-                    """
+                row = await conn.fetchrow("""
                     SELECT COUNT(*) as count
                     FROM indicator_definitions
-                    """
-                )
+                    """)
 
             return row["count"] or 0
 
@@ -375,7 +369,7 @@ class IndicatorRepository:
         time: datetime,
         price: float,
         volume: float,
-        indicator_values: Dict[str, Any],
+        indicator_values: dict[str, Any],
     ) -> None:
         """
         Store indicator calculation result in candle_indicators table.
@@ -421,7 +415,7 @@ class IndicatorRepository:
 
     async def store_indicator_results_batch(
         self,
-        results: List[Tuple[datetime, int, float, float, Dict[str, Any]]],
+        results: list[tuple[datetime, int, float, float, dict[str, Any]]],
     ) -> None:
         """
         Store multiple indicator results in a batch.

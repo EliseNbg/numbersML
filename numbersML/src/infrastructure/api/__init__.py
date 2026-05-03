@@ -1,5 +1,5 @@
 """API Package."""
 
-from .app import create_app, app
+from .app import app, create_app
 
-__all__ = ['create_app', 'app']
+__all__ = ["create_app", "app"]

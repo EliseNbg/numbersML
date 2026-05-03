@@ -11,7 +11,7 @@ from src.domain.strategies.runtime import StrategyLifecycleEvent
 
 class StrategyRuntimeEventRepository(Repository[StrategyLifecycleEvent, UUID]):
     """Repository contract for strategy runtime lifecycle events.
-    
+
     Persists all state transitions for strategies during execution.
     Used for audit trails, debugging, and replaying events.
     """
@@ -26,14 +26,14 @@ class StrategyRuntimeEventRepository(Repository[StrategyLifecycleEvent, UUID]):
         limit: int = 1000,
     ) -> list[StrategyLifecycleEvent]:
         """Fetch lifecycle events for a specific strategy.
-        
+
         Args:
             strategy_id: The strategy to get events for
             from_time: Optional start time filter (inclusive)
             to_time: Optional end time filter (exclusive)
             event_types: Optional filter by event type names
             limit: Maximum number of events to return
-            
+
         Returns:
             List of lifecycle events, most recent first
         """
@@ -46,12 +46,12 @@ class StrategyRuntimeEventRepository(Repository[StrategyLifecycleEvent, UUID]):
         limit: int = 1000,
     ) -> list[StrategyLifecycleEvent]:
         """Fetch events of a specific type across all strategies.
-        
+
         Args:
             event_type: Event type name to filter by
             from_time: Optional start time filter (inclusive)
             limit: Maximum number of events to return
-            
+
         Returns:
             List of matching events, most recent first
         """
@@ -59,7 +59,7 @@ class StrategyRuntimeEventRepository(Repository[StrategyLifecycleEvent, UUID]):
     @abstractmethod
     async def get_current_states(self) -> list[dict[str, Any]]:
         """Get the most recent state for each strategy.
-        
+
         Returns:
             List of dicts with strategy_id, state, and last_state_change
         """
@@ -71,11 +71,11 @@ class StrategyRuntimeEventRepository(Repository[StrategyLifecycleEvent, UUID]):
         limit: int = 100,
     ) -> list[StrategyLifecycleEvent]:
         """Get recent error state transitions.
-        
+
         Args:
             since: Optional filter for events after this time
             limit: Maximum number of errors to return
-            
+
         Returns:
             List of error events, most recent first
         """

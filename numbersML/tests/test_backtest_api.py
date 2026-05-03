@@ -2,7 +2,6 @@
 Unit tests for Backtest API endpoints.
 """
 
-import pytest
 from fastapi.testclient import TestClient
 
 from src.infrastructure.api.app import create_app
@@ -27,7 +26,9 @@ def test_backtest_endpoint_parameters():
     assert response.status_code == 422
 
     # With valid parameters (no specific validation on score_threshold)
-    response = client.get("/api/backtest_ml/trading_tcn?symbol=BTC/USDC&model=test.pt&score_threshold=1.5")
+    response = client.get(
+        "/api/backtest_ml/trading_tcn?symbol=BTC/USDC&model=test.pt&score_threshold=1.5"
+    )
     # Should not be 422 (param validation error)
     assert response.status_code != 422
 

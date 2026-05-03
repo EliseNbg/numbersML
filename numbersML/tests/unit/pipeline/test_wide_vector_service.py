@@ -9,11 +9,11 @@ Tests:
 """
 
 import json
-import pytest
-import asyncio
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from src.pipeline.wide_vector_service import WideVectorService
 
@@ -68,14 +68,14 @@ class TestWideVectorService:
 
         service = WideVectorService(mock_db_pool)
         service._indicator_keys = []  # Skip schema load
-        result = await service.generate(datetime.now(timezone.utc))
+        result = await service.generate(datetime.now(UTC))
 
         assert result is None
 
     @pytest.mark.asyncio
     async def test_generate_with_candles_and_indicators(self, mock_db_pool: MagicMock) -> None:
         """Test full vector generation."""
-        now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=UTC)
 
         candle_rows = [
             {
@@ -161,9 +161,9 @@ class TestWideVectorService:
         )
         service._indicator_keys = []  # Skip schema load
         # Mock external provider to return predictable features
-        mock_external_features = {'ext_feat': 0.0}
+        mock_external_features = {"ext_feat": 0.0}
         service._external_provider = lambda candles, indicators, candle_time: mock_external_features
-        result = await service.generate(datetime.now(timezone.utc))
+        result = await service.generate(datetime.now(UTC))
         # Returns vector with external features + 0.0 values for candle features since no data
         expected_vector = list(mock_external_features.values()) + [0.0, 0.0]
         assert result is not None
@@ -172,7 +172,7 @@ class TestWideVectorService:
     @pytest.mark.asyncio
     async def test_get_vector(self, mock_db_pool: MagicMock) -> None:
         """Test reading stored vector from DB."""
-        now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=UTC)
         vector = [67000.0, 1.5, 65.0, 3500.0, 10.0, 45.0]
 
         mock_row = {
@@ -211,13 +211,13 @@ class TestWideVectorService:
         mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
 
         service = WideVectorService(mock_db_pool)
-        result = await service.get_vector(datetime.now(timezone.utc))
+        result = await service.get_vector(datetime.now(UTC))
         assert result is None
 
     @pytest.mark.asyncio
     async def test_generate_missing_indicators_handled(self, mock_db_pool: MagicMock) -> None:
         """Test that missing indicators for one symbol are handled."""
-        now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=UTC)
 
         candle_rows = [
             {
@@ -268,7 +268,7 @@ class TestWideVectorService:
     @pytest.mark.asyncio
     async def test_generate_with_external_provider(self, mock_db_pool: MagicMock) -> None:
         """Test that external provider features are prepended to vector."""
-        now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=UTC)
 
         candle_rows = [
             {
@@ -313,7 +313,7 @@ class TestWideVectorService:
         self, mock_db_pool: MagicMock
     ) -> None:
         """Test that external provider gets BTC_USDC not BTC/USDC."""
-        now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=UTC)
 
         candle_rows = [
             {
@@ -350,7 +350,7 @@ class TestWideVectorService:
     @pytest.mark.asyncio
     async def test_external_provider_error_handled(self, mock_db_pool: MagicMock) -> None:
         """Test that external provider exception does not break vector generation."""
-        now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=UTC)
 
         candle_rows = [
             {
@@ -385,7 +385,7 @@ class TestWideVectorService:
     @pytest.mark.asyncio
     async def test_no_external_provider_works(self, mock_db_pool: MagicMock) -> None:
         """Test that None provider works normally."""
-        now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=UTC)
 
         candle_rows = [
             {

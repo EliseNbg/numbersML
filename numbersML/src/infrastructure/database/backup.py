@@ -58,7 +58,8 @@ def create_backup(
         backup_file = backup_dir / f"backup_{timestamp}.sql.gz"
         cmd = [
             "pg_dump",
-            "--dbname", db_url,
+            "--dbname",
+            db_url,
             "--no-owner",
             "--no-acl",
             "--clean",
@@ -70,7 +71,8 @@ def create_backup(
         backup_file = backup_dir / f"backup_{timestamp}.sql"
         cmd = [
             "pg_dump",
-            "--dbname", db_url,
+            "--dbname",
+            db_url,
             "--no-owner",
             "--no-acl",
             "--clean",
@@ -121,7 +123,16 @@ def restore_backup(
 
     # Determine format based on file extension
     if backup_file.suffix == ".gz" or backup_file.suffixes == [".sql", ".gz"]:
-        cmd = ["pg_restore", "--dbname", db_url, "--clean", "--if-exists", "--no-owner", "--no-acl", str(backup_file)]
+        cmd = [
+            "pg_restore",
+            "--dbname",
+            db_url,
+            "--clean",
+            "--if-exists",
+            "--no-owner",
+            "--no-acl",
+            str(backup_file),
+        ]
     else:
         # Plain SQL file
         cmd = ["psql", "--dbname", db_url, "--file", str(backup_file)]
@@ -155,14 +166,18 @@ def list_backups(backup_dir: Path | None = None) -> list[dict]:
 
     backups = []
     for f in sorted(backup_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
-        if f.is_file() and (f.suffix == ".sql" or f.suffix == ".gz" or f.suffixes == [".sql", ".gz"]):
+        if f.is_file() and (
+            f.suffix == ".sql" or f.suffix == ".gz" or f.suffixes == [".sql", ".gz"]
+        ):
             stat = f.stat()
-            backups.append({
-                "name": f.name,
-                "path": str(f),
-                "size": stat.st_size,
-                "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-            })
+            backups.append(
+                {
+                    "name": f.name,
+                    "path": str(f),
+                    "size": stat.st_size,
+                    "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                }
+            )
 
     return backups
 

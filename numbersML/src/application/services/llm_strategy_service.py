@@ -20,10 +20,9 @@ import os
 import re
 from dataclasses import dataclass
 from typing import Any, Optional
-from uuid import UUID
 
 from src.domain.repositories.strategy_repository import StrategyRepository
-from src.domain.strategies.config_schema import validate_strategy_config, ValidationIssue
+from src.domain.strategies.config_schema import ValidationIssue, validate_strategy_config
 from src.domain.strategies.strategy_config import StrategyDefinition
 
 logger = logging.getLogger(__name__)
@@ -32,6 +31,7 @@ logger = logging.getLogger(__name__)
 try:
     import openai
     from openai import AsyncOpenAI
+
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
@@ -150,7 +150,9 @@ class LLMStrategyService:
             return LLMGenerationResult(
                 success=False,
                 config=None,
-                issues=[ValidationIssue(path="input", message=f"Security violation: {injection_check}")],
+                issues=[
+                    ValidationIssue(path="input", message=f"Security violation: {injection_check}")
+                ],
                 raw_response="",
                 error_message=f"Input rejected: {injection_check}",
             )
@@ -233,7 +235,9 @@ class LLMStrategyService:
                 )
 
             # Success
-            logger.info(f"Generated valid config for strategy: {config.get('meta', {}).get('name', 'unnamed')}")
+            logger.info(
+                f"Generated valid config for strategy: {config.get('meta', {}).get('name', 'unnamed')}"
+            )
             return LLMGenerationResult(
                 success=True,
                 config=config,
@@ -276,7 +280,9 @@ class LLMStrategyService:
             return LLMGenerationResult(
                 success=False,
                 config=None,
-                issues=[ValidationIssue(path="input", message=f"Security violation: {injection_check}")],
+                issues=[
+                    ValidationIssue(path="input", message=f"Security violation: {injection_check}")
+                ],
                 raw_response="",
                 error_message=f"Input rejected: {injection_check}",
             )
@@ -320,7 +326,7 @@ class LLMStrategyService:
             # Parse and validate
             try:
                 config = json.loads(raw_response)
-            except json.JSONDecodeError as e:
+            except json.JSONDecodeError:
                 return LLMGenerationResult(
                     success=False,
                     config=None,

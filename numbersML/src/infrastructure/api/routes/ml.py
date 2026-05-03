@@ -7,21 +7,20 @@ Provides REST API for ML model predictions:
 - POST /api/ml/predict-and-save - Run prediction and store in candles_1s.predicted_value
 """
 
-import os
-import json
-import sys
-import math
-import time
-import uuid
-import logging
 import asyncio
-import subprocess
-import numpy as np
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+import json
+import logging
+import math
+import os
+import sys
+import time
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from pydantic import BaseModel
+import numpy as np
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
+
 
 class TrainRequest(BaseModel):
     symbol: str
@@ -31,6 +30,7 @@ class TrainRequest(BaseModel):
     look_ahead_min: int
     threshold: float
 
+
 from src.infrastructure.database import get_db_pool_async
 
 logger = logging.getLogger(__name__)
@@ -38,14 +38,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/ml", tags=["ml"])
 
 # Cache for loaded models
-_model_cache: Dict[str, Any] = {}
+_model_cache: dict[str, Any] = {}
 
 
 async def _load_saved_predictions(
     symbol: str,
     hours: float,
     horizon: int = 30,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Load pre-computed predictions from candles_1s.predicted_value.
     Fast — no model loading or inference needed.
@@ -54,14 +54,17 @@ async def _load_saved_predictions(
     db_pool = await get_db_pool_async()
 
     async with db_pool.acquire() as conn:
-        symbol_id = await conn.fetchval(
-            "SELECT id FROM symbols WHERE symbol = $1", symbol
-        )
+        symbol_id = await conn.fetchval("SELECT id FROM symbols WHERE symbol = $1", symbol)
         if not symbol_id:
             return {
-                "symbol": symbol, "candles_count": 0, "targets_count": 0,
-                "predictions_count": 0, "vectors_count": 0,
-                "candles": [], "targets": [], "predictions": [],
+                "symbol": symbol,
+                "candles_count": 0,
+                "targets_count": 0,
+                "predictions_count": 0,
+                "vectors_count": 0,
+                "candles": [],
+                "targets": [],
+                "predictions": [],
             }
 
         # Get the latest time with predicted_value for this symbol
@@ -82,9 +85,14 @@ async def _load_saved_predictions(
 
         if not latest_time:
             return {
-                "symbol": symbol, "candles_count": 0, "targets_count": 0,
-                "predictions_count": 0, "vectors_count": 0,
-                "candles": [], "targets": [], "predictions": [],
+                "symbol": symbol,
+                "candles_count": 0,
+                "targets_count": 0,
+                "predictions_count": 0,
+                "vectors_count": 0,
+                "candles": [],
+                "targets": [],
+                "predictions": [],
             }
 
         start_time = latest_time - timedelta(hours=hours)
@@ -98,7 +106,9 @@ async def _load_saved_predictions(
             WHERE symbol_id = $1 AND time >= $2 AND time <= $3
             ORDER BY time
             """,
-            symbol_id, start_time, latest_time,
+            symbol_id,
+            start_time,
+            latest_time,
         )
 
     candles = []
@@ -106,14 +116,16 @@ async def _load_saved_predictions(
     targets = []
     predictions = []
     for r in rows:
-        candles.append({
-            "time": int(r["time"].timestamp()),
-            "open": float(r["open"]),
-            "high": float(r["high"]),
-            "low": float(r["low"]),
-            "close": float(r["close"]),
-            "volume": float(r["volume"]),
-        })
+        candles.append(
+            {
+                "time": int(r["time"].timestamp()),
+                "open": float(r["open"]),
+                "high": float(r["high"]),
+                "low": float(r["low"]),
+                "close": float(r["close"]),
+                "volume": float(r["volume"]),
+            }
+        )
         closes.append(float(r["close"]))
 
         pv = r["predicted_value"]
@@ -122,10 +134,12 @@ async def _load_saved_predictions(
                 pv = json.loads(pv)
             pred_val = pv.get("value")
             if pred_val is not None:
-                predictions.append({
-                    "time": int(r["time"].timestamp()),
-                    "predicted_target": float(pred_val),
-                })
+                predictions.append(
+                    {
+                        "time": int(r["time"].timestamp()),
+                        "predicted_target": float(pred_val),
+                    }
+                )
 
     # Compute targets from close prices (same raw return formula as training)
     if len(closes) > horizon:
@@ -157,8 +171,10 @@ def _get_torch_and_model():
     """Lazy import torch and model modules to avoid import errors in tests."""
     import numpy as np
     import torch
+
     from ml.config import DatabaseConfig, ModelConfig
     from ml.model import create_model
+
     return np, torch, DatabaseConfig, ModelConfig, create_model
 
 
@@ -204,7 +220,9 @@ def _load_model(model_path: str) -> tuple:
         # CNN_GRU model (feature_proj = LayerNorm + Linear)
         input_dim = state_dict["feature_proj.1.weight"].shape[1]
         model_type = "cnn_gru"
-    elif any(k.startswith("cnn1.") for k in state_dict.keys()) and any(k.startswith("gru.") for k in state_dict.keys()):
+    elif any(k.startswith("cnn1.") for k in state_dict.keys()) and any(
+        k.startswith("gru.") for k in state_dict.keys()
+    ):
         # Old CNN+GRU model
         input_dim = state_dict["cnn1.weight"].shape[1]
         model_type = "cnn_gru"
@@ -244,7 +262,7 @@ def _load_model(model_path: str) -> tuple:
     summary="List available ML models",
     description="List all trained model files in ml/models/ subdirectories",
 )
-async def list_models() -> List[Dict[str, Any]]:
+async def list_models() -> list[dict[str, Any]]:
     """
     List available ML models from subdirectories (simple/, full/, transformer/).
     """
@@ -295,9 +313,14 @@ async def predict(
     model: str = Query(default="best_model.pt", description="Model filename"),
     hours: float = Query(default=720, gt=0, le=1440, description="Hours of data to load"),
     horizon: int = Query(default=30, ge=5, le=300, description="Prediction horizon in seconds"),
-    ensemble_size: int = Query(default=5, ge=1, le=20, description="Average last N predictions for smoothing"),
-    use_saved: bool = Query(default=False, description="Load pre-computed predictions from DB instead of running inference"),
-) -> Dict[str, Any]:
+    ensemble_size: int = Query(
+        default=5, ge=1, le=20, description="Average last N predictions for smoothing"
+    ),
+    use_saved: bool = Query(
+        default=False,
+        description="Load pre-computed predictions from DB instead of running inference",
+    ),
+) -> dict[str, Any]:
     """
     Run ML prediction for a symbol.
 
@@ -321,23 +344,19 @@ async def predict(
 
     async with db_pool.acquire() as conn:
         # Get symbol_id
-        symbol_id = await conn.fetchval(
-            "SELECT id FROM symbols WHERE symbol = $1", symbol
-        )
+        symbol_id = await conn.fetchval("SELECT id FROM symbols WHERE symbol = $1", symbol)
         if not symbol_id:
             raise HTTPException(status_code=404, detail=f"Symbol '{symbol}' not found")
 
         # Time range - use latest available data instead of "now"
         # First get the latest vector time
-        latest_vector_time = await conn.fetchval(
-            "SELECT MAX(time) FROM wide_vectors"
-        )
+        latest_vector_time = await conn.fetchval("SELECT MAX(time) FROM wide_vectors")
         if not latest_vector_time:
             raise HTTPException(status_code=404, detail="No wide vectors available")
-        
+
         now = latest_vector_time
         start_time = now - timedelta(hours=hours)
-        
+
         # Debug output
         print(f"DEBUG: Querying vectors from {start_time} to {now} ({hours} hours)")
 
@@ -353,7 +372,7 @@ async def predict(
             start_time,
             now,
         )
-        
+
         print(f"DEBUG: Got {len(candle_rows)} candles")
 
         # Load wide vectors for prediction
@@ -367,7 +386,7 @@ async def predict(
             start_time,
             now,
         )
-        
+
         print(f"DEBUG: Got {len(vector_rows)} vectors")
 
     # Prepare candles data
@@ -408,10 +427,10 @@ async def predict(
     _, torch, _, _, _ = _get_torch_and_model()
     predictions = []
     vectors = []  # Initialize vectors list
-    
+
     pred_start = time.time()
     logger.info(f"Starting prediction with {len(vector_rows)} vector rows")
-    
+
     if len(vector_rows) >= seq_length:
         # Parse vectors
         vectors = []
@@ -437,7 +456,7 @@ async def predict(
 
             vectors.append(vec)
             timestamps.append(row["time"])
-        
+
         logger.info(f"Parsed {len(vectors)} vectors in {time.time() - parse_start:.2f}s")
 
         # Validate vector dimensions before normalization
@@ -449,15 +468,15 @@ async def predict(
                     raise HTTPException(
                         status_code=400,
                         detail=f"Vector size mismatch: vectors have {vec_size} features but model was trained on {expected_size} features. "
-                               f"The model requires vectors with indicators (ATR, EMA, MACD, RSI, SMA, Bollinger Bands). "
-                               f"Current vectors only have close/volume data. Recalculate wide vectors with indicators enabled."
+                        f"The model requires vectors with indicators (ATR, EMA, MACD, RSI, SMA, Bollinger Bands). "
+                        f"Current vectors only have close/volume data. Recalculate wide vectors with indicators enabled.",
                     )
             elif mean is not None:
                 expected_size = len(mean)
                 if vec_size != expected_size:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"Vector size mismatch: vectors have {vec_size} features but model expects {expected_size} features."
+                        detail=f"Vector size mismatch: vectors have {vec_size} features but model expects {expected_size} features.",
                     )
 
         # Normalize (add epsilon to std to prevent division by zero)
@@ -473,7 +492,7 @@ async def predict(
         # Sliding window prediction
         logger.info(f"Running sliding window prediction: {len(vectors) - seq_length + 1} steps")
         loop_start = time.time()
-        
+
         with torch.no_grad():
             for i in range(seq_length - 1, len(vectors)):
                 sequence = np.stack(vectors[i - seq_length + 1 : i + 1])
@@ -483,9 +502,11 @@ async def predict(
                 # The model internally handles this
                 pred_time = time.time()
                 prediction = ml_model(X).item()
-                
+
                 if (i - seq_length) % 50 == 0:
-                    logger.info(f"  Step {i - seq_length + 1}: model inference took {time.time() - pred_time:.3f}s")
+                    logger.info(
+                        f"  Step {i - seq_length + 1}: model inference took {time.time() - pred_time:.3f}s"
+                    )
 
                 # Check for NaN or Inf
                 if math.isnan(prediction) or math.isinf(prediction):
@@ -497,7 +518,7 @@ async def predict(
                         "predicted_target": round(prediction, 8),
                     }
                 )
-        
+
         logger.info(f"Sliding window prediction completed in {time.time() - loop_start:.2f}s")
 
     # Predictions are normalized [0..1], same scale as target values
@@ -510,16 +531,18 @@ async def predict(
                 if i < ensemble_size - 1:
                     # Not enough history, use available values
                     window_start = max(0, i - ensemble_size + 1)
-                    window = predictions[window_start:i + 1]
+                    window = predictions[window_start : i + 1]
                 else:
                     # Full window
-                    window = predictions[i - ensemble_size + 1:i + 1]
+                    window = predictions[i - ensemble_size + 1 : i + 1]
 
                 avg_value = sum(p["predicted_target"] for p in window) / len(window)
-                smoothed_predictions.append({
-                    "time": predictions[i]["time"],
-                    "predicted_target": round(avg_value, 8),
-                })
+                smoothed_predictions.append(
+                    {
+                        "time": predictions[i]["time"],
+                        "predicted_target": round(avg_value, 8),
+                    }
+                )
 
             predictions = smoothed_predictions
 
@@ -544,12 +567,12 @@ async def _run_prediction_and_save(
     hours: float,
     horizon: int,
     ensemble_size: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Internal: Run prediction and store results in candles_1s.predicted_value.
     Returns status dict for tracking.
     """
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
     status = {
         "status": "running",
         "started_at": started_at.isoformat(),
@@ -566,16 +589,12 @@ async def _run_prediction_and_save(
         db_pool = await get_db_pool_async()
 
         async with db_pool.acquire() as conn:
-            symbol_id = await conn.fetchval(
-                "SELECT id FROM symbols WHERE symbol = $1", symbol
-            )
+            symbol_id = await conn.fetchval("SELECT id FROM symbols WHERE symbol = $1", symbol)
             if not symbol_id:
                 raise ValueError(f"Symbol '{symbol}' not found")
 
             # Get latest vector time
-            latest_vector_time = await conn.fetchval(
-                "SELECT MAX(time) FROM wide_vectors"
-            )
+            latest_vector_time = await conn.fetchval("SELECT MAX(time) FROM wide_vectors")
             if not latest_vector_time:
                 raise ValueError("No wide vectors available")
 
@@ -590,7 +609,9 @@ async def _run_prediction_and_save(
                 WHERE symbol_id = $1 AND time >= $2 AND time < $3
                 ORDER BY time
                 """,
-                symbol_id, start_time, now,
+                symbol_id,
+                start_time,
+                now,
             )
 
             # Load wide vectors
@@ -601,7 +622,8 @@ async def _run_prediction_and_save(
                 WHERE time >= $1 AND time < $2
                 ORDER BY time
                 """,
-                start_time, now,
+                start_time,
+                now,
             )
 
         candles = [
@@ -652,55 +674,63 @@ async def _run_prediction_and_save(
             # Sliding window prediction
             with torch.no_grad():
                 for i in range(seq_length - 1, len(vectors)):
-                    sequence = np.stack(vectors[i - seq_length + 1: i + 1])
+                    sequence = np.stack(vectors[i - seq_length + 1 : i + 1])
                     X = torch.from_numpy(sequence).unsqueeze(0)
                     prediction = ml_model(X).item()
 
                     if math.isnan(prediction) or math.isinf(prediction):
                         prediction = 0.0
 
-                    predictions.append({
-                        "time": timestamps[i],
-                        "predicted_target": round(prediction, 8),
-                    })
+                    predictions.append(
+                        {
+                            "time": timestamps[i],
+                            "predicted_target": round(prediction, 8),
+                        }
+                    )
 
         # Apply ensemble
         if ensemble_size > 1 and len(predictions) >= ensemble_size:
             smoothed = []
             for i in range(len(predictions)):
                 window_start = max(0, i - ensemble_size + 1)
-                window = predictions[window_start:i + 1]
+                window = predictions[window_start : i + 1]
                 avg_value = sum(p["predicted_target"] for p in window) / len(window)
-                smoothed.append({
-                    "time": predictions[i]["time"],
-                    "predicted_target": round(avg_value, 8),
-                })
+                smoothed.append(
+                    {
+                        "time": predictions[i]["time"],
+                        "predicted_target": round(avg_value, 8),
+                    }
+                )
             predictions = smoothed
 
         # Store predictions in DB
-        model_name = os.path.basename(model_path).replace('.pt', '')
+        model_name = os.path.basename(model_path).replace(".pt", "")
         updated = 0
         if predictions and candles:
             pred_map = {p["time"]: p["predicted_target"] for p in predictions}
 
             batch = []
             for t, pred_val in pred_map.items():
-                batch.append((
-                    json.dumps({
-                        "value": pred_val,
-                        "model": model_name,
-                        "horizon": horizon,
-                        "predicted_at": started_at.isoformat(),
-                    }),
-                    symbol_id,
-                    t,
-                ))
+                batch.append(
+                    (
+                        json.dumps(
+                            {
+                                "value": pred_val,
+                                "model": model_name,
+                                "horizon": horizon,
+                                "predicted_at": started_at.isoformat(),
+                            }
+                        ),
+                        symbol_id,
+                        t,
+                    )
+                )
 
             if batch:
                 async with db_pool.acquire() as conn:
                     batch_size = 5000
                     for i in range(0, len(batch), batch_size):
-                        sub_batch = batch[i:i+batch_size]
+                        sub_batch = batch[i : i + batch_size]
                         await conn.executemany(
                             """
                             UPDATE candles_1s SET predicted_value = $1::jsonb
@@ -710,30 +740,34 @@ async def _run_prediction_and_save(
                         )
                 updated = len(batch)
 
-        elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
-        status.update({
-            "status": "completed",
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-            "elapsed_seconds": round(elapsed, 2),
-            "predictions_stored": updated,
-            "predictions_count": len(predictions),
-            "vectors_count": len(vectors),
-        })
+        elapsed = (datetime.now(UTC) - started_at).total_seconds()
+        status.update(
+            {
+                "status": "completed",
+                "completed_at": datetime.now(UTC).isoformat(),
+                "elapsed_seconds": round(elapsed, 2),
+                "predictions_stored": updated,
+                "predictions_count": len(predictions),
+                "vectors_count": len(vectors),
+            }
+        )
 
     except Exception as e:
-        elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
-        status.update({
-            "status": "failed",
-            "error": str(e),
-            "elapsed_seconds": round(elapsed, 2),
-        })
+        elapsed = (datetime.now(UTC) - started_at).total_seconds()
+        status.update(
+            {
+                "status": "failed",
+                "error": str(e),
+                "elapsed_seconds": round(elapsed, 2),
+            }
+        )
 
     return status
 
 
 # Background task registry
-_prediction_tasks: Dict[str, Dict[str, Any]] = {}
-_pending_tasks: List[asyncio.Task] = []
+_prediction_tasks: dict[str, dict[str, Any]] = {}
+_pending_tasks: list[asyncio.Task] = []
 
 
 @router.post(
@@ -747,7 +781,7 @@ async def predict_and_save(
     hours: float = Query(default=720, gt=0, le=1440, description="Hours of data"),
     horizon: int = Query(default=30, ge=5, le=300, description="Prediction horizon"),
     ensemble_size: int = Query(default=5, ge=1, le=20, description="Ensemble size"),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Start prediction in background and store results in candles_1s.predicted_value.
     Uses asyncio.create_task() to run in the same event loop (avoids asyncpg pool issues).
@@ -757,11 +791,13 @@ async def predict_and_save(
     if not os.path.exists(model_path):
         raise HTTPException(status_code=404, detail=f"Model not found: {model_path}")
 
-    task_id = f"{symbol}_{model}_{horizon}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+    task_id = f"{symbol}_{model}_{horizon}_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"
 
     async def run_task():
         try:
-            result = await _run_prediction_and_save(symbol, model_path, hours, horizon, ensemble_size)
+            result = await _run_prediction_and_save(
+                symbol, model_path, hours, horizon, ensemble_size
+            )
             _prediction_tasks[task_id] = result
         except Exception as e:
             _prediction_tasks[task_id] = {
@@ -792,11 +828,15 @@ async def predict_and_save(
 )
 async def get_task_status(
     task_id: str = Query(..., description="Task ID from predict-and-save"),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get status of a background prediction task."""
     task = _prediction_tasks.get(task_id)
     if not task:
-        return {"task_id": task_id, "status": "unknown", "message": "Task not found or still starting"}
+        return {
+            "task_id": task_id,
+            "status": "unknown",
+            "message": "Task not found or still starting",
+        }
     return task
 
 
@@ -812,7 +852,7 @@ async def train_model(
     training_hours: int = Query(160, description="Hours of historical data to use"),
     look_ahead_min: int = Query(60, description="Look ahead time in minutes"),
     threshold: float = Query(0.9, description="Classification threshold"),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     logger.info("\n\n✅ 🔵 ==============================================")
     logger.info("✅ 🔵 SERVER: TRAIN REQUEST ERHALTEN")
     logger.info("✅ 🔵 ==============================================")
@@ -825,7 +865,7 @@ async def train_model(
     logger.info("✅ 🔵 ==============================================\n")
     """
     Start model training in background.
-    
+
     Accepted parameters:
     - symbol: Trading symbol
     - profit_target: Target profit percentage
@@ -838,34 +878,39 @@ async def train_model(
         # Run existing train_entry_model.py script
         import subprocess
         import uuid
-        
+
         model_id = str(uuid.uuid4())[:8]
-        
+
         # Umrechnung UI Prozent Werte in interne Faktoren
         # UI: 0.9 = 0.9% → intern: 0.009
         # ✅ KORREKT: Division durch 100
         profit_factor = profit_target / 100.0
         stop_factor = stop_loss / 100.0
         lookahead_sec = look_ahead_min * 60
-        
+
         cmd = [
             sys.executable,
             "train_entry_model.py",
-            "--symbol", symbol,
-            "--hours", str(training_hours),
-            "--profit", str(profit_factor),
-            "--stop", str(stop_factor),
-            "--lookahead", str(lookahead_sec),
+            "--symbol",
+            symbol,
+            "--hours",
+            str(training_hours),
+            "--profit",
+            str(profit_factor),
+            "--stop",
+            str(stop_factor),
+            "--lookahead",
+            str(lookahead_sec),
         ]
 
         logger.info(f"👉 EXECUTE COMMAND: {' '.join(cmd)}")
         logger.info(f"   profit = {profit_factor} = {profit_target} %")
         logger.info(f"   stop   = {stop_factor} = {stop_loss} %")
-        logger.info("="*70)
-        
+        logger.info("=" * 70)
+
         # Start training process non-blocking
         subprocess.Popen(cmd, cwd=os.getcwd())
-        
+
         return {
             "success": True,
             "model_id": model_id,
@@ -876,10 +921,10 @@ async def train_model(
                 "stop_loss": stop_loss,
                 "training_hours": training_hours,
                 "look_ahead_min": look_ahead_min,
-                "threshold": threshold
-            }
+                "threshold": threshold,
+            },
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to start training: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Training start failed: {str(e)}")

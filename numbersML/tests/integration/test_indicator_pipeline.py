@@ -13,34 +13,44 @@ This test MUST pass before any deployment.
 """
 
 import asyncio
-import asyncpg
 import json
 import logging
-import sys
-import time
-from datetime import datetime, timezone
-from decimal import Decimal
-from typing import Dict, List, Any, Set
 
 # Add src to path (dynamic for local and GitHub Actions)
 import os
+import sys
+import time
+from datetime import UTC, datetime
+from decimal import Decimal
+from typing import Any
+
+import asyncpg
+
 script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(os.path.dirname(script_dir))
-src_path = os.path.join(project_root, 'src')
+src_path = os.path.join(project_root, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
+from src.indicators.momentum import RSIIndicator, StochasticIndicator
+from src.indicators.trend import (
+    ADXIndicator,
+    AroonIndicator,
+    EMAIndicator,
+    MACDIndicator,
+    SMAIndicator,
+)
+from src.indicators.volatility_volume import (
+    ATRIndicator,
+    BollingerBandsIndicator,
+    MFIIndicator,
+    OBVIndicator,
+    VWAPIndicator,
+)
 from src.infrastructure.database.config import get_test_db_url
 
-from src.indicators.momentum import RSIIndicator, StochasticIndicator
-from src.indicators.trend import SMAIndicator, EMAIndicator, MACDIndicator, ADXIndicator, AroonIndicator
-from src.indicators.volatility_volume import (
-    BollingerBandsIndicator, ATRIndicator, OBVIndicator, VWAPIndicator, MFIIndicator
-)
-
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -49,93 +59,105 @@ DB_URL = get_test_db_url()
 
 class TestResult:
     """Track test results."""
-    
+
     def __init__(self, name: str):
         self.name = name
         self.passed = True
-        self.errors: List[str] = []
-        self.warnings: List[str] = []
-        self.details: Dict[str, Any] = {}
-    
+        self.errors: list[str] = []
+        self.warnings: list[str] = []
+        self.details: dict[str, Any] = {}
+
     def fail(self, error: str):
         self.passed = False
         self.errors.append(error)
-    
+
     def warn(self, warning: str):
         self.warnings.append(warning)
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
-            'name': self.name,
-            'passed': self.passed,
-            'errors': self.errors,
-            'warnings': self.warnings,
-            'details': self.details,
+            "name": self.name,
+            "passed": self.passed,
+            "errors": self.errors,
+            "warnings": self.warnings,
+            "details": self.details,
         }
 
 
 async def test_01_indicators_configured() -> TestResult:
     """
     Test 1: Verify indicators are configured in EnrichmentService.
-    
+
     Checks:
     - EnrichmentService has DEFAULT_INDICATORS defined
     - All indicator classes are importable
     - Indicator registry can instantiate them
     """
     result = TestResult("Test 1: Indicators Configured")
-    
+
     try:
         # Import EnrichmentService
         from src.application.services.enrichment_service import EnrichmentService
-        
+
         # Check DEFAULT_INDICATORS exists
-        if not hasattr(EnrichmentService, 'DEFAULT_INDICATORS'):
+        if not hasattr(EnrichmentService, "DEFAULT_INDICATORS"):
             result.fail("EnrichmentService missing DEFAULT_INDICATORS")
             return result
-        
+
         default_indicators = EnrichmentService.DEFAULT_INDICATORS
-        
+
         if not isinstance(default_indicators, list):
             result.fail("DEFAULT_INDICATORS must be a list")
             return result
-        
+
         if len(default_indicators) == 0:
             result.fail("DEFAULT_INDICATORS is empty")
             return result
-        
-        result.details['configured_count'] = len(default_indicators)
-        result.details['indicators'] = default_indicators
-        
+
+        result.details["configured_count"] = len(default_indicators)
+        result.details["indicators"] = default_indicators
+
         # Manually import and test indicators (registry discovery has issues)
         from src.indicators.momentum import RSIIndicator, StochasticIndicator
-        from src.indicators.trend import SMAIndicator, EMAIndicator, MACDIndicator, ADXIndicator, AroonIndicator
-        from src.indicators.volatility_volume import (
-            BollingerBandsIndicator, ATRIndicator, OBVIndicator, VWAPIndicator, MFIIndicator
+        from src.indicators.trend import (
+            ADXIndicator,
+            AroonIndicator,
+            EMAIndicator,
+            MACDIndicator,
+            SMAIndicator,
         )
-        
+        from src.indicators.volatility_volume import (
+            ATRIndicator,
+            BollingerBandsIndicator,
+            MFIIndicator,
+            OBVIndicator,
+            VWAPIndicator,
+        )
+
         # Test that we can instantiate the configured indicators
         working_indicators = []
         missing_indicators = []
-        
+
         # Map indicator names to classes
         indicator_map = {
-            'rsiindicator_period14': RSIIndicator,
-            'smaindicator_period20': lambda: SMAIndicator(period=20),
-            'smaindicator_period50': lambda: SMAIndicator(period=50),
-            'emaindicator_period12': lambda: EMAIndicator(period=12),
-            'emaindicator_period26': lambda: EMAIndicator(period=26),
-            'bbindicator_period20_std_dev2.0': lambda: BollingerBandsIndicator(period=20, std_dev=2.0),
-            'macdindicator_fast_period12_slow_period26_signal_period9': MACDIndicator,
-            'stochasticindicator_k_period14_d_period3': StochasticIndicator,
-            'adxindicator_period14': ADXIndicator,
-            'aroonindicator_period25': AroonIndicator,
-            'atrinticator_period14': lambda: ATRIndicator(period=14),
-            'obvindicator': OBVIndicator,
-            'vwapindicator': VWAPIndicator,
-            'mfiindicator_period14': lambda: MFIIndicator(period=14),
+            "rsiindicator_period14": RSIIndicator,
+            "smaindicator_period20": lambda: SMAIndicator(period=20),
+            "smaindicator_period50": lambda: SMAIndicator(period=50),
+            "emaindicator_period12": lambda: EMAIndicator(period=12),
+            "emaindicator_period26": lambda: EMAIndicator(period=26),
+            "bbindicator_period20_std_dev2.0": lambda: BollingerBandsIndicator(
+                period=20, std_dev=2.0
+            ),
+            "macdindicator_fast_period12_slow_period26_signal_period9": MACDIndicator,
+            "stochasticindicator_k_period14_d_period3": StochasticIndicator,
+            "adxindicator_period14": ADXIndicator,
+            "aroonindicator_period25": AroonIndicator,
+            "atrinticator_period14": lambda: ATRIndicator(period=14),
+            "obvindicator": OBVIndicator,
+            "vwapindicator": VWAPIndicator,
+            "mfiindicator_period14": lambda: MFIIndicator(period=14),
         }
-        
+
         for ind_name in default_indicators:
             try:
                 if ind_name in indicator_map:
@@ -149,67 +171,69 @@ async def test_01_indicators_configured() -> TestResult:
                     missing_indicators.append(ind_name)
             except Exception as e:
                 missing_indicators.append(f"{ind_name}: {e}")
-        
-        result.details['working_indicators'] = working_indicators
-        result.details['missing_indicators'] = missing_indicators
-        
+
+        result.details["working_indicators"] = working_indicators
+        result.details["missing_indicators"] = missing_indicators
+
         if missing_indicators:
             result.fail(f"Missing/failed indicators: {missing_indicators}")
-        
+
         logger.info(f"✓ Configured indicators: {len(working_indicators)}/{len(default_indicators)}")
-        
+
     except Exception as e:
         result.fail(f"Error checking indicators: {e}")
         import traceback
+
         traceback.print_exc()
-    
+
     return result
 
 
 async def test_02_all_indicators_calculable() -> TestResult:
     """
     Test 2: Verify all registered indicators can calculate.
-    
+
     Checks:
     - Each indicator class can be instantiated
     - Each indicator can calculate with sample data
     - Output values are valid (no NaN/Inf)
     """
     result = TestResult("Test 2: All Indicators Calculable")
-    
+
     try:
         # Create sample data (200 data points)
         import numpy as np
+
         np.random.seed(42)
-        
+
         base_price = 100.0
         prices = base_price + np.cumsum(np.random.randn(200) * 0.5)
         volumes = np.random.uniform(1000, 10000, 200)
         highs = prices + np.abs(np.random.randn(200) * 0.3)
         lows = prices - np.abs(np.random.randn(200) * 0.3)
-        
+
         # Test each indicator class
         indicator_classes = [
-            (RSIIndicator, {'period': 14}),
-            (StochasticIndicator, {'k_period': 14, 'd_period': 3}),
-            (SMAIndicator, {'period': 20}),
-            (SMAIndicator, {'period': 50}),
-            (SMAIndicator, {'period': 200}),
-            (EMAIndicator, {'period': 12}),
-            (EMAIndicator, {'period': 26}),
-            (MACDIndicator, {'fast_period': 12, 'slow_period': 26, 'signal_period': 9}),
-            (ADXIndicator, {'period': 14}),
-            (AroonIndicator, {'period': 25}),
-            (BollingerBandsIndicator, {'period': 20, 'std_dev': 2.0}),
-            (ATRIndicator, {'period': 14}),
+            (RSIIndicator, {"period": 14}),
+            (StochasticIndicator, {"k_period": 14, "d_period": 3}),
+            (SMAIndicator, {"period": 20}),
+            (SMAIndicator, {"period": 50}),
+            (SMAIndicator, {"period": 200}),
+            (EMAIndicator, {"period": 12}),
+            (EMAIndicator, {"period": 26}),
+            (MACDIndicator, {"fast_period": 12, "slow_period": 26, "signal_period": 9}),
+            (ADXIndicator, {"period": 14}),
+            (AroonIndicator, {"period": 25}),
+            (BollingerBandsIndicator, {"period": 20, "std_dev": 2.0}),
+            (ATRIndicator, {"period": 14}),
             (OBVIndicator, {}),
             (VWAPIndicator, {}),
-            (MFIIndicator, {'period': 14}),
+            (MFIIndicator, {"period": 14}),
         ]
-        
+
         calculable = []
         failed = []
-        
+
         for ind_class, params in indicator_classes:
             try:
                 indicator = ind_class(**params)
@@ -219,55 +243,56 @@ async def test_02_all_indicators_calculable() -> TestResult:
                     highs=highs,
                     lows=lows,
                 )
-                
+
                 # Check for valid output
                 has_valid = False
                 for key, values in calc_result.values.items():
                     if len(values) > 0 and not np.isnan(values[-1]) and not np.isinf(values[-1]):
                         has_valid = True
                         break
-                
+
                 if has_valid:
                     calculable.append(indicator.name)
                 else:
                     failed.append(f"{indicator.name}: No valid output")
-                    
+
             except Exception as e:
                 failed.append(f"{ind_class.__name__}: {e}")
-        
-        result.details['calculable_count'] = len(calculable)
-        result.details['calculable'] = calculable
-        result.details['failed'] = failed
-        
+
+        result.details["calculable_count"] = len(calculable)
+        result.details["calculable"] = calculable
+        result.details["failed"] = failed
+
         if failed:
             result.fail(f"Failed indicators: {failed}")
-        
+
         logger.info(f"✓ Calculable indicators: {len(calculable)}/{len(indicator_classes)}")
-        
+
     except Exception as e:
         result.fail(f"Error testing calculation: {e}")
         import traceback
+
         traceback.print_exc()
-    
+
     return result
 
 
 async def test_03_db_insert_triggers_notification() -> TestResult:
     """
     Test 3: Verify DB INSERT fires NOTIFY new_tick.
-    
+
     Checks:
     - Trigger exists on ticker_24hr_stats
     - INSERT fires notification
     - Notification payload is valid JSON
     """
     result = TestResult("Test 3: DB INSERT Triggers Notification")
-    
+
     conn = None
     try:
         # Use connect() for dedicated connection with listen support
         conn = await asyncpg.connect(DB_URL)
-        
+
         # Check trigger exists
         trigger_check = await conn.fetchval("""
             SELECT EXISTS (
@@ -276,29 +301,29 @@ async def test_03_db_insert_triggers_notification() -> TestResult:
                 AND tgrelid = 'ticker_24hr_stats'::regclass
             )
         """)
-        
+
         if not trigger_check:
             result.fail("Trigger 'notify_new_tick_trigger' not found on ticker_24hr_stats")
             return result
-        
-        result.details['trigger_exists'] = True
-        
+
+        result.details["trigger_exists"] = True
+
         # Get a test symbol
         symbol_row = await conn.fetchrow("""
             SELECT id, symbol FROM symbols WHERE is_active = true AND is_allowed = true LIMIT 1
         """)
-        
+
         if not symbol_row:
             result.fail("No active symbols in database")
             return result
-        
-        symbol_id = symbol_row['id']
-        symbol_name = symbol_row['symbol']
-        
+
+        symbol_id = symbol_row["id"]
+        symbol_name = symbol_row["symbol"]
+
         # Listen for notification using add_listener (asyncpg 0.31.0+)
         notification_received = asyncio.Event()
         notification_payload = {}
-        
+
         def listener(connection, pid, channel, payload):
             nonlocal notification_payload
             try:
@@ -306,93 +331,110 @@ async def test_03_db_insert_triggers_notification() -> TestResult:
                 notification_received.set()
             except Exception as e:
                 logger.error(f"Error parsing notification: {e}")
-        
-        await conn.add_listener('new_tick', listener)
-        
+
+        await conn.add_listener("new_tick", listener)
+
         # Insert test data (use NOW() for timezone-safe timestamp)
-        await conn.execute("""
+        await conn.execute(
+            """
             INSERT INTO candles_1s (symbol_id, time, open, high, low, close, volume, quote_volume, trade_count)
             VALUES ($1, NOW(), $2, $3, $4, $2, $5, $6, 10)
-        """, symbol_id, Decimal('99.0'), Decimal('101.0'),
-            Decimal('98.0'), Decimal('100.0'), Decimal('1000.0'))
-        
+        """,
+            symbol_id,
+            Decimal("99.0"),
+            Decimal("101.0"),
+            Decimal("98.0"),
+            Decimal("100.0"),
+            Decimal("1000.0"),
+        )
+
         # Wait for notification
         try:
             await asyncio.wait_for(notification_received.wait(), timeout=5.0)
-            
-            if 'symbol_id' not in notification_payload or 'time' not in notification_payload:
+
+            if "symbol_id" not in notification_payload or "time" not in notification_payload:
                 result.fail(f"Invalid notification payload: {notification_payload}")
                 return result
-            
-            result.details['notification_received'] = True
-            result.details['payload_keys'] = list(notification_payload.keys())
-            
+
+            result.details["notification_received"] = True
+            result.details["payload_keys"] = list(notification_payload.keys())
+
             logger.info(f"✓ Notification received: symbol_id={notification_payload['symbol_id']}")
-            
+
         except asyncio.TimeoutError:
             result.fail("No notification received within 5 seconds")
-        
+
     except Exception as e:
         result.fail(f"Error testing notification: {e}")
         import traceback
+
         traceback.print_exc()
-    
+
     finally:
         if conn:
             await conn.close()
-    
+
     return result
 
 
 async def test_04_enrichment_service_running() -> TestResult:
     """
     Test 4: Verify EnrichmentService is running and calculating.
-    
+
     Checks:
     - EnrichmentService process is running (or can be started)
     - Indicators are being stored in candle_indicators table
     - Indicator calculation latency is acceptable (<100ms)
     """
     result = TestResult("Test 4: Enrichment Service Running")
-    
+
     conn = None
     try:
         conn = await asyncpg.connect(DB_URL)
-        
+
         # Check if indicators exist in DB
         indicator_count = await conn.fetchval("SELECT COUNT(*) FROM candle_indicators")
-        result.details['existing_indicators'] = indicator_count
-        
+        result.details["existing_indicators"] = indicator_count
+
         # Get a test symbol
         symbol_id = await conn.fetchval("""
             SELECT id FROM symbols WHERE is_active = true AND is_allowed = true LIMIT 1
         """)
-        
+
         if not symbol_id:
             result.fail("No active symbols in database")
             return result
-        
+
         # Get latest ticker time
-        latest_time = await conn.fetchval("""
+        latest_time = await conn.fetchval(
+            """
             SELECT MAX(time) FROM ticker_24hr_stats WHERE symbol_id = $1
-        """, symbol_id)
-        
+        """,
+            symbol_id,
+        )
+
         # Check if indicators exist for latest ticker
         if latest_time:
-            indicators_at_time = await conn.fetchval("""
+            indicators_at_time = await conn.fetchval(
+                """
                 SELECT COUNT(*) FROM candle_indicators
                 WHERE symbol_id = $1 AND time = $2
-            """, symbol_id, latest_time)
-            
-            result.details['indicators_at_latest_tick'] = indicators_at_time
-            
+            """,
+                symbol_id,
+                latest_time,
+            )
+
+            result.details["indicators_at_latest_tick"] = indicators_at_time
+
             if indicators_at_time > 0:
                 logger.info(f"✓ Found {indicators_at_time} indicators for latest ticker")
             else:
-                result.warn("No indicators for latest ticker (EnrichmentService may not be running)")
-                result.details['enrichment_service_running'] = False
+                result.warn(
+                    "No indicators for latest ticker (EnrichmentService may not be running)"
+                )
+                result.details["enrichment_service_running"] = False
                 return result
-        
+
         # Check enrichment latency
         latency_result = await conn.fetchrow("""
             SELECT
@@ -402,37 +444,40 @@ async def test_04_enrichment_service_running() -> TestResult:
             JOIN ticker_24hr_stats t ON t.symbol_id = ti.symbol_id AND t.time = ti.time
             WHERE ti.created_at > NOW() - INTERVAL '5 minutes'
         """)
-        
-        if latency_result and latency_result['avg_latency_ms']:
-            avg_latency = float(latency_result['avg_latency_ms'])
-            max_latency = float(latency_result['max_latency_ms'])
-            
-            result.details['avg_latency_ms'] = round(avg_latency, 2)
-            result.details['max_latency_ms'] = round(max_latency, 2)
-            
+
+        if latency_result and latency_result["avg_latency_ms"]:
+            avg_latency = float(latency_result["avg_latency_ms"])
+            max_latency = float(latency_result["max_latency_ms"])
+
+            result.details["avg_latency_ms"] = round(avg_latency, 2)
+            result.details["max_latency_ms"] = round(max_latency, 2)
+
             if avg_latency > 100:
                 result.warn(f"High enrichment latency: {avg_latency:.2f}ms (target: <100ms)")
             else:
-                logger.info(f"✓ Enrichment latency: {avg_latency:.2f}ms avg, {max_latency:.2f}ms max")
-        
-        result.details['enrichment_service_running'] = True
-        
+                logger.info(
+                    f"✓ Enrichment latency: {avg_latency:.2f}ms avg, {max_latency:.2f}ms max"
+                )
+
+        result.details["enrichment_service_running"] = True
+
     except Exception as e:
         result.fail(f"Error checking enrichment: {e}")
         import traceback
+
         traceback.print_exc()
-    
+
     finally:
         if conn:
             await conn.close()
-    
+
     return result
 
 
 async def test_05_wide_vector_reads_indicators() -> TestResult:
     """
     Test 5: Verify WIDE_Vector generator reads indicators from DB.
-    
+
     Checks:
     - WIDE_Vector generator can connect to DB
     - Reads ticker data successfully
@@ -443,40 +488,43 @@ async def test_05_wide_vector_reads_indicators() -> TestResult:
 
     pool = None
     try:
-        from src.pipeline.wide_vector_service import WideVectorService
         from src.infrastructure.database import get_db_pool_async
+        from src.pipeline.wide_vector_service import WideVectorService
 
         pool = await get_db_pool_async()
 
         service = WideVectorService(pool)
         await service.load_symbols()
-        
+
         if not service._active_symbols:
             result.fail("No active symbols loaded")
-            if pool: await pool.close()
+            if pool:
+                await pool.close()
             return result
 
-        result.details['symbols_loaded'] = len(service._active_symbols)
+        result.details["symbols_loaded"] = len(service._active_symbols)
 
         # Generate vector for current time (service handles finding latest data)
         start_time = time.time()
-        vector_data = await service.generate(datetime.now(timezone.utc))
+        vector_data = await service.generate(datetime.now(UTC))
         generation_time = (time.time() - start_time) * 1000
 
-        if pool: await pool.close()
+        if pool:
+            await pool.close()
 
         if not vector_data:
             result.fail("Vector generation returned None")
             return result
 
-        result.details['generation_time_ms'] = round(generation_time, 2)
-        result.details['vector_size'] = vector_data.get('vector_size', 0)
-        result.details['total_columns'] = vector_data.get('vector_size', 0)
-        result.details['indicators_found'] = vector_data.get('indicator_count', 0)
+        result.details["generation_time_ms"] = round(generation_time, 2)
+        result.details["vector_size"] = vector_data.get("vector_size", 0)
+        result.details["total_columns"] = vector_data.get("vector_size", 0)
+        result.details["indicators_found"] = vector_data.get("indicator_count", 0)
 
         # Check for NaN/Inf
         import numpy as np
-        vector = vector_data.get('vector', [])
+
+        vector = vector_data.get("vector", [])
         if isinstance(vector, list):
             vector = np.array(vector)
 
@@ -489,21 +537,25 @@ async def test_05_wide_vector_reads_indicators() -> TestResult:
         if has_inf:
             result.fail("Vector contains Inf values")
 
-        logger.info(f"✓ Vector generated: {vector_data.get('vector_size', 0)} columns in {generation_time:.2f}ms")
+        logger.info(
+            f"✓ Vector generated: {vector_data.get('vector_size', 0)} columns in {generation_time:.2f}ms"
+        )
 
     except Exception as e:
         result.fail(f"Error generating vector: {e}")
         import traceback
+
         traceback.print_exc()
-        if pool: await pool.close()
-    
+        if pool:
+            await pool.close()
+
     return result
 
 
 async def test_06_complete_pipeline() -> TestResult:
     """
     Test 6: Complete pipeline test.
-    
+
     Flow:
     1. Insert new ticker data
     2. Wait for enrichment (if service running)
@@ -511,102 +563,122 @@ async def test_06_complete_pipeline() -> TestResult:
     4. Verify indicators in vector
     """
     result = TestResult("Test 6: Complete Pipeline")
-    
+
     conn = None
     try:
         conn = await asyncpg.connect(DB_URL)
-        
+
         # Get a test symbol
         symbol_row = await conn.fetchrow("""
             SELECT id, symbol FROM symbols WHERE symbol = 'BTC/USDT' AND is_active = true AND is_allowed = true
         """)
-        
+
         if not symbol_row:
             # Try any active symbol
             symbol_row = await conn.fetchrow("""
                 SELECT id, symbol FROM symbols WHERE is_active = true AND is_allowed = true LIMIT 1
             """)
-        
+
         if not symbol_row:
             result.fail("No active symbols in database")
             return result
-        
-        symbol_id = symbol_row['id']
-        symbol_name = symbol_row['symbol']
-        
+
+        symbol_id = symbol_row["id"]
+        symbol_name = symbol_row["symbol"]
+
         # Insert fresh candle data (use NOW() for timezone-safe timestamp)
-        await conn.execute("""
+        await conn.execute(
+            """
             INSERT INTO candles_1s (symbol_id, time, open, high, low, close, volume, quote_volume, trade_count)
             VALUES ($1, NOW(), $2, $3, $4, $5, $6, $7, 10)
-        """, symbol_id, Decimal('49900.0'), Decimal('50100.0'),
-            Decimal('49800.0'), Decimal('50000.0'), Decimal('1000.0'), Decimal('50000000.0'))
+        """,
+            symbol_id,
+            Decimal("49900.0"),
+            Decimal("50100.0"),
+            Decimal("49800.0"),
+            Decimal("50000.0"),
+            Decimal("1000.0"),
+            Decimal("50000000.0"),
+        )
 
-        result.details['candle_inserted'] = True
+        result.details["candle_inserted"] = True
 
         # Wait a bit for enrichment
         await asyncio.sleep(2.0)
 
         # Get the time we just inserted
-        latest_time = await conn.fetchval("""
+        latest_time = await conn.fetchval(
+            """
             SELECT MAX(time) FROM candles_1s WHERE symbol_id = $1
-        """, symbol_id)
+        """,
+            symbol_id,
+        )
 
         # Check if indicators were calculated
-        indicator_count = await conn.fetchval("""
+        indicator_count = await conn.fetchval(
+            """
             SELECT COUNT(*) FROM candle_indicators
             WHERE symbol_id = $1 AND time = $2
-        """, symbol_id, latest_time)
+        """,
+            symbol_id,
+            latest_time,
+        )
 
-        result.details['indicators_calculated'] = indicator_count
+        result.details["indicators_calculated"] = indicator_count
 
         if indicator_count > 0:
             # Get indicator keys
-            indicator_keys = await conn.fetchval("""
+            indicator_keys = await conn.fetchval(
+                """
                 SELECT indicator_keys FROM candle_indicators
                 WHERE symbol_id = $1 AND time = $2
-            """, symbol_id, latest_time)
+            """,
+                symbol_id,
+                latest_time,
+            )
 
-            result.details['indicator_keys'] = indicator_keys
+            result.details["indicator_keys"] = indicator_keys
             logger.info(f"✓ {indicator_count} indicators calculated for test ticker")
         else:
             result.warn("No indicators calculated (EnrichmentService may not be running)")
-        
+
         # Generate WIDE vector
-        from src.pipeline.wide_vector_service import WideVectorService
         from src.infrastructure.database import get_db_pool_async
-        
+        from src.pipeline.wide_vector_service import WideVectorService
+
         pool = await get_db_pool_async()
         service = WideVectorService(pool)
         await service.load_symbols()
-        
+
         vector_data = await service.generate(latest_time)
         await pool.close()
 
         if vector_data:
-            result.details['vector_generated'] = True
-            result.details['vector_columns'] = vector_data.get('vector_size', 0)
+            result.details["vector_generated"] = True
+            result.details["vector_columns"] = vector_data.get("vector_size", 0)
             logger.info(f"✓ WIDE vector generated: {vector_data.get('vector_size', 0)} columns")
-        
+
     except Exception as e:
         result.fail(f"Error in pipeline test: {e}")
         import traceback
+
         traceback.print_exc()
-    
+
     finally:
         if conn:
             await conn.close()
-    
+
     return result
 
 
-async def run_all_tests() -> Dict[str, Any]:
+async def run_all_tests() -> dict[str, Any]:
     """Run all integration tests."""
-    
+
     print("=" * 70)
     print("INTEGRATION TEST: Indicator Calculation Pipeline")
     print("=" * 70)
     print()
-    
+
     tests = [
         test_01_indicators_configured,
         test_02_all_indicators_calculable,
@@ -615,66 +687,70 @@ async def run_all_tests() -> Dict[str, Any]:
         test_05_wide_vector_reads_indicators,
         test_06_complete_pipeline,
     ]
-    
+
     results = []
     all_passed = True
-    
+
     for test_func in tests:
-        test_name = test_func.__doc__.strip().split('\n')[0] if test_func.__doc__ else test_func.__name__
+        test_name = (
+            test_func.__doc__.strip().split("\n")[0] if test_func.__doc__ else test_func.__name__
+        )
         print(f"\n{test_name}...")
         print("-" * 50)
-        
+
         try:
             result = await test_func()
             results.append(result.to_dict())
-            
+
             if result.passed:
                 status = "✓ PASSED"
             else:
                 status = "✗ FAILED"
                 all_passed = False
-            
+
             print(f"{status}")
-            
+
             if result.errors:
                 for error in result.errors:
                     print(f"  ERROR: {error}")
-            
+
             if result.warnings:
                 for warning in result.warnings:
                     print(f"  WARNING: {warning}")
-            
+
             if result.details:
                 for key, value in result.details.items():
                     if isinstance(value, list) and len(value) > 5:
                         print(f"  {key}: {len(value)} items")
                     else:
                         print(f"  {key}: {value}")
-            
+
         except Exception as e:
             print(f"✗ EXCEPTION: {e}")
-            results.append({
-                'name': test_name,
-                'passed': False,
-                'errors': [str(e)],
-                'warnings': [],
-                'details': {},
-            })
+            results.append(
+                {
+                    "name": test_name,
+                    "passed": False,
+                    "errors": [str(e)],
+                    "warnings": [],
+                    "details": {},
+                }
+            )
             all_passed = False
-    
+
     # Summary
     print()
     print("=" * 70)
     print("TEST SUMMARY")
     print("=" * 70)
-    
-    passed_count = sum(1 for r in results if r['passed'])
+
+    passed_count = sum(1 for r in results if r["passed"])
     total_count = len(results)
-    
+
     print(f"Passed: {passed_count}/{total_count}")
     print(f"Failed: {total_count - passed_count}/{total_count}")
     print()
-    
+
     if all_passed:
         print("✅ ALL TESTS PASSED")
         print()
@@ -683,29 +759,29 @@ async def run_all_tests() -> Dict[str, Any]:
         print("❌ SOME TESTS FAILED")
         print()
         print("Please fix the issues before deployment.")
-    
+
     print("=" * 70)
-    
+
     return {
-        'timestamp': datetime.now(timezone.utc).isoformat(),
-        'passed': all_passed,
-        'results': results,
-        'summary': {
-            'total': total_count,
-            'passed': passed_count,
-            'failed': total_count - passed_count,
-        }
+        "timestamp": datetime.now(UTC).isoformat(),
+        "passed": all_passed,
+        "results": results,
+        "summary": {
+            "total": total_count,
+            "passed": passed_count,
+            "failed": total_count - passed_count,
+        },
     }
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     results = asyncio.run(run_all_tests())
-    
+
     # Save results to file
-    with open('/tmp/integration_test_results.json', 'w') as f:
+    with open("/tmp/integration_test_results.json", "w") as f:
         json.dump(results, f, indent=2, default=str)
-    
-    print(f"\nResults saved to: /tmp/integration_test_results.json")
-    
+
+    print("\nResults saved to: /tmp/integration_test_results.json")
+
     # Exit with appropriate code
-    sys.exit(0 if results['passed'] else 1)
+    sys.exit(0 if results["passed"] else 1)

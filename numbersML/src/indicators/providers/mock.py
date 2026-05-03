@@ -16,10 +16,10 @@ Example:
     >>> assert result.values['rsi'] == [55.0]  # Pre-defined value
 """
 
-from typing import Dict, List, Optional, Type, Any
 import logging
-import numpy as np
+from typing import Any, Optional
 
+import numpy as np
 from typing_extensions import override
 
 from ..base import Indicator, IndicatorResult
@@ -71,7 +71,7 @@ class MockIndicator(Indicator):
         self._value = value
 
     @classmethod
-    def params_schema(cls) -> Dict[str, Any]:
+    def params_schema(cls) -> dict[str, Any]:
         """Return parameter schema."""
         return {
             "$schema": "http://json-schema.org/draft-07/schema#",
@@ -129,7 +129,7 @@ class MockIndicatorProvider(IIndicatorProvider):
     """
 
     def __init__(
-        self, default_value: float = 50.0, custom_indicators: Optional[Dict[str, float]] = None
+        self, default_value: float = 50.0, custom_indicators: Optional[dict[str, float]] = None
     ) -> None:
         """
         Initialize mock provider.
@@ -139,7 +139,7 @@ class MockIndicatorProvider(IIndicatorProvider):
             custom_indicators: Dict mapping name → custom value
         """
         self._default_value = default_value
-        self._custom_values: Dict[str, float] = custom_indicators or {}
+        self._custom_values: dict[str, float] = custom_indicators or {}
 
     def get_indicator(self, name: str, **params: Any) -> Optional[Indicator]:
         """
@@ -169,7 +169,7 @@ class MockIndicatorProvider(IIndicatorProvider):
         logger.debug(f"Created mock indicator: {name} (value={value})")
         return indicator
 
-    def list_indicators(self) -> List[str]:
+    def list_indicators(self) -> list[str]:
         """
         List available mock indicators.
 
@@ -194,7 +194,7 @@ class MockIndicatorProvider(IIndicatorProvider):
         """
         return True
 
-    def get_indicator_class(self, name: str) -> Optional[Type[Indicator]]:
+    def get_indicator_class(self, name: str) -> Optional[type[Indicator]]:
         """
         Get mock indicator class.
 
@@ -222,7 +222,7 @@ class MockIndicatorProvider(IIndicatorProvider):
         logger.debug(f"Set mock value for {name}: {value}")
 
     @override
-    async def list_indicators_async(self) -> List[str]:
+    async def list_indicators_async(self) -> list[str]:
         """Async version of list_indicators."""
         return self.list_indicators()
 

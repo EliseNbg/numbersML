@@ -7,18 +7,21 @@ Tests cover:
 - Invalid payload handling
 """
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.infrastructure.api.auth import API_KEY_STORE
 
 # Ensure test keys are present
-API_KEY_STORE.update({
-    "admin-test-key": {"roles": ["admin"], "name": "Test Admin Key"},
-    "trader-test-key": {"roles": ["trader", "read"], "name": "Test Trader Key"},
-    "read-test-key": {"roles": ["read"], "name": "Test Read Key"},
-})
+API_KEY_STORE.update(
+    {
+        "admin-test-key": {"roles": ["admin"], "name": "Test Admin Key"},
+        "trader-test-key": {"roles": ["trader", "read"], "name": "Test Trader Key"},
+        "read-test-key": {"roles": ["read"], "name": "Test Read Key"},
+    }
+)
 
 from src.infrastructure.api.app import create_app
 
@@ -65,9 +68,7 @@ class TestMarketAuthorization:
         assert response.status_code == 401
 
     def test_create_order_read_key_forbidden(self, read_headers, order_payload):
-        response = client.post(
-            "/api/market/orders", json=order_payload, headers=read_headers
-        )
+        response = client.post("/api/market/orders", json=order_payload, headers=read_headers)
         assert response.status_code == 403
         assert "Trader or admin access required" in response.json()["detail"]
 
@@ -98,34 +99,26 @@ class TestOrderEndpoints:
             mock_svc.return_value.__enter__ = AsyncMock(return_value=mock_svc.return_value)
             mock_svc.return_value.__exit__ = AsyncMock(return_value=False)
 
-            response = client.post(
-                "/api/market/orders", json=order_payload, headers=trader_headers
-            )
+            response = client.post("/api/market/orders", json=order_payload, headers=trader_headers)
             # Should not be 403 (auth passes)
             assert response.status_code != 403
 
     def test_create_order_invalid_payload(self, trader_headers):
         invalid_payload = {"symbol": "BTC/USDC"}  # Missing required fields
-        response = client.post(
-            "/api/market/orders", json=invalid_payload, headers=trader_headers
-        )
+        response = client.post("/api/market/orders", json=invalid_payload, headers=trader_headers)
         assert response.status_code == 422  # Validation error
 
     def test_cancel_order_success(self, trader_headers):
         with patch("src.infrastructure.api.routes.market.get_market_service") as mock_svc:
             mock_svc.return_value.cancel_order = AsyncMock(return_value=True)
-            response = client.delete(
-                "/api/market/orders/test-order-123", headers=trader_headers
-            )
+            response = client.delete("/api/market/orders/test-order-123", headers=trader_headers)
             assert response.status_code == 200
             assert "cancelled" in response.json()["message"].lower()
 
     def test_cancel_order_failure(self, trader_headers):
         with patch("src.infrastructure.api.routes.market.get_market_service") as mock_svc:
             mock_svc.return_value.cancel_order = AsyncMock(return_value=False)
-            response = client.delete(
-                "/api/market/orders/test-order-123", headers=trader_headers
-            )
+            response = client.delete("/api/market/orders/test-order-123", headers=trader_headers)
             assert response.status_code == 400
 
 

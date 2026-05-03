@@ -1,9 +1,9 @@
 """Integration tests for StrategyRepositoryPG against real PostgreSQL."""
 
-from datetime import datetime, timezone
-from pathlib import Path
 import os
 import uuid
+from datetime import UTC, datetime
+from pathlib import Path
 
 import asyncpg
 import pytest
@@ -44,7 +44,7 @@ class TestStrategyRepositoryPGIntegration:
     async def test_save_create_version_and_activate(self, db_conn: asyncpg.Connection) -> None:
         repo = StrategyRepositoryPG(db_conn)
         unique_name = f"it_strategy_{uuid.uuid4().hex[:8]}"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         strategy = StrategyDefinition(
             name=unique_name,
             description="integration test strategy",

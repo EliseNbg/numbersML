@@ -5,12 +5,11 @@ Tests the backfill script with a real database connection.
 Requires PostgreSQL running (start with: ./scripts/test.sh start)
 """
 
-import pytest
-import asyncio
-import asyncpg
 import json
-from datetime import datetime, timedelta, timezone
-from typing import Dict, Any
+from datetime import UTC, datetime
+
+import asyncpg
+import pytest
 
 
 async def _init_utc(conn):
@@ -18,7 +17,6 @@ async def _init_utc(conn):
 
 
 from src.cli.backfill import HistoricalBackfill
-
 
 # Test database URL
 DB_URL = "postgresql://crypto:crypto_secret@localhost:5432/crypto_trading"
@@ -145,12 +143,10 @@ class TestBackfillIntegration:
             )
 
             # Disable and disallow the test symbol after test
-            await conn.execute(
-                """
+            await conn.execute("""
                 UPDATE symbols SET is_active = false, is_allowed = false
                 WHERE symbol = 'TEST/USDT'
-                """
-            )
+                """)
 
     @pytest.mark.asyncio
     async def test_backfill_dry_run(self, db_pool: asyncpg.Pool) -> None:
@@ -190,7 +186,7 @@ class TestBackfillIntegration:
                 "backfill_checkpoint_TESTUSDT",
                 json.dumps(
                     {
-                        "last_time": datetime.now(timezone.utc).isoformat(),
+                        "last_time": datetime.now(UTC).isoformat(),
                         "days": 1,
                         "records": 86400,
                     }
@@ -234,7 +230,7 @@ class TestBackfillIntegration:
                 "backfill_checkpoint_TESTUSDT",
                 json.dumps(
                     {
-                        "last_time": datetime.now(timezone.utc).isoformat(),
+                        "last_time": datetime.now(UTC).isoformat(),
                         "days": 7,  # More than our test (1 day)
                         "records": 604800,
                     }
@@ -285,7 +281,7 @@ class TestBackfillDataValidation:
         ]
 
         # Parse time
-        time = datetime.fromtimestamp(kline[0] / 1000, tz=timezone.utc)
+        time = datetime.fromtimestamp(kline[0] / 1000, tz=UTC)
         assert time.year == 2024
 
         # Parse prices

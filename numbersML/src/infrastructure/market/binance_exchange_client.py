@@ -117,7 +117,9 @@ class BinanceExchangeClient(LiveExchangeClient):
         session = await self._get_session()
         url = f"{self._environment.base_url}{path}"
         headers = {"X-MBX-APIKEY": self._api_key} if signed and self._api_key else {}
-        async with session.request(method=method, url=url, params=params, headers=headers) as response:
+        async with session.request(
+            method=method, url=url, params=params, headers=headers
+        ) as response:
             data = await response.json()
             if response.status >= 400:
                 raise RuntimeError(f"Binance API error ({response.status}): {data}")
@@ -125,7 +127,9 @@ class BinanceExchangeClient(LiveExchangeClient):
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self._timeout_seconds))
+            self._session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=self._timeout_seconds)
+            )
         return self._session
 
     def _require_credentials(self) -> None:

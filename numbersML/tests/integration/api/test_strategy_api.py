@@ -9,11 +9,12 @@ Tests cover:
 - Invalid payload handling
 """
 
-import pytest
-from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, MagicMock, patch
 import os
 import sys
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from fastapi.testclient import TestClient
 
 # Set test API keys BEFORE importing app
 os.environ["API_KEY_ADMIN"] = "admin-test-key"
@@ -28,11 +29,13 @@ for mod in list(sys.modules.keys()):
 from src.infrastructure.api.auth import API_KEY_STORE
 
 # Update API_KEY_STORE with test keys
-API_KEY_STORE.update({
-    "admin-test-key": {"roles": ["admin"], "name": "Test Admin Key"},
-    "trader-test-key": {"roles": ["trader", "read"], "name": "Test Trader Key"},
-    "read-test-key": {"roles": ["read"], "name": "Test Read Key"},
-})
+API_KEY_STORE.update(
+    {
+        "admin-test-key": {"roles": ["admin"], "name": "Test Admin Key"},
+        "trader-test-key": {"roles": ["trader", "read"], "name": "Test Trader Key"},
+        "read-test-key": {"roles": ["read"], "name": "Test Read Key"},
+    }
+)
 
 from src.infrastructure.api.app import create_app
 
@@ -108,9 +111,7 @@ class TestAuthorization:
         with patch("src.infrastructure.api.routes.strategies.get_strategy_repo") as mock_repo:
             mock_repo.return_value.save = AsyncMock()
             mock_repo.return_value.create_version = AsyncMock()
-            response = client.post(
-                "/api/strategies", json=strategy_payload, headers=trader_headers
-            )
+            response = client.post("/api/strategies", json=strategy_payload, headers=trader_headers)
             # Will fail on repo init, but auth should pass
             assert response.status_code != 403
 
@@ -130,17 +131,13 @@ class TestStrategyCRUD:
             mock_repo.return_value.save = mock_save
             mock_repo.return_value.create_version = AsyncMock()
 
-            response = client.post(
-                "/api/strategies", json=strategy_payload, headers=trader_headers
-            )
+            response = client.post("/api/strategies", json=strategy_payload, headers=trader_headers)
             assert response.status_code == 201
             assert "strategy" in response.json()["message"].lower()
 
     def test_create_strategy_invalid_payload(self, trader_headers):
         invalid_payload = {"name": ""}  # Empty name
-        response = client.post(
-            "/api/strategies", json=invalid_payload, headers=trader_headers
-        )
+        response = client.post("/api/strategies", json=invalid_payload, headers=trader_headers)
         assert response.status_code == 422  # Validation error
 
     def test_list_strategies(self, trader_headers):
@@ -176,12 +173,11 @@ class TestStrategyLifecycle:
         assert response.status_code == 401
 
     def test_activate_strategy_with_trader_auth(self, trader_headers):
-        with patch("src.infrastructure.api.routes.strategies.get_lifecycle_service") as mock_svc, patch(
-            "src.infrastructure.api.routes.strategies.get_strategy_repo"
-        ) as mock_repo:
-            mock_repo.return_value.get_by_id = AsyncMock(
-                return_value=MagicMock(mode="paper")
-            )
+        with (
+            patch("src.infrastructure.api.routes.strategies.get_lifecycle_service") as mock_svc,
+            patch("src.infrastructure.api.routes.strategies.get_strategy_repo") as mock_repo,
+        ):
+            mock_repo.return_value.get_by_id = AsyncMock(return_value=MagicMock(mode="paper"))
             mock_svc.return_value.activate_strategy = AsyncMock(return_value=True)
             response = client.post(
                 "/api/strategies/123e4567-e89b-12d3-a456-426614174000/activate",
@@ -193,9 +189,7 @@ class TestStrategyLifecycle:
 
     def test_activate_live_mode_requires_admin(self, trader_headers):
         with patch("src.infrastructure.api.routes.strategies.get_strategy_repo") as mock_repo:
-            mock_repo.return_value.get_by_id = AsyncMock(
-                return_value=MagicMock(mode="live")
-            )
+            mock_repo.return_value.get_by_id = AsyncMock(return_value=MagicMock(mode="live"))
             response = client.post(
                 "/api/strategies/123e4567-e89b-12d3-a456-426614174000/activate",
                 json={"version": 1},

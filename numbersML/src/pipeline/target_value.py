@@ -22,10 +22,10 @@ Usage:
     >>> targets = batch_calculate(prices)
 """
 
-import math
+from typing import Any, Optional
+
 import numpy as np
-from typing import List, Optional, Tuple, Dict, Any
-from scipy.signal import savgol_filter, find_peaks
+from scipy.signal import find_peaks, savgol_filter
 
 
 class KalmanFilter1D:
@@ -63,19 +63,15 @@ class KalmanFilter1D:
         self.P = np.eye(2) * 10.0
 
         # Process noise covariance (how much trend can change)
-        self.Q = np.array([
-            [process_noise * 0.25, process_noise * 0.5],
-            [process_noise * 0.5, process_noise]
-        ])
+        self.Q = np.array(
+            [[process_noise * 0.25, process_noise * 0.5], [process_noise * 0.5, process_noise]]
+        )
 
         # Measurement noise (price noise)
         self.R = measurement_noise
 
         # State transition matrix (constant velocity model)
-        self.F = np.array([
-            [1.0, 1.0],
-            [0.0, 1.0]
-        ])
+        self.F = np.array([[1.0, 1.0], [0.0, 1.0]])
 
         # Measurement matrix (we observe position only)
         self.H = np.array([[1.0, 0.0]])
@@ -143,7 +139,7 @@ class KalmanFilter1D:
 def estimate_kalman_params(
     prices: np.ndarray,
     lookback: int = 100,
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """
     Estimate optimal Kalman filter parameters from recent price data.
 
@@ -198,7 +194,7 @@ def response_time_to_noise_ratio(response_time: float) -> float:
     # So: λ ≈ 1/response_time
     if response_time <= 0:
         return 1.0  # Maximum responsiveness
-    
+
     return 1.0 / response_time
 
 
@@ -248,16 +244,16 @@ def kalman_filter_prices(
     if auto_tune:
         # Auto-estimate base noise levels from data
         q_base, r_base = estimate_kalman_params(prices)
-        
+
         # Apply response_time to set Q/R ratio
         noise_ratio = response_time_to_noise_ratio(response_time)
-        
+
         # Scale: keep base levels but adjust ratio
         # Q/R = noise_ratio, so Q = noise_ratio * R
         # Use geometric mean to preserve overall noise level
         target_ratio = noise_ratio
         current_ratio = q_base / r_base if r_base > 0 else 1.0
-        
+
         # Adjust to match target ratio
         scale_factor = np.sqrt(target_ratio / current_ratio) if current_ratio > 0 else 1.0
         process_noise = q_base * scale_factor
@@ -309,7 +305,7 @@ def calculate_target_data(
     center: int,
     response_time: float = 200.0,
     use_kalman: bool = True,
-) -> Optional[Dict[str, Any]]:
+) -> Optional[dict[str, Any]]:
     """
     Calculate complete market state for a single candle as JSON-serializable dict.
 
@@ -336,16 +332,16 @@ def calculate_target_data(
 
     if center < 1:
         return {
-            'filtered_value': current_price,
-            'close': current_price,
-            'diff': 0.0,
-            'trend': 'flat',
-            'velocity': 0.0,
+            "filtered_value": current_price,
+            "close": current_price,
+            "diff": 0.0,
+            "trend": "flat",
+            "velocity": 0.0,
         }
 
     if use_kalman:
         # Use Kalman Filter
-        history = prices[:center + 1]
+        history = prices[: center + 1]
         if len(history) < 2:
             return None
 
@@ -367,18 +363,18 @@ def calculate_target_data(
 
     # Determine trend direction
     if velocity > 0.01:
-        trend = 'up'
+        trend = "up"
     elif velocity < -0.01:
-        trend = 'down'
+        trend = "down"
     else:
-        trend = 'flat'
+        trend = "flat"
 
     return {
-        'filtered_value': round(filtered_value, 8),
-        'close': current_price,
-        'diff': round(diff, 8),
-        'trend': trend,
-        'velocity': round(velocity, 8),
+        "filtered_value": round(filtered_value, 8),
+        "close": current_price,
+        "diff": round(diff, 8),
+        "trend": trend,
+        "velocity": round(velocity, 8),
     }
 
 
@@ -435,7 +431,7 @@ def savgol_filter_prices(
             prices,
             window_length=actual_window,
             polyorder=actual_polyorder,
-            mode='nearest',
+            mode="nearest",
         )
 
         if causal:
@@ -446,7 +442,7 @@ def savgol_filter_prices(
 
             # Handle the first 'shift' points with partial windows
             for i in range(1, min(shift + 1, n)):
-                window = prices[0:i+1]
+                window = prices[0 : i + 1]
                 if len(window) > actual_polyorder:
                     try:
                         win_len = len(window) if len(window) % 2 == 1 else len(window) - 1
@@ -456,7 +452,7 @@ def savgol_filter_prices(
                             window,
                             window_length=win_len,
                             polyorder=win_poly,
-                            mode='nearest',
+                            mode="nearest",
                         )[-1]
                     except:
                         pass  # Keep the rolled value
@@ -473,18 +469,18 @@ def savgol_filter_prices(
                 half = actual_window // 2
                 start = max(0, i - half)
                 end = min(n, i + half + 1)
-            filtered[i] = np.mean(prices[start:i+1])
+            filtered[i] = np.mean(prices[start : i + 1])
 
     return filtered
 
 
 def batch_calculate_target_data(
-    prices: List[float],
+    prices: list[float],
     response_time: float = 2000.0,
-    method: str = 'hanning',
+    method: str = "hanning",
     use_future: bool = True,  # For ML training only!
     use_kalman: bool = True,  # Deprecated, kept for backward compatibility
-) -> List[Optional[Dict[str, Any]]]:
+) -> list[Optional[dict[str, Any]]]:
     """
     Calculate market state for all candles in a price series.
 
@@ -507,19 +503,19 @@ def batch_calculate_target_data(
     prices_arr = np.array(prices, dtype=np.float64)
 
     # Handle deprecated use_kalman parameter
-    if method == 'kalman' or (use_kalman and method not in ['savgol', 'hanning']):
+    if method == "kalman" or (use_kalman and method not in ["savgol", "hanning"]):
         if not use_kalman:
-            method = 'hanning'
+            method = "hanning"
         else:
-            method = 'savgol' if method not in ['kalman', 'savgol', 'hanning'] else method
+            method = "savgol" if method not in ["kalman", "savgol", "hanning"] else method
 
     # Calculate filtered values based on method
-    if method == 'kalman':
+    if method == "kalman":
         filtered = kalman_filter_prices(prices_arr, response_time=response_time)
-    elif method == 'savgol':
+    elif method == "savgol":
         causal = not use_future  # If use_future=True, causal=False
         filtered = savgol_filter_prices(prices_arr, window_length=int(response_time), causal=causal)
-    elif method == 'hanning':
+    elif method == "hanning":
         # Hanning Filter
         # Uses a sliding window of data with Hanning weights
         window_length = int(response_time)
@@ -531,7 +527,7 @@ def batch_calculate_target_data(
             hann = hann / hann.sum()
 
             # Convolve prices with Hanning window
-            valid_conv = np.convolve(prices_arr, hann, mode='valid')
+            valid_conv = np.convolve(prices_arr, hann, mode="valid")
 
             filtered = np.empty_like(prices_arr)
             shift = window_length // 2
@@ -539,21 +535,21 @@ def batch_calculate_target_data(
             if not use_future:
                 # Causal: Align result with the END of the window (uses past data only)
                 # valid_conv[i] corresponds to window ending at i + window_length - 1
-                filtered[:window_length-1] = prices_arr[:window_length-1]
-                filtered[window_length-1:] = valid_conv
+                filtered[: window_length - 1] = prices_arr[: window_length - 1]
+                filtered[window_length - 1 :] = valid_conv
             else:
                 # Centered: Align result with the CENTER of the window (uses future data)
                 # valid_conv[i] corresponds to window centered at i + shift
                 filtered[:shift] = prices_arr[:shift]
-                filtered[shift:shift+len(valid_conv)] = valid_conv
-                filtered[shift+len(valid_conv):] = prices_arr[shift+len(valid_conv):]
+                filtered[shift : shift + len(valid_conv)] = valid_conv
+                filtered[shift + len(valid_conv) :] = prices_arr[shift + len(valid_conv) :]
     else:  # legacy fallback
         filtered = prices_arr  # Simplified
 
     # Calculate velocity (rate of change of filtered trend, used for trend direction)
     velocity = np.zeros(len(filtered))
     for i in range(1, len(filtered)):
-        velocity[i] = float(filtered[i]) - float(filtered[i-1])
+        velocity[i] = float(filtered[i]) - float(filtered[i - 1])
 
     # Compute std of price returns for ML target scaling
     # Use 30s return std as reference scale
@@ -591,18 +587,20 @@ def batch_calculate_target_data(
                 start_idx = int(all_extrema[seg_idx])
                 end_idx = int(all_extrema[seg_idx + 1])
 
-                segment_min = float(filtered[start_idx:end_idx+1].min())
-                segment_max = float(filtered[start_idx:end_idx+1].max())
+                segment_min = float(filtered[start_idx : end_idx + 1].min())
+                segment_max = float(filtered[start_idx : end_idx + 1].max())
 
-                norm_min[start_idx:end_idx+1] = segment_min
-                norm_max[start_idx:end_idx+1] = segment_max
+                norm_min[start_idx : end_idx + 1] = segment_min
+                norm_max[start_idx : end_idx + 1] = segment_max
 
                 # Normalize to [0..1]
                 seg_range = segment_max - segment_min
                 if seg_range > 0:
-                    normalized[start_idx:end_idx+1] = (filtered[start_idx:end_idx+1] - segment_min) / seg_range
+                    normalized[start_idx : end_idx + 1] = (
+                        filtered[start_idx : end_idx + 1] - segment_min
+                    ) / seg_range
                 else:
-                    normalized[start_idx:end_idx+1] = 0.5  # Flat segment -> middle
+                    normalized[start_idx : end_idx + 1] = 0.5  # Flat segment -> middle
         except Exception:
             # Fallback: use running window min/max
             window = 60
@@ -641,7 +639,7 @@ def batch_calculate_target_data(
 
         # Velocity (rate of change)
         if i > 0:
-            vel = filtered_value - float(filtered[i-1])
+            vel = filtered_value - float(filtered[i - 1])
         else:
             vel = 0.0
 
@@ -662,26 +660,28 @@ def batch_calculate_target_data(
 
         # Trend direction
         if vel > 0.01:
-            trend = 'up'
+            trend = "up"
         elif vel < -0.01:
-            trend = 'down'
+            trend = "down"
         else:
-            trend = 'flat'
+            trend = "flat"
 
-        results.append({
-            'filtered_value': round(filtered_value, 8),
-            'close': current_price,
-            'diff': round(diff, 8),
-            'trend': trend,
-            'velocity': round(vel, 8),
-            'normalized_value': round(norm_val, 8),
-            'norm_min': round(n_min, 8),
-            'norm_max': round(n_max, 8),
-            'ml_target_30': ml_target_30,
-            'ml_target_120': ml_target_120,
-            'method': method,
-            'use_future': use_future if method == 'savgol' else False,
-        })
+        results.append(
+            {
+                "filtered_value": round(filtered_value, 8),
+                "close": current_price,
+                "diff": round(diff, 8),
+                "trend": trend,
+                "velocity": round(vel, 8),
+                "normalized_value": round(norm_val, 8),
+                "norm_min": round(n_min, 8),
+                "norm_max": round(n_max, 8),
+                "ml_target_30": ml_target_30,
+                "ml_target_120": ml_target_120,
+                "method": method,
+                "use_future": use_future if method == "savgol" else False,
+            }
+        )
 
     return results
 
@@ -720,7 +720,7 @@ def calculate_target_value(
 
     if use_kalman:
         # Use Kalman Filter up to current candle
-        history = prices[:center + 1]
+        history = prices[: center + 1]
         if len(history) < 2:
             return 0.0
 
@@ -747,11 +747,11 @@ def calculate_target_value(
 
 
 def batch_calculate(
-    prices: List[float],
+    prices: list[float],
     window_size: int = 300,
     response_time: float = 50.0,
     use_kalman: bool = True,
-) -> List[float]:
+) -> list[float]:
     """
     Calculate target values for all candles in a price series.
 
@@ -770,9 +770,7 @@ def batch_calculate(
         return []
 
     prices_arr = np.array(prices, dtype=np.float64)
-    return batch_calculate_numpy(
-        prices_arr, window_size, response_time, use_kalman
-    ).tolist()
+    return batch_calculate_numpy(prices_arr, window_size, response_time, use_kalman).tolist()
 
 
 def batch_calculate_numpy(
@@ -818,7 +816,7 @@ def batch_calculate_numpy(
 
         if n >= window_size:
             hanning = hanning_window(window_size)
-            smoothed_with_current = np.convolve(prices, hanning, mode='valid')
+            smoothed_with_current = np.convolve(prices, hanning, mode="valid")
 
             for i in range(window_size, n):
                 smoothed = smoothed_with_current[i - window_size]

@@ -12,17 +12,17 @@ import pytest
 from fastapi import FastAPI, status
 from fastapi.testclient import TestClient
 
-from src.infrastructure.api.routes.dashboard import router as dashboard_router
-from src.infrastructure.api.routes.symbols import router as symbols_router
-from src.infrastructure.api.routes.indicators import router as indicators_router
+from src.infrastructure.api.routes.candles import router as candles_router
 from src.infrastructure.api.routes.config import router as config_router
+from src.infrastructure.api.routes.dashboard import router as dashboard_router
+from src.infrastructure.api.routes.indicators import router as indicators_router
+from src.infrastructure.api.routes.market import router as market_router
+from src.infrastructure.api.routes.ml import router as ml_router
 from src.infrastructure.api.routes.pipeline import router as pipeline_router
 from src.infrastructure.api.routes.strategies import router as strategies_router
-from src.infrastructure.api.routes.market import router as market_router
 from src.infrastructure.api.routes.strategy_backtest import router as strategy_backtest_router
-from src.infrastructure.api.routes.candles import router as candles_router
+from src.infrastructure.api.routes.symbols import router as symbols_router
 from src.infrastructure.api.routes.target_values import router as target_values_router
-from src.infrastructure.api.routes.ml import router as ml_router
 
 
 class TestDashboardRoutes:
@@ -406,7 +406,8 @@ class TestStrategyRoutes:
     @pytest.fixture
     def app(self) -> FastAPI:
         """Create test app with strategy routes."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock
+
         import asyncpg
 
         app = FastAPI()

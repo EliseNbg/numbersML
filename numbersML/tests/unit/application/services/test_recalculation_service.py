@@ -1,8 +1,10 @@
 """Tests for recalculation service."""
 
-import pytest
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from src.application.services.recalculation_service import RecalculationService
 
 
@@ -33,23 +35,23 @@ class TestRecalculationService:
         assert recalc_service.batch_size == 1000
         assert recalc_service.max_workers == 2
         assert recalc_service._running is False
-        assert recalc_service._stats['jobs_started'] == 0
+        assert recalc_service._stats["jobs_started"] == 0
 
     def test_get_stats(self, recalc_service: RecalculationService) -> None:
         """Test getting statistics."""
         recalc_service._stats = {
-            'jobs_started': 10,
-            'jobs_completed': 8,
-            'jobs_failed': 2,
-            'ticks_recalculated': 50000,
+            "jobs_started": 10,
+            "jobs_completed": 8,
+            "jobs_failed": 2,
+            "ticks_recalculated": 50000,
         }
 
         stats = recalc_service.get_stats()
 
-        assert stats['jobs_started'] == 10
-        assert stats['jobs_completed'] == 8
-        assert stats['jobs_failed'] == 2
-        assert stats['ticks_recalculated'] == 50000
+        assert stats["jobs_started"] == 10
+        assert stats["jobs_completed"] == 8
+        assert stats["jobs_failed"] == 2
+        assert stats["ticks_recalculated"] == 50000
 
     @pytest.mark.asyncio
     async def test_start_service(
@@ -58,7 +60,7 @@ class TestRecalculationService:
     ) -> None:
         """Test starting the service."""
         # Mock the listen method
-        with patch.object(recalc_service, '_listen_for_changes') as mock_listen:
+        with patch.object(recalc_service, "_listen_for_changes") as mock_listen:
             mock_listen.side_effect = asyncio.CancelledError()
 
             try:
@@ -79,7 +81,7 @@ class TestRecalculationService:
         # Add mock active job with proper cancel behavior
         mock_task = AsyncMock()
         mock_task.cancel = MagicMock()
-        recalc_service._active_jobs['job_1'] = mock_task
+        recalc_service._active_jobs["job_1"] = mock_task
 
         await recalc_service.stop()
 
@@ -94,17 +96,18 @@ class TestRecalculationService:
     ) -> None:
         """Test heartbeat logging."""
         import logging
-        recalc_service._stats['jobs_started'] = 10
+
+        recalc_service._stats["jobs_started"] = 10
 
         # Set up logging to capture INFO level
-        logger = logging.getLogger('src.application.services.recalculation_service')
+        logger = logging.getLogger("src.application.services.recalculation_service")
         original_level = logger.level
         logger.setLevel(logging.INFO)
 
         try:
             await recalc_service._heartbeat()
             # Should log stats at 10 jobs
-            assert 'Recalculation stats' in caplog.text
+            assert "Recalculation stats" in caplog.text
         finally:
             logger.setLevel(original_level)
 
@@ -117,10 +120,12 @@ class TestRecalculationService:
         """Test loading ticks from database."""
         # Mock database connection
         mock_conn = AsyncMock()
-        mock_conn.fetch = AsyncMock(return_value=[
-            {'time': '2024-01-01', 'price': 50000.0, 'quantity': 0.001},
-            {'time': '2024-01-02', 'price': 51000.0, 'quantity': 0.002},
-        ])
+        mock_conn.fetch = AsyncMock(
+            return_value=[
+                {"time": "2024-01-01", "price": 50000.0, "quantity": 0.001},
+                {"time": "2024-01-02", "price": 51000.0, "quantity": 0.002},
+            ]
+        )
         mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
 
         # Load ticks
@@ -131,8 +136,8 @@ class TestRecalculationService:
         )
 
         assert len(ticks) == 2
-        assert ticks[0]['price'] == 50000.0
-        assert ticks[1]['price'] == 51000.0
+        assert ticks[0]["price"] == 50000.0
+        assert ticks[1]["price"] == 51000.0
 
     @pytest.mark.asyncio
     async def test_get_active_symbols(
@@ -143,18 +148,20 @@ class TestRecalculationService:
         """Test getting active symbols."""
         # Mock database connection
         mock_conn = AsyncMock()
-        mock_conn.fetch = AsyncMock(return_value=[
-            {'id': 1, 'symbol': 'BTC/USDT'},
-            {'id': 2, 'symbol': 'ETH/USDT'},
-        ])
+        mock_conn.fetch = AsyncMock(
+            return_value=[
+                {"id": 1, "symbol": "BTC/USDT"},
+                {"id": 2, "symbol": "ETH/USDT"},
+            ]
+        )
         mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
 
         # Get active symbols
         symbols = await recalc_service._get_active_symbols()
 
         assert len(symbols) == 2
-        assert symbols[0] == (1, 'BTC/USDT')
-        assert symbols[1] == (2, 'ETH/USDT')
+        assert symbols[0] == (1, "BTC/USDT")
+        assert symbols[1] == (2, "ETH/USDT")
 
     @pytest.mark.asyncio
     async def test_update_job_status_completed(
@@ -170,8 +177,8 @@ class TestRecalculationService:
 
         # Update status
         await recalc_service._update_job_status(
-            job_id='job_1',
-            status='completed',
+            job_id="job_1",
+            status="completed",
             ticks_processed=10000,
         )
 
@@ -192,9 +199,9 @@ class TestRecalculationService:
 
         # Update status
         await recalc_service._update_job_status(
-            job_id='job_1',
-            status='failed',
-            error='Test error',
+            job_id="job_1",
+            status="failed",
+            error="Test error",
         )
 
         # Verify database call
@@ -214,7 +221,7 @@ class TestRecalculationService:
 
         # Update progress
         await recalc_service._update_job_progress(
-            job_id='job_1',
+            job_id="job_1",
             ticks_processed=5000,
         )
 
@@ -227,13 +234,14 @@ class TestRecalculationService:
         mock_db_pool: MagicMock,
     ) -> None:
         """Test that indicator results are stored using batch insert."""
-        from src.indicators.momentum import RSIIndicator
         import numpy as np
+
+        from src.indicators.momentum import RSIIndicator
 
         # Create mock connection with proper async context manager
         mock_conn = AsyncMock()
         mock_conn.executemany = AsyncMock()
-        
+
         # Set up async context manager properly
         async_context = AsyncMock()
         async_context.__aenter__.return_value = mock_conn
@@ -248,17 +256,17 @@ class TestRecalculationService:
 
         # Create mock ticks - need at least period+1 ticks for RSI to produce values
         ticks = [
-            {'time': f'2024-01-{i:02d}', 'price': 50.0 + i, 'quantity': 0.001}
+            {"time": f"2024-01-{i:02d}", "price": 50.0 + i, "quantity": 0.001}
             for i in range(1, 20)  # 19 ticks, RSI period is 14
         ]
 
         indicator = RSIIndicator(period=14)
-        prices = np.array([t['price'] for t in ticks])
-        volumes = np.array([t['quantity'] for t in ticks])
+        prices = np.array([t["price"] for t in ticks])
+        volumes = np.array([t["quantity"] for t in ticks])
         result = indicator.calculate(prices, volumes)
 
         # Verify we have some non-NaN values
-        assert np.sum(~np.isnan(result.values['rsi'])) > 0
+        assert np.sum(~np.isnan(result.values["rsi"])) > 0
 
         # Store results
         await service._store_indicator_results(
@@ -288,10 +296,12 @@ class TestRecalculationService:
 
         # Mock database connection to always return data (simulating infinite data)
         mock_conn = AsyncMock()
-        mock_conn.fetch = AsyncMock(return_value=[
-            {'time': f'2024-01-{i:02d}', 'price': 50.0 + i, 'quantity': 0.001}
-            for i in range(1, 101)
-        ])
+        mock_conn.fetch = AsyncMock(
+            return_value=[
+                {"time": f"2024-01-{i:02d}", "price": 50.0 + i, "quantity": 0.001}
+                for i in range(1, 101)
+            ]
+        )
         mock_conn.execute = AsyncMock()
         mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
 
@@ -300,17 +310,17 @@ class TestRecalculationService:
         # Recalculate - should stop after max_iterations (1000)
         ticks_processed = await service._recalculate_symbol(
             symbol_id=1,
-            symbol='BTC/USDT',
+            symbol="BTC/USDT",
             indicator=indicator,
-            job_id='job_1',
+            job_id="job_1",
         )
 
         # Should have processed exactly 1000 * 100 = 100000 ticks
         assert ticks_processed == 100000
 
         # Verify error was logged about max iterations
-        assert 'Max iterations' in caplog.text
-        assert '1000' in caplog.text
+        assert "Max iterations" in caplog.text
+        assert "1000" in caplog.text
 
 
 class TestRecalculationServiceIntegration:
@@ -338,17 +348,19 @@ class TestRecalculationServiceIntegration:
 
         # Mock database connection - return data once, then empty
         mock_conn = AsyncMock()
-        mock_conn.fetch = AsyncMock(side_effect=[
-            # First call returns 50 ticks
-            [
-                {'time': f'2024-01-{i:02d}', 'price': 50.0 + i, 'quantity': 0.001}
-                for i in range(1, 51)
-            ],
-            # Second call returns empty (no more data)
-            [],
-        ])
+        mock_conn.fetch = AsyncMock(
+            side_effect=[
+                # First call returns 50 ticks
+                [
+                    {"time": f"2024-01-{i:02d}", "price": 50.0 + i, "quantity": 0.001}
+                    for i in range(1, 51)
+                ],
+                # Second call returns empty (no more data)
+                [],
+            ]
+        )
         mock_conn.executemany = AsyncMock()
-        
+
         # Set up async context manager properly
         async_context = AsyncMock()
         async_context.__aenter__.return_value = mock_conn
@@ -361,9 +373,9 @@ class TestRecalculationServiceIntegration:
         # Recalculate
         ticks_processed = await service._recalculate_symbol(
             symbol_id=1,
-            symbol='BTC/USDT',
+            symbol="BTC/USDT",
             indicator=indicator,
-            job_id='job_1',
+            job_id="job_1",
         )
 
         # Should have processed 50 ticks (one batch)
@@ -385,7 +397,7 @@ class TestRecalculationServiceIntegration:
         # Mock database connection - always returns empty
         mock_conn = AsyncMock()
         mock_conn.fetch = AsyncMock(return_value=[])
-        
+
         # Set up async context manager properly
         async_context = AsyncMock()
         async_context.__aenter__.return_value = mock_conn
@@ -396,9 +408,9 @@ class TestRecalculationServiceIntegration:
 
         ticks_processed = await service._recalculate_symbol(
             symbol_id=1,
-            symbol='BTC/USDT',
+            symbol="BTC/USDT",
             indicator=indicator,
-            job_id='job_1',
+            job_id="job_1",
         )
 
         # Should have processed 0 ticks
@@ -419,17 +431,19 @@ class TestRecalculationServiceIntegration:
 
         # Mock database connection - return 9 ticks once, then empty
         mock_conn = AsyncMock()
-        mock_conn.fetch = AsyncMock(side_effect=[
-            # First call returns 9 ticks (less than RSI period of 14)
-            [
-                {'time': f'2024-01-{i:02d}', 'price': 50.0 + i, 'quantity': 0.001}
-                for i in range(1, 10)
-            ],
-            # Second call returns empty
-            [],
-        ])
+        mock_conn.fetch = AsyncMock(
+            side_effect=[
+                # First call returns 9 ticks (less than RSI period of 14)
+                [
+                    {"time": f"2024-01-{i:02d}", "price": 50.0 + i, "quantity": 0.001}
+                    for i in range(1, 10)
+                ],
+                # Second call returns empty
+                [],
+            ]
+        )
         mock_conn.executemany = AsyncMock()
-        
+
         # Set up async context manager properly
         async_context = AsyncMock()
         async_context.__aenter__.return_value = mock_conn
@@ -441,9 +455,9 @@ class TestRecalculationServiceIntegration:
         # Should not raise, just process with NaN values
         ticks_processed = await service._recalculate_symbol(
             symbol_id=1,
-            symbol='BTC/USDT',
+            symbol="BTC/USDT",
             indicator=indicator,
-            job_id='job_1',
+            job_id="job_1",
         )
 
         assert ticks_processed == 9

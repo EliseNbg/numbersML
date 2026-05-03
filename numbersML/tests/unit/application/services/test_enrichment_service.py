@@ -1,8 +1,10 @@
 """Tests for enrichment service."""
 
+from datetime import UTC
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+
 from src.application.services.enrichment_service import EnrichmentService
 from src.indicators.providers import PythonIndicatorProvider
 
@@ -43,7 +45,7 @@ class TestEnrichmentService:
             redis_pool=mock_redis_pool,
             window_size=100,
         )
-    
+
     def test_service_initialization(
         self,
         enrichment_service: EnrichmentService,
@@ -51,22 +53,22 @@ class TestEnrichmentService:
         """Test service initialization."""
         assert enrichment_service.window_size == 100
         assert enrichment_service._running is False
-        assert enrichment_service._stats['ticks_processed'] == 0
-    
+        assert enrichment_service._stats["ticks_processed"] == 0
+
     def test_get_stats(self, enrichment_service: EnrichmentService) -> None:
         """Test getting statistics."""
         enrichment_service._stats = {
-            'ticks_processed': 1000,
-            'indicators_calculated': 5000,
-            'errors': 5,
+            "ticks_processed": 1000,
+            "indicators_calculated": 5000,
+            "errors": 5,
         }
-        
+
         stats = enrichment_service.get_stats()
-        
-        assert stats['ticks_processed'] == 1000
-        assert stats['indicators_calculated'] == 5000
-        assert stats['errors'] == 5
-    
+
+        assert stats["ticks_processed"] == 1000
+        assert stats["indicators_calculated"] == 5000
+        assert stats["errors"] == 5
+
     @pytest.mark.skip(reason="Internal implementation changed - _update_tick_window removed")
     @pytest.mark.asyncio
     async def test_tick_window_initialization(
@@ -81,17 +83,16 @@ class TestEnrichmentService:
 
         # Simulate update (this would normally be called internally)
         await enrichment_service._update_tick_window(
-            symbol_id,
-            {'price': 50000.0, 'quantity': 0.001}
+            symbol_id, {"price": 50000.0, "quantity": 0.001}
         )
 
         # Window should exist now
         assert symbol_id in enrichment_service._tick_windows
 
         window = enrichment_service._tick_windows[symbol_id]
-        assert window['count'] == 1
-        assert window['index'] == 1
-        assert window['prices'][0] == 50000.0
+        assert window["count"] == 1
+        assert window["index"] == 1
+        assert window["prices"][0] == 50000.0
 
     @pytest.mark.skip(reason="Internal implementation changed - _update_tick_window removed")
     @pytest.mark.asyncio
@@ -105,18 +106,17 @@ class TestEnrichmentService:
         # Fill window with 150 ticks (more than window_size=100)
         for i in range(150):
             await enrichment_service._update_tick_window(
-                symbol_id,
-                {'price': 50000.0 + i, 'quantity': 0.001}
+                symbol_id, {"price": 50000.0 + i, "quantity": 0.001}
             )
 
         window = enrichment_service._tick_windows[symbol_id]
 
         # Count should be capped at window_size
-        assert window['count'] == 100
+        assert window["count"] == 100
 
         # Index should wrap around
-        assert window['index'] == 50  # 150 % 100 = 50
-    
+        assert window["index"] == 50  # 150 % 100 = 50
+
     @pytest.mark.asyncio
     async def test_store_enriched_data(
         self,
@@ -124,8 +124,8 @@ class TestEnrichmentService:
         mock_db_pool: MagicMock,
     ) -> None:
         """Test storing enriched data."""
-        from datetime import datetime, timezone
-        
+        from datetime import datetime
+
         # Mock database connection
         mock_conn = AsyncMock()
         mock_conn.execute = AsyncMock()
@@ -135,15 +135,15 @@ class TestEnrichmentService:
         await enrichment_service._store_enriched_data(
             symbol_id=1,
             symbol="BTC/USDT",
-            time=datetime.now(timezone.utc),
+            time=datetime.now(UTC),
             price=50000.0,
             volume=0.001,
-            indicator_values={'rsi': 55.5, 'sma': 49500.0},
+            indicator_values={"rsi": 55.5, "sma": 49500.0},
         )
 
         # Verify database call
         assert mock_conn.execute.called
-    
+
     @pytest.mark.asyncio
     async def test_publish_to_redis(
         self,
@@ -154,19 +154,19 @@ class TestEnrichmentService:
         """Test publishing to Redis."""
         # Mock database connection
         mock_conn = AsyncMock()
-        mock_conn.fetchval = AsyncMock(return_value='BTC/USDT')
+        mock_conn.fetchval = AsyncMock(return_value="BTC/USDT")
         mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
-        
+
         # Publish to Redis
         await enrichment_service._publish_to_redis(
             symbol_id=1,
             price=50000.0,
-            indicator_values={'rsi': 55.5},
+            indicator_values={"rsi": 55.5},
         )
-        
+
         # Verify Redis publish
         assert mock_redis_pool.publish.called
-    
+
     @pytest.mark.asyncio
     async def test_heartbeat_logging(
         self,
@@ -175,22 +175,23 @@ class TestEnrichmentService:
     ) -> None:
         """Test heartbeat logging."""
         import logging
-        enrichment_service._stats['ticks_processed'] = 1000
-        
+
+        enrichment_service._stats["ticks_processed"] = 1000
+
         # Set log level to INFO to capture heartbeat logs
         with caplog.at_level(logging.INFO):
             await enrichment_service._heartbeat()
 
         # Should log stats at 1000 ticks
-        assert 'Enrichment stats' in caplog.text
-    
+        assert "Enrichment stats" in caplog.text
+
     def test_no_indicators_configured(
         self,
         enrichment_service: EnrichmentService,
     ) -> None:
         """Test service with no indicators configured."""
         assert len(enrichment_service._indicators) == 0
-        
+
         # Should not fail when calculating indicators
         # (just won't calculate anything)
 
@@ -211,14 +212,17 @@ class TestEnrichmentServiceWithIndicators:
         mock_db_pool: MagicMock,
     ) -> None:
         """Test indicator calculation in enrichment service."""
-        from src.indicators.momentum import RSIIndicator
-        from src.indicators.providers import PythonIndicatorProvider
         import numpy as np
 
+        from src.indicators.momentum import RSIIndicator
+        from src.indicators.providers import PythonIndicatorProvider
+
         # Create provider with RSI indicator
-        provider = PythonIndicatorProvider({
-            'rsi_14': RSIIndicator,
-        })
+        provider = PythonIndicatorProvider(
+            {
+                "rsi_14": RSIIndicator,
+            }
+        )
 
         service = EnrichmentService(
             db_pool=mock_db_pool,
@@ -239,7 +243,7 @@ class TestEnrichmentServiceWithIndicators:
         result = await service._calculate_indicators(prices, volumes, highs, lows)
 
         # Should have calculated RSI
-        assert 'rsi_14_rsi' in result or len(result) > 0
+        assert "rsi_14_rsi" in result or len(result) > 0
 
     @pytest.mark.asyncio
     async def test_insufficient_data(
@@ -247,14 +251,17 @@ class TestEnrichmentServiceWithIndicators:
         mock_db_pool: MagicMock,
     ) -> None:
         """Test indicator calculation with insufficient data."""
-        from src.indicators.momentum import RSIIndicator
-        from src.indicators.providers import PythonIndicatorProvider
         import numpy as np
 
+        from src.indicators.momentum import RSIIndicator
+        from src.indicators.providers import PythonIndicatorProvider
+
         # Create provider with RSI indicator
-        provider = PythonIndicatorProvider({
-            'rsi_14': RSIIndicator,
-        })
+        provider = PythonIndicatorProvider(
+            {
+                "rsi_14": RSIIndicator,
+            }
+        )
 
         service = EnrichmentService(
             db_pool=mock_db_pool,

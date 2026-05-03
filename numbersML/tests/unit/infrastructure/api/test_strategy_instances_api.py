@@ -4,14 +4,12 @@ Unit tests for StrategyInstance API endpoints.
 Uses FastAPI's TestClient with mocked repository.
 """
 
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-from uuid import uuid4
-
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock
 
 from src.domain.strategies.strategy_instance import StrategyInstance
 from src.infrastructure.api.routes.strategy_instances import get_instance_repository, router
@@ -81,7 +79,10 @@ def test_create_duplicate_instance(client, mock_repo):
 
     response = client.post(
         "/api/strategy-instances",
-        json={"strategy_id": str(existing.strategy_id), "config_set_id": str(existing.config_set_id)},
+        json={
+            "strategy_id": str(existing.strategy_id),
+            "config_set_id": str(existing.config_set_id),
+        },
     )
 
     assert response.status_code == 400

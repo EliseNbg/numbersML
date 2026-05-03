@@ -1,6 +1,6 @@
 """Unit tests for StrategyRepositoryPG."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -22,7 +22,7 @@ class TestStrategyRepositoryPG:
     @pytest.mark.asyncio
     async def test_save_and_get_by_id(self, mock_connection: AsyncMock) -> None:
         strategy_id = uuid4()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         row = {
             "id": strategy_id,
             "name": "test_strategy",
@@ -59,7 +59,7 @@ class TestStrategyRepositoryPG:
     @pytest.mark.asyncio
     async def test_create_version_increments(self, mock_connection: AsyncMock) -> None:
         strategy_id = uuid4()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         strategy_row = {
             "id": strategy_id,
             "name": "s1",
@@ -95,7 +95,9 @@ class TestStrategyRepositoryPG:
         mock_connection.execute.assert_called()
 
     @pytest.mark.asyncio
-    async def test_set_active_version_returns_false_if_missing(self, mock_connection: AsyncMock) -> None:
+    async def test_set_active_version_returns_false_if_missing(
+        self, mock_connection: AsyncMock
+    ) -> None:
         strategy_id = uuid4()
         mock_connection.fetchrow.return_value = None
 

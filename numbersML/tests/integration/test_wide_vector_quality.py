@@ -11,19 +11,19 @@ Validates that wide_vectors for the last day contain proper indicator values:
 import asyncio
 import json
 import logging
-import math
 import os
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Tuple, Any, Optional
+from typing import Any, Optional
 
 import asyncpg
 import numpy as np
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 DB_URL = "postgresql://crypto:crypto_secret@localhost:5432/crypto_trading"
@@ -39,35 +39,49 @@ class IndicatorRange:
     description: str = ""
 
 
-INDICATOR_RANGES: List[IndicatorRange] = [
+INDICATOR_RANGES: list[IndicatorRange] = [
     IndicatorRange(name_pattern="_close", min_val=0.0, allow_zero=False, description="Close price"),
     IndicatorRange(name_pattern="_volume", min_val=0.0, allow_zero=True, description="Volume"),
     IndicatorRange(name_pattern="_upper", min_val=0.0, allow_zero=False, description="BB upper"),
     IndicatorRange(name_pattern="_middle", min_val=0.0, allow_zero=False, description="BB middle"),
     IndicatorRange(name_pattern="_lower", min_val=0.0, allow_zero=False, description="BB lower"),
     IndicatorRange(name_pattern="_vwap", min_val=0.0, allow_zero=False, description="VWAP"),
-    IndicatorRange(name_pattern="_rsi", min_val=0.0, max_val=100.0, allow_zero=True, description="RSI"),
-    IndicatorRange(name_pattern="_mfi", min_val=0.0, max_val=100.0, allow_zero=True, description="MFI"),
-    IndicatorRange(name_pattern="_stochastic", min_val=0.0, max_val=100.0, allow_zero=True, description="Stochastic"),
+    IndicatorRange(
+        name_pattern="_rsi", min_val=0.0, max_val=100.0, allow_zero=True, description="RSI"
+    ),
+    IndicatorRange(
+        name_pattern="_mfi", min_val=0.0, max_val=100.0, allow_zero=True, description="MFI"
+    ),
+    IndicatorRange(
+        name_pattern="_stochastic",
+        min_val=0.0,
+        max_val=100.0,
+        allow_zero=True,
+        description="Stochastic",
+    ),
     IndicatorRange(name_pattern="_macd", allow_zero=True, description="MACD"),
     IndicatorRange(name_pattern="_signal", allow_zero=True, description="MACD signal"),
     IndicatorRange(name_pattern="_histogram", allow_zero=True, description="MACD hist"),
     IndicatorRange(name_pattern="_atr", min_val=0.0, allow_zero=True, description="ATR"),
     IndicatorRange(name_pattern="_std", min_val=0.0, allow_zero=True, description="BB std"),
-    IndicatorRange(name_pattern="_adx", min_val=0.0, max_val=100.0, allow_zero=True, description="ADX"),
-    IndicatorRange(name_pattern="_aroon", min_val=-100.0, max_val=100.0, allow_zero=True, description="Aroon"),
+    IndicatorRange(
+        name_pattern="_adx", min_val=0.0, max_val=100.0, allow_zero=True, description="ADX"
+    ),
+    IndicatorRange(
+        name_pattern="_aroon", min_val=-100.0, max_val=100.0, allow_zero=True, description="Aroon"
+    ),
     IndicatorRange(name_pattern="_obv", allow_zero=True, description="OBV"),
 ]
 
 
-def classify_feature(column_name: str) -> Tuple[str, IndicatorRange]:
+def classify_feature(column_name: str) -> tuple[str, IndicatorRange]:
     for ir in INDICATOR_RANGES:
         if ir.name_pattern in column_name.lower():
             return ir.name_pattern.strip("_"), ir
     return "unknown", IndicatorRange(name_pattern="", allow_zero=True, description="Unclassified")
 
 
-def normalize(values: np.ndarray, method: str) -> Tuple[np.ndarray, float, float]:
+def normalize(values: np.ndarray, method: str) -> tuple[np.ndarray, float, float]:
     v = values[~np.isnan(values)]
     if len(v) == 0:
         return np.zeros_like(values), 0.0, 0.0
@@ -89,20 +103,29 @@ def normalize(values: np.ndarray, method: str) -> Tuple[np.ndarray, float, float
     return norm, float(np.mean(nc)), float(np.std(nc))
 
 
-async def fetch_vectors(conn: asyncpg.Connection, hours: int = 24) -> Tuple[List[str], np.ndarray, List[List[str]]]:
+async def fetch_vectors(
+    conn: asyncpg.Connection, hours: int = 24
+) -> tuple[list[str], np.ndarray, list[list[str]]]:
     rows = await conn.fetch(
         "SELECT vector, column_names FROM wide_vectors WHERE time >= NOW() - $1::INTERVAL ORDER BY time DESC",
         f"{hours} hours",
     )
     if not rows:
         raise RuntimeError("No wide_vectors found")
-    all_names = [json.loads(r['column_names']) if isinstance(r['column_names'], str) else list(r['column_names']) for r in rows]
+    all_names = [
+        (
+            json.loads(r["column_names"])
+            if isinstance(r["column_names"], str)
+            else list(r["column_names"])
+        )
+        for r in rows
+    ]
     cols = all_names[0]
-    vecs = np.array([json.loads(r['vector']) for r in rows], dtype=np.float64)
+    vecs = np.array([json.loads(r["vector"]) for r in rows], dtype=np.float64)
     return cols, vecs, all_names
 
 
-async def run_test() -> Dict[str, Any]:
+async def run_test() -> dict[str, Any]:
     print("=" * 70)
     print("INTEGRATION TEST: Wide Vector Quality & Normalization")
     print("=" * 70)
@@ -114,7 +137,9 @@ async def run_test() -> Dict[str, Any]:
         print(f"\nFetched {n} vectors x {f} features (last 24h)")
 
         dead, range_fail, bad_norm = [], [], []
-        print(f"\n{'Column':<40} {'Type':<10} {'IQR':>10} {'Dead':>4} {'RangeOK':>7} {'mean_iqr':>10} {'std_iqr':>10}")
+        print(
+            f"\n{'Column':<40} {'Type':<10} {'IQR':>10} {'Dead':>4} {'RangeOK':>7} {'mean_iqr':>10} {'std_iqr':>10}"
+        )
         print("-" * 100)
 
         for idx, col in enumerate(cols):
@@ -149,8 +174,10 @@ async def run_test() -> Dict[str, Any]:
             if abs(mean_iqr) > 5.0 or std_iqr > 10.0:
                 bad_norm.append(f"{col}: mean_iqr={mean_iqr:.2f}, std_iqr={std_iqr:.2f}")
 
-            print(f"{col:<40} {ft:<10} {iqr:>10.4f} {'YES' if is_dead else '':>4} "
-                  f"{'OK' if not violations else 'FAIL':>7} {mean_iqr:>10.2f} {std_iqr:>10.2f}")
+            print(
+                f"{col:<40} {ft:<10} {iqr:>10.4f} {'YES' if is_dead else '':>4} "
+                f"{'OK' if not violations else 'FAIL':>7} {mean_iqr:>10.2f} {std_iqr:>10.2f}"
+            )
 
         # Summaries
         print(f"\n--- Dead / Near-Constant Features: {len(dead)} ---")

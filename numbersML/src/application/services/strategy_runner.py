@@ -4,13 +4,11 @@ Strategy Runner - Executes strategies with Redis pub/sub integration.
 Connects strategies to Redis message bus for real-time tick processing.
 """
 
-import asyncio
 import logging
-from typing import Dict, List, Optional, Any
-from datetime import datetime
+from typing import Any, Optional
 
-from src.domain.strategies.base import StrategyManager, EnrichedTick, Signal
-from src.infrastructure.redis.message_bus import MessageBus, ChannelManager
+from src.domain.strategies.base import EnrichedTick, Signal, StrategyManager
+from src.infrastructure.redis.message_bus import ChannelManager, MessageBus
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +40,7 @@ class StrategyRunner:
         self,
         strategy_manager: StrategyManager,
         redis_url: str = "redis://localhost:6379",
-        symbols: Optional[List[str]] = None,
+        symbols: Optional[list[str]] = None,
     ) -> None:
         """
         Initialize strategy runner.
@@ -60,14 +58,14 @@ class StrategyRunner:
 
         self._strategy_manager: StrategyManager = strategy_manager
         self._redis_url: str = redis_url
-        self._symbols: Optional[List[str]] = symbols
+        self._symbols: Optional[list[str]] = symbols
 
         self._message_bus: MessageBus = MessageBus(redis_url=redis_url)
         self._running: bool = False
-        self._stats: Dict[str, int] = {
-            'ticks_received': 0,
-            'signals_generated': 0,
-            'errors': 0,
+        self._stats: dict[str, int] = {
+            "ticks_received": 0,
+            "signals_generated": 0,
+            "errors": 0,
         }
 
         logger.info(f"StrategyRunner initialized for {len(symbols or [])} symbols")
@@ -110,7 +108,7 @@ class StrategyRunner:
 
         logger.info("StrategyRunner stopped")
 
-    async def _on_tick(self, message: Dict[str, Any]) -> None:
+    async def _on_tick(self, message: dict[str, Any]) -> None:
         """
         Handle incoming tick message.
 
@@ -120,7 +118,7 @@ class StrategyRunner:
         try:
             # Parse enriched tick
             tick = EnrichedTick.from_message(message)
-            self._stats['ticks_received'] += 1
+            self._stats["ticks_received"] += 1
 
             # Process through strategies
             signals = self._strategy_manager.process_tick(tick)
@@ -128,11 +126,11 @@ class StrategyRunner:
             # Publish signals
             for signal in signals:
                 await self._publish_signal(signal)
-                self._stats['signals_generated'] += 1
+                self._stats["signals_generated"] += 1
 
         except Exception as e:
             logger.error(f"Error processing tick message: {e}")
-            self._stats['errors'] += 1
+            self._stats["errors"] += 1
 
     async def _publish_signal(self, signal: Signal) -> None:
         """
@@ -144,11 +142,10 @@ class StrategyRunner:
         channel = ChannelManager.strategy_signal_channel(signal.strategy_id)
         await self._message_bus.publish(channel, signal.to_dict())
         logger.debug(
-            f"Published signal: {signal.signal_type.value} "
-            f"{signal.symbol} @ {signal.price}"
+            f"Published signal: {signal.signal_type.value} " f"{signal.symbol} @ {signal.price}"
         )
 
-    def _get_all_symbols(self) -> List[str]:
+    def _get_all_symbols(self) -> list[str]:
         """Get all symbols from all strategies."""
         symbols = set()
         for strategy_id in self._strategy_manager.list_strategies():
@@ -157,13 +154,13 @@ class StrategyRunner:
                 symbols.update(strategy.symbols)
         return list(symbols)
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get runner statistics."""
         return {
             **self._stats,
-            'running': self._running,
-            'strategy_stats': self._strategy_manager.get_stats(),
-            'bus_stats': self._message_bus.get_stats(),
+            "running": self._running,
+            "strategy_stats": self._strategy_manager.get_stats(),
+            "bus_stats": self._message_bus.get_stats(),
         }
 
 
@@ -193,7 +190,7 @@ class SignalHandler:
             on_signal_callback: Callback for received signals
         """
         self._on_signal = on_signal_callback
-        self._signals: List[Signal] = []
+        self._signals: list[Signal] = []
         self._running: bool = False
         logger.info("SignalHandler initialized")
 
@@ -213,7 +210,7 @@ class SignalHandler:
         await message_bus.subscribe(channel, self._handle_signal)
         logger.info(f"Subscribed to signals from {strategy_id}")
 
-    def _handle_signal(self, message: Dict[str, Any]) -> None:
+    def _handle_signal(self, message: dict[str, Any]) -> None:
         """
         Handle incoming signal message.
 
@@ -223,12 +220,12 @@ class SignalHandler:
         try:
             # Parse signal
             signal = Signal(
-                strategy_id=message.get('strategy_id', ''),
-                symbol=message.get('symbol', ''),
-                signal_type=message.get('signal_type', 'HOLD'),
-                price=message.get('price', 0),
-                confidence=message.get('confidence', 0.5),
-                metadata=message.get('metadata', {}),
+                strategy_id=message.get("strategy_id", ""),
+                symbol=message.get("symbol", ""),
+                signal_type=message.get("signal_type", "HOLD"),
+                price=message.get("price", 0),
+                confidence=message.get("confidence", 0.5),
+                metadata=message.get("metadata", {}),
             )
 
             # Store
@@ -246,7 +243,7 @@ class SignalHandler:
         except Exception as e:
             logger.error(f"Error handling signal: {e}")
 
-    def get_signals(self, symbol: Optional[str] = None) -> List[Signal]:
+    def get_signals(self, symbol: Optional[str] = None) -> list[Signal]:
         """
         Get received signals.
 

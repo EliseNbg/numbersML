@@ -1,8 +1,8 @@
 """Integration tests for StrategyBacktestRepositoryPG against real PostgreSQL."""
 
-from datetime import datetime, timezone, timedelta
-from pathlib import Path
 import uuid
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import asyncpg
 import pytest
@@ -97,8 +97,8 @@ class TestStrategyBacktestRepositoryPGIntegration:
         strategy_version_id = row["id"]
 
         backtest_id = uuid.uuid4()
-        time_start = datetime.now(timezone.utc) - timedelta(days=7)
-        time_end = datetime.now(timezone.utc)
+        time_start = datetime.now(UTC) - timedelta(days=7)
+        time_end = datetime.now(UTC)
 
         saved = await repo.save(
             strategy_id=test_strategy_id,
@@ -138,7 +138,6 @@ class TestStrategyBacktestRepositoryPGIntegration:
         assert retrieved["strategy_id"] == test_strategy_id
         assert retrieved["metrics"]["total_return"] == 0.05
 
-
         # Cleanup
         await db_conn.execute(
             "DELETE FROM strategy_backtests WHERE strategy_id = $1",
@@ -162,8 +161,8 @@ class TestStrategyBacktestRepositoryPGIntegration:
         )
         strategy_version_id = row["id"]
 
-        time_start = datetime.now(timezone.utc) - timedelta(days=7)
-        time_end = datetime.now(timezone.utc)
+        time_start = datetime.now(UTC) - timedelta(days=7)
+        time_end = datetime.now(UTC)
 
         # Save multiple backtests
         for i in range(3):

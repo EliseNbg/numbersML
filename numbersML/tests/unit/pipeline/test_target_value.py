@@ -11,15 +11,14 @@ Tests:
     - Kalman vs Hanning comparison
 """
 
-import pytest
 import numpy as np
 
 from src.pipeline.target_value import (
     KalmanFilter1D,
-    hanning_window,
-    calculate_target_value,
     batch_calculate,
     batch_calculate_numpy,
+    calculate_target_value,
+    hanning_window,
     kalman_filter_prices,
 )
 
@@ -183,14 +182,14 @@ class TestBatchCalculate:
     def test_kalman_vs_hanning_lag(self) -> None:
         """Kalman has less lag than Hanning for trending prices."""
         prices = list(range(500))  # Strong uptrend
-        
+
         targets_kalman = batch_calculate(prices, use_kalman=True)
         targets_hanning = batch_calculate(prices, window_size=100, use_kalman=False)
-        
+
         # Kalman targets should be smaller (less lag = closer to trend)
         kalman_magnitude = np.mean(np.abs(targets_kalman[100:]))
         hanning_magnitude = np.mean(np.abs(targets_hanning[100:]))
-        
+
         # Kalman tracks trend better (smaller deviation from trend)
         assert kalman_magnitude < hanning_magnitude
 
@@ -238,13 +237,13 @@ class TestBatchCalculateNumpy:
         """Kalman produces smaller variance for trending prices."""
         np.random.seed(42)
         prices = np.linspace(100, 200, 1000) + np.random.randn(1000) * 2
-        
+
         targets_kalman = batch_calculate_numpy(prices, use_kalman=True)
         targets_hanning = batch_calculate_numpy(prices, window_size=300, use_kalman=False)
-        
+
         # After warmup, compare variance
         kalman_var = np.var(targets_kalman[100:])
         hanning_var = np.var(targets_hanning[300:])
-        
+
         # Kalman should have smaller variance (tracks trend better)
         assert kalman_var < hanning_var

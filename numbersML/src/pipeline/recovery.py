@@ -15,9 +15,10 @@ Usage:
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Optional
 
 import aiohttp
 import asyncpg
@@ -30,10 +31,10 @@ logger = logging.getLogger(__name__)
 class BinanceRESTClient:
     """
     Binance REST API client for trade recovery.
-    
+
     Endpoints:
         - /api/v3/aggTrades: Aggregate trades
-    
+
     Example:
         >>> client = BinanceRESTClient()
         >>> trades = await client.get_agg_trades(
@@ -42,24 +43,24 @@ class BinanceRESTClient:
         ...     limit=1000,
         ... )
     """
-    
+
     BASE_URL = "https://api.binance.com/api/v3"
-    
+
     def __init__(self) -> None:
         """Initialize REST client."""
         self._session: Optional[aiohttp.ClientSession] = None
-    
+
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create HTTP session."""
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession()
         return self._session
-    
+
     async def close(self) -> None:
         """Close HTTP session."""
         if self._session and not self._session.closed:
             await self._session.close()
-    
+
     async def get_agg_trades(
         self,
         symbol: str,
@@ -67,65 +68,65 @@ class BinanceRESTClient:
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
         limit: int = 1000,
-    ) -> List[AggTrade]:
+    ) -> list[AggTrade]:
         """
         Fetch aggregate trades from REST API.
-        
+
         Args:
             symbol: Symbol (e.g., 'BTCUSDT')
             from_id: Start from trade ID
             start_time: Start time
             end_time: End time
             limit: Max trades to fetch (max 1000)
-        
+
         Returns:
             List of AggTrade objects
         """
         session = await self._get_session()
-        
+
         params = {
-            'symbol': symbol,
-            'limit': min(limit, 1000),
+            "symbol": symbol,
+            "limit": min(limit, 1000),
         }
-        
+
         # Binance API: fromId cannot be combined with startTime/endTime
         if from_id is not None:
-            params['fromId'] = from_id
+            params["fromId"] = from_id
         elif start_time is not None and end_time is not None:
-            params['startTime'] = int(start_time.timestamp() * 1000)
-            params['endTime'] = int(end_time.timestamp() * 1000)
-        
+            params["startTime"] = int(start_time.timestamp() * 1000)
+            params["endTime"] = int(end_time.timestamp() * 1000)
+
         url = f"{self.BASE_URL}/aggTrades"
-        
+
         try:
             async with session.get(url, params=params) as response:
                 if response.status != 200:
                     error_text = await response.text()
                     logger.error(f"REST API error: {error_text}")
                     return []
-                
+
                 data = await response.json()
-                
+
                 # Parse trades
                 trades = []
                 for trade_data in data:
                     trade = AggTrade(
-                        event_type='aggTrade',
-                        event_time=trade_data.get('E', 0),
-                        symbol=trade_data.get('s', symbol),
-                        agg_trade_id=trade_data['a'],
-                        price=Decimal(trade_data['p']),
-                        quantity=Decimal(trade_data['q']),
-                        first_trade_id=trade_data['f'],
-                        last_trade_id=trade_data['l'],
-                        trade_time=trade_data['T'],
-                        is_buyer_maker=trade_data['m'],
+                        event_type="aggTrade",
+                        event_time=trade_data.get("E", 0),
+                        symbol=trade_data.get("s", symbol),
+                        agg_trade_id=trade_data["a"],
+                        price=Decimal(trade_data["p"]),
+                        quantity=Decimal(trade_data["q"]),
+                        first_trade_id=trade_data["f"],
+                        last_trade_id=trade_data["l"],
+                        trade_time=trade_data["T"],
+                        is_buyer_maker=trade_data["m"],
                     )
                     trades.append(trade)
-                
+
                 logger.info(f"Fetched {len(trades)} trades from REST API")
                 return trades
-                
+
         except Exception as e:
             logger.error(f"Failed to fetch trades from REST: {e}")
             return []
@@ -134,28 +135,28 @@ class BinanceRESTClient:
 class RecoveryManager:
     """
     Manager for gap detection and trade recovery.
-    
+
     Features:
         - Track last processed trade ID
         - Detect gaps in trade sequence
         - Fetch missing trades via REST API
         - Persist state in database
-    
+
     Example:
         >>> recovery = RecoveryManager(symbol='BTC/USDT', db_pool=pool)
         >>> await recovery.initialize()
-        >>> 
+        >>>
         >>> # On trade received
         >>> await recovery.process_trade(trade)
-        >>> 
+        >>>
         >>> # On reconnection
         >>> await recovery.recover_missing_trades()
     """
-    
+
     # Recovery settings
     MAX_RECOVERY_WINDOW = timedelta(minutes=5)
     MAX_TRADES_PER_RECOVERY = 10000
-    
+
     def __init__(
         self,
         symbol: str,
@@ -164,7 +165,7 @@ class RecoveryManager:
     ) -> None:
         """
         Initialize recovery manager.
-        
+
         Args:
             symbol: Symbol (e.g., 'BTC/USDT')
             db_pool: Database connection pool
@@ -173,23 +174,23 @@ class RecoveryManager:
         self.symbol = symbol
         self.db_pool = db_pool
         self.on_trade = on_trade
-        
+
         # State
         self._last_trade_id: int = 0
-        self._last_timestamp: datetime = datetime.now(timezone.utc)
+        self._last_timestamp: datetime = datetime.now(UTC)
         self._is_recovering: bool = False
         self._rest_client = BinanceRESTClient()
-        
+
         # Statistics
         self._stats = {
-            'gaps_detected': 0,
-            'trades_recovered': 0,
-            'recovery_events': 0,
-            'last_recovery_time': None,
-            '_last_persisted_gaps': 0,
-            '_last_persisted_trades': 0,
+            "gaps_detected": 0,
+            "trades_recovered": 0,
+            "recovery_events": 0,
+            "last_recovery_time": None,
+            "_last_persisted_gaps": 0,
+            "_last_persisted_trades": 0,
         }
-    
+
     async def initialize(self) -> None:
         """
         Initialize recovery state from database.
@@ -200,11 +201,11 @@ class RecoveryManager:
                 "SELECT id FROM symbols WHERE symbol = $1",
                 self.symbol,
             )
-            
+
             if not symbol_id:
                 logger.error(f"Symbol {self.symbol} not found in database")
                 return
-            
+
             # Load state
             row = await conn.fetchrow(
                 """
@@ -215,19 +216,18 @@ class RecoveryManager:
                 """,
                 symbol_id,
             )
-            
+
             if row:
-                self._last_trade_id = row['last_trade_id'] or 0
-                ts = row['last_timestamp']
-                self._last_timestamp = ts.replace(tzinfo=timezone.utc) if ts else datetime.now(timezone.utc)
-                self._is_recovering = row['is_recovering'] or False
-                self._stats['gaps_detected'] = row['gaps_detected'] or 0
-            
+                self._last_trade_id = row["last_trade_id"] or 0
+                ts = row["last_timestamp"]
+                self._last_timestamp = ts.replace(tzinfo=UTC) if ts else datetime.now(UTC)
+                self._is_recovering = row["is_recovering"] or False
+                self._stats["gaps_detected"] = row["gaps_detected"] or 0
+
             logger.info(
-                f"Recovery initialized for {self.symbol}: "
-                f"last_trade_id={self._last_trade_id}"
+                f"Recovery initialized for {self.symbol}: " f"last_trade_id={self._last_trade_id}"
             )
-    
+
     async def process_trade(self, trade: AggTrade) -> bool:
         """
         Process incoming trade and check for gaps.
@@ -251,7 +251,7 @@ class RecoveryManager:
                 f"expected {expected_id}, got {trade.agg_trade_id} "
                 f"(gap: {gap_size} trades)"
             )
-            self._stats['gaps_detected'] += 1
+            self._stats["gaps_detected"] += 1
 
             # Recover missing trades synchronously (blocks until done)
             await self._recover_gap(
@@ -284,11 +284,13 @@ class RecoveryManager:
             to_id: End trade ID
         """
         self._is_recovering = True
-        self._stats['recovery_events'] += 1
-        self._stats['last_recovery_time'] = datetime.now(timezone.utc)
+        self._stats["recovery_events"] += 1
+        self._stats["last_recovery_time"] = datetime.now(UTC)
 
         gap_size = to_id - from_id + 1
-        logger.info(f"Starting recovery for {self.symbol}: {from_id} to {to_id} ({gap_size} trades)")
+        logger.info(
+            f"Starting recovery for {self.symbol}: {from_id} to {to_id} ({gap_size} trades)"
+        )
 
         total_recovered = 0
         current_from = from_id
@@ -296,12 +298,12 @@ class RecoveryManager:
         try:
             while current_from <= to_id:
                 # Calculate time window for this batch
-                end_time = datetime.now(timezone.utc)
+                end_time = datetime.now(UTC)
                 start_time = end_time - self.MAX_RECOVERY_WINDOW
 
                 # Fetch missing trades
                 trades = await self._rest_client.get_agg_trades(
-                    symbol=self.symbol.replace('/', ''),
+                    symbol=self.symbol.replace("/", ""),
                     from_id=current_from,
                     start_time=start_time,
                     end_time=end_time,
@@ -309,7 +311,9 @@ class RecoveryManager:
                 )
 
                 if not trades:
-                    logger.warning(f"No more trades returned from REST API at fromId={current_from}")
+                    logger.warning(
+                        f"No more trades returned from REST API at fromId={current_from}"
+                    )
                     break
 
                 # Process recovered trades
@@ -320,7 +324,7 @@ class RecoveryManager:
                     self._last_trade_id = trade.agg_trade_id
                     self._last_timestamp = trade.timestamp
                     await self.on_trade(trade)
-                    self._stats['trades_recovered'] += 1
+                    self._stats["trades_recovered"] += 1
                     total_recovered += 1
                     batch_count += 1
 
@@ -328,7 +332,9 @@ class RecoveryManager:
                 last_id_in_batch = trades[-1].agg_trade_id
                 if last_id_in_batch < current_from:
                     # No progress, avoid infinite loop
-                    logger.warning(f"No progress in recovery: last_id={last_id_in_batch} < from={current_from}")
+                    logger.warning(
+                        f"No progress in recovery: last_id={last_id_in_batch} < from={current_from}"
+                    )
                     break
                 current_from = last_id_in_batch + 1
 
@@ -349,49 +355,46 @@ class RecoveryManager:
         finally:
             self._is_recovering = False
             await self._persist_state()
-    
+
     async def recover_missing_trades(self) -> int:
         """
         Recover trades since last known trade ID.
-        
+
         Call this on reconnection after WebSocket disconnect.
-        
+
         Returns:
             Number of trades recovered
         """
         if self._last_trade_id == 0:
             logger.info("No previous trade ID, skipping recovery")
             return 0
-        
+
         # Calculate time window
-        end_time = datetime.now(timezone.utc)
+        end_time = datetime.now(UTC)
         start_time = self._last_timestamp
-        
+
         # Limit recovery window
         if end_time - start_time > self.MAX_RECOVERY_WINDOW:
             start_time = end_time - self.MAX_RECOVERY_WINDOW
-        
-        logger.info(
-            f"Recovering trades for {self.symbol} "
-            f"from {start_time} to {end_time}"
-        )
-        
+
+        logger.info(f"Recovering trades for {self.symbol} " f"from {start_time} to {end_time}")
+
         trades = await self._rest_client.get_agg_trades(
-            symbol=self.symbol.replace('/', ''),
+            symbol=self.symbol.replace("/", ""),
             from_id=self._last_trade_id + 1,
             start_time=start_time,
             end_time=end_time,
             limit=self.MAX_TRADES_PER_RECOVERY,
         )
-        
+
         # Process recovered trades
         for trade in trades:
             await self.on_trade(trade)
-            self._stats['trades_recovered'] += 1
-        
+            self._stats["trades_recovered"] += 1
+
         logger.info(f"Recovered {len(trades)} trades")
         return len(trades)
-    
+
     async def _persist_state(self) -> None:
         """Persist current state to database."""
         async with self.db_pool.acquire() as conn:
@@ -400,14 +403,14 @@ class RecoveryManager:
                 "SELECT id FROM symbols WHERE symbol = $1",
                 self.symbol,
             )
-            
+
             if not symbol_id:
                 return
-            
+
             # Update state
-            gaps = self._stats['gaps_detected'] - self._stats['_last_persisted_gaps']
-            trades = self._stats['trades_recovered'] - self._stats['_last_persisted_trades']
-            
+            gaps = self._stats["gaps_detected"] - self._stats["_last_persisted_gaps"]
+            trades = self._stats["trades_recovered"] - self._stats["_last_persisted_trades"]
+
             await conn.execute(
                 """
                 INSERT INTO pipeline_state (
@@ -427,30 +430,34 @@ class RecoveryManager:
                 self._last_trade_id,
                 self._last_timestamp,
                 self._is_recovering,
-                self._stats['last_recovery_time'] if (self._is_recovering and self._stats['last_recovery_time']) else None,
+                (
+                    self._stats["last_recovery_time"]
+                    if (self._is_recovering and self._stats["last_recovery_time"])
+                    else None
+                ),
                 gaps,
                 trades,
             )
-            
-            self._stats['_last_persisted_gaps'] = self._stats['gaps_detected']
-            self._stats['_last_persisted_trades'] = self._stats['trades_recovered']
-    
+
+            self._stats["_last_persisted_gaps"] = self._stats["gaps_detected"]
+            self._stats["_last_persisted_trades"] = self._stats["trades_recovered"]
+
     async def close(self) -> None:
         """Close recovery manager."""
         await self._persist_state()
         await self._rest_client.close()
-    
-    def get_stats(self) -> Dict[str, Any]:
+
+    def get_stats(self) -> dict[str, Any]:
         """
         Get recovery statistics.
-        
+
         Returns:
             Dictionary with statistics
         """
         return {
-            'symbol': self.symbol,
-            'last_trade_id': self._last_trade_id,
-            'last_timestamp': self._last_timestamp.isoformat(),
-            'is_recovering': self._is_recovering,
+            "symbol": self.symbol,
+            "last_trade_id": self._last_trade_id,
+            "last_timestamp": self._last_timestamp.isoformat(),
+            "is_recovering": self._is_recovering,
             **self._stats,
         }

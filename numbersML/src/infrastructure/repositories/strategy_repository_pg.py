@@ -1,7 +1,7 @@
 """PostgreSQL implementation of strategy lifecycle repository."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -169,5 +169,5 @@ class StrategyRepositoryPG(StrategyRepository):
 def _coerce_datetime(value: datetime) -> datetime:
     """Normalize datetime values from asyncpg records."""
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
+        return value.replace(tzinfo=UTC)
     return value

@@ -18,55 +18,32 @@ Usage:
 import asyncio
 import logging
 import sys
-from pathlib import Path
 from typing import Optional
 
 import asyncpg
 import click
 
-from src.application.services.asset_sync_service import AssetSyncService, AssetSyncError
+from src.application.services.asset_sync_service import AssetSyncError, AssetSyncService
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 
 @click.command()
 @click.option(
-    '--db-url',
-    envvar='DATABASE_URL',
-    default='postgresql://crypto:crypto@localhost:5432/crypto_trading',
-    help='Database URL (default: postgresql://crypto:crypto@localhost:5432/crypto_trading)'
+    "--db-url",
+    envvar="DATABASE_URL",
+    default="postgresql://crypto:crypto@localhost:5432/crypto_trading",
+    help="Database URL (default: postgresql://crypto:crypto@localhost:5432/crypto_trading)",
 )
-@click.option(
-    '--dry-run',
-    is_flag=True,
-    help='Show what would be synced without making changes'
-)
-@click.option(
-    '--no-auto-activate',
-    is_flag=True,
-    help='Do not auto-activate new symbols'
-)
-@click.option(
-    '--auto-deactivate',
-    is_flag=True,
-    help='Auto-deactivate delisted symbols'
-)
-@click.option(
-    '--no-eu-compliance',
-    is_flag=True,
-    help='Disable EU compliance filtering'
-)
-@click.option(
-    '--verbose',
-    '-v',
-    is_flag=True,
-    help='Enable verbose logging'
-)
+@click.option("--dry-run", is_flag=True, help="Show what would be synced without making changes")
+@click.option("--no-auto-activate", is_flag=True, help="Do not auto-activate new symbols")
+@click.option("--auto-deactivate", is_flag=True, help="Auto-deactivate delisted symbols")
+@click.option("--no-eu-compliance", is_flag=True, help="Disable EU compliance filtering")
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
 def main(
     db_url: str,
     dry_run: bool,
@@ -180,7 +157,7 @@ async def run_sync(
             # Count by quote asset
             quote_assets: dict[str, int] = {}
             for s in symbols_data:
-                quote = s.get('quoteAsset', 'UNKNOWN')
+                quote = s.get("quoteAsset", "UNKNOWN")
                 quote_assets[quote] = quote_assets.get(quote, 0) + 1
 
             logger.info("Quote asset distribution:")
@@ -190,8 +167,7 @@ async def run_sync(
             # Check EU compliance
             if eu_compliance:
                 allowed = sum(
-                    1 for s in symbols_data
-                    if service._check_eu_compliance(s.get('quoteAsset', ''))
+                    1 for s in symbols_data if service._check_eu_compliance(s.get("quoteAsset", ""))
                 )
                 logger.info(f"EU compliant symbols: {allowed}/{len(symbols_data)}")
 
@@ -208,7 +184,7 @@ async def run_sync(
             logger.info(f"  Deactivated: {stats['deactivated']}")
             logger.info(f"  Errors: {stats['errors']}")
 
-            if stats['errors'] > 0:
+            if stats["errors"] > 0:
                 logger.warning(f"Sync completed with {stats['errors']} errors")
                 return 1
 
@@ -234,5 +210,5 @@ async def run_sync(
             logger.debug("Database pool closed")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -11,6 +11,7 @@ Dependencies: Domain repositories, Pydantic models
 """
 
 import logging
+from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -86,11 +87,11 @@ class ConfigurationSetResponse(BaseModel):
 # ============================================================================
 
 
-async def get_config_set_repository() -> ConfigSetRepository:
+async def get_config_set_repository() -> AsyncGenerator[ConfigSetRepository, None]:
     """Get ConfigSetRepository instance with database connection."""
     db_pool = await get_db_pool_async()
     async with db_pool.acquire() as conn:
-        return ConfigSetRepositoryPG(conn)
+        yield ConfigSetRepositoryPG(conn)
 
 
 # ============================================================================

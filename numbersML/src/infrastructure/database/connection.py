@@ -18,10 +18,11 @@ Example:
     ...     await db.disconnect()
 """
 
-import asyncpg
-from typing import Optional, AsyncContextManager
-from contextlib import asynccontextmanager
 import logging
+from contextlib import asynccontextmanager
+from typing import AsyncContextManager, Optional
+
+import asyncpg
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ class DatabaseConnection:
         if min_size < 1:
             raise ValueError(f"min_size must be >= 1, got {min_size}")
         if max_size < min_size:
-            raise ValueError(f"max_size must be >= min_size")
+            raise ValueError("max_size must be >= min_size")
 
         self.dsn: str = dsn
         self.min_size: int = min_size
@@ -82,9 +83,7 @@ class DatabaseConnection:
         self.command_timeout: int = command_timeout
         self._pool: Optional[asyncpg.Pool] = None
 
-        logger.info(
-            f"DatabaseConnection initialized (min={min_size}, max={max_size})"
-        )
+        logger.info(f"DatabaseConnection initialized (min={min_size}, max={max_size})")
 
     async def connect(self) -> None:
         """
@@ -108,9 +107,10 @@ class DatabaseConnection:
         logger.info(f"Connecting to PostgreSQL: {self.dsn}")
 
         try:
+
             async def _set_utc(conn):
                 await conn.execute("SET timezone = 'UTC'")
-            
+
             self._pool = await asyncpg.create_pool(
                 dsn=self.dsn,
                 min_size=self.min_size,
@@ -119,10 +119,7 @@ class DatabaseConnection:
                 init=_set_utc,
             )
 
-            logger.info(
-                f"Database connected successfully "
-                f"(pool size: {self._pool.get_size()})"
-            )
+            logger.info(f"Database connected successfully " f"(pool size: {self._pool.get_size()})")
 
         except asyncpg.PostgresError as e:
             logger.error(f"Failed to connect to database: {e}")
@@ -153,9 +150,7 @@ class DatabaseConnection:
         logger.info("Database disconnected")
 
     @asynccontextmanager
-    async def acquire(
-        self
-    ) -> AsyncContextManager[asyncpg.Connection]:
+    async def acquire(self) -> AsyncContextManager[asyncpg.Connection]:
         """
         Acquire connection from pool.
 

@@ -9,11 +9,10 @@ Tests:
     - Result writing
 """
 
-import pytest
-import json
-import numpy as np
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from src.pipeline.indicator_calculator import IndicatorCalculator
 
@@ -176,7 +175,8 @@ class TestIndicatorCalculator:
 
         # Mock IndicatorsBuffer to return empty buffer
         from src.pipeline.indicators_buffer import IndicatorsBuffer
-        with patch.object(IndicatorsBuffer, 'initialization', new_callable=AsyncMock):
+
+        with patch.object(IndicatorsBuffer, "initialization", new_callable=AsyncMock):
             buffer = calc._ensure_buffer("BTC/USDC")
             # Buffer is empty, should return 0
             result = await calc.calculate("BTC/USDC")
@@ -197,13 +197,13 @@ class TestIndicatorCalculator:
         ]
 
         # Mock IndicatorsBuffer.initialization to not access DB
-        from src.pipeline.indicators_buffer import IndicatorsBuffer
         from unittest.mock import patch
 
-        with patch.object(IndicatorsBuffer, 'initialization', new_callable=AsyncMock):
+        from src.pipeline.indicators_buffer import IndicatorsBuffer
+
+        with patch.object(IndicatorsBuffer, "initialization", new_callable=AsyncMock):
             buffer = calc._ensure_buffer("BTC/USDC")
             # Fill buffer with test data
-            import numpy as np
             buffer.closes_buff = list(range(20))
             buffer.volumes_buff = [10] * 20
             buffer.highs_buff = [101] * 20
@@ -228,7 +228,6 @@ class TestIndicatorCalculator:
 
         # Mock IndicatorsBuffer to return a mock with filled buffer
         from unittest.mock import patch
-        from src.pipeline.indicators_buffer import IndicatorsBuffer
 
         mock_buffer = MagicMock()
         mock_buffer.closes_buff = list(range(5))
@@ -236,7 +235,7 @@ class TestIndicatorCalculator:
         mock_buffer.highs_buff = [101] * 5
         mock_buffer.lows_buff = [99] * 5
 
-        with patch.object(calc, '_ensure_buffer', return_value=mock_buffer):
+        with patch.object(calc, "_ensure_buffer", return_value=mock_buffer):
             result = await calc.calculate("BTC/USDC")
             assert result == 0
 
@@ -248,7 +247,7 @@ class TestIndicatorCalculator:
         mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
 
         calc = IndicatorCalculator(mock_db_pool)
-        now = datetime.now(timezone.utc).replace(microsecond=0)
+        now = datetime.now(UTC).replace(microsecond=0)
 
         await calc._write_results(
             symbol="BTC/USDC",
@@ -266,6 +265,7 @@ class TestIndicatorCalculator:
         # Check no indicator_keys parameter (it is derived internally in repo)
         values_json = args[5]
         import json
+
         values = json.loads(values_json)
         assert "rsi" in values
         assert "sma" in values

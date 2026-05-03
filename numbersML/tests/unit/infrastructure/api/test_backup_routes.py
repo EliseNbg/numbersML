@@ -168,8 +168,10 @@ class TestBackupRoutes:
         mock_service = AsyncMock()
         mock_service_class.return_value = mock_service
 
-        with patch("pathlib.Path.exists", return_value=True), \
-             patch("pathlib.Path.unlink") as mock_unlink:
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.unlink") as mock_unlink,
+        ):
             response = client.delete("/api/backup/delete/backup_20260501_120000.sql.gz")
 
             assert response.status_code == 200
@@ -199,6 +201,7 @@ class TestBackupRoutesIntegration:
     def app(self) -> FastAPI:
         """Create test app with all routes."""
         from src.infrastructure.api.app import create_app
+
         return create_app()
 
     @pytest.fixture

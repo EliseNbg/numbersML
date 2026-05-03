@@ -11,7 +11,6 @@ Dependencies: Application services
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from typing import List
 
 from src.application.services.symbol_manager import SymbolManager
 from src.domain.models.config import SymbolConfig
@@ -28,23 +27,23 @@ async def get_symbol_manager() -> SymbolManager:
 
 @router.get(
     "",
-    response_model=List[SymbolConfig],
+    response_model=list[SymbolConfig],
     summary="List symbols",
     description="List all symbols, optionally filtered by active status",
 )
 async def list_symbols(
     active_only: bool = False,
     manager: SymbolManager = Depends(get_symbol_manager),
-) -> List[SymbolConfig]:
+) -> list[SymbolConfig]:
     """
     List all symbols.
-    
+
     Args:
         active_only: If True, return only active symbols
-    
+
     Returns:
         List of symbol configurations
-    
+
     Example:
         [
             {
@@ -75,24 +74,24 @@ async def get_symbol(
 ) -> SymbolConfig:
     """
     Get symbol by ID.
-    
+
     Args:
         symbol_id: Symbol ID
-    
+
     Returns:
         Symbol configuration
-    
+
     Raises:
         404: Symbol not found
     """
     symbol = await manager.get_symbol_by_id(symbol_id)
-    
+
     if not symbol:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Symbol not found (ID: {symbol_id})",
         )
-    
+
     return symbol
 
 
@@ -107,13 +106,13 @@ async def activate_symbol(
 ) -> dict:
     """
     Activate a symbol.
-    
+
     Args:
         symbol_id: Symbol ID to activate
-    
+
     Returns:
         Success message
-    
+
     Raises:
         404: Symbol not found
         500: Failed to activate
@@ -125,15 +124,15 @@ async def activate_symbol(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Symbol not found (ID: {symbol_id})",
         )
-    
+
     success = await manager.activate_symbol(symbol_id)
-    
+
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to activate symbol",
         )
-    
+
     return {"message": f"Symbol {symbol.symbol} activated"}
 
 
@@ -148,13 +147,13 @@ async def deactivate_symbol(
 ) -> dict:
     """
     Deactivate a symbol.
-    
+
     Args:
         symbol_id: Symbol ID to deactivate
-    
+
     Returns:
         Success message
-    
+
     Raises:
         404: Symbol not found
         500: Failed to deactivate
@@ -166,15 +165,15 @@ async def deactivate_symbol(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Symbol not found (ID: {symbol_id})",
         )
-    
+
     success = await manager.deactivate_symbol(symbol_id)
-    
+
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to deactivate symbol",
         )
-    
+
     return {"message": f"Symbol {symbol.symbol} deactivated"}
 
 
@@ -189,13 +188,13 @@ async def allow_symbol(
 ) -> dict:
     """
     Allow a symbol.
-    
+
     Args:
         symbol_id: Symbol ID to allow
-    
+
     Returns:
         Success message
-    
+
     Raises:
         404: Symbol not found
         500: Failed to allow
@@ -207,15 +206,15 @@ async def allow_symbol(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Symbol not found (ID: {symbol_id})",
         )
-    
+
     success = await manager.allow_symbol(symbol_id)
-    
+
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to allow symbol",
         )
-    
+
     return {"message": f"Symbol {symbol.symbol} allowed"}
 
 
@@ -230,13 +229,13 @@ async def disallow_symbol(
 ) -> dict:
     """
     Disallow a symbol.
-    
+
     Args:
         symbol_id: Symbol ID to disallow
-    
+
     Returns:
         Success message
-    
+
     Raises:
         404: Symbol not found
         500: Failed to disallow
@@ -248,15 +247,15 @@ async def disallow_symbol(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Symbol not found (ID: {symbol_id})",
         )
-    
+
     success = await manager.disallow_symbol(symbol_id)
-    
+
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to disallow symbol",
         )
-    
+
     return {"message": f"Symbol {symbol.symbol} disallowed"}
 
 
@@ -272,14 +271,14 @@ async def update_symbol(
 ) -> dict:
     """
     Update symbol configuration.
-    
+
     Args:
         symbol_id: Symbol ID to update
         symbol: New symbol configuration
-    
+
     Returns:
         Success message
-    
+
     Raises:
         404: Symbol not found
         400: Symbol ID mismatch
@@ -292,22 +291,22 @@ async def update_symbol(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Symbol not found (ID: {symbol_id})",
         )
-    
+
     # Verify ID matches
     if symbol.symbol_id != symbol_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Symbol ID in path and body must match",
         )
-    
+
     success = await manager.update_symbol(symbol)
-    
+
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update symbol",
         )
-    
+
     return {"message": f"Symbol {symbol.symbol} updated"}
 
 
@@ -317,23 +316,23 @@ async def update_symbol(
     description="Activate multiple symbols at once",
 )
 async def bulk_activate(
-    symbol_ids: List[int],
+    symbol_ids: list[int],
     manager: SymbolManager = Depends(get_symbol_manager),
 ) -> dict:
     """
     Activate multiple symbols.
-    
+
     Args:
         symbol_ids: List of symbol IDs to activate
-    
+
     Returns:
         Number of symbols activated
-    
+
     Example:
         {"activated": 5}
     """
     count = await manager.bulk_activate(symbol_ids)
-    
+
     return {"activated": count}
 
 
@@ -343,23 +342,23 @@ async def bulk_activate(
     description="Deactivate multiple symbols at once",
 )
 async def bulk_deactivate(
-    symbol_ids: List[int],
+    symbol_ids: list[int],
     manager: SymbolManager = Depends(get_symbol_manager),
 ) -> dict:
     """
     Deactivate multiple symbols.
-    
+
     Args:
         symbol_ids: List of symbol IDs to deactivate
-    
+
     Returns:
         Number of symbols deactivated
-    
+
     Example:
         {"deactivated": 3}
     """
     count = await manager.bulk_deactivate(symbol_ids)
-    
+
     return {"deactivated": count}
 
 
@@ -373,15 +372,15 @@ async def activate_eu_compliant(
 ) -> dict:
     """
     Activate all EU-compliant symbols.
-    
+
     EU-compliant = USDC, EUR, BTC, ETH quote assets (not USDT, BUSD, TUSD)
-    
+
     Returns:
         Number of symbols activated
-    
+
     Example:
         {"activated": 15}
     """
     count = await manager.activate_eu_compliant()
-    
+
     return {"activated": count}

@@ -2,10 +2,11 @@
 Unit tests for IndicatorsBuffer class.
 """
 
-import pytest
-import numpy as np
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
+
+import numpy as np
+import pytest
 
 from src.pipeline.indicators_buffer import IndicatorsBuffer
 
@@ -63,7 +64,7 @@ class TestIndicatorsBuffer:
         mock_dbconn.fetch = AsyncMock(return_value=rows)
         mock_dbconn.fetchval = AsyncMock(return_value=42)  # symbol_id
 
-        current_time = datetime(2026, 4, 27, 23, 0, 0, tzinfo=timezone.utc)
+        current_time = datetime(2026, 4, 27, 23, 0, 0, tzinfo=UTC)
         current_candle = {
             "open": 200.0,
             "high": 201.0,
@@ -104,7 +105,7 @@ class TestIndicatorsBuffer:
         mock_dbconn.fetch = AsyncMock(return_value=rows)
         mock_dbconn.fetchval = AsyncMock(return_value=42)
 
-        current_time = datetime(2026, 4, 27, 23, 0, 0, tzinfo=timezone.utc)
+        current_time = datetime(2026, 4, 27, 23, 0, 0, tzinfo=UTC)
         current_candle = {
             "open": 200.0,
             "high": 201.0,
@@ -136,7 +137,7 @@ class TestIndicatorsBuffer:
         mock_dbconn.fetch = AsyncMock(return_value=[])
         mock_dbconn.fetchval = AsyncMock(return_value=42)
 
-        current_time = datetime(2026, 4, 27, 23, 0, 0, tzinfo=timezone.utc)
+        current_time = datetime(2026, 4, 27, 23, 0, 0, tzinfo=UTC)
         current_candle = {
             "open": 200.0,
             "high": 201.0,
@@ -235,7 +236,9 @@ class TestIndicatorsBuffer:
         buffer._fill_with_candle(candle)
 
         assert len(buffer.closes_buff) == max_period
-        np.testing.assert_array_almost_equal(buffer.closes_buff, np.full(max_period, candle["close"]))
+        np.testing.assert_array_almost_equal(
+            buffer.closes_buff, np.full(max_period, candle["close"])
+        )
         np.testing.assert_array_almost_equal(
             buffer.volumes_buff, np.full(max_period, candle["volume"])
         )

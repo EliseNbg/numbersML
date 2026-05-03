@@ -11,10 +11,9 @@ Dependencies: Application services
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from typing import List
 
 from src.application.services.pipeline_monitor import PipelineMonitor
-from src.domain.models.dashboard import CollectorStatus, SLAMetric, DashboardStats
+from src.domain.models.dashboard import CollectorStatus, DashboardStats, SLAMetric
 from src.infrastructure.database import get_db_pool_async
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -37,7 +36,7 @@ async def get_collector_status(
 ) -> CollectorStatus:
     """
     Get collector service status.
-    
+
     Returns:
         Current collector status including:
         - is_running: Whether collector is running
@@ -46,7 +45,7 @@ async def get_collector_status(
         - last_tick_time: Last processed tick
         - ticks_processed: Total ticks processed
         - errors: Error count
-    
+
     Example:
         {
             "is_running": true,
@@ -70,21 +69,21 @@ async def start_collector(
 ) -> dict:
     """
     Start collector service.
-    
+
     Returns:
         Success message
-    
+
     Example:
         {"message": "Collector started", "pid": 12345}
     """
     success = await monitor.start_collector()
-    
+
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to start collector",
         )
-    
+
     return {"message": "Collector started"}
 
 
@@ -98,43 +97,43 @@ async def stop_collector(
 ) -> dict:
     """
     Stop collector service.
-    
+
     Returns:
         Success message
-    
+
     Example:
         {"message": "Collector stopped"}
     """
     success = await monitor.stop_collector()
-    
+
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to stop collector",
         )
-    
+
     return {"message": "Collector stopped"}
 
 
 @router.get(
     "/metrics",
-    response_model=List[SLAMetric],
+    response_model=list[SLAMetric],
     summary="Get SLA metrics",
     description="Get SLA metrics for the last N seconds",
 )
 async def get_sla_metrics(
     seconds: int = 60,
     monitor: PipelineMonitor = Depends(get_pipeline_monitor),
-) -> List[SLAMetric]:
+) -> list[SLAMetric]:
     """
     Get SLA metrics for last N seconds.
-    
+
     Args:
         seconds: Number of seconds to fetch (default: 60)
-    
+
     Returns:
         List of SLA metrics, one per second
-    
+
     Example:
         [
             {
@@ -151,7 +150,7 @@ async def get_sla_metrics(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Seconds must be between 1 and 300",
         )
-    
+
     return await monitor.get_sla_metrics(seconds=seconds)
 
 
@@ -166,7 +165,7 @@ async def get_dashboard_stats(
 ) -> DashboardStats:
     """
     Get quick dashboard statistics.
-    
+
     Returns:
         Dashboard statistics including:
         - ticks_per_minute: Throughput
@@ -174,7 +173,7 @@ async def get_dashboard_stats(
         - sla_compliance_pct: Compliance percentage
         - active_symbols_count: Active symbols
         - active_indicators_count: Active indicators
-    
+
     Example:
         {
             "ticks_per_minute": 60,

@@ -14,32 +14,32 @@ Usage:
 """
 
 import logging
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 import asyncpg
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from src.infrastructure.api.routes import (
-    dashboard_router,
-    symbols_router,
-    indicators_router,
+    backup_router,
     config_router,
+    config_sets_router,
+    dashboard_router,
+    indicators_router,
+    market_router,
     pipeline_router,
     strategies_router,
-    market_router,
     strategy_backtest_router,
-    config_sets_router,
-    backup_router,
+    symbols_router,
 )
-from src.infrastructure.api.routes.candles import router as candles_router
-from src.infrastructure.api.routes.target_values import router as target_values_router
-from src.infrastructure.api.routes.ml import router as ml_router
 from src.infrastructure.api.routes.backtest import router as backtest_router
-from src.infrastructure.database import set_db_pool, get_db_pool, get_db_pool_async
+from src.infrastructure.api.routes.candles import router as candles_router
+from src.infrastructure.api.routes.ml import router as ml_router
+from src.infrastructure.api.routes.target_values import router as target_values_router
+from src.infrastructure.database import get_db_pool, set_db_pool
 from src.pipeline.service import PipelineManager, set_pipeline_manager
 
 logger = logging.getLogger(__name__)

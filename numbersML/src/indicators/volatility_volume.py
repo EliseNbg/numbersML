@@ -33,8 +33,8 @@ class BollingerBandsIndicator(Indicator):
     - Bands expand: High volatility
     """
 
-    category = 'volatility'
-    description = 'Bollinger Bands - Volatility bands'
+    category = "volatility"
+    description = "Bollinger Bands - Volatility bands"
 
     def __init__(self, period: int = 20, std_dev: float = 2.0) -> None:
         """Initialize Bollinger Bands indicator."""
@@ -47,20 +47,10 @@ class BollingerBandsIndicator(Indicator):
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
-                "period": {
-                    "type": "integer",
-                    "minimum": 2,
-                    "maximum": 5000,
-                    "default": 20
-                },
-                "std_dev": {
-                    "type": "number",
-                    "minimum": 0.5,
-                    "maximum": 5.0,
-                    "default": 2.0
-                }
+                "period": {"type": "integer", "minimum": 2, "maximum": 5000, "default": 20},
+                "std_dev": {"type": "number", "minimum": 0.5, "maximum": 5.0, "default": 2.0},
             },
-            "required": ["period", "std_dev"]
+            "required": ["period", "std_dev"],
         }
 
     def calculate(
@@ -70,29 +60,29 @@ class BollingerBandsIndicator(Indicator):
         **kwargs: Any,
     ) -> IndicatorResult:
         """Calculate Bollinger Bands."""
-        period = self.params['period']
-        std_dev = self.params['std_dev']
+        period = self.params["period"]
+        std_dev = self.params["std_dev"]
 
         if len(prices) < period:
             return IndicatorResult(
                 name=self.name,
                 values={
-                    'upper': np.full(len(prices), np.nan),
-                    'middle': np.full(len(prices), np.nan),
-                    'lower': np.full(len(prices), np.nan)
+                    "upper": np.full(len(prices), np.nan),
+                    "middle": np.full(len(prices), np.nan),
+                    "lower": np.full(len(prices), np.nan),
                 },
-                metadata={'period': period, 'std_dev': std_dev}
+                metadata={"period": period, "std_dev": std_dev},
             )
 
         # Middle band (SMA)
         middle = np.full(len(prices), np.nan)
         for i in range(period - 1, len(prices)):
-            middle[i] = np.mean(prices[i-period+1:i+1])
+            middle[i] = np.mean(prices[i - period + 1 : i + 1])
 
         # Standard deviation
         std = np.full(len(prices), np.nan)
         for i in range(period - 1, len(prices)):
-            std[i] = np.std(prices[i-period+1:i+1])
+            std[i] = np.std(prices[i - period + 1 : i + 1])
 
         # Upper and lower bands
         upper = middle + (std * std_dev)
@@ -100,13 +90,8 @@ class BollingerBandsIndicator(Indicator):
 
         return IndicatorResult(
             name=self.name,
-            values={
-                'upper': upper,
-                'middle': middle,
-                'lower': lower,
-                'std': std
-            },
-            metadata={'period': period, 'std_dev': std_dev}
+            values={"upper": upper, "middle": middle, "lower": lower, "std": std},
+            metadata={"period": period, "std_dev": std_dev},
         )
 
 
@@ -121,8 +106,8 @@ class ATRIndicator(Indicator):
     Lower ATR = Lower volatility
     """
 
-    category = 'volatility'
-    description = 'Average True Range - Volatility indicator'
+    category = "volatility"
+    description = "Average True Range - Volatility indicator"
 
     def __init__(self, period: int = 14) -> None:
         """Initialize ATR indicator."""
@@ -135,16 +120,11 @@ class ATRIndicator(Indicator):
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
-                "period": {
-                    "type": "integer",
-                    "minimum": 2,
-                    "maximum": 5000,
-                    "default": 14
-                }
+                "period": {"type": "integer", "minimum": 2, "maximum": 5000, "default": 14}
             },
-            "required": ["period"]
+            "required": ["period"],
         }
-    
+
     def calculate(
         self,
         prices: np.ndarray,
@@ -154,7 +134,7 @@ class ATRIndicator(Indicator):
         **kwargs: Any,
     ) -> IndicatorResult:
         """Calculate ATR."""
-        period = self.params['period']
+        period = self.params["period"]
 
         if highs is None:
             highs = prices
@@ -163,11 +143,7 @@ class ATRIndicator(Indicator):
 
         atr = self._calculate_atr(highs, lows, prices, period)
 
-        return IndicatorResult(
-            name=self.name,
-            values={'atr': atr},
-            metadata={'period': period}
-        )
+        return IndicatorResult(name=self.name, values={"atr": atr}, metadata={"period": period})
 
     def _calculate_atr(
         self,
@@ -184,18 +160,16 @@ class ATRIndicator(Indicator):
         # Calculate True Range
         for i in range(1, n):
             tr[i] = max(
-                highs[i] - lows[i],
-                abs(highs[i] - closes[i-1]),
-                abs(lows[i] - closes[i-1])
+                highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1])
             )
 
         # First ATR is simple average
         if n > period:
-            atr[period] = np.mean(tr[1:period+1])
+            atr[period] = np.mean(tr[1 : period + 1])
 
             # Smoothed ATR
             for i in range(period + 1, n):
-                atr[i] = (atr[i-1] * (period - 1) + tr[i]) / period
+                atr[i] = (atr[i - 1] * (period - 1) + tr[i]) / period
 
         return atr
 
@@ -212,8 +186,8 @@ class OBVIndicator(Indicator):
     - OBV divergence: Potential reversal
     """
 
-    category = 'volume'
-    description = 'On Balance Volume - Volume momentum indicator'
+    category = "volume"
+    description = "On Balance Volume - Volume momentum indicator"
 
     def __init__(self) -> None:
         """Initialize OBV indicator (no parameters)."""
@@ -225,7 +199,7 @@ class OBVIndicator(Indicator):
         return {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
-            "properties": {}
+            "properties": {},
         }
 
     def calculate(
@@ -238,18 +212,14 @@ class OBVIndicator(Indicator):
         obv = np.zeros(len(prices))
 
         for i in range(1, len(prices)):
-            if prices[i] > prices[i-1]:
-                obv[i] = obv[i-1] + volumes[i]
-            elif prices[i] < prices[i-1]:
-                obv[i] = obv[i-1] - volumes[i]
+            if prices[i] > prices[i - 1]:
+                obv[i] = obv[i - 1] + volumes[i]
+            elif prices[i] < prices[i - 1]:
+                obv[i] = obv[i - 1] - volumes[i]
             else:
-                obv[i] = obv[i-1]
+                obv[i] = obv[i - 1]
 
-        return IndicatorResult(
-            name=self.name,
-            values={'obv': obv},
-            metadata={}
-        )
+        return IndicatorResult(name=self.name, values={"obv": obv}, metadata={})
 
 
 class VWAPIndicator(Indicator):
@@ -264,8 +234,8 @@ class VWAPIndicator(Indicator):
     - Price below VWAP: Bearish
     """
 
-    category = 'volume'
-    description = 'VWAP - Volume weighted average price'
+    category = "volume"
+    description = "VWAP - Volume weighted average price"
 
     def __init__(self) -> None:
         """Initialize VWAP indicator (no parameters)."""
@@ -277,7 +247,7 @@ class VWAPIndicator(Indicator):
         return {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
-            "properties": {}
+            "properties": {},
         }
 
     def calculate(
@@ -298,11 +268,7 @@ class VWAPIndicator(Indicator):
             if cum_volume > 0:
                 vwap[i] = cum_pv / cum_volume
 
-        return IndicatorResult(
-            name=self.name,
-            values={'vwap': vwap},
-            metadata={}
-        )
+        return IndicatorResult(name=self.name, values={"vwap": vwap}, metadata={})
 
 
 class MFIIndicator(Indicator):
@@ -317,8 +283,8 @@ class MFIIndicator(Indicator):
     - MFI < 20: Oversold
     """
 
-    category = 'volume'
-    description = 'Money Flow Index - Volume-weighted RSI'
+    category = "volume"
+    description = "Money Flow Index - Volume-weighted RSI"
 
     def __init__(self, period: int = 14) -> None:
         """Initialize MFI indicator."""
@@ -331,16 +297,11 @@ class MFIIndicator(Indicator):
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
-                "period": {
-                    "type": "integer",
-                    "minimum": 2,
-                    "maximum": 5000,
-                    "default": 14
-                }
+                "period": {"type": "integer", "minimum": 2, "maximum": 5000, "default": 14}
             },
-            "required": ["period"]
+            "required": ["period"],
         }
-    
+
     def calculate(
         self,
         prices: np.ndarray,
@@ -350,7 +311,7 @@ class MFIIndicator(Indicator):
         **kwargs: Any,
     ) -> IndicatorResult:
         """Calculate MFI."""
-        period = self.params['period']
+        period = self.params["period"]
 
         if highs is None:
             highs = prices
@@ -359,11 +320,7 @@ class MFIIndicator(Indicator):
 
         mfi = self._calculate_mfi(highs, lows, prices, volumes, period)
 
-        return IndicatorResult(
-            name=self.name,
-            values={'mfi': mfi},
-            metadata={'period': period}
-        )
+        return IndicatorResult(name=self.name, values={"mfi": mfi}, metadata={"period": period})
 
     def _calculate_mfi(
         self,
@@ -391,15 +348,15 @@ class MFIIndicator(Indicator):
         negative_flow = np.zeros(n)
 
         for i in range(1, n):
-            if typical_price[i] > typical_price[i-1]:
+            if typical_price[i] > typical_price[i - 1]:
                 positive_flow[i] = money_flow[i]
-            elif typical_price[i] < typical_price[i-1]:
+            elif typical_price[i] < typical_price[i - 1]:
                 negative_flow[i] = money_flow[i]
 
         # Money ratio and MFI
         for i in range(period, n):
-            positive_sum = np.sum(positive_flow[i-period+1:i+1])
-            negative_sum = np.sum(negative_flow[i-period+1:i+1])
+            positive_sum = np.sum(positive_flow[i - period + 1 : i + 1])
+            negative_sum = np.sum(negative_flow[i - period + 1 : i + 1])
 
             if negative_sum > 0:
                 money_ratio = positive_sum / negative_sum
