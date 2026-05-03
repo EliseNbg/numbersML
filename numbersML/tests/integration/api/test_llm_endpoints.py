@@ -19,6 +19,8 @@ from unittest.mock import AsyncMock, patch, MagicMock
 def app() -> FastAPI:
     """Create test app with LLM routes."""
     from src.infrastructure.api.routes.strategies import router as strategies_router
+    from src.infrastructure.api.routes.strategies import get_llm_service
+    from src.infrastructure.api.auth import require_trader, require_admin, AuthContext
     from src.infrastructure.database import set_db_pool
     
     app = FastAPI()
@@ -29,6 +31,26 @@ def app() -> FastAPI:
     mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
     mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
     set_db_pool(mock_pool)
+    
+    # Mock the LLM service dependency
+    async def mock_get_llm_service():
+        mock_svc = AsyncMock()
+        mock_svc.generate_config.return_value = MagicMock(success=False, error_message="test", issues=[], raw_response=None)
+        return mock_svc
+    
+    app.dependency_overrides[get_llm_service] = mock_get_llm_service
+    
+    # Mock auth dependencies
+    async def mock_auth():
+        return AuthContext(
+            api_key="test-key",
+            trader_id="test",
+            roles=["trader"],
+            permissions=["trade"],
+        )
+    
+    app.dependency_overrides[require_trader] = mock_auth
+    app.dependency_overrides[require_admin] = mock_auth
     
     app.include_router(strategies_router)
     return app

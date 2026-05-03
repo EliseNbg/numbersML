@@ -684,7 +684,7 @@ class TestMLEndpoints:
     @pytest.mark.asyncio
     async def test_predict_hours_too_high(self, client: AsyncClient) -> None:
         """Test prediction with hours too high."""
-        response = await client.get("/api/ml/predict?symbol=BTC/USDC&hours=200")
+        response = await client.get("/api/ml/predict?symbol=BTC/USDC&hours=1500")
         
         # Should return 422 (validation error)
         assert response.status_code == 422

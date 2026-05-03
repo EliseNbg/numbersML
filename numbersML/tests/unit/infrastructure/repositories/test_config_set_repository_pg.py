@@ -5,7 +5,8 @@ Uses unittest.mock to mock asyncpg.Connection.
 Follows TDD: tests first, then implementation.
 """
 
-from datetime import UTC, datetime
+import datetime
+from datetime import UTC
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -54,8 +55,8 @@ class TestConfigSetRepositoryPGSave:
             "config": sample_config_set.to_dict()["config"],
             "is_active": sample_config_set.is_active,
             "created_by": sample_config_set.created_by,
-            "created_at": datetime.now(UTC),
-            "updated_at": datetime.now(UTC),
+            "created_at": datetime.datetime.now(UTC),
+            "updated_at": datetime.datetime.now(UTC),
             "version": 1,
         }
 
@@ -77,8 +78,8 @@ class TestConfigSetRepositoryPGSave:
             "config": sample_config_set.to_dict()["config"],
             "is_active": sample_config_set.is_active,
             "created_by": sample_config_set.created_by,
-            "created_at": datetime.now(UTC),
-            "updated_at": datetime.now(UTC),
+            "created_at": datetime.datetime.now(UTC),
+            "updated_at": datetime.datetime.now(UTC),
             "version": 1,
         }
 
@@ -111,8 +112,8 @@ class TestConfigSetRepositoryPGGetById:
             "config": sample_config_set.to_dict()["config"],
             "is_active": True,
             "created_by": "test",
-            "created_at": datetime.now(UTC),
-            "updated_at": datetime.now(UTC),
+            "created_at": datetime.datetime.now(UTC),
+            "updated_at": datetime.datetime.now(UTC),
             "version": 1,
         }
 
@@ -147,8 +148,8 @@ class TestConfigSetRepositoryPGGetAll:
                 "config": {"key": "value1"},
                 "is_active": True,
                 "created_by": "test",
-                "created_at": datetime.now(UTC),
-                "updated_at": datetime.now(UTC),
+                "created_at": datetime.datetime.now(UTC),
+                "updated_at": datetime.datetime.now(UTC),
                 "version": 1,
             },
             {
@@ -158,8 +159,8 @@ class TestConfigSetRepositoryPGGetAll:
                 "config": {"key": "value2"},
                 "is_active": True,
                 "created_by": "test",
-                "created_at": datetime.now(UTC),
-                "updated_at": datetime.now(UTC),
+                "created_at": datetime.datetime.now(UTC),
+                "updated_at": datetime.datetime.now(UTC),
                 "version": 1,
             },
         ]
@@ -184,8 +185,8 @@ class TestConfigSetRepositoryPGGetByName:
             "config": sample_config_set.to_dict()["config"],
             "is_active": True,
             "created_by": "test",
-            "created_at": datetime.now(UTC),
-            "updated_at": datetime.now(UTC),
+            "created_at": datetime.datetime.now(UTC),
+            "updated_at": datetime.datetime.now(UTC),
             "version": 1,
         }
 
@@ -218,8 +219,8 @@ class TestConfigSetRepositoryPGListAll:
                 "config": {"key": "value1"},
                 "is_active": True,
                 "created_by": "test",
-                "created_at": datetime.now(UTC),
-                "updated_at": datetime.now(UTC),
+                "created_at": datetime.datetime.now(UTC),
+                "updated_at": datetime.datetime.now(UTC),
                 "version": 1,
             },
             {
@@ -229,8 +230,8 @@ class TestConfigSetRepositoryPGListAll:
                 "config": {"key": "value2"},
                 "is_active": True,
                 "created_by": "test",
-                "created_at": datetime.now(UTC),
-                "updated_at": datetime.now(UTC),
+                "created_at": datetime.datetime.now(UTC),
+                "updated_at": datetime.datetime.now(UTC),
                 "version": 1,
             },
         ]
@@ -252,8 +253,8 @@ class TestConfigSetRepositoryPGListAll:
                 "config": {"key": "value"},
                 "is_active": True,
                 "created_by": "test",
-                "created_at": datetime.now(UTC),
-                "updated_at": datetime.now(UTC),
+                "created_at": datetime.datetime.now(UTC),
+                "updated_at": datetime.datetime.now(UTC),
                 "version": 1,
             },
         ]
@@ -310,8 +311,8 @@ class TestConfigSetRepositoryPGUpdateConfig:
             "config": new_config,
             "is_active": True,
             "created_by": "test",
-            "created_at": datetime.now(UTC),
-            "updated_at": datetime.now(UTC),
+            "created_at": datetime.datetime.now(UTC),
+            "updated_at": datetime.datetime.now(UTC),
             "version": 2,  # Incremented
         }
 
