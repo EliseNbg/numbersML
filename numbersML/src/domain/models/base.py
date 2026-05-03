@@ -24,7 +24,7 @@ class Entity(ABC):
     Equality is based on ID only, not all attributes.
     """
     
-    id: int | None = None
+    id: int | UUID | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
