@@ -13,11 +13,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from src.domain.models.base import Entity
-from src.domain.strategies.base import Algorithm, EnrichedTick, Position, Signal
+from src.domain.strategies.base import EnrichedTick, Position, Signal
+
+if TYPE_CHECKING:
+    from src.domain.strategies.base import Algorithm
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +110,7 @@ class StrategyInstance(Entity):
 
     def __init__(
         self,
-        strategy: Algorithm,
+        strategy_id: UUID,
         config_set_id: UUID,
         id: UUID | None = None,
         status: StrategyInstanceState = StrategyInstanceState.STOPPED,
@@ -118,7 +121,7 @@ class StrategyInstance(Entity):
         """Initialize StrategyInstance.
 
         Args:
-            strategy: Algorithm object (algorithm logic)
+            strategy_id: UUID of the Algorithm
             config_set_id: UUID of the ConfigurationSet
             id: UUID (auto-generated if None)
             status: Initial status (default: STOPPED)
@@ -127,17 +130,16 @@ class StrategyInstance(Entity):
             stopped_at: When instance was stopped
 
         Raises:
-            ValueError: If strategy or config_set_id is None
+            ValueError: If strategy_id or config_set_id is None
         """
         super().__init__(id or uuid4())
 
-        if not strategy:
-            raise ValueError("strategy cannot be None")
+        if not strategy_id:
+            raise ValueError("strategy_id cannot be None")
         if not config_set_id:
             raise ValueError("config_set_id cannot be None")
 
-        self._strategy = strategy
-        self._strategy_id = strategy.id
+        self._strategy_id = strategy_id
         self._config_set_id = config_set_id
         self._status = status
         self._runtime_stats = runtime_stats or RuntimeStats()
@@ -152,6 +154,7 @@ class StrategyInstance(Entity):
         self._ticks_processed: int = 0
         self._errors: int = 0
         self._config: dict[str, Any] = {}
+        self._strategy: Optional[Algorithm] = None
 
     @property
     def strategy_id(self) -> UUID:
@@ -164,8 +167,8 @@ class StrategyInstance(Entity):
         return self._config_set_id
 
     @property
-    def strategy(self) -> Algorithm:
-        """Get algorithm object."""
+    def strategy(self) -> "Optional[Algorithm]":
+        """Get algorithm object (None if loaded from DB without strategy)."""
         return self._strategy
 
     @property
@@ -320,6 +323,10 @@ class StrategyInstance(Entity):
             Signal if generated, None otherwise
         """
         if self._status != StrategyInstanceState.RUNNING:
+            return None
+
+        if not self._strategy:
+            logger.error(f"No strategy object set for instance {self.id}")
             return None
 
         if tick.symbol not in self._strategy.symbols:
