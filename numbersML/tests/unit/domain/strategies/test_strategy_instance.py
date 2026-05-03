@@ -81,7 +81,7 @@ class TestStrategyInstanceCreation:
         config_set_id = uuid4()
 
         instance = StrategyInstance(
-            strategy=algorithm,
+            strategy_id=algorithm.id,
             config_set_id=config_set_id,
         )
 
@@ -96,7 +96,7 @@ class TestStrategyInstanceCreation:
         custom_id = uuid4()
         algorithm = SimpleTestAlgorithm(uuid4(), ["BTC/USDT"])
         instance = StrategyInstance(
-            strategy=algorithm,
+            strategy_id=algorithm.id,
             config_set_id=uuid4(),
             id=custom_id,
         )
@@ -107,7 +107,7 @@ class TestStrategyInstanceCreation:
         """Test creating with specific status."""
         algorithm = SimpleTestAlgorithm(uuid4(), ["BTC/USDT"])
         instance = StrategyInstance(
-            strategy=algorithm,
+            strategy_id=algorithm.id,
             config_set_id=uuid4(),
             status=StrategyInstanceState.PAUSED,
         )
@@ -117,9 +117,9 @@ class TestStrategyInstanceCreation:
 
     def test_create_missing_strategy(self) -> None:
         """Test that missing strategy raises ValueError."""
-        with pytest.raises(ValueError, match="strategy cannot be None"):
+        with pytest.raises(ValueError, match="strategy_id cannot be None"):
             StrategyInstance(
-                strategy=None,  # type: ignore
+                strategy_id=None,  # type: ignore
                 config_set_id=uuid4(),
             )
 
@@ -127,7 +127,7 @@ class TestStrategyInstanceCreation:
         """Test that missing config_set_id raises ValueError."""
         with pytest.raises(ValueError, match="config_set_id cannot be None"):
             StrategyInstance(
-                strategy=SimpleTestAlgorithm(uuid4(), ["BTC/USDT"]),
+                strategy_id=uuid4(),
                 config_set_id=None,  # type: ignore
             )
 
@@ -139,7 +139,7 @@ class TestStrategyInstanceLifecycle:
         """Test starting from STOPPED state."""
         algorithm = SimpleTestAlgorithm(uuid4(), ["BTC/USDT"])
         instance = StrategyInstance(
-            strategy=algorithm,
+            strategy_id=algorithm.id,
             config_set_id=uuid4(),
         )
 
@@ -155,7 +155,7 @@ class TestStrategyInstanceLifecycle:
         """Test stopping from RUNNING state."""
         algorithm = SimpleTestAlgorithm(uuid4(), ["BTC/USDT"])
         instance = StrategyInstance(
-            strategy=algorithm,
+            strategy_id=algorithm.id,
             config_set_id=uuid4(),
         )
         instance.start()
@@ -169,7 +169,7 @@ class TestStrategyInstanceLifecycle:
         """Test pausing from RUNNING state."""
         algorithm = SimpleTestAlgorithm(uuid4(), ["BTC/USDT"])
         instance = StrategyInstance(
-            strategy=algorithm,
+            strategy_id=algorithm.id,
             config_set_id=uuid4(),
         )
         instance.start()
@@ -182,7 +182,7 @@ class TestStrategyInstanceLifecycle:
         """Test resuming from PAUSED state."""
         algorithm = SimpleTestAlgorithm(uuid4(), ["BTC/USDT"])
         instance = StrategyInstance(
-            strategy=algorithm,
+            strategy_id=algorithm.id,
             config_set_id=uuid4(),
         )
         instance.start()
@@ -196,7 +196,7 @@ class TestStrategyInstanceLifecycle:
         """Test that starting from RUNNING raises ValueError."""
         algorithm = SimpleTestAlgorithm(uuid4(), ["BTC/USDT"])
         instance = StrategyInstance(
-            strategy=algorithm,
+            strategy_id=algorithm.id,
             config_set_id=uuid4(),
         )
         instance.start()
@@ -208,7 +208,7 @@ class TestStrategyInstanceLifecycle:
         """Test that stopping from STOPPED raises ValueError."""
         algorithm = SimpleTestAlgorithm(uuid4(), ["BTC/USDT"])
         instance = StrategyInstance(
-            strategy=algorithm,
+            strategy_id=algorithm.id,
             config_set_id=uuid4(),
         )
 
@@ -219,7 +219,7 @@ class TestStrategyInstanceLifecycle:
         """Test that resuming from RUNNING raises ValueError."""
         algorithm = SimpleTestAlgorithm(uuid4(), ["BTC/USDT"])
         instance = StrategyInstance(
-            strategy=algorithm,
+            strategy_id=algorithm.id,
             config_set_id=uuid4(),
         )
         instance.start()
@@ -235,7 +235,7 @@ class TestStrategyInstanceStats:
         """Test updating runtime statistics."""
         algorithm = SimpleTestAlgorithm(uuid4(), ["BTC/USDT"])
         instance = StrategyInstance(
-            strategy=algorithm,
+            strategy_id=algorithm.id,
             config_set_id=uuid4(),
         )
 
@@ -249,7 +249,7 @@ class TestStrategyInstanceStats:
         """Test recording an error."""
         algorithm = SimpleTestAlgorithm(uuid4(), ["BTC/USDT"])
         instance = StrategyInstance(
-            strategy=algorithm,
+            strategy_id=algorithm.id,
             config_set_id=uuid4(),
         )
         instance.start()
@@ -263,7 +263,7 @@ class TestStrategyInstanceStats:
         """Test that stats are preserved when error recorded."""
         algorithm = SimpleTestAlgorithm(uuid4(), ["BTC/USDT"])
         instance = StrategyInstance(
-            strategy=algorithm,
+            strategy_id=algorithm.id,
             config_set_id=uuid4(),
         )
         instance.update_stats(pnl=50.0, total_trades=2)
@@ -282,7 +282,7 @@ class TestStrategyInstanceSerialization:
         """Test converting to dictionary."""
         algorithm = SimpleTestAlgorithm(uuid4(), ["BTC/USDT"])
         instance = StrategyInstance(
-            strategy=algorithm,
+            strategy_id=algorithm.id,
             config_set_id=uuid4(),
         )
 
@@ -299,7 +299,7 @@ class TestStrategyInstanceSerialization:
         """Test to_dict when instance is running."""
         algorithm = SimpleTestAlgorithm(uuid4(), ["BTC/USDT"])
         instance = StrategyInstance(
-            strategy=algorithm,
+            strategy_id=algorithm.id,
             config_set_id=uuid4(),
         )
         instance.start()
