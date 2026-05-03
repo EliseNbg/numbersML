@@ -13,8 +13,9 @@ Dependencies: Application services, Domain models
 """
 
 import logging
+from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -35,7 +36,51 @@ from src.infrastructure.repositories.runtime_event_repository_pg import (
 )
 from src.infrastructure.repositories.strategy_repository_pg import StrategyRepositoryPG
 
+if TYPE_CHECKING:
+    from src.application.services.strategy_lifecycle import StrategyLifecycleService
+
 router = APIRouter(prefix="/api/strategies", tags=["strategies"])
+async def get_strategy_repo() -> AsyncGenerator[StrategyRepository, None]:
+    """Get StrategyRepository instance with database connection."""
+    db_pool = await get_db_pool_async()
+    async with db_pool.acquire() as conn:
+        yield StrategyRepositoryPG(conn)
+
+
+async def get_event_repo() -> AsyncGenerator[StrategyRuntimeEventRepository, None]:
+    """Get StrategyRuntimeEventRepository instance."""
+    db_pool = await get_db_pool_async()
+    async with db_pool.acquire() as conn:
+        yield StrategyRuntimeEventRepositoryPG(conn)
+
+
+async def get_llm_service() -> AsyncGenerator[LLMStrategyService, None]:
+    """Get LLMStrategyService instance."""
+    db_pool = await get_db_pool_async()
+    async with db_pool.acquire() as conn:
+        from src.infrastructure.repositories.strategy_repository_pg import StrategyRepositoryPG
+
+        repo = StrategyRepositoryPG(conn)
+        yield LLMStrategyService(strategy_repository=repo)
+
+async def get_lifecycle_service(
+    repo: StrategyRepository = Depends(get_strategy_repo),  # noqa: B008
+    evt_repo: StrategyRuntimeEventRepository = Depends(get_event_repo),  # noqa: B008
+) -> "StrategyLifecycleService":
+    """Get StrategyLifecycleService with injected dependencies."""
+    from src.application.services.strategy_lifecycle import StrategyLifecycleService
+    from src.application.services.strategy_runner import StrategyRunner
+    from src.domain.strategies.base import StrategyManager
+
+    runner = StrategyRunner(strategy_manager=StrategyManager())
+    return StrategyLifecycleService(
+        strategy_repository=repo,
+        event_repository=evt_repo,
+        strategy_manager=runner,
+        actor="api",
+    )
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -160,30 +205,8 @@ class LifecycleEventResponse(BaseModel):
 
 
 # ============================================================================
-# Dependencies
+# Strategy Endpoints
 # ============================================================================
-
-
-async def get_strategy_repo() -> StrategyRepository:
-    db_pool = await get_db_pool_async()
-    async with db_pool.acquire() as conn:
-        return StrategyRepositoryPG(conn)
-
-
-async def get_event_repo() -> StrategyRuntimeEventRepository:
-    db_pool = await get_db_pool_async()
-    async with db_pool.acquire() as conn:
-        return StrategyRuntimeEventRepositoryPG(conn)
-
-
-async def get_llm_service() -> LLMStrategyService:
-    """Get LLMStrategyService instance."""
-    db_pool = await get_db_pool_async()
-    async with db_pool.acquire() as conn:
-        from src.infrastructure.repositories.strategy_repository_pg import StrategyRepositoryPG
-
-        repo = StrategyRepositoryPG(conn)
-        return LLMStrategyService(strategy_repository=repo)
 
 
 # ============================================================================
@@ -194,10 +217,9 @@ async def get_llm_service() -> LLMStrategyService:
 @router.post("", response_model=StrategyResponse, status_code=status.HTTP_201_CREATED)
 async def create_strategy(
     req: StrategyCreateRequest,
+    repo: StrategyRepository = Depends(get_strategy_repo),  # noqa: B008
 ) -> StrategyResponse:
     try:
-
-        repo = await get_strategy_repo()
         s = StrategyDefinition(
             name=req.name,
             description=req.description,
@@ -215,14 +237,14 @@ async def create_strategy(
         return StrategyResponse.from_domain(saved)
     except Exception as e:
         logger.error(f"Failed to create strategy: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to create strategy: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create strategy: {e}") from None
 
 
 @router.get("", response_model=list[StrategyResponse])
 async def list_strategies(
     status: str | None = None,
     mode: str | None = None,
-    repo: StrategyRepository = Depends(get_strategy_repo),
+    repo: StrategyRepository = Depends(get_strategy_repo),  # noqa: B008
 ) -> list[StrategyResponse]:
     strategies = await repo.get_all()
     if status:
@@ -232,10 +254,30 @@ async def list_strategies(
     return [StrategyResponse.from_domain(s) for s in strategies]
 
 
+@router.get("/runtime", response_model=list[StrategyRuntimeStateResponse])
+async def get_all_runtime_states(
+    svc=Depends(get_lifecycle_service),  # noqa: B008
+) -> list[StrategyRuntimeStateResponse]:
+    states = await svc.get_all_runtime_states()
+    return [
+        StrategyRuntimeStateResponse(
+            strategy_id=s.strategy_id,
+            strategy_name=s.strategy_name,
+            state=s.state.value,
+            version=s.version,
+            last_error=s.last_error,
+            error_count=s.error_count,
+            last_state_change=s.last_state_change,
+        )
+        for s in states
+    ]
+
+
+
 @router.get("/{strategy_id}", response_model=StrategyResponse)
 async def get_strategy(
     strategy_id: UUID,
-    repo: StrategyRepository = Depends(get_strategy_repo),
+    repo: StrategyRepository = Depends(get_strategy_repo),  # noqa: B008
 ) -> StrategyResponse:
     s = await repo.get_by_id(strategy_id)
     if not s:
@@ -247,7 +289,7 @@ async def get_strategy(
 async def update_strategy(
     strategy_id: UUID,
     req: StrategyUpdateRequest,
-    repo: StrategyRepository = Depends(get_strategy_repo),
+    repo: StrategyRepository = Depends(get_strategy_repo),  # noqa: B008
 ) -> StrategyResponse:
     s = await repo.get_by_id(strategy_id)
     if not s:
@@ -281,7 +323,7 @@ async def update_strategy(
 async def create_strategy_version(
     strategy_id: UUID,
     req: StrategyVersionCreateRequest,
-    repo: StrategyRepository = Depends(get_strategy_repo),
+    repo: StrategyRepository = Depends(get_strategy_repo),  # noqa: B008
 ) -> StrategyVersionResponse:
     try:
         v = await repo.create_version(
@@ -292,32 +334,32 @@ async def create_strategy_version(
         )
         return StrategyVersionResponse.from_domain(v)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from None
     except Exception as e:
         logger.error(f"Failed to create version: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to create version: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create version: {e}") from None
 
 
 @router.get("/{strategy_id}/versions", response_model=list[StrategyVersionResponse])
 async def list_strategy_versions(
     strategy_id: UUID,
-    repo: StrategyRepository = Depends(get_strategy_repo),
+    repo: StrategyRepository = Depends(get_strategy_repo),  # noqa: B008
 ) -> list[StrategyVersionResponse]:
     try:
         versions = await repo.list_versions(strategy_id)
         return [StrategyVersionResponse.from_domain(v) for v in versions]
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from None
     except Exception as e:
         logger.error(f"Failed to list versions: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to list versions: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list versions: {e}") from None
 
 
 @router.post("/{strategy_id}/versions/{version}/activate", response_model=dict[str, Any])
 async def activate_strategy_version(
     strategy_id: UUID,
     version: int,
-    repo: StrategyRepository = Depends(get_strategy_repo),
+    repo: StrategyRepository = Depends(get_strategy_repo),  # noqa: B008
 ) -> dict[str, Any]:
     try:
         ok = await repo.set_active_version(strategy_id, version)
@@ -328,121 +370,12 @@ async def activate_strategy_version(
         raise
     except Exception as e:
         logger.error(f"Failed to activate version: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to activate version: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to activate version: {e}") from None
 
 
 # ============================================================================
 # Lifecycle Endpoints
 # ============================================================================
-
-
-async def get_lifecycle_service():
-    from src.application.services.strategy_lifecycle import StrategyLifecycleService
-    from src.application.services.strategy_runner import StrategyRunner
-    from src.domain.strategies.base import StrategyManager
-
-    repo = await get_strategy_repo()
-    evt_repo = await get_event_repo()
-    runner = StrategyRunner(strategy_manager=StrategyManager())
-    return StrategyLifecycleService(
-        strategy_repository=repo,
-        event_repository=evt_repo,
-        strategy_manager=runner,
-        actor="api",
-    )
-
-
-@router.post("/{strategy_id}/activate", response_model=dict[str, Any])
-async def activate_strategy(
-    strategy_id: UUID,
-    req: StrategyActivateRequest,
-    svc=Depends(get_lifecycle_service),
-    auth: AuthContext = Depends(require_trader),
-) -> dict[str, Any]:
-    try:
-        # Get strategy to check mode for policy
-        repo = await get_strategy_repo()
-        s = await repo.get_by_id(strategy_id)
-        if not s:
-            raise HTTPException(status_code=404, detail=f"Strategy {strategy_id} not found")
-
-        # Policy check: live mode requires admin
-        check_live_mode_policy(s.mode, auth)
-
-        ok = await svc.activate_strategy(strategy_id, req.version, req.metadata or {})
-        if not ok:
-            raise HTTPException(status_code=500, detail="Failed to activate")
-        return {"message": f"Strategy {strategy_id} activated"}
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Activation failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Activation failed: {e}")
-
-
-@router.post("/{strategy_id}/deactivate", response_model=dict[str, Any])
-async def deactivate_strategy(
-    strategy_id: UUID,
-    req: dict[str, Any] | None = None,
-    svc=Depends(get_lifecycle_service),
-    auth: AuthContext = Depends(require_trader),
-) -> dict[str, Any]:
-    try:
-        ok = await svc.deactivate_strategy(strategy_id, req or {})
-        if not ok:
-            raise HTTPException(status_code=500, detail="Failed to deactivate")
-        return {"message": f"Strategy {strategy_id} deactivated"}
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Deactivation failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Deactivation failed: {e}")
-
-
-@router.post("/{strategy_id}/pause", response_model=dict[str, Any])
-async def pause_strategy(
-    strategy_id: UUID,
-    req: dict[str, Any] | None = None,
-    svc=Depends(get_lifecycle_service),
-    auth: AuthContext = Depends(require_trader),
-) -> dict[str, Any]:
-    try:
-        ok = await svc.pause_strategy(strategy_id, req or {})
-        if not ok:
-            raise HTTPException(status_code=500, detail="Failed to pause")
-        return {"message": f"Strategy {strategy_id} paused"}
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Pause failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Pause failed: {e}")
-
-
-@router.post("/{strategy_id}/resume", response_model=dict[str, Any])
-async def resume_strategy(
-    strategy_id: UUID,
-    req: dict[str, Any] | None = None,
-    svc=Depends(get_lifecycle_service),
-    auth: AuthContext = Depends(require_trader),
-) -> dict[str, Any]:
-    try:
-        ok = await svc.resume_strategy(strategy_id, req or {})
-        if not ok:
-            raise HTTPException(status_code=500, detail="Failed to resume")
-        return {"message": f"Strategy {strategy_id} resumed"}
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Resume failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Resume failed: {e}")
 
 
 # ============================================================================
@@ -453,7 +386,7 @@ async def resume_strategy(
 @router.get("/{strategy_id}/runtime", response_model=StrategyRuntimeStateResponse)
 async def get_runtime_state(
     strategy_id: UUID,
-    svc=Depends(get_lifecycle_service),
+    svc=Depends(get_lifecycle_service),  # noqa: B008
 ) -> StrategyRuntimeStateResponse:
     st = await svc.get_runtime_state(strategy_id)
     if not st:
@@ -469,23 +402,97 @@ async def get_runtime_state(
     )
 
 
-@router.get("/runtime", response_model=list[StrategyRuntimeStateResponse])
-async def get_all_runtime_states(
-    svc=Depends(get_lifecycle_service),
-) -> list[StrategyRuntimeStateResponse]:
-    states = await svc.get_all_runtime_states()
-    return [
-        StrategyRuntimeStateResponse(
-            strategy_id=s.strategy_id,
-            strategy_name=s.strategy_name,
-            state=s.state.value,
-            version=s.version,
-            last_error=s.last_error,
-            error_count=s.error_count,
-            last_state_change=s.last_state_change,
-        )
-        for s in states
-    ]
+@router.post("/{strategy_id}/activate", response_model=dict[str, Any])
+async def activate_strategy(
+    strategy_id: UUID,
+    req: StrategyActivateRequest,
+    svc=Depends(get_lifecycle_service),  # noqa: B008
+    repo: StrategyRepository = Depends(get_strategy_repo),  # noqa: B008
+    auth: AuthContext = Depends(require_trader),  # noqa: B008
+) -> dict[str, Any]:
+    try:
+        # Get strategy to check mode for policy
+        s = await repo.get_by_id(strategy_id)
+        if not s:
+            raise HTTPException(status_code=404, detail=f"Strategy {strategy_id} not found")
+
+        # Policy check: live mode requires admin
+        check_live_mode_policy(s.mode, auth)
+
+        ok = await svc.activate_strategy(strategy_id, req.version, req.metadata or {})
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to activate")
+        return {"message": f"Strategy {strategy_id} activated"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Activation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Activation failed: {e}") from None
+
+
+@router.post("/{strategy_id}/deactivate", response_model=dict[str, Any])
+async def deactivate_strategy(
+    strategy_id: UUID,
+    req: dict[str, Any] | None = None,
+    svc=Depends(get_lifecycle_service),  # noqa: B008
+    auth: AuthContext = Depends(require_trader),  # noqa: B008
+) -> dict[str, Any]:
+    try:
+        ok = await svc.deactivate_strategy(strategy_id, req or {})
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to deactivate")
+        return {"message": f"Strategy {strategy_id} deactivated"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Deactivation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Deactivation failed: {e}") from None
+
+
+@router.post("/{strategy_id}/pause", response_model=dict[str, Any])
+async def pause_strategy(
+    strategy_id: UUID,
+    req: dict[str, Any] | None = None,
+    svc=Depends(get_lifecycle_service),  # noqa: B008
+    auth: AuthContext = Depends(require_trader),  # noqa: B008
+) -> dict[str, Any]:
+    try:
+        ok = await svc.pause_strategy(strategy_id, req or {})
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to pause")
+        return {"message": f"Strategy {strategy_id} paused"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Pause failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Pause failed: {e}") from None
+
+
+@router.post("/{strategy_id}/resume", response_model=dict[str, Any])
+async def resume_strategy(
+    strategy_id: UUID,
+    req: dict[str, Any] | None = None,
+    svc=Depends(get_lifecycle_service),  # noqa: B008
+    auth: AuthContext = Depends(require_trader),  # noqa: B008
+) -> dict[str, Any]:
+    try:
+        ok = await svc.resume_strategy(strategy_id, req or {})
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to resume")
+        return {"message": f"Strategy {strategy_id} resumed"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Resume failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Resume failed: {e}") from None
 
 
 # ============================================================================
@@ -497,7 +504,7 @@ async def get_all_runtime_states(
 async def get_lifecycle_events(
     strategy_id: UUID,
     limit: int = 100,
-    svc=Depends(get_lifecycle_service),
+    svc=Depends(get_lifecycle_service),  # noqa: B008
 ) -> list[LifecycleEventResponse]:
     events = await svc.get_lifecycle_events(strategy_id, limit=limit)
     return [
@@ -542,8 +549,8 @@ class LLMModifyRequest(BaseModel):
 @router.post("/generate", summary="Generate strategy config via LLM")
 async def generate_strategy_config(
     req: LLMGenerateRequest,
-    llm_svc=Depends(get_llm_service),
-    auth: AuthContext = Depends(require_trader),
+    llm_svc=Depends(get_llm_service),  # noqa: B008
+    auth: AuthContext = Depends(require_trader),  # noqa: B008
 ) -> dict[str, Any]:
     """Generate strategy configuration from natural language using LLM."""
     result = await llm_svc.generate_config(
@@ -581,18 +588,17 @@ async def generate_strategy_config(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to save strategy: {str(e)}",
-        )
-
+        ) from None
 
 @router.post("/{strategy_id}/modify", summary="Modify strategy via LLM")
 async def modify_strategy(
     strategy_id: UUID,
     req: LLMModifyRequest,
-    llm_svc=Depends(get_llm_service),
-    auth: AuthContext = Depends(require_trader),
+    llm_svc=Depends(get_llm_service),  # noqa: B008
+    repo: StrategyRepository = Depends(get_strategy_repo),  # noqa: B008
+    auth: AuthContext = Depends(require_trader),  # noqa: B008
 ) -> dict[str, Any]:
     """Modify existing strategy configuration using LLM."""
-    repo = await get_strategy_repo()
     s = await repo.get_by_id(strategy_id)
     if not s:
         raise HTTPException(status_code=404, detail="Strategy not found")
@@ -641,4 +647,4 @@ async def modify_strategy(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to save modified strategy: {str(e)}",
-        )
+        ) from None

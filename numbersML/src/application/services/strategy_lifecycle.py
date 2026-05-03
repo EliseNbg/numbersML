@@ -20,7 +20,7 @@ from src.domain.strategies.base import (
     Signal,
     StrategyManager,
 )
-from src.domain.strategies.config import StrategyDefinition
+from src.domain.strategies.strategy_config import StrategyDefinition
 from src.domain.strategies.runtime import StrategyLifecycleEvent
 from src.domain.strategies.strategy_instance import (
     VALID_TRANSITIONS,
@@ -106,7 +106,9 @@ class StrategyLifecycleService:
         instance = self._instances.get(strategy_id)
         if instance is None:
             instance = StrategyInstance(
-                strategy=await self._load_strategy(strategy_id, version or strategy_def.current_version),
+                strategy=await self._load_strategy(
+                    strategy_id, version or strategy_def.current_version
+                ),
                 config_set_id=uuid4(),  # TODO: link to actual config set
                 status=StrategyInstanceState.STOPPED,
             )

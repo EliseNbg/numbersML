@@ -12,6 +12,7 @@ Dependencies: BacktestService, StrategyInstance repository
 
 import asyncio
 import logging
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -87,11 +88,11 @@ async def get_backtest_service() -> BacktestService:
     return BacktestService(db_pool)
 
 
-async def get_instance_repository() -> StrategyInstanceRepository:
+async def get_instance_repository() -> AsyncGenerator[StrategyInstanceRepository, None]:
     """Get StrategyInstanceRepository instance."""
     db_pool = await get_db_pool_async()
     async with db_pool.acquire() as conn:
-        return StrategyInstanceRepositoryPG(conn)
+        yield StrategyInstanceRepositoryPG(conn)
 
 
 # ============================================================================
