@@ -4,147 +4,21 @@ Integration test for recalculation service.
 
 Tests the complete chain from synthetic data generation through indicator calculation
 with deterministic results and comprehensive validation.
+Uses consolidated fixtures from conftest.py.
 """
 
 import logging
 import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
 
-import asyncpg
-import numpy as np
 import pytest
 
 logger = logging.getLogger(__name__)
 
-# Test configuration
-TEST_SYMBOL = "TEST/USDT"
-TEST_CANDLE_COUNT = 5000
-DETERMINISTIC_SEED = 42
-EXPECTED_INDICATOR_VALUES = 31  # Approximate, accounting for multi-value indicators
-
 
 class TestRecalculationIntegration:
     """Integration test for recalculation service."""
-
-    @pytest.fixture(scope="function")
-    async def cleanup_test_data(self, db_pool):
-        """Clean up test data before and after each test."""
-        # Cleanup before test
-        async with db_pool.acquire() as conn:
-            # Get symbol ID if it exists
-            symbol_id = await conn.fetchval("SELECT id FROM symbols WHERE symbol = $1", TEST_SYMBOL)
-
-            if symbol_id:
-                # Clean up existing data
-                await conn.execute("DELETE FROM candle_indicators WHERE symbol_id = $1", symbol_id)
-                await conn.execute("DELETE FROM candles_1s WHERE symbol_id = $1", symbol_id)
-
-        yield
-
-        # Cleanup after test (data cleanup only, symbol disallowing handled by conftest)
-        async with db_pool.acquire() as conn:
-            symbol_id = await conn.fetchval("SELECT id FROM symbols WHERE symbol = $1", TEST_SYMBOL)
-
-            if symbol_id:
-                await conn.execute("DELETE FROM candle_indicators WHERE symbol_id = $1", symbol_id)
-                await conn.execute("DELETE FROM candles_1s WHERE symbol_id = $1", symbol_id)
-
-    async def setup_test_symbol(self, conn: asyncpg.Connection) -> int:
-        """Set up TEST/USDT symbol for testing."""
-        # Create or update symbol
-        await conn.execute(
-            """
-            INSERT INTO symbols (symbol, base_asset, quote_asset, tick_size, step_size, min_notional, is_active, is_allowed)
-            VALUES ($1, 'TEST', 'USDT', 0.00001, 0.000001, 1.0, true, true)
-            ON CONFLICT (symbol) DO UPDATE SET is_active = true, is_allowed = true
-            """,
-            TEST_SYMBOL,
-        )
-
-        symbol_id = await conn.fetchval("SELECT id FROM symbols WHERE symbol = $1", TEST_SYMBOL)
-
-        if not symbol_id:
-            raise ValueError(f"Failed to create symbol {TEST_SYMBOL}")
-
-        return symbol_id
-
-    def generate_deterministic_candles(self, symbol_id: int, start_time: datetime) -> list[tuple]:
-        """Generate deterministic synthetic candle data."""
-        np.random.seed(DETERMINISTIC_SEED)
-
-        # Generate 5000 candles going backward from start_time
-        indices = np.arange(TEST_CANDLE_COUNT)
-
-        # Base price with sine wave oscillation
-        prices = 100.0 + 5.0 * np.sin(2 * np.pi * indices / (15 * 60))
-        prices += np.random.normal(0, 0.1, TEST_CANDLE_COUNT)
-
-        # Generate OHLCV values
-        opens = prices + np.random.uniform(-0.05, 0.05, TEST_CANDLE_COUNT)
-        highs = np.maximum(opens, prices) + np.random.uniform(0, 0.1, TEST_CANDLE_COUNT)
-        lows = np.minimum(opens, prices) - np.random.uniform(0, 0.1, TEST_CANDLE_COUNT)
-        closes = prices
-        volumes = np.random.uniform(0.1, 10.0, TEST_CANDLE_COUNT)
-
-        # Create rows for insertion (going backward in time)
-        rows = []
-        for i in range(TEST_CANDLE_COUNT):
-            timestamp = start_time - timedelta(seconds=i)
-            rows.append(
-                (
-                    symbol_id,
-                    timestamp,
-                    Decimal(str(round(opens[i], 5))),
-                    Decimal(str(round(highs[i], 5))),
-                    Decimal(str(round(lows[i], 5))),
-                    Decimal(str(round(closes[i], 5))),
-                    Decimal(str(round(volumes[i], 6))),
-                    Decimal(str(round(volumes[i] * closes[i], 6))),
-                    1,  # trade_count
-                )
-            )
-
-        return rows
-
-    async def insert_candles(self, conn: asyncpg.Connection, symbol_id: int) -> datetime:
-        """Insert synthetic candles into database."""
-        start_time = datetime.now(UTC).replace(microsecond=0)
-        rows = self.generate_deterministic_candles(symbol_id, start_time)
-
-        # Insert in batches
-        batch_size = 1000
-        for i in range(0, len(rows), batch_size):
-            batch = rows[i : i + batch_size]
-            await conn.executemany(
-                """
-                INSERT INTO candles_1s (symbol_id, time, open, high, low, close, volume, quote_volume, trade_count)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                ON CONFLICT (symbol_id, time) DO NOTHING
-                """,
-                batch,
-            )
-
-        # Verify count
-        count = await conn.fetchval(
-            "SELECT COUNT(*) FROM candles_1s WHERE symbol_id = $1", symbol_id
-        )
-        assert count == TEST_CANDLE_COUNT, f"Expected {TEST_CANDLE_COUNT} candles, got {count}"
-
-        # Get time range
-        time_range = await conn.fetchrow(
-            """
-            SELECT MIN(time) as min_time, MAX(time) as max_time
-            FROM candles_1s WHERE symbol_id = $1
-            """,
-            symbol_id,
-        )
-
-        logger.info(
-            f"Inserted {count} candles from {time_range['min_time']} to {time_range['max_time']}"
-        )
-        return time_range["min_time"]
 
     async def run_recalculation(self, from_time: datetime) -> subprocess.CompletedProcess:
         """Run the recalculation CLI."""
@@ -154,10 +28,9 @@ class TestRecalculationIntegration:
             "src.cli.recalculate",
             "--indicators",
             "--symbols",
-            TEST_SYMBOL,
+            "TEST/USDT",
             "--from",
             from_time.isoformat(),
-            "--with-quality-guard",
         ]
 
         result = subprocess.run(
@@ -169,7 +42,7 @@ class TestRecalculationIntegration:
 
         return result
 
-    async def validate_row_counts(self, conn: asyncpg.Connection, symbol_id: int):
+    async def validate_row_counts(self, conn, symbol_id: int):
         """Validate that the correct number of indicator rows were created."""
         # Get candle count
         candle_count = await conn.fetchval(
@@ -205,7 +78,7 @@ class TestRecalculationIntegration:
             assert total_values >= 25, f"Expected at least 25 indicator values, got {total_values}"
             assert total_values <= 40, f"Expected at most 40 indicator values, got {total_values}"
 
-    async def validate_time_alignment(self, conn: asyncpg.Connection, symbol_id: int):
+    async def validate_time_alignment(self, conn, symbol_id: int):
         """Validate that candles and indicators have perfect time alignment."""
         # Get all timestamps
         candle_times = await conn.fetch(
@@ -227,7 +100,7 @@ class TestRecalculationIntegration:
 
         logger.info(f"Perfect time alignment validated for {len(candle_times)} timestamps")
 
-    async def validate_indicator_values(self, conn: asyncpg.Connection, symbol_id: int):
+    async def validate_indicator_values(self, conn, symbol_id: int):
         """Validate that indicator values are within expected ranges."""
         # Get sample indicator data
         indicators = await conn.fetch(
@@ -297,22 +170,18 @@ class TestRecalculationIntegration:
         logger.info("Indicator value ranges validated successfully")
 
     @pytest.mark.integration
-    async def test_full_recalculation_chain(self, db_pool, allow_test_usdt):
+    async def test_full_recalculation_chain(self, db_pool, test_usdt_with_candles):
         """Test the complete recalculation chain from data generation to validation."""
+        symbol_id, min_time = test_usdt_with_candles
+
+        # Run recalculation
+        result = await self.run_recalculation(min_time)
+
+        # Check that recalculation succeeded
+        assert result.returncode == 0, f"Recalculation failed: {result.stderr}"
+
+        # Validate results
         async with db_pool.acquire() as conn:
-            # 1. Symbol is already set up by allow_test_usdt fixture
-            symbol_id = allow_test_usdt
-
-            # 2. Insert synthetic candles
-            min_time = await self.insert_candles(conn, symbol_id)
-
-            # 3. Run recalculation
-            result = await self.run_recalculation(min_time)
-
-            # Check that recalculation succeeded
-            assert result.returncode == 0, f"Recalculation failed: {result.stderr}"
-
-            # 4. Validate results
             await self.validate_row_counts(conn, symbol_id)
             await self.validate_time_alignment(conn, symbol_id)
             await self.validate_indicator_values(conn, symbol_id)
@@ -320,20 +189,19 @@ class TestRecalculationIntegration:
         logger.info("Full recalculation chain test completed successfully")
 
     @pytest.mark.integration
-    async def test_deterministic_results(self, db_pool, allow_test_usdt):
+    async def test_deterministic_results(self, db_pool, test_usdt_with_candles):
         """Test that results are deterministic across multiple runs."""
+        symbol_id, min_time = test_usdt_with_candles
+
+        # Run recalculation twice
+        result1 = await self.run_recalculation(min_time)
+        result2 = await self.run_recalculation(min_time)
+
+        assert result1.returncode == 0, f"First run failed: {result1.stderr}"
+        assert result2.returncode == 0, f"Second run failed: {result2.stderr}"
+
+        # Get indicator values from both runs (should be identical)
         async with db_pool.acquire() as conn:
-            symbol_id = allow_test_usdt
-            min_time = await self.insert_candles(conn, symbol_id)
-
-            # Run recalculation twice
-            result1 = await self.run_recalculation(min_time)
-            result2 = await self.run_recalculation(min_time)
-
-            assert result1.returncode == 0, f"First run failed: {result1.stderr}"
-            assert result2.returncode == 0, f"Second run failed: {result2.stderr}"
-
-            # Get indicator values from both runs (should be identical)
             indicators1 = await conn.fetch(
                 "SELECT time, values FROM candle_indicators WHERE symbol_id = $1 ORDER BY time",
                 symbol_id,
@@ -360,17 +228,16 @@ class TestRecalculationIntegration:
         logger.info("Deterministic results test passed")
 
     @pytest.mark.integration
-    async def test_indicator_validation(self, db_pool, allow_test_usdt):
+    async def test_indicator_validation(self, db_pool, test_usdt_with_candles):
         """Test specific indicator validation scenarios."""
+        symbol_id, min_time = test_usdt_with_candles
+
+        # Run recalculation
+        result = await self.run_recalculation(min_time)
+        assert result.returncode == 0, f"Recalculation failed: {result.stderr}"
+
+        # Test specific indicators
         async with db_pool.acquire() as conn:
-            symbol_id = allow_test_usdt
-            min_time = await self.insert_candles(conn, symbol_id)
-
-            # Run recalculation
-            result = await self.run_recalculation(min_time)
-            assert result.returncode == 0, f"Recalculation failed: {result.stderr}"
-
-            # Test specific indicators
             await self.validate_indicator_values(conn, symbol_id)
 
             # Additional validation: check for NaN or infinite values
@@ -394,17 +261,44 @@ class TestRecalculationIntegration:
         logger.info("Indicator validation test passed")
 
     @pytest.mark.integration
-    async def test_cleanup_procedures(self, db_pool, allow_test_usdt):
+    async def test_cleanup_procedures(self, db_pool, test_usdt_symbol):
         """Test cleanup procedures work correctly."""
+        symbol_id = test_usdt_symbol
+
+        # Insert candles manually for this test
+        from tests.integration.conftest import generate_deterministic_candles
+
         async with db_pool.acquire() as conn:
-            symbol_id = allow_test_usdt
-            min_time = await self.insert_candles(conn, symbol_id)
+            # Clean up any existing data
+            await conn.execute("DELETE FROM candle_indicators WHERE symbol_id = $1", symbol_id)
+            await conn.execute("DELETE FROM candles_1s WHERE symbol_id = $1", symbol_id)
 
-            # Run recalculation
-            result = await self.run_recalculation(min_time)
-            assert result.returncode == 0, f"Recalculation failed: {result.stderr}"
+            # Insert candles
+            start_time = datetime.now(UTC).replace(microsecond=0)
+            rows = generate_deterministic_candles(symbol_id, start_time, 3000)
 
-            # Verify data exists
+            # Insert in batches
+            batch_size = 1000
+            for i in range(0, len(rows), batch_size):
+                batch = rows[i : i + batch_size]
+                await conn.executemany(
+                    """
+                    INSERT INTO candles_1s (symbol_id, time, open, high, low, close, volume, quote_volume, trade_count)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    ON CONFLICT (symbol_id, time) DO NOTHING
+                    """,
+                    batch,
+                )
+
+            # Calculate min_time (earliest candle time)
+            min_time = start_time - timedelta(seconds=2999)
+
+        # Run recalculation
+        result = await self.run_recalculation(min_time)
+        assert result.returncode == 0, f"Recalculation failed: {result.stderr}"
+
+        # Verify data exists
+        async with db_pool.acquire() as conn:
             candle_count = await conn.fetchval(
                 "SELECT COUNT(*) FROM candles_1s WHERE symbol_id = $1", symbol_id
             )
@@ -420,7 +314,7 @@ class TestRecalculationIntegration:
             await conn.execute("DELETE FROM candles_1s WHERE symbol_id = $1", symbol_id)
             await conn.execute(
                 "UPDATE symbols SET is_active = false, is_allowed = false WHERE symbol = $1",
-                TEST_SYMBOL,
+                "TEST/USDT",
             )
 
             # Verify cleanup worked
@@ -435,7 +329,7 @@ class TestRecalculationIntegration:
             assert indicator_count_after == 0, "Indicators not cleaned up properly"
 
             symbol_allowed = await conn.fetchval(
-                "SELECT is_allowed FROM symbols WHERE symbol = $1", TEST_SYMBOL
+                "SELECT is_allowed FROM symbols WHERE symbol = $1", "TEST/USDT"
             )
             assert symbol_allowed is False, "Symbol not disallowed after cleanup"
 

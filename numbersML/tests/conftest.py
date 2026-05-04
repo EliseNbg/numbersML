@@ -22,15 +22,7 @@ from src.infrastructure.database.config import get_test_db_url
 DB_URL = get_test_db_url()
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create event loop for each test case."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
-@pytest.fixture(scope="session")
+@pytest.fixture
 async def db_pool():
     """Create a database connection pool for the test session."""
     last_error = None

@@ -38,7 +38,7 @@ class RSIIndicator(Indicator):
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
-                "period": {"type": "integer", "minimum": 2, "maximum": 100, "default": 14}
+                "period": {"type": "integer", "minimum": 2, "default": 14}
             },
             "required": ["period"],
         }
