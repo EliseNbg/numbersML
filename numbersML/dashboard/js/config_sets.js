@@ -7,9 +7,6 @@
  * - Form validation
  */
 
-// API Configuration
-const API_BASE_URL = '/api';
-
 // State
 let configSets = [];
 let currentConfigSetId = null;

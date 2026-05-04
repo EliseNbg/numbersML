@@ -8,8 +8,6 @@
  * - Trade blotter
  */
 
-const API_BASE_URL = '/api';
-
 // State
 let instances = [];
 let currentJobId = null;

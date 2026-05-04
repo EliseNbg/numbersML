@@ -8,8 +8,6 @@
  * - Navigation to backtest
  */
 
-const API_BASE_URL = '/api';
-
 // State
 let instances = [];
 let strategies = [];

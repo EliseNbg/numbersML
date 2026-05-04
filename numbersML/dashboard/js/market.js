@@ -8,9 +8,6 @@
  * - Mode switching (paper/live)
  */
 
-// API Configuration
-const API_BASE_URL = '/api';
-
 // State
 let currentMode = 'paper';
 let balances = [];

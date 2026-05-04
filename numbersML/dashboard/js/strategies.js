@@ -9,9 +9,6 @@
  * - Backtest integration
  */
 
-// API Configuration
-const API_BASE_URL = '/api';
-
 // State
 let strategies = [];
 let currentStrategyId = null;
@@ -153,7 +150,7 @@ function loadConfigTemplate(type) {
 async function loadStrategies() {
     try {
         showLoading();
-        const response = await fetch(`${API_BASE_URL}/strategies`);
+        const response = await apiFetch(`/strategies`);
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -331,7 +328,7 @@ async function viewStrategy(strategyId) {
  */
 async function loadRuntimeStatus(strategyId) {
     try {
-        const response = await fetch(`${API_BASE_URL}/strategies/${strategyId}/runtime`);
+        const response = await apiFetch(`/strategies/${strategyId}/runtime`);
         if (response.ok) {
             const status = await response.json();
             document.getElementById('runtime-status').innerHTML = `
@@ -365,7 +362,7 @@ function getRuntimeColor(state) {
  */
 async function loadStrategyConfig(strategyId) {
     try {
-        const response = await fetch(`${API_BASE_URL}/strategies/${strategyId}/versions`);
+        const response = await apiFetch(`/strategies/${strategyId}/versions`);
         if (response.ok) {
             const versions = await response.json();
             const activeVersion = versions.find(v => v.is_active) || versions[versions.length - 1];
@@ -383,7 +380,7 @@ async function loadStrategyConfig(strategyId) {
  */
 async function loadVersions(strategyId) {
     try {
-        const response = await fetch(`${API_BASE_URL}/strategies/${strategyId}/versions`);
+        const response = await apiFetch(`/strategies/${strategyId}/versions`);
         if (response.ok) {
             const versions = await response.json();
             document.getElementById('versions-list').innerHTML = versions.map(v => `
@@ -416,7 +413,7 @@ async function loadVersions(strategyId) {
  */
 async function loadEvents(strategyId) {
     try {
-        const response = await fetch(`${API_BASE_URL}/strategies/${strategyId}/events`);
+        const response = await apiFetch(`/strategies/${strategyId}/events`);
         if (response.ok) {
             const events = await response.json();
             document.getElementById('events-list').innerHTML = events.slice(0, 10).map(e => `
@@ -506,9 +503,8 @@ async function createStrategy() {
     config.universe.symbols = formData.get('symbols').split(',').map(s => s.trim()).filter(s => s);
     
     try {
-        const response = await fetch(`${API_BASE_URL}/strategies`, {
+        const response = await apiFetch(`/strategies`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
         
@@ -547,9 +543,8 @@ async function generateLLMConfig() {
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating...';
     
     try {
-        const response = await fetch(`${API_BASE_URL}/strategies/generate`, {
+        const response = await apiFetch(`/strategies/generate`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
         
@@ -600,9 +595,8 @@ async function saveLLMStrategy() {
     if (!generatedConfig) return;
     
     try {
-        const response = await fetch(`${API_BASE_URL}/strategies`, {
+        const response = await apiFetch(`/strategies`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 name: generatedConfig.meta.name,
                 description: generatedConfig.meta.description,
@@ -646,9 +640,8 @@ async function applyLLMModify() {
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Modifying...';
     
     try {
-        const response = await fetch(`${API_BASE_URL}/strategies/${currentStrategyId}/modify`, {
+        const response = await apiFetch(`/strategies/${currentStrategyId}/modify`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 change_request: changeRequest,
                 save_as_new_version: document.getElementById('save-as-version').checked
@@ -688,9 +681,8 @@ async function saveModifiedStrategy() {
     
     try {
         if (saveAsVersion) {
-            const response = await fetch(`${API_BASE_URL}/strategies/${currentStrategyId}/versions`, {
+            const response = await apiFetch(`/strategies/${currentStrategyId}/versions`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     config: modifiedConfig,
                     schema_version: 1,
@@ -733,9 +725,8 @@ async function activateStrategy(confirmed = false) {
     }
     
     try {
-        const response = await fetch(`${API_BASE_URL}/strategies/${currentStrategyId}/activate`, {
+        const response = await apiFetch(`/strategies/${currentStrategyId}/activate`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ version: currentStrategy.current_version })
         });
         
@@ -767,9 +758,8 @@ async function quickActivate(strategyId) {
     }
     
     try {
-        const response = await fetch(`${API_BASE_URL}/strategies/${strategyId}/activate`, {
+        const response = await apiFetch(`/strategies/${strategyId}/activate`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({})
         });
         
@@ -789,9 +779,8 @@ async function deactivateStrategy() {
     if (!currentStrategyId) return;
     
     try {
-        const response = await fetch(`${API_BASE_URL}/strategies/${currentStrategyId}/deactivate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+        const response = await apiFetch(`/strategies/${currentStrategyId}/deactivate`, {
+            method: 'POST'
         });
         
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -809,7 +798,7 @@ async function deactivateStrategy() {
  */
 async function quickDeactivate(strategyId) {
     try {
-        const response = await fetch(`${API_BASE_URL}/strategies/${strategyId}/deactivate`, {
+        const response = await apiFetch(`/strategies/${strategyId}/deactivate`, {
             method: 'POST'
         });
         
@@ -829,7 +818,7 @@ async function pauseStrategy() {
     if (!currentStrategyId) return;
     
     try {
-        const response = await fetch(`${API_BASE_URL}/strategies/${currentStrategyId}/pause`, {
+        const response = await apiFetch(`/strategies/${currentStrategyId}/pause`, {
             method: 'POST'
         });
         
@@ -850,7 +839,7 @@ async function resumeStrategy() {
     if (!currentStrategyId) return;
     
     try {
-        const response = await fetch(`${API_BASE_URL}/strategies/${currentStrategyId}/resume`, {
+        const response = await apiFetch(`/strategies/${currentStrategyId}/resume`, {
             method: 'POST'
         });
         
@@ -875,7 +864,7 @@ async function deleteStrategy() {
     }
     
     try {
-        const response = await fetch(`${API_BASE_URL}/strategies/${currentStrategyId}`, {
+        const response = await apiFetch(`/strategies/${currentStrategyId}`, {
             method: 'DELETE'
         });
         
@@ -900,9 +889,8 @@ async function getLLMSuggestions() {
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Analyzing...';
     
     try {
-        const response = await fetch(`${API_BASE_URL}/strategies/${currentStrategyId}/suggest`, {
+        const response = await apiFetch(`/strategies/${currentStrategyId}/suggest`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({})
         });
         
@@ -935,7 +923,7 @@ async function getLLMSuggestions() {
  */
 async function activateVersion(strategyId, version) {
     try {
-        const response = await fetch(`${API_BASE_URL}/strategies/${strategyId}/versions/${version}/activate`, {
+        const response = await apiFetch(`/strategies/${strategyId}/versions/${version}/activate`, {
             method: 'POST'
         });
         
