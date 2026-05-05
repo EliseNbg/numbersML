@@ -124,7 +124,7 @@ class ConfigSetRepositoryPG(ConfigSetRepository):
                 entity.id,
                 entity.name,
                 entity.description,
-                entity.to_dict()["config"],
+                json.dumps(entity.to_dict()["config"]),
                 entity.is_active,
                 entity.created_by,
                 entity.version,
@@ -156,7 +156,7 @@ class ConfigSetRepositoryPG(ConfigSetRepository):
             """
             UPDATE configuration_sets
             SET is_active = false, updated_at = NOW()
-            WHERE id = $1 AND is_active = true
+            WHERE id = $1
             """,
             entity_id,
         )
@@ -257,7 +257,7 @@ class ConfigSetRepositoryPG(ConfigSetRepository):
             WHERE id = $1
             """,
             config_set_id,
-            new_config,
+            json.dumps(new_config),
         )
 
         if "UPDATE 1" not in result:

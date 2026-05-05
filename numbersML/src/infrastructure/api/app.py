@@ -33,6 +33,7 @@ from src.infrastructure.api.routes import (
     pipeline_router,
     strategies_router,
     strategy_backtest_router,
+    strategy_instances_router,
     symbols_router,
 )
 from src.infrastructure.api.routes.backtest import router as backtest_router
@@ -44,8 +45,12 @@ from src.pipeline.service import PipelineManager, set_pipeline_manager
 
 logger = logging.getLogger(__name__)
 
-# Database configuration
-DATABASE_URL = "postgresql://crypto:crypto_secret@localhost:5432/crypto_trading"
+# Database configuration - read from environment or use default
+import os
+
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL", "postgresql://crypto:crypto_secret@localhost:5432/crypto_trading"
+)
 
 # Pipeline manager is managed in src.pipeline.service
 
@@ -150,11 +155,11 @@ Currently no authentication. Add authentication middleware for production use.
     app.include_router(strategies_router)
     app.include_router(market_router)
     app.include_router(strategy_backtest_router)
+    app.include_router(strategy_instances_router)
     app.include_router(config_sets_router)
     app.include_router(candles_router)
     app.include_router(target_values_router)
     app.include_router(ml_router)
-    app.include_router(backtest_router)
     app.include_router(backup_router)
 
     # Mount static files for frontend (dashboard)

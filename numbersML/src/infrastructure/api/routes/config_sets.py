@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 
 from src.domain.repositories.config_set_repository import ConfigSetRepository
 from src.domain.strategies.config_set import ConfigurationSet
+from src.infrastructure.api.auth import require_admin, require_read, require_trader
 from src.infrastructure.database import get_db_pool_async
 from src.infrastructure.repositories.config_set_repository_pg import (
     ConfigSetRepositoryPG,
@@ -105,6 +106,7 @@ async def list_config_sets(
     limit: int = 100,
     offset: int = 0,
     repo: ConfigSetRepository = Depends(get_config_set_repository),  # noqa: B008
+    _auth: None = Depends(require_read),  # noqa: B008
 ) -> list[ConfigurationSetResponse]:
     """List ConfigurationSets with optional filtering.
 
@@ -113,9 +115,14 @@ async def list_config_sets(
         limit: Maximum number of results
         offset: Pagination offset
         repo: ConfigSet repository instance
+        _auth: Authentication check
 
     Returns:
         List of ConfigurationSetResponse
+
+    Raises:
+        401: If not authenticated
+        403: If insufficient permissions
     """
     config_sets = await repo.list_all(active_only=active_only, limit=limit, offset=offset)
     return [ConfigurationSetResponse.from_domain(cs) for cs in config_sets]
@@ -129,18 +136,22 @@ async def list_config_sets(
 async def create_config_set(
     req: ConfigurationSetCreateRequest,
     repo: ConfigSetRepository = Depends(get_config_set_repository),  # noqa: B008
+    _auth: None = Depends(require_trader),  # noqa: B008
 ) -> ConfigurationSetResponse:
     """Create a new ConfigurationSet.
 
     Args:
         req: Create request with name, config, etc.
         repo: ConfigSet repository instance
+        _auth: Authentication check (requires trader or admin)
 
     Returns:
         Created ConfigurationSetResponse
 
     Raises:
         400: If name already exists or config invalid
+        401: If not authenticated
+        403: If insufficient permissions
         500: If creation fails
     """
     try:
@@ -177,17 +188,21 @@ async def create_config_set(
 async def get_config_set(
     config_set_id: UUID,
     repo: ConfigSetRepository = Depends(get_config_set_repository),  # noqa: B008
+    _auth: None = Depends(require_read),  # noqa: B008
 ) -> ConfigurationSetResponse:
     """Get ConfigurationSet by ID.
 
     Args:
         config_set_id: UUID of the ConfigurationSet
         repo: ConfigSet repository instance
+        _auth: Authentication check (requires read access)
 
     Returns:
         ConfigurationSetResponse
 
     Raises:
+        401: If not authenticated
+        403: If insufficient permissions
         404: If ConfigurationSet not found
     """
     config_set = await repo.get_by_id(config_set_id)
@@ -204,6 +219,7 @@ async def update_config_set(
     config_set_id: UUID,
     req: ConfigurationSetUpdateRequest,
     repo: ConfigSetRepository = Depends(get_config_set_repository),  # noqa: B008
+    _auth: None = Depends(require_trader),  # noqa: B008
 ) -> ConfigurationSetResponse:
     """Update ConfigurationSet (partial update).
 
@@ -211,11 +227,14 @@ async def update_config_set(
         config_set_id: UUID of the ConfigurationSet
         req: Update request with fields to update
         repo: ConfigSet repository instance
+        _auth: Authentication check (requires trader or admin)
 
     Returns:
         Updated ConfigurationSetResponse
 
     Raises:
+        401: If not authenticated
+        403: If insufficient permissions
         404: If ConfigurationSet not found
         400: If no fields to update or name conflict
         500: If update fails
@@ -271,14 +290,18 @@ async def update_config_set(
 async def delete_config_set(
     config_set_id: UUID,
     repo: ConfigSetRepository = Depends(get_config_set_repository),  # noqa: B008
+    _auth: None = Depends(require_admin),  # noqa: B008
 ) -> None:
     """Soft delete ConfigurationSet (deactivate).
 
     Args:
         config_set_id: UUID of the ConfigurationSet
         repo: ConfigSet repository instance
+        _auth: Authentication check (requires admin)
 
     Raises:
+        401: If not authenticated
+        403: If insufficient permissions
         404: If ConfigurationSet not found
         500: If deletion fails
     """
@@ -303,17 +326,21 @@ async def delete_config_set(
 async def activate_config_set(
     config_set_id: UUID,
     repo: ConfigSetRepository = Depends(get_config_set_repository),  # noqa: B008
+    _auth: None = Depends(require_admin),  # noqa: B008
 ) -> dict[str, Any]:
     """Activate a ConfigurationSet.
 
     Args:
         config_set_id: UUID of the ConfigurationSet
         repo: ConfigSet repository instance
+        _auth: Authentication check (requires admin)
 
     Returns:
         Success message
 
     Raises:
+        401: If not authenticated
+        403: If insufficient permissions
         404: If ConfigurationSet not found
         500: If activation fails
     """
@@ -344,17 +371,21 @@ async def activate_config_set(
 async def deactivate_config_set(
     config_set_id: UUID,
     repo: ConfigSetRepository = Depends(get_config_set_repository),  # noqa: B008
+    _auth: None = Depends(require_admin),  # noqa: B008
 ) -> dict[str, Any]:
     """Deactivate a ConfigurationSet.
 
     Args:
         config_set_id: UUID of the ConfigurationSet
         repo: ConfigSet repository instance
+        _auth: Authentication check (requires admin)
 
     Returns:
         Success message
 
     Raises:
+        401: If not authenticated
+        403: If insufficient permissions
         404: If ConfigurationSet not found
         500: If deactivation fails
     """

@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from decimal import Decimal
-from typing import Protocol
+from typing import Any, Protocol
 
 from src.domain.market.order import Balance, Order, OrderRequest, Position
 
@@ -33,6 +33,14 @@ class MarketService(ABC):
     @abstractmethod
     async def get_order_status(self, order_id: str) -> Order | None:
         """Fetch order status by internal or external identifier."""
+
+    @abstractmethod
+    async def get_orders(self, filters: dict[str, Any] | None = None) -> list[Order]:
+        """Fetch orders with optional filters (symbol, status, strategy_id)."""
+
+    @abstractmethod
+    async def get_trades(self) -> list[Any]:
+        """Fetch all trades/fills."""
 
 
 class LiveExchangeClient(Protocol):

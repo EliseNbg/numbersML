@@ -447,7 +447,7 @@ async def create_order(
 )
 async def list_orders(
     symbol: str | None = None,
-    status: str | None = None,
+    order_status: str | None = None,
     strategy_id: UUID | None = None,
     mode: str = "paper",
     market_service: MarketService = Depends(get_market_service),
@@ -472,8 +472,8 @@ async def list_orders(
         filters = {}
         if symbol:
             filters["symbol"] = symbol
-        if status:
-            filters["status"] = status
+        if order_status:
+            filters["status"] = order_status
         if strategy_id:
             filters["strategy_id"] = strategy_id
 

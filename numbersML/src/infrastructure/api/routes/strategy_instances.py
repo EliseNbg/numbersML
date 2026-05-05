@@ -7,7 +7,7 @@ Provides REST API for StrategyInstance management:
 - Runtime statistics
 
 Architecture: Infrastructure Layer (API)
-Dependencies: Domain repositories, Pydantic models
+Dependencies: Domain repositories, Pydantic models, Auth
 """
 
 import logging
@@ -23,6 +23,7 @@ from src.domain.repositories.strategy_instance_repository import StrategyInstanc
 from src.domain.strategies.strategy_instance import (
     StrategyInstance,
 )
+from src.infrastructure.api.auth import require_read, require_trader
 from src.infrastructure.database import get_db_pool_async
 from src.infrastructure.repositories.strategy_instance_repository_pg import (
     StrategyInstanceRepositoryPG,
@@ -83,7 +84,8 @@ async def list_instances(
     status: str | None = None,
     limit: int = 100,
     offset: int = 0,
-    repo: StrategyInstanceRepository = Depends(get_instance_repository),  # noqa: B008
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
+    _auth: None = Depends(require_read),
 ) -> list[StrategyInstanceResponse]:
     """List StrategyInstances with optional status filter."""
     instances = await repo.list_all(status=status, limit=limit, offset=offset)
@@ -97,7 +99,8 @@ async def list_instances(
 )
 async def create_instance(
     req: StrategyInstanceCreateRequest,
-    repo: StrategyInstanceRepository = Depends(get_instance_repository),  # noqa: B008
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
+    _auth: None = Depends(require_trader),
 ) -> StrategyInstanceResponse:
     """Create a new StrategyInstance (link Algorithm + ConfigurationSet)."""
     try:
@@ -134,7 +137,8 @@ async def create_instance(
 @router.get("/{instance_id}", response_model=StrategyInstanceResponse)
 async def get_instance(
     instance_id: UUID,
-    repo: StrategyInstanceRepository = Depends(get_instance_repository),  # noqa: B008
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
+    _auth: None = Depends(require_read),
 ) -> StrategyInstanceResponse:
     """Get StrategyInstance by ID."""
     instance = await repo.get_by_id(instance_id)
@@ -149,7 +153,8 @@ async def get_instance(
 @router.post("/{instance_id}/start", status_code=status.HTTP_200_OK)
 async def start_instance(
     instance_id: UUID,
-    repo: StrategyInstanceRepository = Depends(get_instance_repository),  # noqa: B008
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
+    _auth: None = Depends(require_trader),
 ) -> dict[str, Any]:
     """Start a StrategyInstance (hot-plug into pipeline)."""
     instance = await repo.get_by_id(instance_id)
@@ -170,7 +175,8 @@ async def start_instance(
 @router.post("/{instance_id}/stop", status_code=status.HTTP_200_OK)
 async def stop_instance(
     instance_id: UUID,
-    repo: StrategyInstanceRepository = Depends(get_instance_repository),  # noqa: B008
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
+    _auth: None = Depends(require_trader),
 ) -> dict[str, Any]:
     """Stop a StrategyInstance (unplug from pipeline)."""
     instance = await repo.get_by_id(instance_id)
@@ -191,7 +197,8 @@ async def stop_instance(
 @router.post("/{instance_id}/pause", status_code=status.HTTP_200_OK)
 async def pause_instance(
     instance_id: UUID,
-    repo: StrategyInstanceRepository = Depends(get_instance_repository),  # noqa: B008
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
+    _auth: None = Depends(require_trader),
 ) -> dict[str, Any]:
     """Pause a running StrategyInstance."""
     instance = await repo.get_by_id(instance_id)
@@ -212,7 +219,8 @@ async def pause_instance(
 @router.post("/{instance_id}/resume", status_code=status.HTTP_200_OK)
 async def resume_instance(
     instance_id: UUID,
-    repo: StrategyInstanceRepository = Depends(get_instance_repository),  # noqa: B008
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
+    _auth: None = Depends(require_trader),
 ) -> dict[str, Any]:
     """Resume a paused StrategyInstance."""
     instance = await repo.get_by_id(instance_id)
@@ -233,7 +241,8 @@ async def resume_instance(
 @router.delete("/{instance_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_instance(
     instance_id: UUID,
-    repo: StrategyInstanceRepository = Depends(get_instance_repository),  # noqa: B008
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
+    _auth: None = Depends(require_trader),
 ) -> None:
     """Delete a StrategyInstance."""
     success = await repo.delete(instance_id)

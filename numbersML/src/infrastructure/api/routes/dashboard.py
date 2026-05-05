@@ -7,13 +7,14 @@ Provides REST API for dashboard monitoring:
 - Dashboard statistics
 
 Architecture: Infrastructure Layer (API)
-Dependencies: Application services
+Dependencies: Application services, Auth
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from src.application.services.pipeline_monitor import PipelineMonitor
 from src.domain.models.dashboard import CollectorStatus, DashboardStats, SLAMetric
+from src.infrastructure.api.auth import require_admin, require_read
 from src.infrastructure.database import get_db_pool_async
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -33,6 +34,7 @@ async def get_pipeline_monitor() -> PipelineMonitor:
 )
 async def get_collector_status(
     monitor: PipelineMonitor = Depends(get_pipeline_monitor),
+    _auth: None = Depends(require_read),
 ) -> CollectorStatus:
     """
     Get collector service status.
@@ -66,6 +68,7 @@ async def get_collector_status(
 )
 async def start_collector(
     monitor: PipelineMonitor = Depends(get_pipeline_monitor),
+    _auth: None = Depends(require_admin),
 ) -> dict:
     """
     Start collector service.
@@ -94,6 +97,7 @@ async def start_collector(
 )
 async def stop_collector(
     monitor: PipelineMonitor = Depends(get_pipeline_monitor),
+    _auth: None = Depends(require_admin),
 ) -> dict:
     """
     Stop collector service.
@@ -124,6 +128,7 @@ async def stop_collector(
 async def get_sla_metrics(
     seconds: int = 60,
     monitor: PipelineMonitor = Depends(get_pipeline_monitor),
+    _auth: None = Depends(require_read),
 ) -> list[SLAMetric]:
     """
     Get SLA metrics for last N seconds.
@@ -162,6 +167,7 @@ async def get_sla_metrics(
 )
 async def get_dashboard_stats(
     monitor: PipelineMonitor = Depends(get_pipeline_monitor),
+    _auth: None = Depends(require_read),
 ) -> DashboardStats:
     """
     Get quick dashboard statistics.

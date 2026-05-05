@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from src.domain.market.order import Balance, Order, OrderRequest, OrderSide, OrderStatus, Position
@@ -24,6 +25,7 @@ class PaperMarketService(MarketService):
         }
         self._positions: dict[str, Position] = {}
         self._orders: dict[str, Order] = {}
+        self._trades: list[Any] = []
         self._fee_bps = fee_bps
         self._slippage_bps = slippage_bps
 
@@ -77,6 +79,23 @@ class PaperMarketService(MarketService):
 
     async def get_order_status(self, order_id: str) -> Order | None:
         return self._orders.get(order_id)
+
+    async def get_orders(self, filters: dict[str, Any] | None = None) -> list[Order]:
+        """Fetch orders with optional filters."""
+        orders = list(self._orders.values())
+        if filters:
+            if "symbol" in filters:
+                orders = [o for o in orders if o.symbol == filters["symbol"]]
+            if "status" in filters:
+                orders = [o for o in orders if o.status.value == filters["status"]]
+            if "strategy_id" in filters:
+                strategy_id = str(filters["strategy_id"])
+                orders = [o for o in orders if o.metadata.get("strategy_id") == strategy_id]
+        return orders
+
+    async def get_trades(self) -> list[Any]:
+        """Fetch all trades/fills."""
+        return self._trades
 
     def _extract_market_price(self, request: OrderRequest) -> Decimal:
         if request.order_type.value == "LIMIT":

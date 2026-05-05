@@ -72,8 +72,8 @@ async def get_auth_context(
 
 
 async def require_read(auth: AuthContext = Depends(get_auth_context)) -> AuthContext:
-    """Require read access."""
-    if not auth.has_role("read"):
+    """Require read access (or admin)."""
+    if not auth.has_any_role(["read", "admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Read access required",

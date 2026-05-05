@@ -7,7 +7,7 @@ Provides REST API for strategy backtesting:
 - Retrieve backtest results
 
 Architecture: Infrastructure Layer (API)
-Dependencies: BacktestService, StrategyInstance repository
+Dependencies: BacktestService, StrategyInstance repository, Auth
 """
 
 import asyncio
@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from src.application.services.backtest_service import BacktestService
 from src.domain.repositories.strategy_instance_repository import StrategyInstanceRepository
+from src.infrastructure.api.auth import require_read, require_trader
 from src.infrastructure.database import get_db_pool_async
 from src.infrastructure.repositories.strategy_instance_repository_pg import (
     StrategyInstanceRepositoryPG,
@@ -109,6 +110,7 @@ async def submit_backtest_job(
     req: BacktestSubmitRequest,
     service: BacktestService = Depends(get_backtest_service),  # noqa: B008
     instance_repo: StrategyInstanceRepository = Depends(get_instance_repository),  # noqa: B008
+    _auth: None = Depends(require_trader),
 ) -> BacktestJobResponse:
     """
     Submit a backtest job for asynchronous execution.
@@ -252,7 +254,10 @@ async def _execute_real_backtest(
     "/jobs/{job_id}",
     response_model=dict[str, Any],
 )
-async def get_job_status(job_id: str) -> dict[str, Any]:
+async def get_job_status(
+    job_id: str,
+    _auth: None = Depends(require_read),
+) -> dict[str, Any]:
     """
     Get backtest job status or results.
 
@@ -292,7 +297,9 @@ async def get_job_status(job_id: str) -> dict[str, Any]:
 
 
 @router.get("/jobs", response_model=list[dict[str, Any]])
-async def list_backtest_jobs() -> list[dict[str, Any]]:
+async def list_backtest_jobs(
+    _auth: None = Depends(require_read),
+) -> list[dict[str, Any]]:
     """List all backtest jobs."""
     return [
         {
