@@ -7,9 +7,6 @@
  * - Indicator overlays (SMA, EMA, RSI) from /api/candles/indicators
  */
 
-// API Base URL
-const API_BASE = '/api';
-
 // Chart instance
 let chart = null;
 let candleSeries = null;

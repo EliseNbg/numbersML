@@ -17,7 +17,7 @@ from src.infrastructure.api.app import app
 @pytest.fixture
 def client():
     """Create TestClient for FastAPI app."""
-    return TestClient(app)
+    return TestClient(app, headers={"X-API-Key": "test-secret-key"})
 
 
 @pytest.fixture

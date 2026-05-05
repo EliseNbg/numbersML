@@ -11,6 +11,10 @@ import sys
 import asyncpg
 import pytest
 
+# Set test environment for API key auth
+os.environ["APP_ENV"] = "test"
+os.environ["API_KEY_ADMIN"] = "test-secret-key"
+
 # Add src to path for imports
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 src_path = os.path.join(project_root, "src")

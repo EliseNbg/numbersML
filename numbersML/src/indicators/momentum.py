@@ -29,6 +29,10 @@ class RSIIndicator(Indicator):
 
     def __init__(self, period: int = 14) -> None:
         """Initialize RSI indicator."""
+        if period < 2:
+            raise ValueError(f"period must be >= 2, got {period}")
+        if period > 100:
+            raise ValueError(f"period must be <= 100, got {period}")
         super().__init__(period=period)
 
     @classmethod

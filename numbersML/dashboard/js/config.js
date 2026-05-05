@@ -8,9 +8,6 @@
  * - Save changes
  */
 
-// API Base URL
-const API_BASE = '/api';
-
 // Current table data
 let currentTable = null;
 let tableData = [];

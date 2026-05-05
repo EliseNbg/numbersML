@@ -8,9 +8,6 @@
  * - Update indicator parameters
  */
 
-// API Base URL
-const API_BASE = '/api';
-
 // Current indicators data
 let indicatorsData = [];
 

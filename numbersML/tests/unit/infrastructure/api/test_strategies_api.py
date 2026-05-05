@@ -80,7 +80,7 @@ def client(app, mock_repo, mock_event_repo, mock_lifecycle_svc, mock_llm_svc, mo
     app.dependency_overrides[get_lifecycle_service] = lambda: mock_lifecycle_svc
     app.dependency_overrides[get_llm_service] = lambda: mock_llm_svc
     app.dependency_overrides[require_trader] = lambda: mock_auth
-    yield TestClient(app)
+    yield TestClient(app, headers={"X-API-Key": "test-secret-key"})
     app.dependency_overrides.clear()
 
 

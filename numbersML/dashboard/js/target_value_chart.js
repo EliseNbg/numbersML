@@ -9,8 +9,6 @@
  * - Candlestick + target value chart display with dual price scales
  */
 
-const API_BASE = '/api';
-
 let chart = null;
 let candleSeries = null;
 let filteredSeries = null;

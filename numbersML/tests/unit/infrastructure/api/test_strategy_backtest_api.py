@@ -39,7 +39,7 @@ def clear_backtest_jobs():
 @pytest.fixture
 def client():
     """Create TestClient for FastAPI app."""
-    return TestClient(app)
+    return TestClient(app, headers={"X-API-Key": "test-secret-key"})
 
 
 @pytest.fixture

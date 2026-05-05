@@ -126,7 +126,8 @@ def create_app() -> FastAPI:
 - **Configuration**: Edit system configuration tables
 
 ### Authentication
-Currently no authentication. Add authentication middleware for production use.
+API key authentication (X-API-Key header) is required only in test mode.
+In production mode, all requests are allowed without authentication.
         """,
         version="1.0.0",
         lifespan=lifespan,

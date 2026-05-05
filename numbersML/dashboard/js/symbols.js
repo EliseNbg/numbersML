@@ -2,13 +2,11 @@
  * Symbols Management JavaScript
  * 
  * Handles:
- * - List symbols
- * - Activate/deactivate symbols
+ * - Symbol listing and filtering
+ * - Activating/deactivating symbols
  * - Bulk operations
+ * - EU compliance filtering
  */
-
-// API Base URL
-const API_BASE = '/api';
 
 // Current symbols data
 let symbolsData = [];

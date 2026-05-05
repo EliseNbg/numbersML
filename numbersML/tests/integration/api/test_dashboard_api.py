@@ -18,24 +18,24 @@ import pytest
 from fastapi.testclient import TestClient
 
 # Set environment variables BEFORE importing app
-os.environ["API_KEY_ADMIN"] = "test-admin-key"
-os.environ["API_KEY_TRADER"] = "test-trader-key"
-os.environ["API_KEY_READ"] = "test-read-key"
+os.environ["API_KEY_ADMIN"] = "admin-secret-key"
+os.environ["API_KEY_TRADER"] = "trader-secret-key"
+os.environ["API_KEY_READ"] = "read-secret-key"
 
 # Reload modules to pick up env keys
 for mod in list(sys.modules.keys()):
     if "src.infrastructure.api" in mod or "src.infrastructure.database" in mod:
         del sys.modules[mod]
 
-from src.infrastructure.api.app import app
 from src.infrastructure.api.auth import API_KEY_STORE
+from src.infrastructure.api.app import app
 
 # Update API_KEY_STORE with test keys
 API_KEY_STORE.update(
     {
-        "test-admin-key": {"roles": ["admin"], "name": "Test Admin Key"},
-        "test-trader-key": {"roles": ["trader", "read"], "name": "Test Trader Key"},
-        "test-read-key": {"roles": ["read"], "name": "Test Read Key"},
+        "admin-secret-key": {"roles": ["admin"], "name": "Admin Key"},
+        "trader-secret-key": {"roles": ["trader", "read"], "name": "Trader Key"},
+        "read-secret-key": {"roles": ["read"], "name": "Read Key"},
     }
 )
 
@@ -63,17 +63,17 @@ def client():
 
 @pytest.fixture
 def admin_headers():
-    return {"X-API-Key": "test-admin-key"}
+    return {"X-API-Key": "admin-secret-key"}
 
 
 @pytest.fixture
 def trader_headers():
-    return {"X-API-Key": "test-trader-key"}
+    return {"X-API-Key": "trader-secret-key"}
 
 
 @pytest.fixture
 def read_headers():
-    return {"X-API-Key": "test-read-key"}
+    return {"X-API-Key": "read-secret-key"}
 
 
 # ============================================================================

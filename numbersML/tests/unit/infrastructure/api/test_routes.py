@@ -38,7 +38,7 @@ class TestDashboardRoutes:
     @pytest.fixture
     def client(self, app: FastAPI) -> TestClient:
         """Create test client."""
-        return TestClient(app, raise_server_exceptions=False)
+        return TestClient(app, raise_server_exceptions=False, headers={"X-API-Key": "test-secret-key"})
 
     def test_routes_registered(self, client: TestClient) -> None:
         """Test that routes are registered."""

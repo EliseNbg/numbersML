@@ -7,8 +7,6 @@
  * - ML predictions (blue line, right price scale)
  */
 
-const API_BASE = '/api';
-
 let chart = null;
 let candleSeries = null;
 let targetSeries = null;

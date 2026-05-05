@@ -33,7 +33,7 @@ def mock_repo():
 def client(app, mock_repo):
     """Create test client with dependency override."""
     app.dependency_overrides[get_instance_repository] = lambda: mock_repo
-    return TestClient(app)
+    return TestClient(app, headers={"X-API-Key": "test-secret-key"})
 
 
 def test_list_instances(client, mock_repo):

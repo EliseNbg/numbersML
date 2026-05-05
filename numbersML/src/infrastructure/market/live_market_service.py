@@ -3,6 +3,7 @@
 import asyncio
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 from src.domain.market.order import Balance, Order, OrderRequest, OrderStatus, Position
@@ -80,7 +81,7 @@ class LiveMarketService(MarketService):
                 quantity=order.quantity,
                 order_type=order.order_type,
                 limit_price=order.requested_price,
-                client_order_id=order.client_order_id,
+                client_order_id=order.client_order_id or "",
             ),
             payload,
             order.client_order_id or "",
@@ -90,6 +91,14 @@ class LiveMarketService(MarketService):
         if refreshed.external_order_id:
             self._orders[refreshed.external_order_id] = refreshed
         return refreshed
+
+    async def get_orders(self, filters: dict[str, Any] | None = None) -> list[Order]:
+        """Fetch orders with optional filters (placeholder until exchange adapter implements)."""
+        return list(self._orders.values())
+
+    async def get_trades(self) -> list[Any]:
+        """Fetch all trades/fills (placeholder until exchange adapter implements)."""
+        return []
 
     async def _retry_create_order(self, request: OrderRequest, client_order_id: str) -> dict:
         last_exception: Exception | None = None

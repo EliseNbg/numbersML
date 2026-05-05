@@ -8,9 +8,6 @@
  * - Auto-refresh every 5 seconds
  */
 
-// API Base URL
-const API_BASE = '/api';
-
 // Chart instance
 let slaChart = null;
 

@@ -22,46 +22,40 @@ import pytest
 from fastapi.testclient import TestClient
 
 # Set environment variables BEFORE importing app
-os.environ["API_KEY_ADMIN"] = "test-admin-key"
-os.environ["API_KEY_TRADER"] = "test-trader-key"
-os.environ["API_KEY_READ"] = "test-read-key"
+os.environ["API_KEY_ADMIN"] = "admin-secret-key"
+os.environ["API_KEY_TRADER"] = "trader-secret-key"
+os.environ["API_KEY_READ"] = "read-secret-key"
 
 # Reload modules to pick up env keys
 for mod in list(sys.modules.keys()):
     if "src.infrastructure.api" in mod or "src.infrastructure.database" in mod:
         del sys.modules[mod]
 
-from src.infrastructure.api.app import app
 from src.infrastructure.api.auth import API_KEY_STORE
+from src.infrastructure.api.app import app
 
 # Update API_KEY_STORE with test keys
 API_KEY_STORE.update(
     {
-        "test-admin-key": {"roles": ["admin"], "name": "Test Admin Key"},
-        "test-trader-key": {"roles": ["trader", "read"], "name": "Test Trader Key"},
-        "test-read-key": {"roles": ["read"], "name": "Test Read Key"},
+        "admin-secret-key": {"roles": ["admin"], "name": "Admin Key"},
+        "trader-secret-key": {"roles": ["trader", "read"], "name": "Trader Key"},
+        "read-secret-key": {"roles": ["read"], "name": "Read Key"},
     }
 )
 
 # Module-level mock repo
-_mock_repo = None
+mock_repo = None
 
 
 @pytest.fixture(scope="module")
-def mock_repo():
-    """Create a mock repository for all tests."""
-    global _mock_repo
-    _mock_repo = MagicMock()
-    return _mock_repo
-
-
-@pytest.fixture(scope="module")
-def client(mock_repo):
+def client():
     """Provide TestClient with dependency overrides."""
+    global mock_repo
+    mock_repo = MagicMock()
 
-    # Define override function
-    def mock_get_repo():
-        return _mock_repo
+    # Define override as async generator to match original
+    async def mock_get_repo():
+        yield mock_repo
 
     # Import the real dependency
     from src.infrastructure.api.routes.strategy_instances import (
@@ -80,17 +74,17 @@ def client(mock_repo):
 
 @pytest.fixture
 def admin_headers():
-    return {"X-API-Key": "test-admin-key"}
+    return {"X-API-Key": "admin-secret-key"}
 
 
 @pytest.fixture
 def trader_headers():
-    return {"X-API-Key": "test-trader-key"}
+    return {"X-API-Key": "trader-secret-key"}
 
 
 @pytest.fixture
 def read_headers():
-    return {"X-API-Key": "test-read-key"}
+    return {"X-API-Key": "read-secret-key"}
 
 
 @pytest.fixture
@@ -110,7 +104,7 @@ class TestStrategyInstanceLifecycle:
     """Test StrategyInstance full lifecycle via API."""
 
     def test_create_and_list_instances(
-        self, client, mock_repo, trader_headers, read_headers, strategy_instance_payload
+        self, client, trader_headers, strategy_instance_payload
     ):
         """Test creating a StrategyInstance and listing it."""
         # Mock get_by_strategy_and_config to return None (no duplicate)
@@ -146,7 +140,9 @@ class TestStrategyInstanceLifecycle:
         assert list_resp.status_code == 200
         assert isinstance(list_resp.json(), list)
 
-    def test_get_instance_by_id(self, client, mock_repo, read_headers, strategy_instance_payload):
+    def test_get_instance_by_id(
+        self, client, read_headers, strategy_instance_payload
+    ):
         """Test getting a StrategyInstance by ID."""
         mock_instance = MagicMock()
         mock_instance.id = UUID("323e4567-e89b-12d3-a456-426614174002")
@@ -160,18 +156,22 @@ class TestStrategyInstanceLifecycle:
         mock_repo.get_by_id = AsyncMock(return_value=mock_instance)
 
         instance_id = "323e4567-e89b-12d3-a456-426614174002"
-        get_resp = client.get(f"/api/strategy-instances/{instance_id}", headers=read_headers)
+        get_resp = client.get(
+            f"/api/strategy-instances/{instance_id}", headers=read_headers
+        )
         assert get_resp.status_code == 200, f"Get failed: {get_resp.json()}"
 
-    def test_get_nonexistent_instance_returns_404(self, client, mock_repo, read_headers):
+    def test_get_nonexistent_instance_returns_404(self, client, read_headers):
         """Test that getting a non-existent instance returns 404."""
         mock_repo.get_by_id = AsyncMock(return_value=None)
 
         fake_id = "123e4567-e89b-12d3-a456-426614174000"
-        resp = client.get(f"/api/strategy-instances/{fake_id}", headers=read_headers)
+        resp = client.get(
+            f"/api/strategy-instances/{fake_id}", headers=read_headers
+        )
         assert resp.status_code == 404
 
-    def test_start_instance(self, client, mock_repo, trader_headers):
+    def test_start_instance(self, client, trader_headers):
         """Test starting a StrategyInstance (hot-plug)."""
         mock_instance = MagicMock()
         mock_instance.id = UUID("323e4567-e89b-12d3-a456-426614174002")
@@ -189,7 +189,7 @@ class TestStrategyInstanceLifecycle:
         assert "started" in start_resp.json()["message"].lower()
         mock_instance.start.assert_called_once()
 
-    def test_stop_instance(self, client, mock_repo, trader_headers):
+    def test_stop_instance(self, client, trader_headers):
         """Test stopping a running StrategyInstance (unplug)."""
         mock_instance = MagicMock()
         mock_instance.status.value = "running"
@@ -206,7 +206,7 @@ class TestStrategyInstanceLifecycle:
         assert "stopped" in stop_resp.json()["message"].lower()
         mock_instance.stop.assert_called_once()
 
-    def test_pause_instance(self, client, mock_repo, trader_headers):
+    def test_pause_instance(self, client, trader_headers):
         """Test pausing a running StrategyInstance."""
         mock_instance = MagicMock()
         mock_instance.status.value = "running"
@@ -223,7 +223,7 @@ class TestStrategyInstanceLifecycle:
         assert "paused" in pause_resp.json()["message"].lower()
         mock_instance.pause.assert_called_once()
 
-    def test_resume_instance(self, client, mock_repo, trader_headers):
+    def test_resume_instance(self, client, trader_headers):
         """Test resuming a paused StrategyInstance."""
         mock_instance = MagicMock()
         mock_instance.status.value = "paused"
@@ -240,7 +240,7 @@ class TestStrategyInstanceLifecycle:
         assert "resumed" in resume_resp.json()["message"].lower()
         mock_instance.resume.assert_called_once()
 
-    def test_delete_instance(self, client, mock_repo, trader_headers):
+    def test_delete_instance(self, client, trader_headers):
         """Test deleting a StrategyInstance."""
         mock_repo.delete = AsyncMock(return_value=True)
 
@@ -260,14 +260,16 @@ class TestStrategyInstanceAuth:
     """Test authorization for StrategyInstance endpoints."""
 
     def test_create_requires_auth(self, client, strategy_instance_payload):
-        resp = client.post("/api/strategy-instances", json=strategy_instance_payload)
+        resp = client.post(
+            "/api/strategy-instances", json=strategy_instance_payload
+        )
         assert resp.status_code == 401
 
     def test_read_requires_auth(self, client):
-        resp = client.get("/api/strategy-instances/some-uuid")
+        resp = client.get("/api/strategy-instances/some-uid")
         assert resp.status_code == 401
 
-    def test_read_key_can_list(self, client, mock_repo, read_headers):
+    def test_read_key_can_list(self, client, read_headers):
         mock_repo.list_all = AsyncMock(return_value=[])
 
         resp = client.get("/api/strategy-instances", headers=read_headers)
@@ -275,7 +277,9 @@ class TestStrategyInstanceAuth:
 
     def test_start_requires_trader_role(self, client, read_headers):
         instance_id = "323e4567-e89b-12d3-a456-426614174002"
-        resp = client.post(f"/api/strategy-instances/{instance_id}/start", headers=read_headers)
+        resp = client.post(
+            f"/api/strategy-instances/{instance_id}/start", headers=read_headers
+        )
         assert resp.status_code == 403
 
 
@@ -292,24 +296,32 @@ class TestStrategyInstanceErrors:
             "strategy_id": "not-a-uuid",
             "config_set_id": "223e4567-e89b-12d3-a456-426614174001",
         }
-        resp = client.post("/api/strategy-instances", json=invalid_payload, headers=trader_headers)
+        resp = client.post(
+            "/api/strategy-instances", json=invalid_payload, headers=trader_headers
+        )
         assert resp.status_code == 400
 
-    def test_start_nonexistent_instance_returns_404(self, client, mock_repo, trader_headers):
+    def test_start_nonexistent_instance_returns_404(self, client, trader_headers):
         mock_repo.get_by_id = AsyncMock(return_value=None)
 
         instance_id = "123e4567-e89b-12d3-a456-426614174000"
-        resp = client.post(f"/api/strategy-instances/{instance_id}/start", headers=trader_headers)
+        resp = client.post(
+            f"/api/strategy-instances/{instance_id}/start", headers=trader_headers
+        )
         assert resp.status_code == 404
 
-    def test_start_stopped_instance_returns_400(self, client, mock_repo, trader_headers):
+    def test_start_stopped_instance_returns_400(self, client, trader_headers):
         """Test that starting an already running instance returns 400."""
         mock_instance = MagicMock()
         mock_instance.status.value = "running"  # Already running
-        mock_instance.start = MagicMock(side_effect=ValueError("Instance is already running"))
+        mock_instance.start = MagicMock(
+            side_effect=ValueError("Instance is already running")
+        )
 
         mock_repo.get_by_id = AsyncMock(return_value=mock_instance)
 
         instance_id = "323e4567-e89b-12d3-a456-426614174002"
-        resp = client.post(f"/api/strategy-instances/{instance_id}/start", headers=trader_headers)
+        resp = client.post(
+            f"/api/strategy-instances/{instance_id}/start", headers=trader_headers
+        )
         assert resp.status_code == 400
