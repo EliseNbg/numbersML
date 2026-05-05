@@ -47,7 +47,7 @@ Implement Step 9 only: testing completion and rollout readiness.
 Tasks:
 1) Identify test gaps across Steps 1-8 and implement missing tests.
 2) Add e2e workflow test:
-   create strategy -> validate -> activate (paper) -> run backtest -> deactivate.
+   create algorithm -> validate -> activate (paper) -> run backtest -> deactivate.
 3) Define CI gates for:
    - lint/type/test
    - API contract checks

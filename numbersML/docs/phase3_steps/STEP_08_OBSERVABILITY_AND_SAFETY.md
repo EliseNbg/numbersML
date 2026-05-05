@@ -2,7 +2,7 @@
 
 ## Objective
 
-Add operational controls and telemetry required for safe paper/live strategy operation.
+Add operational controls and telemetry required for safe paper/live algorithm operation.
 
 ## Scope
 
@@ -12,7 +12,7 @@ Add operational controls and telemetry required for safe paper/live strategy ope
   - notional caps per symbol
   - stale data block
 - Observability:
-  - strategy health metrics
+  - algorithm health metrics
   - order success/failure ratios
   - latency/error counters
   - backtest vs paper/live drift indicators
@@ -21,11 +21,11 @@ Add operational controls and telemetry required for safe paper/live strategy ope
   - activations/deactivations
   - risk guardrail trigger events
 - Operator controls:
-  - emergency global strategy stop
+  - emergency global algorithm stop
 
 ## Out of Scope
 
-- New strategy logic
+- New algorithm logic
 - Frontend redesign
 
 ## Dependencies
@@ -49,7 +49,7 @@ Add operational controls and telemetry required for safe paper/live strategy ope
 ## Implementation Prompt (Best Prompt for LLM)
 
 ```text
-Implement Step 8 only: observability and safety controls for strategy execution.
+Implement Step 8 only: observability and safety controls for algorithm execution.
 
 Tasks:
 1) Add runtime guardrails:
@@ -57,7 +57,7 @@ Tasks:
    - max exposure/position limits
    - stale feed block
 2) Add telemetry/metrics:
-   - per-strategy health
+   - per-algorithm health
    - order errors and latency
    - guardrail trigger counters
 3) Add audit logging for all critical actions/events.

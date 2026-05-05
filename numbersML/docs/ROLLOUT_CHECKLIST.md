@@ -1,4 +1,4 @@
-# Strategy System Rollout Checklist
+# Algorithm System Rollout Checklist
 
 ## Pre-Flight Checklist
 
@@ -39,12 +39,12 @@ Validate system stability with simulated trading before any real capital exposur
 
 ### Activities
 - [ ] Deploy to staging/paper environment
-- [ ] Create 3-5 test strategies (different types: RSI, MACD, Bollinger)
-- [ ] Run strategies for 7 days continuously
+- [ ] Create 3-5 test algorithms (different types: RSI, MACD, Bollinger)
+- [ ] Run algorithms for 7 days continuously
 - [ ] Monitor error rates (< 0.1% acceptable)
 - [ ] Verify audit logs are complete
 - [ ] Test emergency stop at least once
-- [ ] Generate and review backtests for all strategies
+- [ ] Generate and review backtests for all algorithms
 
 ### Success Metrics
 | Metric | Target | Actual |
@@ -57,7 +57,7 @@ Validate system stability with simulated trading before any real capital exposur
 
 ### Exit Criteria
 - [ ] Zero critical errors
-- [ ] All strategies generated expected signals
+- [ ] All algorithms generated expected signals
 - [ ] Emergency stop tested and working
 - [ ] Operator team trained on runbook
 - [ ] Go/No-go decision meeting held
@@ -77,7 +77,7 @@ Validate live trading with minimal capital exposure (≤ $1000 total).
 
 ### Activities
 - [ ] Deploy to production
-- [ ] Activate 1 strategy in live mode (smallest allocation)
+- [ ] Activate 1 algorithm in live mode (smallest allocation)
 - [ ] Monitor fills vs expected prices (< 1% slippage)
 - [ ] Verify P&L tracking accuracy
 - [ ] Test daily loss limit triggers
@@ -86,7 +86,7 @@ Validate live trading with minimal capital exposure (≤ $1000 total).
 ### Risk Controls
 | Control | Setting |
 |---------|---------|
-| Max Daily Loss | $50 per strategy |
+| Max Daily Loss | $50 per algorithm |
 | Max Position Size | 10% of allocation |
 | Max Orders/Hour | 5 |
 | Global Kill | Any operator can trigger |
@@ -110,7 +110,7 @@ Validate live trading with minimal capital exposure (≤ $1000 total).
 ## Phase 3: Gradual Expansion (Days 15-30)
 
 ### Objective
-Increase capital allocation and strategy count gradually.
+Increase capital allocation and algorithm count gradually.
 
 ### Entry Criteria
 - [ ] Phase 2 completed successfully
@@ -119,16 +119,16 @@ Increase capital allocation and strategy count gradually.
 
 ### Activities
 - [ ] Increase allocation to $5000
-- [ ] Add 2-3 additional strategies
-- [ ] Run strategies with different timeframes
-- [ ] Monitor correlation between strategies
+- [ ] Add 2-3 additional algorithms
+- [ ] Run algorithms with different timeframes
+- [ ] Monitor correlation between algorithms
 - [ ] Review and tune risk parameters
 
 ### Expansion Schedule
-| Day | Capital | Strategies | Notes |
+| Day | Capital | Algorithms | Notes |
 |-----|---------|------------|-------|
-| 15 | $2000 | 2 | Add second strategy |
-| 20 | $3500 | 3 | Add third strategy |
+| 15 | $2000 | 2 | Add second algorithm |
+| 20 | $3500 | 3 | Add third algorithm |
 | 25 | $5000 | 4 | Full pilot allocation |
 | 30 | Review | Review | Go/No-go for full rollout |
 
@@ -145,7 +145,7 @@ Increase capital allocation and strategy count gradually.
 | Sharpe Ratio | > 1.0 | |
 | Max Drawdown | < 5% | |
 | Win Rate | > 50% | |
-| Strategy Correlation | < 0.7 | |
+| Algorithm Correlation | < 0.7 | |
 
 ### Exit Criteria
 - [ ] Positive risk-adjusted returns
@@ -158,7 +158,7 @@ Increase capital allocation and strategy count gradually.
 ## Phase 4: Full Production Rollout
 
 ### Objective
-Deploy system with full capital allocation and all planned strategies.
+Deploy system with full capital allocation and all planned algorithms.
 
 ### Entry Criteria
 - [ ] Phase 3 success metrics met
@@ -168,10 +168,10 @@ Deploy system with full capital allocation and all planned strategies.
 
 ### Activities
 - [ ] Scale to full capital allocation
-- [ ] Deploy all approved strategies
+- [ ] Deploy all approved algorithms
 - [ ] Implement continuous monitoring
 - [ ] Schedule weekly risk reviews
-- [ ] Establish monthly strategy reviews
+- [ ] Establish monthly algorithm reviews
 
 ### Ongoing Monitoring
 | Metric | Frequency | Alert Threshold |

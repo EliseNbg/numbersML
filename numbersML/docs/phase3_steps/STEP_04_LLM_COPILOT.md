@@ -2,11 +2,11 @@
 
 ## Objective
 
-Allow users to generate and modify strategy configs with natural language, safely.
+Allow users to generate and modify algorithm configs with natural language, safely.
 
 ## Scope
 
-- `LLMStrategyService` operations:
+- `LLMAlgorithmService` operations:
   - generate config from description
   - modify existing config from change request
 - Prompt templates with domain context:
@@ -47,16 +47,16 @@ Allow users to generate and modify strategy configs with natural language, safel
 ## Implementation Prompt (Best Prompt for LLM)
 
 ```text
-Implement Step 4 only: LLM copilot for strategy config generation and modification.
+Implement Step 4 only: LLM copilot for algorithm config generation and modification.
 
 Tasks:
-1) Build LLMStrategyService with two methods:
+1) Build LLMAlgorithmService with two methods:
    - generate_config(description, constraints)
    - modify_config(existing_config, change_request)
 2) Implement robust prompts with explicit JSON-only output instructions.
 3) Enforce JSON schema validation + range/business rules post-processing.
 4) Add prompt-injection and unsafe-content checks for user input.
-5) Save accepted output as draft strategy version (never auto-activate).
+5) Save accepted output as draft algorithm version (never auto-activate).
 6) Add tests:
    - valid generation
    - malformed JSON

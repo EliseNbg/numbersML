@@ -1,8 +1,8 @@
-# Step 6: Dashboard GUI (Create/Modify/Activate Strategies)
+# Step 6: Dashboard GUI (Create/Modify/Activate Algorithms)
 
 ## Objective
 
-Deliver web GUI workflows to manage strategy lifecycle and control activation from pipeline dashboard.
+Deliver web GUI workflows to manage algorithm lifecycle and control activation from pipeline dashboard.
 
 ## Scope
 
@@ -34,19 +34,19 @@ Deliver web GUI workflows to manage strategy lifecycle and control activation fr
 
 ## Acceptance Criteria
 
-- User can create and modify strategy from GUI.
-- User can activate/deactivate strategy from dashboard page.
+- User can create and modify algorithm from GUI.
+- User can activate/deactivate algorithm from dashboard page.
 - Validation and API errors are shown clearly.
 - Live mode actions require explicit confirmation.
 
 ## Implementation Prompt (Best Prompt for LLM)
 
 ```text
-Implement Step 6 only: dashboard UI for strategy lifecycle and activation controls.
+Implement Step 6 only: dashboard UI for algorithm lifecycle and activation controls.
 
 Tasks:
 1) Add/extend dashboard pages and JS modules to support:
-   - strategy list/detail/create/edit/version history
+   - algorithm list/detail/create/edit/version history
    - activation/deactivation controls
    - LLM suggestion workflow for create/modify
 2) Integrate with API endpoints from Step 5.
@@ -75,7 +75,7 @@ Validate Step 6 dashboard workflows.
 
 Tasks:
 1) Perform UI integration checks for:
-   - create/edit strategy
+   - create/edit algorithm
    - activate/deactivate
    - error display for invalid configs
 2) Verify live-mode confirmation cannot be bypassed by normal UI flow.

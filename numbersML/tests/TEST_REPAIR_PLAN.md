@@ -83,8 +83,8 @@ Duration: ~40 seconds (unit) ~5 min (with integration)
 |-----------|-------|-----|--------|
 | `test_routes.py` (ML/Candle/TargetValue) | Missing router imports in `__init__.py` | Added exports | ✅ |
 | `test_routes.py` (ML/Candle/TargetValue) | Missing imports in test file | Added imports | ✅ |
-| `test_routes.py` (Strategy) | DB pool not initialized in test | Mock DB pool in fixture | ✅ |
-| `test_routes.py` (Strategy) | FastAPI 0.135.2 upgrade mismatch | Downgrade to 0.109.0 | ✅ |
+| `test_routes.py` (Algorithm) | DB pool not initialized in test | Mock DB pool in fixture | ✅ |
+| `test_routes.py` (Algorithm) | FastAPI 0.135.2 upgrade mismatch | Downgrade to 0.109.0 | ✅ |
 
 **Files Modified**:
 - `src/infrastructure/api/routes/__init__.py` - Added missing router exports
@@ -103,7 +103,7 @@ These tests were already broken before our test repair effort:
 | Test File | Reason | Action |
 |-----------|--------|--------|
 | `test_full_pipeline.py` (some) | DB fixture issues | Fix in separate PR |
-| `test_strategy_interface.py` (some) | Redis fixture issues | Fix in separate PR |
+| `test_algorithm_interface.py` (some) | Redis fixture issues | Fix in separate PR |
 
 **Documented in**: `tests/BROKEN_TESTS.md`
 

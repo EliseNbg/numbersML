@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-The Strategy Management System has completed Step 9 testing and rollout preparation. The system demonstrates:
+The Algorithm Management System has completed Step 9 testing and rollout preparation. The system demonstrates:
 
 - **588 unit tests passing** (99.3% pass rate)
 - **100% safety-critical test coverage** (risk guardrails, kill switches, audit logging)
@@ -36,7 +36,7 @@ The Strategy Management System has completed Step 9 testing and rollout preparat
 | Component | Tests | Passed | Failed | Notes |
 |-----------|-------|--------|--------|-------|
 | Safety & Guardrails | 29 | 29 | 0 | 100% coverage |
-| Strategy Lifecycle | 18 | 18 | 0 | Full coverage |
+| Algorithm Lifecycle | 18 | 18 | 0 | Full coverage |
 | LLM Service | 15 | 15 | 0 | Guardrails validated |
 | Backtest Engine | 14 | 10 | 4 | Metrics calc issues* |
 | API Routes | 12 | 12 | 0 | Contract valid |
@@ -79,7 +79,7 @@ Fail on Warning: false (deprecated datetime warnings allowed)
 - Missing API contract tests ✅ Validated
 
 **Files Created:**
-- `tests/e2e/test_strategy_workflow.py` - Complete lifecycle E2E
+- `tests/e2e/test_algorithm_workflow.py` - Complete lifecycle E2E
 - `tests/unit/application/services/test_safety_guardrails.py` - 29 safety tests
 
 ### 2. CI/CD Pipeline
@@ -117,7 +117,7 @@ Fail on Warning: false (deprecated datetime warnings allowed)
 **File:** `docs/OPERATOR_RUNBOOK.md`
 
 **Sections:**
-- Emergency procedures (global stop, strategy stop, release)
+- Emergency procedures (global stop, algorithm stop, release)
 - 5 incident response playbooks (loss, stale data, bad signals, orders, performance)
 - 3 rollback procedures (code, DB, config)
 - Monitoring commands
@@ -144,7 +144,7 @@ Fail on Warning: false (deprecated datetime warnings allowed)
 | Max positions limit | ✅ | Working |
 | Stale data blocking | ✅ | Working |
 | Global emergency stop | ✅ | Working |
-| Per-strategy kill | ✅ | Working |
+| Per-algorithm kill | ✅ | Working |
 | Audit logging | ✅ | Working |
 | Telemetry collection | ✅ | Working |
 
@@ -172,14 +172,14 @@ Fail on Warning: false (deprecated datetime warnings allowed)
 
 1. **Operator Training** - Walk through runbook with on-call team
 2. **Staging Deploy** - Deploy to paper environment
-3. **Paper Strategies** - Create 3-5 test strategies
+3. **Paper Algorithms** - Create 3-5 test algorithms
 4. **Monitoring Setup** - Configure alerts (uptime, errors, P&L)
 5. **Contact List** - Fill in emergency contacts in runbook
 
 ### Phase 1 (Days 1-7)
 
 1. Deploy to paper environment
-2. Run 5 strategies continuously
+2. Run 5 algorithms continuously
 3. Monitor error rates (< 0.1%)
 4. Test emergency stop once
 5. Generate backtests
@@ -197,17 +197,17 @@ See `docs/ROLLOUT_CHECKLIST.md` for full details.
 
 ```
 TestRiskGuardrailService (9 tests)
-  ✅ test_register_strategy
-  ✅ test_unregister_strategy
+  ✅ test_register_algorithm
+  ✅ test_unregister_algorithm
   ✅ test_global_kill_switch_blocks_orders
-  ✅ test_strategy_kill_switch_blocks_orders
+  ✅ test_algorithm_kill_switch_blocks_orders
   ✅ test_daily_loss_limit_triggers_kill
   ✅ test_max_positions_limit
-  ✅ test_stale_data_blocks_strategy
+  ✅ test_stale_data_blocks_algorithm
   ✅ test_release_global_kill
   ✅ test_symbol_notional_cap
 
-TestStrategyTelemetryService (7 tests)
+TestAlgorithmTelemetryService (7 tests)
   ✅ test_record_order_flow
   ✅ test_execution_statistics
   ✅ test_signal_statistics
@@ -218,13 +218,13 @@ TestStrategyTelemetryService (7 tests)
 
 TestEmergencyStopService (4 tests)
   ✅ test_full_emergency_stop
-  ✅ test_strategy_emergency_stop
+  ✅ test_algorithm_emergency_stop
   ✅ test_release_stop
   ✅ test_release_all
 
 TestAuditLogger (5 tests)
   ✅ test_log_basic_event
-  ✅ test_log_strategy_lifecycle
+  ✅ test_log_algorithm_lifecycle
   ✅ test_log_kill_switch
   ✅ test_log_guardrail_breach
   ✅ test_get_recent_events
@@ -244,9 +244,9 @@ TestSingletons (4 tests)
 ### E2E Test Coverage (3 tests)
 
 ```
-TestStrategyWorkflow
-  ✅ test_complete_strategy_workflow
-  ✅ test_strategy_validation_failure
+TestAlgorithmWorkflow
+  ✅ test_complete_algorithm_workflow
+  ✅ test_algorithm_validation_failure
   ✅ test_emergency_stop_workflow
 ```
 

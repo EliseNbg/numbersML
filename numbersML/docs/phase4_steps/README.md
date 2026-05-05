@@ -4,23 +4,23 @@ This folder contains independent implementation packets for Phase 4: Algorithm M
 
 ## Overview
 
-Phase 4 focuses on creating a robust, decoupled management system for trading strategies. It introduces the concept of `ConfigurationSet` to separate algorithm logic from runtime parameters, and provides a rich dashboard for orchestration, monitoring, and backtesting.
+Phase 4 focuses on creating a robust, decoupled management system for trading algorithms. It introduces the concept of `ConfigurationSet` to separate algorithm logic from runtime parameters, and provides a rich dashboard for orchestration, monitoring, and backtesting.
 
 ## Progress
 
 - ✅ **Step 1** (`STEP_01_CONFIGSET_DOMAIN.md`): Completed - ConfigurationSet domain model, entity implementation, TDD tests
 - ✅ **Step 2** (`STEP_02_CONFIGSET_REPOSITORY.md`): Completed - ConfigurationSet repository, PostgreSQL implementation, migrations
 - ✅ **Step 3** (`STEP_03_CONFIGSET_API.md`): Completed - FastAPI routes for config sets, request/response models
-- ✅ **Step 4** (`STEP_04_STRATEGY_INSTANCE_DOMAIN.md`): Completed - StrategyInstance domain model, linking strategy to config
-- ✅ **Step 5** (`STEP_05_STRATEGY_INSTANCE_REPO_API.md`): Completed - StrategyInstance repository and API, start/stop endpoints
+- ✅ **Step 4** (`STEP_04_ALGORITHM_INSTANCE_DOMAIN.md`): Completed - AlgorithmInstance domain model, linking algorithm to config
+- ✅ **Step 5** (`STEP_05_ALGORITHM_INSTANCE_REPO_API.md`): Completed - AlgorithmInstance repository and API, start/stop endpoints
 - ✅ **Step 6** (`STEP_06_BACKTEST_SERVICE.md`): Completed - BacktestService implementation, candle loading, metrics calculation, unit tests
 - ✅ **Step 7** (`STEP_07_BACKTEST_API.md`): Completed - Backtest API endpoints, job tracking, progress reporting, real BacktestService integration
 - ✅ **Step 8** (`STEP_08_DASHBOARD_CONFIG_SETS.md`): Completed - Dashboard UI for config set CRUD, dynamic parameter editing
-- ✅ **Step 9** (`STEP_09_DASHBOARD_INSTANCES.md`): Completed - Dashboard UI for strategy instances, hot-plug toggle, real-time stats
+- ✅ **Step 9** (`STEP_09_DASHBOARD_INSTANCES.md`): Completed - Dashboard UI for algorithm instances, hot-plug toggle, real-time stats
 - ✅ **Step 10** (`STEP_10_DASHBOARD_BACKTEST.md`): Completed - Backtest result page, charts, metrics table, time range selector
-- ✅ **Step 11** (`STEP_11_GRID_STRATEGY.md`): Completed - SimpleGridAlgorithm implementation, buy/sell grid logic, unit tests
+- ✅ **Step 11** (`STEP_11_GRID_ALGORITHM.md`): Completed - SimpleGridAlgorithm implementation, buy/sell grid logic, unit tests
 - ✅ **Step 12** (`STEP_12_GRID_TEST_DATA.md`): Completed - Test data setup, TEST/USDT config, synthetic data for positive PnL
-- ✅ **Step 13** (`STEP_13_PIPELINE_INTEGRATION.md`): Completed - Pipeline integration, strategy execution, signal generation
+- ✅ **Step 13** (`STEP_13_PIPELINE_INTEGRATION.md`): Completed - Pipeline integration, algorithm execution, signal generation
 - ✅ **Step 14** (`STEP_14_TESTING_ROLLOUT.md`): Completed - Integration testing, automated tests, rollout checklist
 
 ## Definition of Done (DoD) for Each Step
@@ -72,14 +72,14 @@ Each step is considered complete when ALL of the following criteria are met:
 1. `STEP_01_CONFIGSET_DOMAIN.md` - Domain foundation
 2. `STEP_02_CONFIGSET_REPOSITORY.md` - Data persistence
 3. `STEP_03_CONFIGSET_API.md` - API layer
-4. `STEP_04_STRATEGY_INSTANCE_DOMAIN.md` - Instance domain model
-5. `STEP_05_STRATEGY_INSTANCE_REPO_API.md` - Instance persistence & API
+4. `STEP_04_ALGORITHM_INSTANCE_DOMAIN.md` - Instance domain model
+5. `STEP_05_ALGORITHM_INSTANCE_REPO_API.md` - Instance persistence & API
 6. `STEP_06_BACKTEST_SERVICE.md` - Backtest engine core
 7. `STEP_07_BACKTEST_API.md` - Backtest API endpoints
 8. `STEP_08_DASHBOARD_CONFIG_SETS.md` - Dashboard: config sets
 9. `STEP_09_DASHBOARD_INSTANCES.md` - Dashboard: instances
 10. `STEP_10_DASHBOARD_BACKTEST.md` - Dashboard: backtest visualization
-11. `STEP_11_GRID_STRATEGY.md` - Grid strategy implementation
+11. `STEP_11_GRID_ALGORITHM.md` - Grid algorithm implementation
 12. `STEP_12_GRID_TEST_DATA.md` - Test data & synthetic data
 13. `STEP_13_PIPELINE_INTEGRATION.md` - Pipeline integration
 14. `STEP_14_TESTING_ROLLOUT.md` - Final testing & rollout

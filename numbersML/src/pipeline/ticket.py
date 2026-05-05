@@ -8,7 +8,7 @@ the same pipeline to be reused for different scenarios.
 Scenarios:
     LIVE     = {1, 2, 3}  — live data collection (candles + indicators + vectors)
     BACKFILL = {1, 2, 3}  — historical gap filling (same steps, different data source)
-    BACKTEST = {4, 6}     — strategy evaluation on historical data
+    BACKTEST = {4, 6}     — algorithm evaluation on historical data
     PREDICT  = {3, 4}     — ML inference only (on existing data)
 
 Step dependencies (order matters):

@@ -13,7 +13,7 @@ from uuid import UUID
 import asyncpg  # type: ignore[import-untyped]
 
 from src.domain.repositories.config_set_repository import ConfigSetRepository
-from src.domain.strategies.config_set import ConfigurationSet
+from src.domain.algorithms.config_set import ConfigurationSet
 
 logger = logging.getLogger(__name__)
 

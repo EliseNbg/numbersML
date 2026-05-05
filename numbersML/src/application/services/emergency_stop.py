@@ -1,8 +1,8 @@
 """
-Emergency Stop Service - Global emergency controls for strategy execution.
+Emergency Stop Service - Global emergency controls for algorithm execution.
 
 Provides:
-- Immediate global halt of all strategies
+- Immediate global halt of all algorithms
 - Operator controls with authentication
 - Recovery procedures
 - Audit logging
@@ -27,9 +27,9 @@ class StopLevel(Enum):
     """Level of emergency stop."""
 
     FULL = "full"  # Stop everything globally
-    STRATEGY = "strategy"  # Stop specific strategy
-    SYMBOL = "symbol"  # Stop all strategies for symbol
-    MODE = "mode"  # Stop all live strategies
+    ALGORITHM = "algorithm"  # Stop specific algorithm
+    SYMBOL = "symbol"  # Stop all algorithms for symbol
+    MODE = "mode"  # Stop all live algorithms
 
 
 class StopStatus(Enum):
@@ -38,7 +38,7 @@ class StopStatus(Enum):
     INACTIVE = "inactive"
     PENDING = "pending"  # Stop requested but not yet complete
     ACTIVE = "active"
-    RELEASING = "releasing"  # Release requested but strategies not yet resumed
+    RELEASING = "releasing"  # Release requested but algorithms not yet resumed
     PARTIAL = "partial"  # Some components stopped
 
 
@@ -51,7 +51,7 @@ class EmergencyStopRecord:
     triggered_at: datetime
     triggered_by: str
     reason: str
-    affected_strategies: set[UUID] = field(default_factory=set)
+    affected_algorithms: set[UUID] = field(default_factory=set)
     status: StopStatus = StopStatus.ACTIVE
     released_at: Optional[datetime] = None
     released_by: Optional[str] = None
@@ -65,7 +65,7 @@ class EmergencyStopService:
 
     Features:
     - Global emergency stop with single command
-    - Per-strategy emergency stop
+    - Per-algorithm emergency stop
     - Symbol-based stop
     - Live-mode-only stop
     - Operator authentication
@@ -102,7 +102,7 @@ class EmergencyStopService:
         level: StopLevel,
         reason: str,
         triggered_by: str,
-        strategy_id: Optional[UUID] = None,
+        algorithm_id: Optional[UUID] = None,
         symbol: Optional[str] = None,
         require_confirmation: bool = False,
     ) -> EmergencyStopRecord:
@@ -110,10 +110,10 @@ class EmergencyStopService:
         Trigger an emergency stop.
 
         Args:
-            level: Level of stop (full, strategy, symbol, mode)
+            level: Level of stop (full, algorithm, symbol, mode)
             reason: Why the stop is being triggered
             triggered_by: Who/what triggered the stop
-            strategy_id: Required for STRATEGY level
+            algorithm_id: Required for ALGORITHM level
             symbol: Required for SYMBOL level
             require_confirmation: If True, requires manual confirmation
 
@@ -124,33 +124,33 @@ class EmergencyStopService:
 
         logger.critical(f"EMERGENCY STOP TRIGGERED: {level.value} by {triggered_by}: {reason}")
 
-        # Determine affected strategies
+        # Determine affected algorithms
         affected: set[UUID] = set()
 
         if level == StopLevel.FULL:
-            # Stop all strategies
+            # Stop all algorithms
             affected = set(self.risk_service.get_all_risk_states().keys())
             await self.risk_service.trigger_global_kill(reason, triggered_by)
 
-        elif level == StopLevel.STRATEGY:
-            if not strategy_id:
-                raise ValueError("strategy_id required for STRATEGY level stop")
-            affected = {strategy_id}
-            await self.risk_service.trigger_strategy_kill(strategy_id, reason)
+        elif level == StopLevel.ALGORITHM:
+            if not algorithm_id:
+                raise ValueError("algorithm_id required for ALGORITHM level stop")
+            affected = {algorithm_id}
+            await self.risk_service.trigger_algorithm_kill(algorithm_id, reason)
 
         elif level == StopLevel.SYMBOL:
             if not symbol:
                 raise ValueError("symbol required for SYMBOL level stop")
-            # Would need to look up strategies by symbol
+            # Would need to look up algorithms by symbol
             # For now, stop all and filter by metadata
             affected = set(self.risk_service.get_all_risk_states().keys())
-            logger.warning(f"Symbol-level stop for {symbol} - stopping all strategies")
+            logger.warning(f"Symbol-level stop for {symbol} - stopping all algorithms")
 
         elif level == StopLevel.MODE:
-            # Stop only live strategies
-            # In practice, would filter by strategy mode
+            # Stop only live algorithms
+            # In practice, would filter by algorithm mode
             affected = set(self.risk_service.get_all_risk_states().keys())
-            logger.warning("Mode-level stop - stopping all strategies")
+            logger.warning("Mode-level stop - stopping all algorithms")
 
         # Create stop record
         record = EmergencyStopRecord(
@@ -159,11 +159,11 @@ class EmergencyStopService:
             triggered_at=datetime.utcnow(),
             triggered_by=triggered_by,
             reason=reason,
-            affected_strategies=affected,
+            affected_algorithms=affected,
             status=StopStatus.ACTIVE,
             metadata={
                 "symbol": symbol,
-                "strategy_id": str(strategy_id) if strategy_id else None,
+                "algorithm_id": str(algorithm_id) if algorithm_id else None,
                 "total_affected": len(affected),
             },
         )
@@ -180,7 +180,7 @@ class EmergencyStopService:
             await self.audit.log_emergency_stop(
                 reason=reason,
                 triggered_by=triggered_by,
-                affected_strategies=list(affected),
+                affected_algorithms=list(affected),
             )
 
         # Notify callbacks
@@ -227,13 +227,13 @@ class EmergencyStopService:
         # Release actual kill switches
         if record.level == StopLevel.FULL:
             await self.risk_service.release_global_kill(released_by)
-        elif record.level == StopLevel.STRATEGY:
-            for strategy_id in record.affected_strategies:
-                await self.risk_service.release_strategy_kill(strategy_id)
+        elif record.level == StopLevel.ALGORITHM:
+            for algorithm_id in record.affected_algorithms:
+                await self.risk_service.release_algorithm_kill(algorithm_id)
         elif record.level in (StopLevel.SYMBOL, StopLevel.MODE):
-            # Release all affected strategies
-            for strategy_id in record.affected_strategies:
-                await self.risk_service.release_strategy_kill(strategy_id)
+            # Release all affected algorithms
+            for algorithm_id in record.affected_algorithms:
+                await self.risk_service.release_algorithm_kill(algorithm_id)
 
         # Move to history
         record.status = StopStatus.INACTIVE
@@ -252,7 +252,7 @@ class EmergencyStopService:
                 new_value={
                     "stop_id": stop_id,
                     "reason": reason,
-                    "affected_strategies": [str(s) for s in record.affected_strategies],
+                    "affected_algorithms": [str(s) for s in record.affected_algorithms],
                 },
             )
 
@@ -284,15 +284,15 @@ class EmergencyStopService:
         """Get all currently active stops."""
         return self._active_stops.copy()
 
-    def is_emergency_stopped(self, strategy_id: Optional[UUID] = None) -> bool:
+    def is_emergency_stopped(self, algorithm_id: Optional[UUID] = None) -> bool:
         """Check if there are active emergency stops."""
         if not self._active_stops:
             return False
 
-        if strategy_id:
-            # Check if this specific strategy is stopped
+        if algorithm_id:
+            # Check if this specific algorithm is stopped
             for stop in self._active_stops.values():
-                if strategy_id in stop.affected_strategies:
+                if algorithm_id in stop.affected_algorithms:
                     return True
             return False
 
@@ -321,8 +321,8 @@ class EmergencyStopService:
         return {
             "status": "EMERGENCY_STOP_ACTIVE" if active else "NORMAL",
             "active_stops_count": len(active),
-            "total_affected_strategies": len(
-                set().union(*[s.affected_strategies for s in active]) if active else set()
+            "total_affected_algorithms": len(
+                set().union(*[s.affected_algorithms for s in active]) if active else set()
             ),
             "active_stop_details": [
                 {
@@ -331,7 +331,7 @@ class EmergencyStopService:
                     "triggered_at": s.triggered_at.isoformat(),
                     "triggered_by": s.triggered_by,
                     "reason": s.reason,
-                    "affected_count": len(s.affected_strategies),
+                    "affected_count": len(s.affected_algorithms),
                 }
                 for s in active
             ],

@@ -10,7 +10,7 @@ It complements `AGENTS.md` and is optimized for multi-session LLM execution.
 - **DDD first**: business rules live in domain/application, not in transport/UI/infrastructure layers.
 - **ADR required for non-trivial decisions**: architecture changes must be documented before or alongside implementation.
 - **Safety over speed**: trading, risk, and execution changes must prioritize correctness and auditability.
-- **Determinism and reproducibility**: backtesting and strategy configuration flows must be reproducible.
+- **Determinism and reproducibility**: backtesting and algorithm configuration flows must be reproducible.
 - **No silent failure**: all critical errors must be explicit, logged, and test-covered.
 
 ---
@@ -44,7 +44,7 @@ Reject any PR/session that:
 When ADR is mandatory:
 - New service boundaries or major refactor.
 - New execution semantics (fills/slippage/risk behavior).
-- Data model/schema strategy changes.
+- Data model/schema algorithm changes.
 - Security/LLM guardrail approach changes.
 - Any decision with trade-offs affecting future steps.
 
@@ -101,7 +101,7 @@ Backtest/runtime rules:
 
 ---
 
-## 6) Strategy and Market Safety Rules
+## 6) Algorithm and Market Safety Rules
 
 - Separate **signal generation**, **risk checks**, and **order execution**.
 - Never allow live execution without explicit mode guard.
@@ -116,8 +116,8 @@ Backtest/runtime rules:
 - LLM output is untrusted input until validated.
 - Enforce JSON schema + business rule validation.
 - Prompt-injection resistance checks are mandatory for user-provided text.
-- Never auto-activate strategy directly from raw LLM output.
-- Persist provenance for LLM-generated strategy suggestions.
+- Never auto-activate algorithm directly from raw LLM output.
+- Persist provenance for LLM-generated algorithm suggestions.
 
 ---
 

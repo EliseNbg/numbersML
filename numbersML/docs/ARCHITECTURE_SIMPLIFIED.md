@@ -51,7 +51,7 @@
 
 ### Trading Context
 
-- **Indicator staleness**: 1-2 seconds is acceptable for most strategies
+- **Indicator staleness**: 1-2 seconds is acceptable for most algorithms
 - **EnrichmentService**: Always running, keeps indicators fresh
 - **WIDE_Vector**: Reads latest available data (no waiting needed)
 

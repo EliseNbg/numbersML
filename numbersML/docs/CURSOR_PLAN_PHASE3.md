@@ -1,12 +1,12 @@
-# CURSOR Plan: Phase 3 (Strategy Builder, Market Service, Activation, Backtesting)
+# CURSOR Plan: Phase 3 (Algorithm Builder, Market Service, Activation, Backtesting)
 
 ## Goal
 
-Build a production-safe strategy lifecycle with:
-1. Web GUI to create and modify trading strategies.
+Build a production-safe algorithm lifecycle with:
+1. Web GUI to create and modify trading algorithms.
 2. Market Service for trade endpoints (paper/test and live/prod modes).
-3. Activate/deactivate strategies from the dashboard pipeline page.
-4. Backtest strategies over a time range with detailed statistics using the Market Service execution model.
+3. Activate/deactivate algorithms from the dashboard pipeline page.
+4. Backtest algorithms over a time range with detailed statistics using the Market Service execution model.
 
 This plan is split into implementation steps that a modern LLM model can execute one by one.
 
@@ -14,11 +14,11 @@ This plan is split into implementation steps that a modern LLM model can execute
 
 ## Design Principles (Best Practices)
 
-- **Canonical strategy spec first**: represent strategy logic and risk rules as versioned JSON config, not hard-coded Python classes only.
+- **Canonical algorithm spec first**: represent algorithm logic and risk rules as versioned JSON config, not hard-coded Python classes only.
 - **Separation of concerns**: signal generation, risk checks, and order execution are separate modules.
 - **One execution contract**: paper and live trading share the same `MarketService` interface.
 - **Safe rollout**: paper-first, small-size live pilot, kill switch, hard risk limits.
-- **Reproducibility and auditability**: every strategy change, activation, and backtest run is versioned and logged.
+- **Reproducibility and auditability**: every algorithm change, activation, and backtest run is versioned and logged.
 - **Realistic backtesting**: include fees, slippage, latency assumptions, and order-fill semantics aligned with Market Service.
 - **LLM guardrails**: JSON schema validation, bounded parameter ranges, prompt-injection protection, and human approval for activation.
 
@@ -26,10 +26,10 @@ This plan is split into implementation steps that a modern LLM model can execute
 
 ## Target Architecture (Phase 3)
 
-1. `Strategy Config Layer`  
-   - Stores versioned strategy definitions, parameters, risk limits, and mode.
-2. `Strategy Runtime Layer`  
-   - Loads active strategy versions, processes signals, calls Market Service.
+1. `Algorithm Config Layer`  
+   - Stores versioned algorithm definitions, parameters, risk limits, and mode.
+2. `Algorithm Runtime Layer`  
+   - Loads active algorithm versions, processes signals, calls Market Service.
 3. `Market Service Layer`  
    - `PaperMarketService` and `LiveMarketService` implement one domain interface.
 4. `Backtest Engine Layer`  
@@ -37,16 +37,16 @@ This plan is split into implementation steps that a modern LLM model can execute
 5. `API + Dashboard Layer`  
    - CRUD, activation controls, and backtest workflows from `dashboard/`.
 6. `LLM Copilot Layer`  
-   - Converts natural language to validated strategy config suggestions.
+   - Converts natural language to validated algorithm config suggestions.
 
 ---
 
-## Canonical Strategy Config (v1)
+## Canonical Algorithm Config (v1)
 
 Use a single JSON schema (stored in code and DB) to avoid config drift.
 
 Core sections:
-- `meta`: `strategy_id`, `name`, `version`, `created_by`, `schema_version`
+- `meta`: `algorithm_id`, `name`, `version`, `created_by`, `schema_version`
 - `universe`: symbols, timeframe, market filters
 - `signal`: indicators, entry rules, exit rules
 - `risk`: max position size, max exposure, stop loss, take profit, max daily loss
@@ -63,17 +63,17 @@ All LLM-generated configs must be transformed into this schema and validated bef
 ## Step 1 - Domain and Schema Foundation
 
 **Objective**
-- Introduce strategy/backtest domain models and database schema.
+- Introduce algorithm/backtest domain models and database schema.
 
 **Implementation Tasks**
 - Add migrations for:
-  - `strategies`
-  - `strategy_versions`
-  - `strategy_runs` (live/paper executions)
-  - `strategy_backtests`
-  - `strategy_events` (activation/deactivation/audit trail)
+  - `algorithms`
+  - `algorithm_versions`
+  - `algorithm_runs` (live/paper executions)
+  - `algorithm_backtests`
+  - `algorithm_events` (activation/deactivation/audit trail)
 - Add domain models and repository interfaces.
-- Add JSON schema file for strategy config v1.
+- Add JSON schema file for algorithm config v1.
 
 **Deliverables**
 - Migration SQL files.
@@ -82,7 +82,7 @@ All LLM-generated configs must be transformed into this schema and validated bef
 
 **Definition of Done**
 - Migrations apply cleanly.
-- Strategy config validation works for valid/invalid payloads.
+- Algorithm config validation works for valid/invalid payloads.
 - Unit tests for repository CRUD + versioning behavior.
 
 **Suggested LLM Prompt Packet**
@@ -123,44 +123,44 @@ All LLM-generated configs must be transformed into this schema and validated bef
 
 ---
 
-## Step 3 - Strategy Runtime and Lifecycle Service
+## Step 3 - Algorithm Runtime and Lifecycle Service
 
 **Objective**
-- Execute active strategies from pipeline and manage lifecycle transitions.
+- Execute active algorithms from pipeline and manage lifecycle transitions.
 
 **Implementation Tasks**
-- Build `StrategyLifecycleService`:
+- Build `AlgorithmLifecycleService`:
   - create draft, validate, publish new version, activate, deactivate, pause/resume.
-- Build `StrategyRunner`:
-  - loads active strategies,
+- Build `AlgorithmRunner`:
+  - loads active algorithms,
   - subscribes to market events,
   - evaluates signals,
   - enforces risk rules,
   - routes orders via `MarketService`.
-- Ensure one active version per strategy (or explicit multi-version policy).
-- Write `strategy_events` for all lifecycle changes.
+- Ensure one active version per algorithm (or explicit multi-version policy).
+- Write `algorithm_events` for all lifecycle changes.
 
 **Deliverables**
 - Application services for lifecycle and runtime.
 - Pipeline integration point for activation/deactivation.
 
 **Definition of Done**
-- Strategy can be toggled without restart.
-- Deactivated strategy stops creating new orders immediately.
-- Runtime errors are isolated per strategy (no global crash).
+- Algorithm can be toggled without restart.
+- Deactivated algorithm stops creating new orders immediately.
+- Runtime errors are isolated per algorithm (no global crash).
 
 **Suggested LLM Prompt Packet**
-- "Implement lifecycle + runtime orchestration with event logging and graceful strategy-level error isolation."
+- "Implement lifecycle + runtime orchestration with event logging and graceful algorithm-level error isolation."
 
 ---
 
-## Step 4 - LLM Strategy Copilot (Create + Modify)
+## Step 4 - LLM Algorithm Copilot (Create + Modify)
 
 **Objective**
-- Enable natural language strategy creation and modification with strong guardrails.
+- Enable natural language algorithm creation and modification with strong guardrails.
 
 **Implementation Tasks**
-- Add `LLMStrategyService` with two operations:
+- Add `LLMAlgorithmService` with two operations:
   - `generate_config(description, constraints)`
   - `modify_config(existing_config, change_request)`
 - Build prompt templates that reference:
@@ -183,20 +183,20 @@ All LLM-generated configs must be transformed into this schema and validated bef
 **Definition of Done**
 - LLM output never bypasses schema/range validation.
 - Invalid output returns actionable validation errors for UI.
-- Copilot can modify an existing strategy version safely.
+- Copilot can modify an existing algorithm version safely.
 
 **Suggested LLM Prompt Packet**
 - "Implement LLM create/modify flow with strict JSON schema output and explicit validation pipeline before DB write."
 
 ---
 
-## Step 5 - API Endpoints (Strategies, Market, Backtesting)
+## Step 5 - API Endpoints (Algorithms, Market, Backtesting)
 
 **Objective**
 - Expose all required capabilities through FastAPI routes.
 
 **Implementation Tasks**
-- Strategy routes:
+- Algorithm routes:
   - create/list/get/update/version-history
   - activate/deactivate/pause/resume
   - LLM generate/modify suggestion endpoints
@@ -225,14 +225,14 @@ All LLM-generated configs must be transformed into this schema and validated bef
 ## Step 6 - Dashboard UI (Create/Modify + Activation Control)
 
 **Objective**
-- Add UX in `dashboard/` for strategy management from web GUI.
+- Add UX in `dashboard/` for algorithm management from web GUI.
 
 **Implementation Tasks**
-- Add strategy page:
+- Add algorithm page:
   - list table with status and mode badges,
   - create/edit form wizard (basic + advanced),
   - JSON preview and validation panel,
-  - LLM assistant panel ("describe strategy", "modify strategy").
+  - LLM assistant panel ("describe algorithm", "modify algorithm").
 - Add activation controls on pipeline/dashboard page:
   - activate/deactivate toggle,
   - confirmation modal for live mode,
@@ -245,12 +245,12 @@ All LLM-generated configs must be transformed into this schema and validated bef
 - Integration with new API endpoints.
 
 **Definition of Done**
-- User can create strategy, edit draft, publish, activate/deactivate from GUI.
+- User can create algorithm, edit draft, publish, activate/deactivate from GUI.
 - UI clearly separates paper and live modes.
 - Failed validations show clear remediation hints.
 
 **Suggested LLM Prompt Packet**
-- "Implement dashboard strategy management UI with API integration and robust form validation; include activation controls in pipeline page."
+- "Implement dashboard algorithm management UI with API integration and robust form validation; include activation controls in pipeline page."
 
 ---
 
@@ -279,7 +279,7 @@ All LLM-generated configs must be transformed into this schema and validated bef
 **Definition of Done**
 - Backtest is deterministic for fixed seed/config/data.
 - Report includes both aggregate and trade-level details.
-- Runtime strategy and backtest strategy share config/runtime logic where possible.
+- Runtime algorithm and backtest algorithm share config/runtime logic where possible.
 
 **Suggested LLM Prompt Packet**
 - "Implement event-driven backtesting with realistic cost/fill models and rich metrics; persist full results for dashboard consumption."
@@ -298,7 +298,7 @@ All LLM-generated configs must be transformed into this schema and validated bef
   - symbol-level notional caps,
   - stale-data trade block.
 - Add observability:
-  - strategy health metrics,
+  - algorithm health metrics,
   - order error rates,
   - drift between backtest and paper/live performance.
 - Add audit logging:
@@ -311,8 +311,8 @@ All LLM-generated configs must be transformed into this schema and validated bef
 
 **Definition of Done**
 - Any guardrail breach blocks new orders and emits alert.
-- Operators can disable all strategies quickly from dashboard/API.
-- Audit trail can reconstruct strategy change history end-to-end.
+- Operators can disable all algorithms quickly from dashboard/API.
+- Audit trail can reconstruct algorithm change history end-to-end.
 
 **Suggested LLM Prompt Packet**
 - "Implement operational safety controls, metrics, and audit logs; add tests for guardrail-triggered order blocking."
@@ -342,7 +342,7 @@ All LLM-generated configs must be transformed into this schema and validated bef
 - Test suite additions and rollout checklist.
 
 **Definition of Done**
-- CI validates core strategy lifecycle flows.
+- CI validates core algorithm lifecycle flows.
 - Rollback process documented and tested.
 - Team sign-off criteria are explicit and measurable.
 
@@ -384,7 +384,7 @@ Use one PR per step. Keep each step independently reviewable.
 ## Open Questions (Need Your Confirmation)
 
 1. Which exact exchange scope for live mode in Phase 3: Binance only or pluggable broker interface from day one?
-2. Should activation support multi-strategy capital allocation rules (portfolio-level limits) now or in Phase 4?
+2. Should activation support multi-algorithm capital allocation rules (portfolio-level limits) now or in Phase 4?
 3. For LLM provider: keep current provider from previous phase only, or add provider abstraction now?
 4. Backtesting granularity: candle-based first (faster) or candle + optional tick simulation in this phase?
 5. Do you want role-based access now (admin/operator/viewer) or simple authenticated mode first?
@@ -393,8 +393,8 @@ Use one PR per step. Keep each step independently reviewable.
 
 ## Acceptance Criteria for Phase 3 Completion
 
-- User can create and modify strategy via web GUI and LLM assistant.
-- User can activate/deactivate strategy from dashboard without restarting pipeline.
+- User can create and modify algorithm via web GUI and LLM assistant.
+- User can activate/deactivate algorithm from dashboard without restarting pipeline.
 - Market Service supports both paper and live modes with a shared contract.
 - Backtest can run for arbitrary time range and returns detailed, persisted statistics.
 - Safety controls prevent dangerous live execution and all critical actions are auditable.

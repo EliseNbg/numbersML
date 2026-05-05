@@ -180,7 +180,7 @@ WHERE s.is_test = true
 ON CONFLICT (symbol_id) DO NOTHING;
 
 -- ============================================
--- 9. TEST/USDT SYMBOL FOR GRID STRATEGY
+-- 9. TEST/USDT SYMBOL FOR GRID ALGORITHM
 -- ============================================
 
 -- Insert TEST/USDT symbol (if not exists)
@@ -198,7 +198,7 @@ INSERT INTO symbols (
 
 
 -- ============================================
--- 10. GRID STRATEGY CONFIGURATION SET
+-- 10. GRID ALGORITHM CONFIGURATION SET
 -- ============================================
 
 INSERT INTO configuration_sets (name, description, config, is_active)

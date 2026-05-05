@@ -9,7 +9,7 @@ from abc import abstractmethod
 from typing import Any
 from uuid import UUID
 
-from src.domain.strategies.config_set import ConfigurationSet
+from src.domain.algorithms.config_set import ConfigurationSet
 
 from .base import Repository
 

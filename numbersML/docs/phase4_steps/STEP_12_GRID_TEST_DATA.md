@@ -256,7 +256,7 @@ Add TEST/USDT and Grid Algorithm ConfigurationSet:
 
 ```sql
 -- ============================================
--- 9. TEST/USDT SYMBOL FOR GRID STRATEGY
+-- 9. TEST/USDT SYMBOL FOR GRID ALGORITHM
 -- ============================================
 
 -- Insert TEST/USDT symbol (if not exists)
@@ -274,7 +274,7 @@ INSERT INTO symbols (
 
 
 -- ============================================
--- 10. GRID STRATEGY CONFIGURATION SET
+-- 10. GRID ALGORITHM CONFIGURATION SET
 -- ============================================
 
 INSERT INTO configuration_sets (name, description, config, is_active)
@@ -338,8 +338,8 @@ class TestGridAlgorithmPnL:
             - At least some trades executed
         """
         from src.application.services.backtest_service import BacktestService
-        from src.domain.strategies.grid_strategy import GridAlgorithm
-        from src.domain.strategies.strategy_instance import StrategyInstance
+        from src.domain.algorithms.grid_algorithm import GridAlgorithm
+        from src.domain.algorithms.algorithm_instance import AlgorithmInstance
         
         # This test requires:
         # 1. Database with test data
@@ -349,7 +349,7 @@ class TestGridAlgorithmPnL:
         # For now, this is a placeholder
         # In full implementation:
         # - Load GridAlgorithm
-        # - Create StrategyInstance with Grid config
+        # - Create AlgorithmInstance with Grid config
         # - Run backtest
         # - Assert PnL > 0
         
@@ -403,7 +403,7 @@ Create ConfigurationSet for Grid Algorithm and generate noised sin wave test dat
 
 ## Context#
 
-- Step 11 complete: GridAlgorithm in src/domain/strategies/grid_strategy.py`
+- Step 11 complete: GridAlgorithm in src/domain/algorithms/grid_algorithm.py`
 - Step 1-3 complete: ConfigurationSet entity, repository, API exist
 - Need TEST/USDT symbol (not TEST/USDT)
 - Generate data that shows POSITIVE PnL for Grid Algorithm#

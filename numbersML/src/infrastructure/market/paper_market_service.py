@@ -88,9 +88,9 @@ class PaperMarketService(MarketService):
                 orders = [o for o in orders if o.symbol == filters["symbol"]]
             if "status" in filters:
                 orders = [o for o in orders if o.status.value == filters["status"]]
-            if "strategy_id" in filters:
-                strategy_id = str(filters["strategy_id"])
-                orders = [o for o in orders if o.metadata.get("strategy_id") == strategy_id]
+            if "algorithm_id" in filters:
+                algorithm_id = str(filters["algorithm_id"])
+                orders = [o for o in orders if o.metadata.get("algorithm_id") == algorithm_id]
         return orders
 
     async def get_trades(self) -> list[Any]:

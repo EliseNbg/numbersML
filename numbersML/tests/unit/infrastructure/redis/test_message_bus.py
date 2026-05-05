@@ -141,15 +141,15 @@ class TestChannelManager:
         channel = ChannelManager.enriched_tick_channel("BTC/USDT")
         assert channel == "enriched_tick:BTC/USDT"
 
-    def test_strategy_signal_channel(self) -> None:
-        """Test strategy signal channel naming."""
-        channel = ChannelManager.strategy_signal_channel("strategy_1")
-        assert channel == "strategy_signal:strategy_1"
+    def test_algorithm_signal_channel(self) -> None:
+        """Test algorithm signal channel naming."""
+        channel = ChannelManager.algorithm_signal_channel("algorithm_1")
+        assert channel == "algorithm_signal:algorithm_1"
 
     def test_order_channel(self) -> None:
         """Test order channel naming."""
-        channel = ChannelManager.order_channel("strategy_1")
-        assert channel == "order:strategy_1"
+        channel = ChannelManager.order_channel("algorithm_1")
+        assert channel == "order:algorithm_1"
 
     def test_alert_channel(self) -> None:
         """Test alert channel naming."""

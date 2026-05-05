@@ -1,7 +1,7 @@
 """
 Redis Pub/Sub message bus.
 
-Provides publish/subscribe functionality for strategy communication.
+Provides publish/subscribe functionality for algorithm communication.
 """
 
 import asyncio
@@ -27,7 +27,7 @@ class MessageBus:
     Redis Pub/Sub message bus.
 
     Provides publish/subscribe functionality for distributing
-    enriched tick data to strategies.
+    enriched tick data to algorithms.
     """
 
     def __init__(
@@ -255,7 +255,7 @@ class ChannelManager:
 
     # Channel prefixes
     ENRICHED_TICK = "enriched_tick"
-    SIGNAL = "strategy_signal"
+    SIGNAL = "algorithm_signal"
     ORDER = "order"
     ALERT = "alert"
 
@@ -265,14 +265,14 @@ class ChannelManager:
         return f"{cls.ENRICHED_TICK}:{symbol}"
 
     @classmethod
-    def strategy_signal_channel(cls, strategy_id: str) -> str:
-        """Get strategy signal channel."""
-        return f"{cls.SIGNAL}:{strategy_id}"
+    def algorithm_signal_channel(cls, algorithm_id: str) -> str:
+        """Get algorithm signal channel."""
+        return f"{cls.SIGNAL}:{algorithm_id}"
 
     @classmethod
-    def order_channel(cls, strategy_id: str) -> str:
-        """Get order channel for strategy."""
-        return f"{cls.ORDER}:{strategy_id}"
+    def order_channel(cls, algorithm_id: str) -> str:
+        """Get order channel for algorithm."""
+        return f"{cls.ORDER}:{algorithm_id}"
 
     @classmethod
     def alert_channel(cls, alert_type: str) -> str:

@@ -25,7 +25,7 @@ except ImportError:
 
 from src.domain.market.order import Order, OrderSide, OrderStatus, OrderType
 from src.domain.services.market_service import MarketService
-from src.domain.strategies.base import Position
+from src.domain.algorithms.base import Position
 from src.infrastructure.api.auth import AuthContext, require_trader
 from src.infrastructure.database import get_db_pool_async
 from src.infrastructure.market.market_service_factory import create_market_service
@@ -84,7 +84,7 @@ class OrderCreateRequest(BaseModel):
     quantity: float = Field(..., gt=0, description="Order quantity")
     price: float | None = Field(None, gt=0, description="Limit price (required for LIMIT orders)")
     time_in_force: str = Field(default="GTC", description="Time in force: GTC, IOC, FOK")
-    strategy_id: UUID | None = Field(None, description="Associated strategy ID")
+    algorithm_id: UUID | None = Field(None, description="Associated algorithm ID")
     metadata: dict[str, Any] | None = None
 
     @field_validator("price")
@@ -107,7 +107,7 @@ class OrderResponse(BaseModel):
     remaining_quantity: float
     status: OrderStatus
     time_in_force: str
-    strategy_id: UUID | None
+    algorithm_id: UUID | None
     created_at: datetime
     updated_at: datetime
     metadata: dict[str, Any]
@@ -125,7 +125,7 @@ class OrderResponse(BaseModel):
             remaining_quantity=float(order.remaining_quantity),
             status=order.status,
             time_in_force=order.time_in_force,
-            strategy_id=order.strategy_id,
+            algorithm_id=order.algorithm_id,
             created_at=order.created_at,
             updated_at=order.updated_at,
             metadata=order.metadata,
@@ -420,7 +420,7 @@ async def create_order(
             price=price,
             time_in_force=request.time_in_force,
             metadata={
-                "strategy_id": str(request.strategy_id) if request.strategy_id else None,
+                "algorithm_id": str(request.algorithm_id) if request.algorithm_id else None,
                 **(request.metadata or {}),
             },
         )
@@ -448,7 +448,7 @@ async def create_order(
 async def list_orders(
     symbol: str | None = None,
     order_status: str | None = None,
-    strategy_id: UUID | None = None,
+    algorithm_id: UUID | None = None,
     mode: str = "paper",
     market_service: MarketService = Depends(get_market_service),
 ) -> list[OrderResponse]:
@@ -458,7 +458,7 @@ async def list_orders(
     Args:
         symbol: Optional symbol filter
         status: Optional status filter
-        strategy_id: Optional strategy filter
+        algorithm_id: Optional algorithm filter
         mode: Market mode (paper/live)
         market_service: Market service instance
 
@@ -474,8 +474,8 @@ async def list_orders(
             filters["symbol"] = symbol
         if order_status:
             filters["status"] = order_status
-        if strategy_id:
-            filters["strategy_id"] = strategy_id
+        if algorithm_id:
+            filters["algorithm_id"] = algorithm_id
 
         orders = await market_service.get_orders(filters)
         return [OrderResponse.from_domain(o) for o in orders]

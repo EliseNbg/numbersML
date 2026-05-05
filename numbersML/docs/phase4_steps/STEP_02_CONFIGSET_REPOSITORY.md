@@ -5,7 +5,7 @@ Create database migration and repository implementation for ConfigurationSet fol
 
 ## Context
 - Step 1 completed: `ConfigurationSet` domain entity created
-- Existing pattern: `src/infrastructure/repositories/strategy_repository_pg.py`
+- Existing pattern: `src/infrastructure/repositories/algorithm_repository_pg.py`
 - Database migrations in `migrations/` directory
 - Repository pattern: Interface in `src/domain/repositories/`, PG implementation in `src/infrastructure/repositories/`
 
@@ -94,10 +94,10 @@ CREATE TRIGGER trigger_config_sets_updated_at
 --
 -- Comments
 --
-COMMENT ON TABLE configuration_sets IS 'Reusable configuration parameter sets for strategies';
+COMMENT ON TABLE configuration_sets IS 'Reusable configuration parameter sets for algorithms';
 COMMENT ON COLUMN configuration_sets.name IS 'Human-readable name (unique)';
 COMMENT ON COLUMN configuration_sets.config IS 'JSONB with symbols, thresholds, risk, execution params';
-COMMENT ON COLUMN configuration_sets.is_active IS 'Whether available for new strategy instances';
+COMMENT ON COLUMN configuration_sets.is_active IS 'Whether available for new algorithm instances';
 COMMENT ON COLUMN configuration_sets.version IS 'Incremented on each config update';
 ```
 
@@ -115,7 +115,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional
 from uuid import UUID
 
-from src.domain.strategies.config_set import ConfigurationSet
+from src.domain.algorithms.config_set import ConfigurationSet
 
 
 class ConfigSetRepository(ABC):
@@ -248,7 +248,7 @@ from uuid import UUID
 import asyncpg
 
 from src.domain.repositories.config_set_repository import ConfigSetRepository
-from src.domain.strategies.config_set import ConfigurationSet
+from src.domain.algorithms.config_set import ConfigurationSet
 
 logger = logging.getLogger(__name__)
 
@@ -490,7 +490,7 @@ class ConfigSetRepositoryPG(ConfigSetRepository):
         Returns:
             ConfigurationSet entity
         """
-        from src.domain.strategies.config_set import ConfigurationSet
+        from src.domain.algorithms.config_set import ConfigurationSet
         
         return ConfigurationSet(
             name=row["name"],
@@ -517,7 +517,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4, UUID
 from datetime import datetime, timezone
 
-from src.domain.strategies.config_set import ConfigurationSet
+from src.domain.algorithms.config_set import ConfigurationSet
 from src.infrastructure.repositories.config_set_repository_pg import ConfigSetRepositoryPG
 
 
@@ -790,9 +790,9 @@ Create the database migration and repository implementation for ConfigurationSet
 
 ## Context
 
-- Step 1 is complete: ConfigurationSet domain entity exists in src/domain/strategies/config_set.py
+- Step 1 is complete: ConfigurationSet domain entity exists in src/domain/algorithms/config_set.py
 - Follow DDD: Repository interface in domain, implementation in infrastructure
-- Existing pattern: See src/infrastructure/repositories/strategy_repository_pg.py
+- Existing pattern: See src/infrastructure/repositories/algorithm_repository_pg.py
 - Database migrations go in migrations/ directory
 
 ## Requirements

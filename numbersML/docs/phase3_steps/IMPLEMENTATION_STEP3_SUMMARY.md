@@ -7,21 +7,21 @@
 **Status:** ✅ **COMPLETE**  
 
 ## Acceptance Criteria (All Met)
-✅ Toggle strategy state while system is running  
-✅ Deactivated strategy cannot emit new orders  
-✅ Single strategy failure does not crash global runner  
+✅ Toggle algorithm state while system is running  
+✅ Deactivated algorithm cannot emit new orders  
+✅ Single algorithm failure does not crash global runner  
 ✅ Lifecycle events persisted to audit table  
 ✅ Strict state transition validation  
 
 ## Deliverables
 
 ### Core Domain Models
-**`src/domain/strategies/runtime.py`** (133 lines)
-- `StrategyRuntimeState` - Runtime state tracking (STOPPED/RUNNING/PAUSED/ERROR)
+**`src/domain/algorithms/runtime.py`** (133 lines)
+- `AlgorithmRuntimeState` - Runtime state tracking (STOPPED/RUNNING/PAUSED/ERROR)
   - Validated state transitions via `VALID_TRANSITIONS` state machine
   - Error tracking with `record_error()` method
   - Immutable transitions via `transition_to()`
-- `StrategyLifecycleEvent` - Immutable audit trail domain event
+- `AlgorithmLifecycleEvent` - Immutable audit trail domain event
   - Records all state transitions (from_state → to_state)
   - Includes trigger, details, timestamp
   - Frozen dataclass for immutability
@@ -36,52 +36,52 @@ ERROR      → STOPPED
 
 ### Repository Layer
 **`src/domain/repositories/runtime_event_repository.py`** (81 lines)
-- `StrategyRuntimeEventRepository` - Repository port interface
-- Query methods: by strategy, by type, error events, current states
+- `AlgorithmRuntimeEventRepository` - Repository port interface
+- Query methods: by algorithm, by type, error events, current states
 
 **`src/infrastructure/repositories/runtime_event_repository_pg.py`** (240 lines)
-- `StrategyRuntimeEventRepositoryPG` - PostgreSQL implementation
+- `AlgorithmRuntimeEventRepositoryPG` - PostgreSQL implementation
 - Uses asyncpg for database operations
 - Maps DB rows to domain events
 - Supports filtering by time range and event type
 
 ### Application Services
-**`src/application/services/strategy_lifecycle.py`** (486 lines)
-- `StrategyLifecycleService` - Coordinates strategy lifecycle operations
+**`src/application/services/algorithm_lifecycle.py`** (486 lines)
+- `AlgorithmLifecycleService` - Coordinates algorithm lifecycle operations
 
 **Core Operations:**
-- `activate_strategy()` - STOPPED → RUNNING (load, init, start)
-- `deactivate_strategy()` - RUNNING → STOPPED (stop, remove)
-- `pause_strategy()` - RUNNING → PAUSED (pause active strategy)
-- `resume_strategy()` - PAUSED → RUNNING (resume paused strategy)
-- `record_strategy_error()` - RUNNING/PAUSED → ERROR (error isolation)
+- `activate_algorithm()` - STOPPED → RUNNING (load, init, start)
+- `deactivate_algorithm()` - RUNNING → STOPPED (stop, remove)
+- `pause_algorithm()` - RUNNING → PAUSED (pause active algorithm)
+- `resume_algorithm()` - PAUSED → RUNNING (resume paused algorithm)
+- `record_algorithm_error()` - RUNNING/PAUSED → ERROR (error isolation)
 
 **Features:**
 - Validates state transitions before execution
 - Persists lifecycle events to repository
-- Coordinates with StrategyManager for tick processing
-- Per-strategy error tracking
-- Dynamic strategy instance loading from config
+- Coordinates with AlgorithmManager for tick processing
+- Per-algorithm error tracking
+- Dynamic algorithm instance loading from config
 
-**`src/application/services/strategy_runner_enhanced.py`** (280 lines)
-- `EnhancedStrategyRunner` - Extends StrategyRunner with lifecycle integration
+**`src/application/services/algorithm_runner_enhanced.py`** (280 lines)
+- `EnhancedAlgorithmRunner` - Extends AlgorithmRunner with lifecycle integration
 
 **Enhancements:**
-- Per-strategy error isolation (exceptions don't crash global runner)
-- Coordinates with StrategyLifecycleService
+- Per-algorithm error isolation (exceptions don't crash global runner)
+- Coordinates with AlgorithmLifecycleService
 - Tracks runtime states
 - Graceful cancellation with asyncio task management
 - Risk rule integration points
 
 ### Tests
-**`tests/unit/application/services/test_strategy_lifecycle.py`** (414 lines)
+**`tests/unit/application/services/test_algorithm_lifecycle.py`** (414 lines)
 - 20 comprehensive unit tests
 - All passing ✅
 
 **Test Coverage:**
-- StrategyRuntimeState transitions & error handling
-- StrategyLifecycleEvent creation & properties
-- StrategyLifecycleService activation/deactivation/pause/resume
+- AlgorithmRuntimeState transitions & error handling
+- AlgorithmLifecycleEvent creation & properties
+- AlgorithmLifecycleService activation/deactivation/pause/resume
 - Lifecycle event persistence
 - Error isolation
 - Runtime statistics
@@ -93,30 +93,30 @@ ERROR      → STOPPED
 DDD LAYERING:
 
 Domain Layer:
-  ├─ StrategyRuntimeState       (runtime state tracking)
-  ├─ StrategyLifecycleEvent     (audit trail)
+  ├─ AlgorithmRuntimeState       (runtime state tracking)
+  ├─ AlgorithmLifecycleEvent     (audit trail)
   └─ VALID_TRANSITIONS          (state machine)
 
 Repository Port Layer:
-  └─ StrategyRuntimeEventRepository
+  └─ AlgorithmRuntimeEventRepository
 
 Infrastructure Layer:
-  └─ StrategyRuntimeEventRepositoryPG (PostgreSQL adapter)
+  └─ AlgorithmRuntimeEventRepositoryPG (PostgreSQL adapter)
 
 Application Layer:
-  ├─ StrategyLifecycleService   (lifecycle operations)
-  └─ EnhancedStrategyRunner     (error isolation + lifecycle)
+  ├─ AlgorithmLifecycleService   (lifecycle operations)
+  └─ EnhancedAlgorithmRunner     (error isolation + lifecycle)
 ```
 
 ## Database Schema
 
-Uses existing `migrations/003_phase3_strategy_foundation.sql`:
+Uses existing `migrations/003_phase3_algorithm_foundation.sql`:
 
 ```sql
-CREATE TABLE strategy_events (
+CREATE TABLE algorithm_events (
     id UUID PRIMARY KEY,
-    strategy_id UUID REFERENCES strategies(id),
-    strategy_version_id UUID REFERENCES strategy_versions(id),
+    algorithm_id UUID REFERENCES algorithms(id),
+    algorithm_version_id UUID REFERENCES algorithm_versions(id),
     event_type TEXT NOT NULL,
     event_payload JSONB NOT NULL,
     actor TEXT NOT NULL,
@@ -143,18 +143,18 @@ CREATE TABLE strategy_events (
 
 ### New Files (1,634 lines):
 ```
-src/domain/strategies/runtime.py                          133 lines
+src/domain/algorithms/runtime.py                          133 lines
 src/domain/repositories/runtime_event_repository.py        81 lines
 src/infrastructure/repositories/runtime_event_repository_pg.py  240 lines
-src/application/services/strategy_lifecycle.py            486 lines
-src/application/services/strategy_runner_enhanced.py      280 lines
-tests/unit/application/services/test_strategy_lifecycle.py 414 lines
+src/application/services/algorithm_lifecycle.py            486 lines
+src/application/services/algorithm_runner_enhanced.py      280 lines
+tests/unit/application/services/test_algorithm_lifecycle.py 414 lines
 ```
 
 ### Modified Files:
 ```
-src/domain/strategies/base.py              (UUID type hints, import)
-src/domain/strategies/__init__.py          (new exports)
+src/domain/algorithms/base.py              (UUID type hints, import)
+src/domain/algorithms/__init__.py          (new exports)
 docs/phase3_steps/README.md                (progress tracking)
 ```
 
@@ -162,35 +162,35 @@ docs/phase3_steps/README.md                (progress tracking)
 
 ```python
 # Create lifecycle service
-lifecycle = StrategyLifecycleService(
-    strategy_repository=repo,
+lifecycle = AlgorithmLifecycleService(
+    algorithm_repository=repo,
     event_repository=event_repo,
-    strategy_manager=strategy_manager,
+    algorithm_manager=algorithm_manager,
     actor="trader"
 )
 
-# Activate a strategy
-await lifecycle.activate_strategy(strategy_id)
+# Activate a algorithm
+await lifecycle.activate_algorithm(algorithm_id)
 
-# Process ticks (via EnhancedStrategyRunner)
-runner = EnhancedStrategyRunner(lifecycle_service=lifecycle)
+# Process ticks (via EnhancedAlgorithmRunner)
+runner = EnhancedAlgorithmRunner(lifecycle_service=lifecycle)
 await runner.start()
 
-# Pause a strategy
-await lifecycle.pause_strategy(strategy_id)
+# Pause a algorithm
+await lifecycle.pause_algorithm(algorithm_id)
 
 # Resume
-await lifecycle.resume_strategy(strategy_id)
+await lifecycle.resume_algorithm(algorithm_id)
 
 # Deactivate
-await lifecycle.deactivate_strategy(strategy_id)
+await lifecycle.deactivate_algorithm(algorithm_id)
 ```
 
 ## Key Design Decisions
 
 1. **Separation of Concerns**: Runtime state tracked separately from persisted config
 2. **Event Sourcing**: All lifecycle changes as immutable events (audit trail)
-3. **Error Isolation**: Per-strategy exception handling (failures don't crash runner)
+3. **Error Isolation**: Per-algorithm exception handling (failures don't crash runner)
 4. **State Machine**: Explicit `VALID_TRANSITIONS` prevents invalid changes
 5. **DDD Compliance**: Clean layer boundaries (domain → repository → infrastructure → application)
 

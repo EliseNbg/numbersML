@@ -36,7 +36,7 @@ class MarketService(ABC):
 
     @abstractmethod
     async def get_orders(self, filters: dict[str, Any] | None = None) -> list[Order]:
-        """Fetch orders with optional filters (symbol, status, strategy_id)."""
+        """Fetch orders with optional filters (symbol, status, algorithm_id)."""
 
     @abstractmethod
     async def get_trades(self) -> list[Any]:

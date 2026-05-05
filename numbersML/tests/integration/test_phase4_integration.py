@@ -16,7 +16,7 @@ class TestFullPhase4Flow:
         """
         Test complete flow:
         1. Create ConfigurationSet
-        2. Create StrategyInstance
+        2. Create AlgorithmInstance
         3. Submit backtest
         4. Verify results
         """
@@ -34,7 +34,7 @@ class TestFullPhase4Flow:
         """
         pytest.skip("Requires running pipeline")
 
-    def test_grid_strategy_positive_pnl(self):
+    def test_grid_algorithm_positive_pnl(self):
         """
         Test that Grid Algorithm shows positive PnL on TEST/USDT.
 

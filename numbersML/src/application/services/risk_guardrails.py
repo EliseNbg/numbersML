@@ -1,5 +1,5 @@
 """
-Risk Guardrails Service - Hard safety controls for strategy execution.
+Risk Guardrails Service - Hard safety controls for algorithm execution.
 
 Provides:
 - Daily loss kill switches
@@ -36,7 +36,7 @@ class GuardrailAction(Enum):
 
     BLOCK_ORDER = "block_order"
     CLOSE_POSITIONS = "close_positions"
-    PAUSE_STRATEGY = "pause_strategy"
+    PAUSE_ALGORITHM = "pause_algorithm"
     EMERGENCY_STOP = "emergency_stop"
     LOG_ONLY = "log_only"
 
@@ -58,7 +58,7 @@ class GuardrailBreach:
 
     timestamp: datetime
     guardrail_type: GuardrailType
-    strategy_id: Optional[UUID]
+    algorithm_id: Optional[UUID]
     details: dict[str, Any]
     action_taken: GuardrailAction
     resolved: bool = False
@@ -67,9 +67,9 @@ class GuardrailBreach:
 
 @dataclass
 class RiskState:
-    """Current risk state for a strategy."""
+    """Current risk state for a algorithm."""
 
-    strategy_id: UUID
+    algorithm_id: UUID
     initial_balance: float = 10000.0
     daily_pnl: float = 0.0
     daily_pnl_pct: float = 0.0
@@ -86,10 +86,10 @@ class RiskState:
 
 class RiskGuardrailService:
     """
-    Service for enforcing hard risk limits on strategy execution.
+    Service for enforcing hard risk limits on algorithm execution.
 
     Features:
-    - Per-strategy and global risk state tracking
+    - Per-algorithm and global risk state tracking
     - Real-time guardrail evaluation
     - Configurable breach actions
     - Kill switch management
@@ -117,7 +117,7 @@ class RiskGuardrailService:
         GuardrailType.STALE_DATA: GuardrailConfig(
             enabled=True,
             threshold=60.0,  # 60 seconds max staleness
-            action=GuardrailAction.PAUSE_STRATEGY,
+            action=GuardrailAction.PAUSE_ALGORITHM,
             cooldown_minutes=1,
         ),
         GuardrailType.SYMBOL_NOTIONAL_CAP: GuardrailConfig(
@@ -140,7 +140,7 @@ class RiskGuardrailService:
         self.configs = configs or self.DEFAULT_CONFIGS.copy()
         self.state_callback = state_callback
 
-        # Risk state per strategy
+        # Risk state per algorithm
         self._risk_states: dict[UUID, RiskState] = {}
 
         # Global kill switch
@@ -157,33 +157,33 @@ class RiskGuardrailService:
 
         logger.info("RiskGuardrailService initialized")
 
-    def register_strategy(
+    def register_algorithm(
         self,
-        strategy_id: UUID,
+        algorithm_id: UUID,
         initial_balance: float = 10000.0,
     ) -> RiskState:
-        """Register a new strategy for risk tracking."""
-        if strategy_id in self._risk_states:
-            return self._risk_states[strategy_id]
+        """Register a new algorithm for risk tracking."""
+        if algorithm_id in self._risk_states:
+            return self._risk_states[algorithm_id]
 
         state = RiskState(
-            strategy_id=strategy_id,
+            algorithm_id=algorithm_id,
             initial_balance=initial_balance,
         )
-        self._risk_states[strategy_id] = state
+        self._risk_states[algorithm_id] = state
 
-        logger.info(f"Registered strategy {strategy_id} for risk tracking")
+        logger.info(f"Registered algorithm {algorithm_id} for risk tracking")
         return state
 
-    def unregister_strategy(self, strategy_id: UUID) -> None:
-        """Unregister a strategy and clean up state."""
-        if strategy_id in self._risk_states:
-            del self._risk_states[strategy_id]
-            logger.info(f"Unregistered strategy {strategy_id} from risk tracking")
+    def unregister_algorithm(self, algorithm_id: UUID) -> None:
+        """Unregister a algorithm and clean up state."""
+        if algorithm_id in self._risk_states:
+            del self._risk_states[algorithm_id]
+            logger.info(f"Unregistered algorithm {algorithm_id} from risk tracking")
 
     async def check_order_allowed(
         self,
-        strategy_id: UUID,
+        algorithm_id: UUID,
         symbol: str,
         side: str,
         quantity: float,
@@ -197,20 +197,20 @@ class RiskGuardrailService:
             (allowed: bool, reason: Optional[str])
         """
         # Get or create risk state
-        state = self._get_or_create_state(strategy_id)
+        state = self._get_or_create_state(algorithm_id)
 
         # Check global kill switch
         if self._global_kill_switch:
             return False, f"GLOBAL_KILL_SWITCH_ACTIVE: {self._global_kill_reason}"
 
-        # Check strategy kill switch
+        # Check algorithm kill switch
         if state.kill_switch_active:
-            return False, f"STRATEGY_KILL_SWITCH_ACTIVE: {state.kill_switch_reason}"
+            return False, f"ALGORITHM_KILL_SWITCH_ACTIVE: {state.kill_switch_reason}"
 
         # Check cooldown period
         if state.paused_until and datetime.utcnow() < state.paused_until:
             remaining = (state.paused_until - datetime.utcnow()).total_seconds()
-            return False, f"STRATEGY_PAUSED: {remaining:.0f}s remaining"
+            return False, f"ALGORITHM_PAUSED: {remaining:.0f}s remaining"
 
         # Daily loss limit
         daily_loss_config = self.configs.get(GuardrailType.DAILY_LOSS_LIMIT)
@@ -218,7 +218,7 @@ class RiskGuardrailService:
             if state.daily_pnl_pct < daily_loss_config.threshold:
                 await self._trigger_breach(
                     GuardrailType.DAILY_LOSS_LIMIT,
-                    strategy_id,
+                    algorithm_id,
                     {
                         "daily_pnl_pct": state.daily_pnl_pct,
                         "threshold": daily_loss_config.threshold,
@@ -253,17 +253,17 @@ class RiskGuardrailService:
 
     async def check_data_freshness(
         self,
-        strategy_id: UUID,
+        algorithm_id: UUID,
         data_timestamp: datetime,
         max_staleness_seconds: Optional[float] = None,
     ) -> tuple[bool, Optional[str]]:
         """
-        Check if data is fresh enough for strategy execution.
+        Check if data is fresh enough for algorithm execution.
 
         Returns:
             (fresh: bool, reason: Optional[str])
         """
-        state = self._get_or_create_state(strategy_id)
+        state = self._get_or_create_state(algorithm_id)
 
         stale_config = self.configs.get(GuardrailType.STALE_DATA)
         threshold = max_staleness_seconds or stale_config.threshold
@@ -276,13 +276,13 @@ class RiskGuardrailService:
         if staleness > threshold:
             await self._trigger_breach(
                 GuardrailType.STALE_DATA,
-                strategy_id,
+                algorithm_id,
                 {
                     "staleness_seconds": staleness,
                     "threshold": threshold,
                     "data_timestamp": data_timestamp.isoformat(),
                 },
-                stale_config.action if stale_config else GuardrailAction.PAUSE_STRATEGY,
+                stale_config.action if stale_config else GuardrailAction.PAUSE_ALGORITHM,
             )
             return False, f"STALE_DATA: {staleness:.0f}s old (max {threshold:.0f}s)"
 
@@ -290,14 +290,14 @@ class RiskGuardrailService:
 
     async def update_position_state(
         self,
-        strategy_id: UUID,
+        algorithm_id: UUID,
         open_positions: int,
         total_exposure: float,
         exposure_pct: float,
         symbol_exposure: dict[str, float],
     ) -> None:
-        """Update position state for a strategy."""
-        state = self._get_or_create_state(strategy_id)
+        """Update position state for a algorithm."""
+        state = self._get_or_create_state(algorithm_id)
 
         state.open_positions = open_positions
         state.total_exposure = total_exposure
@@ -309,14 +309,14 @@ class RiskGuardrailService:
 
     async def record_pnl(
         self,
-        strategy_id: UUID,
+        algorithm_id: UUID,
         trade_pnl: float,
         balance: float,
     ) -> None:
         """Record PnL for daily tracking."""
         self._check_daily_reset()
 
-        state = self._get_or_create_state(strategy_id)
+        state = self._get_or_create_state(algorithm_id)
         state.daily_pnl += trade_pnl
 
         if balance > 0:
@@ -328,7 +328,7 @@ class RiskGuardrailService:
             if state.daily_pnl_pct < daily_loss_config.threshold:
                 await self._trigger_breach(
                     GuardrailType.DAILY_LOSS_LIMIT,
-                    strategy_id,
+                    algorithm_id,
                     {
                         "daily_pnl": state.daily_pnl,
                         "daily_pnl_pct": state.daily_pnl_pct,
@@ -351,7 +351,7 @@ class RiskGuardrailService:
         breach = GuardrailBreach(
             timestamp=datetime.utcnow(),
             guardrail_type=GuardrailType.GLOBAL_KILL,
-            strategy_id=None,
+            algorithm_id=None,
             details={"reason": reason, "triggered_by": triggered_by},
             action_taken=GuardrailAction.EMERGENCY_STOP,
         )
@@ -368,13 +368,13 @@ class RiskGuardrailService:
             self._global_kill_switch = False
             self._global_kill_reason = None
 
-    async def trigger_strategy_kill(
+    async def trigger_algorithm_kill(
         self,
-        strategy_id: UUID,
+        algorithm_id: UUID,
         reason: str,
     ) -> None:
-        """Trigger kill switch for a specific strategy."""
-        state = self._get_or_create_state(strategy_id)
+        """Trigger kill switch for a specific algorithm."""
+        state = self._get_or_create_state(algorithm_id)
         state.kill_switch_active = True
         state.kill_switch_reason = reason
 
@@ -382,7 +382,7 @@ class RiskGuardrailService:
         breach = GuardrailBreach(
             timestamp=datetime.utcnow(),
             guardrail_type=GuardrailType.GLOBAL_KILL,
-            strategy_id=strategy_id,
+            algorithm_id=algorithm_id,
             details={"reason": reason},
             action_taken=GuardrailAction.EMERGENCY_STOP,
         )
@@ -390,19 +390,19 @@ class RiskGuardrailService:
         if len(self._breach_history) > self._max_history:
             self._breach_history = self._breach_history[-self._max_history :]
 
-        logger.critical(f"Strategy {strategy_id} KILL SWITCH: {reason}")
+        logger.critical(f"Algorithm {algorithm_id} KILL SWITCH: {reason}")
 
-    async def release_strategy_kill(self, strategy_id: UUID) -> None:
-        """Release kill switch for a strategy."""
-        state = self._get_or_create_state(strategy_id)
+    async def release_algorithm_kill(self, algorithm_id: UUID) -> None:
+        """Release kill switch for a algorithm."""
+        state = self._get_or_create_state(algorithm_id)
         if state.kill_switch_active:
-            logger.info(f"Strategy {strategy_id} kill switch released")
+            logger.info(f"Algorithm {algorithm_id} kill switch released")
             state.kill_switch_active = False
             state.kill_switch_reason = None
 
-    def get_risk_state(self, strategy_id: UUID) -> Optional[RiskState]:
-        """Get current risk state for a strategy."""
-        return self._risk_states.get(strategy_id)
+    def get_risk_state(self, algorithm_id: UUID) -> Optional[RiskState]:
+        """Get current risk state for a algorithm."""
+        return self._risk_states.get(algorithm_id)
 
     def get_all_risk_states(self) -> dict[UUID, RiskState]:
         """Get all risk states."""
@@ -416,7 +416,7 @@ class RiskGuardrailService:
             "global_kill_time": (
                 self._global_kill_time.isoformat() if self._global_kill_time else None
             ),
-            "monitored_strategies": len(self._risk_states),
+            "monitored_algorithms": len(self._risk_states),
             "total_breaches_24h": len(
                 [
                     b
@@ -428,14 +428,14 @@ class RiskGuardrailService:
 
     def get_breach_history(
         self,
-        strategy_id: Optional[UUID] = None,
+        algorithm_id: Optional[UUID] = None,
         since: Optional[datetime] = None,
     ) -> list[GuardrailBreach]:
         """Get breach history, optionally filtered."""
         breaches = self._breach_history
 
-        if strategy_id:
-            breaches = [b for b in breaches if b.strategy_id == strategy_id]
+        if algorithm_id:
+            breaches = [b for b in breaches if b.algorithm_id == algorithm_id]
 
         if since:
             breaches = [b for b in breaches if b.timestamp >= since]
@@ -445,7 +445,7 @@ class RiskGuardrailService:
     async def _trigger_breach(
         self,
         guardrail_type: GuardrailType,
-        strategy_id: Optional[UUID],
+        algorithm_id: Optional[UUID],
         details: dict[str, Any],
         action: GuardrailAction,
     ) -> None:
@@ -453,7 +453,7 @@ class RiskGuardrailService:
         breach = GuardrailBreach(
             timestamp=datetime.utcnow(),
             guardrail_type=guardrail_type,
-            strategy_id=strategy_id,
+            algorithm_id=algorithm_id,
             details=details,
             action_taken=action,
         )
@@ -465,20 +465,20 @@ class RiskGuardrailService:
             self._breach_history = self._breach_history[-self._max_history :]
 
         # Execute action
-        if action == GuardrailAction.PAUSE_STRATEGY and strategy_id:
-            state = self._risk_states.get(strategy_id)
+        if action == GuardrailAction.PAUSE_ALGORITHM and algorithm_id:
+            state = self._risk_states.get(algorithm_id)
             if state:
                 config = self.configs.get(guardrail_type)
                 cooldown = config.cooldown_minutes if config else 5
                 state.paused_until = datetime.utcnow() + timedelta(minutes=cooldown)
                 logger.warning(
-                    f"Strategy {strategy_id} paused for {cooldown}m due to {guardrail_type.value}"
+                    f"Algorithm {algorithm_id} paused for {cooldown}m due to {guardrail_type.value}"
                 )
 
         elif action == GuardrailAction.EMERGENCY_STOP:
-            if strategy_id:
-                await self.trigger_strategy_kill(
-                    strategy_id, f"Guardrail breach: {guardrail_type.value}"
+            if algorithm_id:
+                await self.trigger_algorithm_kill(
+                    algorithm_id, f"Guardrail breach: {guardrail_type.value}"
                 )
             else:
                 await self.trigger_global_kill(
@@ -489,20 +489,20 @@ class RiskGuardrailService:
         if action in (GuardrailAction.EMERGENCY_STOP, GuardrailAction.CLOSE_POSITIONS):
             logger.critical(
                 f"GUARDRAIL BREACH: {guardrail_type.value} "
-                f"strategy={strategy_id} action={action.value} "
+                f"algorithm={algorithm_id} action={action.value} "
                 f"details={details}"
             )
         else:
             logger.warning(
                 f"Guardrail breach: {guardrail_type.value} "
-                f"strategy={strategy_id} action={action.value}"
+                f"algorithm={algorithm_id} action={action.value}"
             )
 
-    def _get_or_create_state(self, strategy_id: UUID) -> RiskState:
+    def _get_or_create_state(self, algorithm_id: UUID) -> RiskState:
         """Get existing risk state or create new one."""
-        if strategy_id not in self._risk_states:
-            return self.register_strategy(strategy_id)
-        return self._risk_states[strategy_id]
+        if algorithm_id not in self._risk_states:
+            return self.register_algorithm(algorithm_id)
+        return self._risk_states[algorithm_id]
 
     def _check_daily_reset(self) -> None:
         """Reset daily PnL tracking at midnight UTC."""

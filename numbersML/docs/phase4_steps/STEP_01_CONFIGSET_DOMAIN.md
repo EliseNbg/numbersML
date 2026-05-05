@@ -1,10 +1,10 @@
 # Step 1: ConfigurationSet Domain Model
 
 ## Objective
-Create the `ConfigurationSet` domain entity following DDD principles. This entity separates strategy logic from runtime parameters and enables reusable parameter sets.
+Create the `ConfigurationSet` domain entity following DDD principles. This entity separates algorithm logic from runtime parameters and enables reusable parameter sets.
 
 ## Context
-- Phase 3 completed strategy domain models in `src/domain/strategies/`
+- Phase 3 completed algorithm domain models in `src/domain/algorithms/`
 - Need a new entity that encapsulates runtime configuration (symbols, thresholds, risk parameters)
 - Must follow existing DDD patterns in the project (see `src/domain/models/base.py` for Entity base class)
 
@@ -13,7 +13,7 @@ Create the `ConfigurationSet` domain entity following DDD principles. This entit
 **Decision**: ConfigurationSet is a Domain Entity (not Value Object) because:
 - It has identity (UUID)
 - It has lifecycle (created, updated, deactivated)
-- Multiple strategies can reference the same ConfigurationSet
+- Multiple algorithms can reference the same ConfigurationSet
 
 **Configuration Structure**:
 ```python
@@ -47,14 +47,14 @@ config: dict = {
 
 ## Implementation Files
 
-### 1. `src/domain/strategies/config_set.py`
+### 1. `src/domain/algorithms/config_set.py`
 
 ```python
 """
 ConfigurationSet domain entity.
 
 Represents a reusable set of configuration parameters that can be
-linked to multiple strategies. Follows DDD Entity pattern.
+linked to multiple algorithms. Follows DDD Entity pattern.
 
 Architecture: Domain Layer (pure Python, no external dependencies)
 """
@@ -81,9 +81,9 @@ class ConfigurationSnapshot:
 
 class ConfigurationSet(Entity):
     """
-    Domain entity for strategy configuration sets.
+    Domain entity for algorithm configuration sets.
     
-    Encapsulates all runtime parameters needed by a strategy:
+    Encapsulates all runtime parameters needed by a algorithm:
     - Trading symbols
     - Indicator thresholds
     - Risk parameters
@@ -278,7 +278,7 @@ class ConfigurationSet(Entity):
         }
 ```
 
-### 2. `tests/unit/domain/strategies/test_config_set.py`
+### 2. `tests/unit/domain/algorithms/test_config_set.py`
 
 ```python
 """
@@ -291,7 +291,7 @@ import pytest
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from src.domain.strategies.config_set import ConfigurationSet, ConfigurationSnapshot
+from src.domain.algorithms.config_set import ConfigurationSet, ConfigurationSnapshot
 
 
 class TestConfigurationSnapshot:
@@ -521,13 +521,13 @@ Create the ConfigurationSet domain entity following DDD (Domain-Driven Design) p
 ## Context
 
 - This is for a Python 3.11 FastAPI/asyncpg crypto trading system
-- Phase 3 is complete (strategy domain models exist in src/domain/strategies/)
+- Phase 3 is complete (algorithm domain models exist in src/domain/algorithms/)
 - You must follow the project's DDD architecture (see AGENTS.md and existing domain models)
 - Base entity class is in src/domain/models/base.py
 
 ## Requirements
 
-1. Create `src/domain/strategies/config_set.py` with:
+1. Create `src/domain/algorithms/config_set.py` with:
    - `ConfigurationSnapshot` frozen dataclass (immutable audit trail)
    - `ConfigurationSet` entity class extending Entity base class
    - Full type annotations (mypy strict mode)
@@ -544,7 +544,7 @@ Create the ConfigurationSet domain entity following DDD (Domain-Driven Design) p
    - Validation in __init__: non-empty name, non-empty config
    - Validation in update_config: non-empty new_config
 
-2. Create `tests/unit/domain/strategies/test_config_set.py` with TDD approach:
+2. Create `tests/unit/domain/algorithms/test_config_set.py` with TDD approach:
    - TestConfigurationSnapshot: creation, immutability
    - TestConfigurationSetCreation: valid/invalid creation, custom ID
    - TestConfigurationSetUpdate: snapshot creation, version increment, multiple updates
@@ -579,12 +579,12 @@ Create the ConfigurationSet domain entity following DDD (Domain-Driven Design) p
 
 ```bash
 # Format and lint
-black src/domain/strategies/config_set.py tests/unit/domain/strategies/test_config_set.py
-ruff check src/domain/strategies/config_set.py tests/unit/domain/strategies/test_config_set.py
-mypy src/domain/strategies/config_set.py
+black src/domain/algorithms/config_set.py tests/unit/domain/algorithms/test_config_set.py
+ruff check src/domain/algorithms/config_set.py tests/unit/domain/algorithms/test_config_set.py
+mypy src/domain/algorithms/config_set.py
 
 # Run tests
-.venv/bin/python -m pytest tests/unit/domain/strategies/test_config_set.py -v
+.venv/bin/python -m pytest tests/unit/domain/algorithms/test_config_set.py -v
 ```
 
 ## Output

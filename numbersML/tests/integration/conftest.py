@@ -280,7 +280,7 @@ async def test_usdt_with_candles(db_pool, test_usdt_symbol):
 
 @pytest.fixture
 async def test_usdt_with_sin_wave_data(db_pool, test_usdt_symbol):
-    """Provide TEST/USDT with noised sin wave data for grid strategy tests.
+    """Provide TEST/USDT with noised sin wave data for grid algorithm tests.
 
     Uses fixed timestamp (2024-01-01) to match generate_test_data.py output.
     Cleans up after the test.

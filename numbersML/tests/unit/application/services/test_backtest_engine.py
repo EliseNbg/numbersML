@@ -396,8 +396,8 @@ class TestBacktestEngine:
 
         # Run twice with same inputs
         result1 = await engine.run_backtest(
-            strategy_id=uuid4(),
-            strategy_version=1,
+            algorithm_id=uuid4(),
+            algorithm_version=1,
             config=config,
             symbols=["BTC/USDC"],
             start_time=datetime(2024, 1, 1),
@@ -406,8 +406,8 @@ class TestBacktestEngine:
         )
 
         result2 = await engine.run_backtest(
-            strategy_id=uuid4(),
-            strategy_version=1,
+            algorithm_id=uuid4(),
+            algorithm_version=1,
             config=config,
             symbols=["BTC/USDC"],
             start_time=datetime(2024, 1, 1),
@@ -452,8 +452,8 @@ class TestBacktestEngine:
         }
 
         result = await engine.run_backtest(
-            strategy_id=uuid4(),
-            strategy_version=1,
+            algorithm_id=uuid4(),
+            algorithm_version=1,
             config=config,
             symbols=["BTC/USDC"],
             start_time=datetime(2024, 1, 1),
@@ -502,8 +502,8 @@ class TestBacktestEngine:
         }
 
         result = await engine.run_backtest(
-            strategy_id=uuid4(),
-            strategy_version=1,
+            algorithm_id=uuid4(),
+            algorithm_version=1,
             config=config,
             symbols=["BTC/USDC"],
             start_time=datetime(2024, 1, 1),
@@ -553,8 +553,8 @@ class TestBacktestEngine:
         }
 
         await engine.run_backtest(
-            strategy_id=uuid4(),
-            strategy_version=1,
+            algorithm_id=uuid4(),
+            algorithm_version=1,
             config=config,
             symbols=["BTC/USDC"],
             start_time=datetime(2024, 1, 1),

@@ -8,7 +8,7 @@ Running the data quality guard on 1000 recent indicator records revealed:
 - **100% of records have price=0**  
   The historical recalculations ran before the OHLCV fix was applied, so all stored prices and volumes are zero.
   
-  **Impact**: Any strategy using price/volume data will see flat lines instead of real market data.
+  **Impact**: Any algorithm using price/volume data will see flat lines instead of real market data.
 
 ### 2. Null Indicator Values
 - **14,000 null values** across optional indicators

@@ -1,0 +1,144 @@
+"""
+AlgorithmInstance application service.
+
+Handles hot-plug of AlgorithmInstances into the pipeline.
+Follows DDD: Application Layer service.
+"""
+
+import logging
+from typing import Any
+from uuid import UUID
+
+from src.domain.repositories.config_set_repository import ConfigSetRepository
+from src.domain.repositories.algorithm_instance_repository import (
+    AlgorithmInstanceRepository,
+)
+from src.domain.repositories.algorithm_repository import AlgorithmRepository
+from src.domain.algorithms.base import AlgorithmManager
+from src.domain.algorithms.algorithm_instance import AlgorithmInstanceState
+
+logger = logging.getLogger(__name__)
+
+
+class AlgorithmInstanceService:
+    """
+    Application service for AlgorithmInstance lifecycle.
+
+    Handles hot-plug/unplug from running pipeline.
+    """
+
+    def __init__(
+        self,
+        instance_repo: AlgorithmInstanceRepository,
+        algorithm_repo: AlgorithmRepository,
+        config_set_repo: ConfigSetRepository,
+        algorithm_manager: AlgorithmManager,
+    ) -> None:
+        """
+        Initialize with repositories and manager.
+
+        Args:
+            instance_repo: AlgorithmInstance repository
+            algorithm_repo: Algorithm repository
+            config_set_repo: ConfigSet repository
+            algorithm_manager: Running AlgorithmManager
+        """
+        self._instance_repo = instance_repo
+        self._algorithm_repo = algorithm_repo
+        self._config_set_repo = config_set_repo
+        self._algorithm_manager = algorithm_manager
+
+    async def hot_plug(self, instance_id: UUID) -> bool:
+        """
+        Hot-plug a AlgorithmInstance into the pipeline.
+
+        Args:
+            instance_id: AlgorithmInstance ID to start
+
+        Returns:
+            True if successful
+
+        Raises:
+            ValueError: If instance not found or cannot start
+        """
+        instance = await self._instance_repo.get_by_id(instance_id)
+        if not instance:
+            raise ValueError(f"Instance {instance_id} not found")
+
+        if not instance.can_start():
+            raise ValueError(f"Cannot start instance from state: {instance.status.value}")
+
+        # TODO: Load Algorithm by ID from repository
+        # TODO: Load ConfigurationSet by ID from repository
+
+        self._algorithm_manager.add_instance(instance)
+        instance.start()
+        await self._instance_repo.save(instance)
+
+        logger.info(f"Instance {instance_id} hot-plugged into pipeline")
+        return True
+
+    async def unplug(self, instance_id: UUID) -> bool:
+        """
+        Unplug a AlgorithmInstance from the pipeline.
+
+        Args:
+            instance_id: AlgorithmInstance ID to stop
+
+        Returns:
+            True if successful
+
+        Raises:
+            ValueError: If instance not found or cannot stop
+        """
+        instance = await self._instance_repo.get_by_id(instance_id)
+        if not instance:
+            raise ValueError(f"Instance {instance_id} not found")
+
+        if not instance.can_stop():
+            raise ValueError(f"Cannot stop instance from state: {instance.status.value}")
+
+        self._algorithm_manager.remove_instance(instance_id)
+        instance.stop()
+        await self._instance_repo.save(instance)
+
+        logger.info(f"Instance {instance_id} unplugged from pipeline")
+        return True
+
+    async def pause_instance(self, instance_id: UUID) -> bool:
+        """Pause a running instance."""
+        instance = await self._instance_repo.get_by_id(instance_id)
+        if not instance:
+            raise ValueError(f"Instance {instance_id} not found")
+
+        if not instance.can_pause():
+            raise ValueError(f"Cannot pause instance from state: {instance.status.value}")
+
+        instance.pause()
+        await self._instance_repo.save(instance)
+
+        logger.info(f"Instance {instance_id} paused")
+        return True
+
+    async def resume_instance(self, instance_id: UUID) -> bool:
+        """Resume a paused instance."""
+        instance = await self._instance_repo.get_by_id(instance_id)
+        if not instance:
+            raise ValueError(f"Instance {instance_id} not found")
+
+        if instance.status != AlgorithmInstanceState.PAUSED:
+            raise ValueError(f"Cannot resume instance from state: {instance.status.value}")
+
+        instance.resume()
+        await self._instance_repo.save(instance)
+
+        logger.info(f"Instance {instance_id} resumed")
+        return True
+
+    async def get_stats(self, instance_id: UUID) -> dict[str, Any] | None:
+        """Get runtime statistics for an instance."""
+        instance = await self._instance_repo.get_by_id(instance_id)
+        if not instance:
+            return None
+
+        return instance.runtime_stats.to_dict()

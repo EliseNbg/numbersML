@@ -1,4 +1,4 @@
-"""PostgreSQL implementation of strategy runtime event repository."""
+"""PostgreSQL implementation of algorithm runtime event repository."""
 
 import json
 from datetime import UTC, datetime
@@ -7,21 +7,21 @@ from uuid import UUID
 
 import asyncpg
 
-from src.domain.repositories.runtime_event_repository import StrategyRuntimeEventRepository
-from src.domain.strategies.runtime import StrategyLifecycleEvent
+from src.domain.repositories.runtime_event_repository import AlgorithmRuntimeEventRepository
+from src.domain.algorithms.runtime import AlgorithmLifecycleEvent
 
 
-class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
+class AlgorithmRuntimeEventRepositoryPG(AlgorithmRuntimeEventRepository):
     """PostgreSQL-backed runtime event repository.
 
-    Persists strategy lifecycle events to the strategy_events table.
+    Persists algorithm lifecycle events to the algorithm_events table.
     Events are append-only and never updated.
     """
 
     def __init__(self, connection: asyncpg.Connection) -> None:
         self.conn = connection
 
-    async def save(self, entity: StrategyLifecycleEvent) -> StrategyLifecycleEvent:
+    async def save(self, entity: AlgorithmLifecycleEvent) -> AlgorithmLifecycleEvent:
         """Persist a lifecycle event.
 
         Args:
@@ -32,19 +32,19 @@ class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
         """
         await self.conn.fetchrow(
             """
-            INSERT INTO strategy_events (
-                id, strategy_id, strategy_version_id, event_type,
+            INSERT INTO algorithm_events (
+                id, algorithm_id, algorithm_version_id, event_type,
                 event_payload, actor, created_at
             ) VALUES (
                 $1, $2,
-                (SELECT id FROM strategy_versions
-                 WHERE strategy_id = $2 AND version = $3),
+                (SELECT id FROM algorithm_versions
+                 WHERE algorithm_id = $2 AND version = $3),
                 $4, $5, $6, $7
             )
             """,
             entity.event_id,
-            entity.strategy_id,
-            entity.strategy_version,
+            entity.algorithm_id,
+            entity.algorithm_version,
             entity.event_type,
             json.dumps(entity.details),
             entity.trigger if hasattr(entity, "trigger") else "system",
@@ -57,26 +57,26 @@ class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
 
         Note: This is generally discouraged as events form an audit trail.
         """
-        result = await self.conn.execute("DELETE FROM strategy_events WHERE id = $1", entity_id)
+        result = await self.conn.execute("DELETE FROM algorithm_events WHERE id = $1", entity_id)
         return result == "DELETE 1"
 
-    async def get_events_for_strategy(
+    async def get_events_for_algorithm(
         self,
-        strategy_id: UUID,
+        algorithm_id: UUID,
         from_time: datetime | None = None,
         to_time: datetime | None = None,
         event_types: list[str] | None = None,
         limit: int = 1000,
-    ) -> list[StrategyLifecycleEvent]:
-        """Fetch lifecycle events for a specific strategy."""
+    ) -> list[AlgorithmLifecycleEvent]:
+        """Fetch lifecycle events for a specific algorithm."""
         query = """
-            SELECT e.*, s.name as strategy_name, sv.version as strategy_version
-            FROM strategy_events e
-            JOIN strategies s ON e.strategy_id = s.id
-            LEFT JOIN strategy_versions sv ON e.strategy_version_id = sv.id
-            WHERE e.strategy_id = $1
+            SELECT e.*, s.name as algorithm_name, sv.version as algorithm_version
+            FROM algorithm_events e
+            JOIN algorithms s ON e.algorithm_id = s.id
+            LEFT JOIN algorithm_versions sv ON e.algorithm_version_id = sv.id
+            WHERE e.algorithm_id = $1
         """
-        params = [strategy_id]
+        params = [algorithm_id]
         param_count = 1
 
         if from_time is not None:
@@ -107,13 +107,13 @@ class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
         event_type: str,
         from_time: datetime | None = None,
         limit: int = 1000,
-    ) -> list[StrategyLifecycleEvent]:
-        """Fetch events of a specific type across all strategies."""
+    ) -> list[AlgorithmLifecycleEvent]:
+        """Fetch events of a specific type across all algorithms."""
         query = """
-            SELECT e.*, s.name as strategy_name, sv.version as strategy_version
-            FROM strategy_events e
-            JOIN strategies s ON e.strategy_id = s.id
-            LEFT JOIN strategy_versions sv ON e.strategy_version_id = sv.id
+            SELECT e.*, s.name as algorithm_name, sv.version as algorithm_version
+            FROM algorithm_events e
+            JOIN algorithms s ON e.algorithm_id = s.id
+            LEFT JOIN algorithm_versions sv ON e.algorithm_version_id = sv.id
             WHERE e.event_type = $1
         """
         params = [event_type]
@@ -134,20 +134,20 @@ class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
         return [self._map_event(row) for row in rows]
 
     async def get_current_states(self) -> list[dict[str, Any]]:
-        """Get the most recent state for each strategy."""
+        """Get the most recent state for each algorithm."""
         rows = await self.conn.fetch("""
-            SELECT DISTINCT ON (e.strategy_id)
-                e.strategy_id,
-                s.name as strategy_name,
-                sv.version as strategy_version,
+            SELECT DISTINCT ON (e.algorithm_id)
+                e.algorithm_id,
+                s.name as algorithm_name,
+                sv.version as algorithm_version,
                 e.event_type,
                 e.event_payload,
                 e.created_at as last_state_change
-            FROM strategy_events e
-            JOIN strategies s ON e.strategy_id = s.id
-            LEFT JOIN strategy_versions sv ON e.strategy_version_id = sv.id
-            WHERE e.event_type = 'StrategyLifecycleEvent'
-            ORDER BY e.strategy_id, e.created_at DESC
+            FROM algorithm_events e
+            JOIN algorithms s ON e.algorithm_id = s.id
+            LEFT JOIN algorithm_versions sv ON e.algorithm_version_id = sv.id
+            WHERE e.event_type = 'AlgorithmLifecycleEvent'
+            ORDER BY e.algorithm_id, e.created_at DESC
         """)
         return [dict(r) for r in rows]
 
@@ -155,14 +155,14 @@ class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
         self,
         since: datetime | None = None,
         limit: int = 100,
-    ) -> list[StrategyLifecycleEvent]:
+    ) -> list[AlgorithmLifecycleEvent]:
         """Get recent error state transitions."""
         query = """
-            SELECT e.*, s.name as strategy_name, sv.version as strategy_version
-            FROM strategy_events e
-            JOIN strategies s ON e.strategy_id = s.id
-            LEFT JOIN strategy_versions sv ON e.strategy_version_id = sv.id
-            WHERE e.event_type = 'StrategyLifecycleEvent'
+            SELECT e.*, s.name as algorithm_name, sv.version as algorithm_version
+            FROM algorithm_events e
+            JOIN algorithms s ON e.algorithm_id = s.id
+            LEFT JOIN algorithm_versions sv ON e.algorithm_version_id = sv.id
+            WHERE e.event_type = 'AlgorithmLifecycleEvent'
               AND (e.event_payload->>'to_state') = '"ERROR"'
         """
         params: list[Any] = []
@@ -178,8 +178,8 @@ class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
             params.append(limit)
         else:
             query = query.replace(
-                "WHERE e.event_type = 'StrategyLifecycleEvent'",
-                "WHERE e.event_type = 'StrategyLifecycleEvent'",
+                "WHERE e.event_type = 'AlgorithmLifecycleEvent'",
+                "WHERE e.event_type = 'AlgorithmLifecycleEvent'",
             )
             query += "1"
             params = [limit]
@@ -189,14 +189,14 @@ class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
         )
         return [self._map_event(row) for row in rows]
 
-    async def get_by_id(self, entity_id: UUID) -> StrategyLifecycleEvent | None:
+    async def get_by_id(self, entity_id: UUID) -> AlgorithmLifecycleEvent | None:
         """Get a single event by ID."""
         row = await self.conn.fetchrow(
             """
-            SELECT e.*, s.name as strategy_name, sv.version as strategy_version
-            FROM strategy_events e
-            JOIN strategies s ON e.strategy_id = s.id
-            LEFT JOIN strategy_versions sv ON e.strategy_version_id = sv.id
+            SELECT e.*, s.name as algorithm_name, sv.version as algorithm_version
+            FROM algorithm_events e
+            JOIN algorithms s ON e.algorithm_id = s.id
+            LEFT JOIN algorithm_versions sv ON e.algorithm_version_id = sv.id
             WHERE e.id = $1
         """,
             entity_id,
@@ -205,30 +205,30 @@ class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
             return None
         return self._map_event(row)
 
-    async def get_all(self) -> list[StrategyLifecycleEvent]:
+    async def get_all(self) -> list[AlgorithmLifecycleEvent]:
         """Get all events (most recent first)."""
         rows = await self.conn.fetch("""
-            SELECT e.*, s.name as strategy_name, sv.version as strategy_version
-            FROM strategy_events e
-            JOIN strategies s ON e.strategy_id = s.id
-            LEFT JOIN strategy_versions sv ON e.strategy_version_id = sv.id
+            SELECT e.*, s.name as algorithm_name, sv.version as algorithm_version
+            FROM algorithm_events e
+            JOIN algorithms s ON e.algorithm_id = s.id
+            LEFT JOIN algorithm_versions sv ON e.algorithm_version_id = sv.id
             ORDER BY e.created_at DESC
         """)
         return [self._map_event(row) for row in rows]
 
     @staticmethod
-    def _map_event(row: asyncpg.Record) -> StrategyLifecycleEvent:
-        """Map a database row to a StrategyLifecycleEvent."""
+    def _map_event(row: asyncpg.Record) -> AlgorithmLifecycleEvent:
+        """Map a database row to a AlgorithmLifecycleEvent."""
         payload = row["event_payload"]
         if isinstance(payload, str):
             payload = json.loads(payload)
-        from_state = StrategyInstanceState(payload.get("from_state", "STOPPED"))
-        to_state = StrategyInstanceState(payload.get("to_state", "STOPPED"))
-        return StrategyLifecycleEvent(
+        from_state = AlgorithmInstanceState(payload.get("from_state", "STOPPED"))
+        to_state = AlgorithmInstanceState(payload.get("to_state", "STOPPED"))
+        return AlgorithmLifecycleEvent(
             event_id=row["id"],
-            strategy_id=row["strategy_id"],
-            strategy_name=row["strategy_name"],
-            strategy_version=row["strategy_version"] or 1,
+            algorithm_id=row["algorithm_id"],
+            algorithm_name=row["algorithm_name"],
+            algorithm_version=row["algorithm_version"] or 1,
             from_state=from_state,
             to_state=to_state,
             trigger=payload.get("trigger", "system"),

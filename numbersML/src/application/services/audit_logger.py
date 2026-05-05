@@ -32,13 +32,13 @@ class AuditEventType(Enum):
     CONFIG_ACTIVATED = "config_activated"
 
     # Lifecycle
-    STRATEGY_CREATED = "strategy_created"
-    STRATEGY_DELETED = "strategy_deleted"
-    STRATEGY_UPDATED = "strategy_updated"
-    STRATEGY_ACTIVATED = "strategy_activated"
-    STRATEGY_DEACTIVATED = "strategy_deactivated"
-    STRATEGY_PAUSED = "strategy_paused"
-    STRATEGY_RESUMED = "strategy_resumed"
+    ALGORITHM_CREATED = "algorithm_created"
+    ALGORITHM_DELETED = "algorithm_deleted"
+    ALGORITHM_UPDATED = "algorithm_updated"
+    ALGORITHM_ACTIVATED = "algorithm_activated"
+    ALGORITHM_DEACTIVATED = "algorithm_deactivated"
+    ALGORITHM_PAUSED = "algorithm_paused"
+    ALGORITHM_RESUMED = "algorithm_resumed"
 
     # Risk
     GUARDRAIL_BREACH = "guardrail_breach"
@@ -88,11 +88,11 @@ class AuditEvent:
     severity: AuditSeverity
 
     # Actor information
-    actor_id: str  # user, system, strategy, etc.
-    actor_type: str  # user, system, strategy, service
+    actor_id: str  # user, system, algorithm, etc.
+    actor_type: str  # user, system, algorithm, service
 
     # Target information
-    target_type: str  # strategy, config, order, system
+    target_type: str  # algorithm, config, order, system
 
     # Event details (required)
     action: str
@@ -220,8 +220,8 @@ class AuditLogger:
             action: Short action name
             description: Human-readable description
             actor_id: Who performed the action
-            actor_type: Type of actor (user, system, strategy)
-            target_type: Type of target (strategy, config, order)
+            actor_type: Type of actor (user, system, algorithm)
+            target_type: Type of target (algorithm, config, order)
             target_id: ID of target object
             severity: Event severity
             old_value: Previous state (for changes)
@@ -289,31 +289,31 @@ class AuditLogger:
     # Convenience Methods
     # =========================================================================
 
-    async def log_strategy_lifecycle(
+    async def log_algorithm_lifecycle(
         self,
-        strategy_id: UUID,
+        algorithm_id: UUID,
         transition: str,  # activated, deactivated, paused, resumed
         actor_id: str = "system",
         old_status: Optional[str] = None,
         new_status: Optional[str] = None,
     ) -> AuditEvent:
-        """Log strategy lifecycle event."""
+        """Log algorithm lifecycle event."""
         event_type_map = {
-            "activated": AuditEventType.STRATEGY_ACTIVATED,
-            "deactivated": AuditEventType.STRATEGY_DEACTIVATED,
-            "paused": AuditEventType.STRATEGY_PAUSED,
-            "resumed": AuditEventType.STRATEGY_RESUMED,
+            "activated": AuditEventType.ALGORITHM_ACTIVATED,
+            "deactivated": AuditEventType.ALGORITHM_DEACTIVATED,
+            "paused": AuditEventType.ALGORITHM_PAUSED,
+            "resumed": AuditEventType.ALGORITHM_RESUMED,
         }
 
-        event_type = event_type_map.get(transition, AuditEventType.STRATEGY_UPDATED)
+        event_type = event_type_map.get(transition, AuditEventType.ALGORITHM_UPDATED)
 
         return await self.log(
             event_type=event_type,
-            action=f"strategy_{transition}",
-            description=f"Strategy {strategy_id} {transition}",
+            action=f"algorithm_{transition}",
+            description=f"Algorithm {algorithm_id} {transition}",
             actor_id=actor_id,
-            target_type="strategy",
-            target_id=str(strategy_id),
+            target_type="algorithm",
+            target_id=str(algorithm_id),
             severity=AuditSeverity.INFO,
             old_value={"status": old_status} if old_status else None,
             new_value={"status": new_status} if new_status else None,
@@ -321,7 +321,7 @@ class AuditLogger:
 
     async def log_config_change(
         self,
-        strategy_id: UUID,
+        algorithm_id: UUID,
         version: int,
         actor_id: str,
         old_config: Optional[dict[str, Any]],
@@ -335,7 +335,7 @@ class AuditLogger:
             description=f"Config updated: {change_summary}",
             actor_id=actor_id,
             target_type="config",
-            target_id=str(strategy_id),
+            target_id=str(algorithm_id),
             severity=AuditSeverity.INFO,
             old_value={"version": version - 1, "config": old_config} if old_config else None,
             new_value={"version": version, "config": new_config},
@@ -344,7 +344,7 @@ class AuditLogger:
     async def log_guardrail_breach(
         self,
         guardrail_type: str,
-        strategy_id: Optional[UUID],
+        algorithm_id: Optional[UUID],
         details: dict[str, Any],
         action_taken: str,
     ) -> AuditEvent:
@@ -354,8 +354,8 @@ class AuditLogger:
             action="guardrail_breach",
             description=f"Guardrail {guardrail_type} breached: {action_taken}",
             actor_id="risk_guardrail",
-            target_type="strategy" if strategy_id else "system",
-            target_id=str(strategy_id) if strategy_id else None,
+            target_type="algorithm" if algorithm_id else "system",
+            target_id=str(algorithm_id) if algorithm_id else None,
             severity=AuditSeverity.WARNING,
             new_value={
                 "guardrail_type": guardrail_type,
@@ -368,7 +368,7 @@ class AuditLogger:
         self,
         triggered: bool,
         reason: str,
-        strategy_id: Optional[UUID] = None,
+        algorithm_id: Optional[UUID] = None,
         triggered_by: str = "system",
     ) -> AuditEvent:
         """Log kill switch activation/release."""
@@ -383,8 +383,8 @@ class AuditLogger:
             action="kill_switch_triggered" if triggered else "kill_switch_released",
             description=f"Kill switch {'activated' if triggered else 'released'}: {reason}",
             actor_id=triggered_by,
-            target_type="strategy" if strategy_id else "system",
-            target_id=str(strategy_id) if strategy_id else None,
+            target_type="algorithm" if algorithm_id else "system",
+            target_id=str(algorithm_id) if algorithm_id else None,
             severity=AuditSeverity.CRITICAL if triggered else AuditSeverity.INFO,
             new_value={"reason": reason},
         )
@@ -393,7 +393,7 @@ class AuditLogger:
         self,
         reason: str,
         triggered_by: str,
-        affected_strategies: list[UUID],
+        affected_algorithms: list[UUID],
     ) -> AuditEvent:
         """Log emergency stop event."""
         return await self.log(
@@ -405,15 +405,15 @@ class AuditLogger:
             severity=AuditSeverity.CRITICAL,
             new_value={
                 "reason": reason,
-                "affected_strategies": [str(s) for s in affected_strategies],
-                "strategy_count": len(affected_strategies),
+                "affected_algorithms": [str(s) for s in affected_algorithms],
+                "algorithm_count": len(affected_algorithms),
             },
         )
 
     async def log_order_event(
         self,
         order_id: str,
-        strategy_id: UUID,
+        algorithm_id: UUID,
         symbol: str,
         side: str,
         quantity: float,
@@ -446,7 +446,7 @@ class AuditLogger:
             severity=severity,
             new_value={
                 "order_id": order_id,
-                "strategy_id": str(strategy_id),
+                "algorithm_id": str(algorithm_id),
                 "symbol": symbol,
                 "side": side,
                 "quantity": quantity,
@@ -458,7 +458,7 @@ class AuditLogger:
     async def log_llm_request(
         self,
         request_type: str,  # generate, modify, suggest
-        strategy_id: Optional[UUID],
+        algorithm_id: Optional[UUID],
         actor_id: str,
         prompt_length: int,
         metadata: Optional[dict[str, Any]] = None,
@@ -475,8 +475,8 @@ class AuditLogger:
             action=f"llm_{request_type}",
             description=f"LLM {request_type} request from {actor_id}",
             actor_id=actor_id,
-            target_type="strategy" if strategy_id else "system",
-            target_id=str(strategy_id) if strategy_id else None,
+            target_type="algorithm" if algorithm_id else "system",
+            target_id=str(algorithm_id) if algorithm_id else None,
             severity=AuditSeverity.INFO,
             metadata={
                 "prompt_length": prompt_length,

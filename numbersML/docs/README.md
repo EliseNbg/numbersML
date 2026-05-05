@@ -146,27 +146,27 @@ echo "DELETE ALL DATA" | .venv/bin/python tests/integration/test_dangerous_pipel
 ## Phase 4: Algorithm Management & Backtesting ✅
 
 ### New Features
-- **ConfigurationSets**: Reusable parameter sets for strategies
-- **StrategyInstances**: Link strategies with configuration for deployment
-- **Hot-Plug**: Start/stop strategies without pipeline restart
+- **ConfigurationSets**: Reusable parameter sets for algorithms
+- **AlgorithmInstances**: Link algorithms with configuration for deployment
+- **Hot-Plug**: Start/stop algorithms without pipeline restart
 - **Real Backtesting**: Historical data replay with NO indicator recalculation
 - **Dashboard Pages**:
   - ConfigurationSet management with dynamic parameters
-  - StrategyInstance management with hot-plug controls
+  - AlgorithmInstance management with hot-plug controls
   - Enhanced backtest page with Chart.js visualizations
-- **Grid Algorithm**: Simple grid trading strategy for TEST/USDT
+- **Grid Algorithm**: Simple grid trading algorithm for TEST/USDT
 
 ### API Endpoints
 - `POST /api/config-sets` - Create ConfigurationSet
 - `GET /api/config-sets` - List ConfigurationSets
-- `POST /api/strategy-instances` - Create StrategyInstance
-- `POST /api/strategy-instances/{id}/start` - Hot-plug
-- `POST /api/strategy-backtests/jobs` - Submit backtest
-- `GET /api/strategy-backtests/jobs/{id}` - Get results
+- `POST /api/algorithm-instances` - Create AlgorithmInstance
+- `POST /api/algorithm-instances/{id}/start` - Hot-plug
+- `POST /api/algorithm-backtests/jobs` - Submit backtest
+- `GET /api/algorithm-backtests/jobs/{id}` - Get results
 
 ### Database Migrations
 - `migrations/003_configuration_sets.sql`
-- `migrations/004_strategy_instances.sql`
+- `migrations/004_algorithm_instances.sql`
 
 ### Test Coverage
 - >80% for all new code

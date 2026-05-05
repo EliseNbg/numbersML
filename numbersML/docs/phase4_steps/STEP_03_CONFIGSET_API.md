@@ -6,7 +6,7 @@ Create FastAPI endpoints for ConfigurationSet CRUD operations following REST pri
 ## Context
 - Step 1 complete: `ConfigurationSet` domain entity exists
 - Step 2 complete: Repository interface and PostgreSQL implementation exist
-- Existing API pattern: `src/infrastructure/api/routes/strategies.py`
+- Existing API pattern: `src/infrastructure/api/routes/algorithms.py`
 - FastAPI with pydantic v2 for request/response models
 - Dependency injection via `Depends()`
 
@@ -61,7 +61,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from src.domain.repositories.config_set_repository import ConfigSetRepository
-from src.domain.strategies.config_set import ConfigurationSet
+from src.domain.algorithms.config_set import ConfigurationSet
 from src.infrastructure.database import get_db_pool_async
 from src.infrastructure.repositories.config_set_repository_pg import (
     ConfigSetRepositoryPG,
@@ -500,7 +500,7 @@ class TestListConfigSets:
 
     def test_list_with_data(self, client, mock_repository):
         """Test listing config sets."""
-        from src.domain.strategies.config_set import ConfigurationSet
+        from src.domain.algorithms.config_set import ConfigurationSet
         from src.infrastructure.api.routes.config_sets import get_config_set_repository
         
         app.dependency_overrides[get_config_set_repository] = lambda: mock_repository
@@ -545,7 +545,7 @@ class TestCreateConfigSet:
 
     def test_create_success(self, client, mock_repository, sample_config_set_data):
         """Test creating a ConfigurationSet successfully."""
-        from src.domain.strategies.config_set import ConfigurationSet
+        from src.domain.algorithms.config_set import ConfigurationSet
         from src.infrastructure.api.routes.config_sets import get_config_set_repository
         
         app.dependency_overrides[get_config_set_repository] = lambda: mock_repository
@@ -568,7 +568,7 @@ class TestCreateConfigSet:
 
     def test_create_duplicate_name(self, client, mock_repository, sample_config_set_data):
         """Test creating with duplicate name returns 400."""
-        from src.domain.strategies.config_set import ConfigurationSet
+        from src.domain.algorithms.config_set import ConfigurationSet
         from src.infrastructure.api.routes.config_sets import get_config_set_repository
         
         app.dependency_overrides[get_config_set_repository] = lambda: mock_repository
@@ -605,7 +605,7 @@ class TestGetConfigSet:
 
     def test_get_existing(self, client, mock_repository):
         """Test getting an existing ConfigurationSet."""
-        from src.domain.strategies.config_set import ConfigurationSet
+        from src.domain.algorithms.config_set import ConfigurationSet
         from src.infrastructure.api.routes.config_sets import get_config_set_repository
         
         app.dependency_overrides[get_config_set_repository] = lambda: mock_repository
@@ -642,7 +642,7 @@ class TestUpdateConfigSet:
 
     def test_update_config(self, client, mock_repository):
         """Test updating ConfigurationSet config."""
-        from src.domain.strategies.config_set import ConfigurationSet
+        from src.domain.algorithms.config_set import ConfigurationSet
         from src.infrastructure.api.routes.config_sets import get_config_set_repository
         
         app.dependency_overrides[get_config_set_repository] = lambda: mock_repository
@@ -679,7 +679,7 @@ class TestUpdateConfigSet:
 
     def test_update_no_fields(self, client, mock_repository):
         """Test updating with no fields returns 400."""
-        from src.domain.strategies.config_set import ConfigurationSet
+        from src.domain.algorithms.config_set import ConfigurationSet
         from src.infrastructure.api.routes.config_sets import get_config_set_repository
         
         app.dependency_overrides[get_config_set_repository] = lambda: mock_repository
@@ -734,7 +734,7 @@ class TestActivateDeactivateConfigSet:
 
     def test_activate(self, client, mock_repository):
         """Test activating a ConfigurationSet."""
-        from src.domain.strategies.config_set import ConfigurationSet
+        from src.domain.algorithms.config_set import ConfigurationSet
         from src.infrastructure.api.routes.config_sets import get_config_set_repository
         
         app.dependency_overrides[get_config_set_repository] = lambda: mock_repository
@@ -752,7 +752,7 @@ class TestActivateDeactivateConfigSet:
 
     def test_deactivate(self, client, mock_repository):
         """Test deactivating a ConfigurationSet."""
-        from src.domain.strategies.config_set import ConfigurationSet
+        from src.domain.algorithms.config_set import ConfigurationSet
         from src.infrastructure.api.routes.config_sets import get_config_set_repository
         
         app.dependency_overrides[get_config_set_repository] = lambda: mock_repository
@@ -780,9 +780,9 @@ Create FastAPI endpoints for ConfigurationSet CRUD operations.
 
 ## Context
 
-- Step 1 complete: ConfigurationSet domain entity in src/domain/strategies/config_set.py
+- Step 1 complete: ConfigurationSet domain entity in src/domain/algorithms/config_set.py
 - Step 2 complete: Repository in src/infrastructure/repositories/config_set_repository_pg.py
-- Follow existing API pattern in src/infrastructure/api/routes/strategies.py
+- Follow existing API pattern in src/infrastructure/api/routes/algorithms.py
 - Use FastAPI with pydantic v2 for request/response models
 - Use TestClient from fastapi.testclient for testing
 

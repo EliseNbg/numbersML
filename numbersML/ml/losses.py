@@ -26,7 +26,7 @@ def pnl_loss(
     """
     Differentiable PnL loss.
 
-    Simulates a trading strategy where position size is a continuous
+    Simulates a trading algorithm where position size is a continuous
     function of predicted return, then penalizes negative PnL and
     adds transaction costs for turnover.
 
@@ -127,7 +127,7 @@ def expected_value_loss(
     stop: float,
 ) -> torch.Tensor:
     """
-    Loss based on expected value of a threshold‑based binary strategy.
+    Loss based on expected value of a threshold‑based binary algorithm.
 
     Args:
         pred_ret:  Model output (score) for each sample.

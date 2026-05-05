@@ -44,7 +44,7 @@ class IIndicatorProvider(ABC):
     """
     Interface for indicator providers.
 
-    This abstraction allows different loading strategies:
+    This abstraction allows different loading algorithms:
     - Database loading (production)
     - Python class loading (development/tests)
     - Mock loading (unit tests)

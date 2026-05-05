@@ -1,6 +1,6 @@
 """Domain repositories - Ports for data access."""
 
 from .base import Repository
-from .strategy_repository import StrategyRepository
+from .algorithm_repository import AlgorithmRepository
 
-__all__ = ["Repository", "StrategyRepository"]
+__all__ = ["Repository", "AlgorithmRepository"]

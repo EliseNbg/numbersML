@@ -22,7 +22,7 @@ The `recalculate_indicators` function in `src/cli/recalculate.py` has several pe
 
 ---
 
-## Optimization Strategy
+## Optimization Algorithm
 
 ### Phase 1: Eliminate Redundant DB Queries (HIGH IMPACT - 3-5x improvement)
 
@@ -358,7 +358,7 @@ async def process_symbol(sid):
 
 ---
 
-## Testing Strategy
+## Testing Algorithm
 
 ### Unit Tests
 ```python

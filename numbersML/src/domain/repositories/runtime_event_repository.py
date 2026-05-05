@@ -1,4 +1,4 @@
-"""Repository port for strategy runtime event persistence."""
+"""Repository port for algorithm runtime event persistence."""
 
 from abc import abstractmethod
 from datetime import datetime
@@ -6,29 +6,29 @@ from typing import Any
 from uuid import UUID
 
 from src.domain.repositories.base import Repository
-from src.domain.strategies.runtime import StrategyLifecycleEvent
+from src.domain.algorithms.runtime import AlgorithmLifecycleEvent
 
 
-class StrategyRuntimeEventRepository(Repository[StrategyLifecycleEvent, UUID]):
-    """Repository contract for strategy runtime lifecycle events.
+class AlgorithmRuntimeEventRepository(Repository[AlgorithmLifecycleEvent, UUID]):
+    """Repository contract for algorithm runtime lifecycle events.
 
-    Persists all state transitions for strategies during execution.
+    Persists all state transitions for algorithms during execution.
     Used for audit trails, debugging, and replaying events.
     """
 
     @abstractmethod
-    async def get_events_for_strategy(
+    async def get_events_for_algorithm(
         self,
-        strategy_id: UUID,
+        algorithm_id: UUID,
         from_time: datetime | None = None,
         to_time: datetime | None = None,
         event_types: list[str] | None = None,
         limit: int = 1000,
-    ) -> list[StrategyLifecycleEvent]:
-        """Fetch lifecycle events for a specific strategy.
+    ) -> list[AlgorithmLifecycleEvent]:
+        """Fetch lifecycle events for a specific algorithm.
 
         Args:
-            strategy_id: The strategy to get events for
+            algorithm_id: The algorithm to get events for
             from_time: Optional start time filter (inclusive)
             to_time: Optional end time filter (exclusive)
             event_types: Optional filter by event type names
@@ -44,8 +44,8 @@ class StrategyRuntimeEventRepository(Repository[StrategyLifecycleEvent, UUID]):
         event_type: str,
         from_time: datetime | None = None,
         limit: int = 1000,
-    ) -> list[StrategyLifecycleEvent]:
-        """Fetch events of a specific type across all strategies.
+    ) -> list[AlgorithmLifecycleEvent]:
+        """Fetch events of a specific type across all algorithms.
 
         Args:
             event_type: Event type name to filter by
@@ -58,10 +58,10 @@ class StrategyRuntimeEventRepository(Repository[StrategyLifecycleEvent, UUID]):
 
     @abstractmethod
     async def get_current_states(self) -> list[dict[str, Any]]:
-        """Get the most recent state for each strategy.
+        """Get the most recent state for each algorithm.
 
         Returns:
-            List of dicts with strategy_id, state, and last_state_change
+            List of dicts with algorithm_id, state, and last_state_change
         """
 
     @abstractmethod
@@ -69,7 +69,7 @@ class StrategyRuntimeEventRepository(Repository[StrategyLifecycleEvent, UUID]):
         self,
         since: datetime | None = None,
         limit: int = 100,
-    ) -> list[StrategyLifecycleEvent]:
+    ) -> list[AlgorithmLifecycleEvent]:
         """Get recent error state transitions.
 
         Args:

@@ -72,7 +72,7 @@ class EnrichmentService:
         Args:
             db_pool: PostgreSQL connection pool
             indicator_provider: Provider for loading indicators (dependency injection)
-            redis_pool: Redis connection pool (optional, for pub/sub to strategies)
+            redis_pool: Redis connection pool (optional, for pub/sub to algorithms)
             window_size: Number of ticks to load for calculations (default: 5000)
             min_ticks_for_calc: Minimum ticks required before calculating (default: 50)
 
@@ -122,7 +122,7 @@ class EnrichmentService:
         Initialize indicators from provider.
 
         Uses the injected IIndicatorProvider to load indicators.
-        This allows different loading strategies:
+        This allows different loading algorithms:
         - DatabaseIndicatorProvider (production)
         - PythonIndicatorProvider (tests/dev)
         - MockIndicatorProvider (unit tests)
@@ -440,7 +440,7 @@ class EnrichmentService:
         indicator_values: dict[str, float],
     ) -> None:
         """
-        Publish enriched tick to Redis for strategy consumption.
+        Publish enriched tick to Redis for algorithm consumption.
 
         Args:
             symbol_id: Symbol ID

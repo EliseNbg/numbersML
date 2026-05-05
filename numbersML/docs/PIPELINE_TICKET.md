@@ -35,7 +35,7 @@ class PipelineStep(IntEnum):
 |--------|-------|----------|
 | `LIVE_STEPS` | `{1, 2, 3}` | Live data collection |
 | `BACKFILL_STEPS` | `{1, 2, 3}` | Historical gap filling |
-| `BACKTEST_STEPS` | `{4, 6}` | Strategy evaluation on historical data |
+| `BACKTEST_STEPS` | `{4, 6}` | Algorithm evaluation on historical data |
 | Custom | `{3, 4}` | ML inference only (data already exists) |
 
 ```python

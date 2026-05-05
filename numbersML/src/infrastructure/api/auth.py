@@ -4,7 +4,7 @@ API authentication and authorization module.
 Provides:
 - API key validation
 - Role-based access control for sensitive operations
-- Policy checks for strategy lifecycle and market operations
+- Policy checks for algorithm lifecycle and market operations
 """
 
 import logging
@@ -93,7 +93,7 @@ async def require_read(auth: AuthContext = Depends(get_auth_context)) -> AuthCon
 
 
 async def require_trader(auth: AuthContext = Depends(get_auth_context)) -> AuthContext:
-    """Require trader access (can create orders, manage strategies)."""
+    """Require trader access (can create orders, manage algorithms)."""
     if not auth.has_any_role(["trader", "admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -112,9 +112,9 @@ async def require_admin(auth: AuthContext = Depends(get_auth_context)) -> AuthCo
     return auth
 
 
-def check_live_mode_policy(strategy_mode: str, auth: AuthContext) -> None:
+def check_live_mode_policy(algorithm_mode: str, auth: AuthContext) -> None:
     """Policy check: live mode operations require admin access."""
-    if strategy_mode == "live" and not auth.has_role("admin"):
+    if algorithm_mode == "live" and not auth.has_role("admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions",

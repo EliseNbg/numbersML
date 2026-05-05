@@ -50,9 +50,9 @@ This document tracks integration tests that are **currently excluded** from the 
 
 ---
 
-### 2. test_strategy_interface.py
+### 2. test_algorithm_interface.py
 
-**File**: `tests/integration/test_strategy_interface.py`  
+**File**: `tests/integration/test_algorithm_interface.py`  
 **Status**: 🔴 **BROKEN** (pre-existing)  
 **Excluded**: Yes (pytest.ini)
 
@@ -104,7 +104,7 @@ addopts =
     --tb=short
     --timeout=300
     --ignore=tests/integration/test_full_pipeline.py
-    --ignore=tests/integration/test_strategy_interface.py
+    --ignore=tests/integration/test_algorithm_interface.py
 ```
 
 ### Why This Approach?
@@ -128,7 +128,7 @@ addopts =
 ### Short-term (Step 022 or dedicated PR)
 
 - [ ] Fix `test_full_pipeline.py` (4-6 hours)
-- [ ] Fix `test_strategy_interface.py` (2-3 hours)
+- [ ] Fix `test_algorithm_interface.py` (2-3 hours)
 - [ ] Re-enable in pytest.ini
 - [ ] Verify all tests pass
 
@@ -149,8 +149,8 @@ cd numbersML
 # Full pipeline tests
 python3 -m pytest tests/integration/test_full_pipeline.py -v --tb=short
 
-# Strategy interface tests
-python3 -m pytest tests/integration/test_strategy_interface.py -v --tb=short
+# Algorithm interface tests
+python3 -m pytest tests/integration/test_algorithm_interface.py -v --tb=short
 
 # All integration tests (including excluded)
 python3 -m pytest tests/integration/ -v --tb=short

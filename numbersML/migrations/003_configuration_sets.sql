@@ -48,8 +48,8 @@ CREATE TRIGGER trigger_config_sets_updated_at
 --
 -- Comments
 --
-COMMENT ON TABLE configuration_sets IS 'Reusable configuration parameter sets for strategies';
+COMMENT ON TABLE configuration_sets IS 'Reusable configuration parameter sets for algorithms';
 COMMENT ON COLUMN configuration_sets.name IS 'Human-readable name (unique)';
 COMMENT ON COLUMN configuration_sets.config IS 'JSONB with symbols, thresholds, risk, execution params';
-COMMENT ON COLUMN configuration_sets.is_active IS 'Whether available for new strategy instances';
+COMMENT ON COLUMN configuration_sets.is_active IS 'Whether available for new algorithm instances';
 COMMENT ON COLUMN configuration_sets.version IS 'Incremented on each config update';

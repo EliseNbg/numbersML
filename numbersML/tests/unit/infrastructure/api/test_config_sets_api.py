@@ -58,7 +58,7 @@ class TestListConfigSets:
 
     def test_list_with_data(self, client, mock_repository):
         """Test listing config sets."""
-        from src.domain.strategies.config_set import ConfigurationSet
+        from src.domain.algorithms.config_set import ConfigurationSet
         from src.infrastructure.api.routes.config_sets import get_config_set_repository
 
         app.dependency_overrides[get_config_set_repository] = lambda: mock_repository
@@ -101,7 +101,7 @@ class TestCreateConfigSet:
 
     def test_create_success(self, client, mock_repository, sample_config_set_data):
         """Test creating a ConfigurationSet successfully."""
-        from src.domain.strategies.config_set import ConfigurationSet
+        from src.domain.algorithms.config_set import ConfigurationSet
         from src.infrastructure.api.routes.config_sets import get_config_set_repository
 
         app.dependency_overrides[get_config_set_repository] = lambda: mock_repository
@@ -122,7 +122,7 @@ class TestCreateConfigSet:
 
     def test_create_duplicate_name(self, client, mock_repository, sample_config_set_data):
         """Test creating with duplicate name returns 400."""
-        from src.domain.strategies.config_set import ConfigurationSet
+        from src.domain.algorithms.config_set import ConfigurationSet
         from src.infrastructure.api.routes.config_sets import get_config_set_repository
 
         app.dependency_overrides[get_config_set_repository] = lambda: mock_repository
@@ -157,7 +157,7 @@ class TestGetConfigSet:
 
     def test_get_existing(self, client, mock_repository):
         """Test getting an existing ConfigurationSet."""
-        from src.domain.strategies.config_set import ConfigurationSet
+        from src.domain.algorithms.config_set import ConfigurationSet
         from src.infrastructure.api.routes.config_sets import get_config_set_repository
 
         app.dependency_overrides[get_config_set_repository] = lambda: mock_repository
@@ -194,7 +194,7 @@ class TestUpdateConfigSet:
 
     def test_update_config(self, client, mock_repository):
         """Test updating ConfigurationSet config."""
-        from src.domain.strategies.config_set import ConfigurationSet
+        from src.domain.algorithms.config_set import ConfigurationSet
         from src.infrastructure.api.routes.config_sets import get_config_set_repository
 
         app.dependency_overrides[get_config_set_repository] = lambda: mock_repository
@@ -231,7 +231,7 @@ class TestUpdateConfigSet:
 
     def test_update_no_fields(self, client, mock_repository):
         """Test updating with no fields returns 400."""
-        from src.domain.strategies.config_set import ConfigurationSet
+        from src.domain.algorithms.config_set import ConfigurationSet
         from src.infrastructure.api.routes.config_sets import get_config_set_repository
 
         app.dependency_overrides[get_config_set_repository] = lambda: mock_repository
@@ -286,7 +286,7 @@ class TestActivateDeactivateConfigSet:
 
     def test_activate(self, client, mock_repository):
         """Test activating a ConfigurationSet."""
-        from src.domain.strategies.config_set import ConfigurationSet
+        from src.domain.algorithms.config_set import ConfigurationSet
         from src.infrastructure.api.routes.config_sets import get_config_set_repository
 
         app.dependency_overrides[get_config_set_repository] = lambda: mock_repository
@@ -304,7 +304,7 @@ class TestActivateDeactivateConfigSet:
 
     def test_deactivate(self, client, mock_repository):
         """Test deactivating a ConfigurationSet."""
-        from src.domain.strategies.config_set import ConfigurationSet
+        from src.domain.algorithms.config_set import ConfigurationSet
         from src.infrastructure.api.routes.config_sets import get_config_set_repository
 
         app.dependency_overrides[get_config_set_repository] = lambda: mock_repository

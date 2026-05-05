@@ -7,7 +7,7 @@
 All Phase 4 objectives have been completed:
 
 ### ✅ Step 1: ConfigurationSet Domain Model
-- `ConfigurationSet` entity created in `src/domain/strategies/config_set.py`
+- `ConfigurationSet` entity created in `src/domain/algorithms/config_set.py`
 - `RuntimeStats` value object for statistics
 - Full unit test coverage
 
@@ -21,14 +21,14 @@ All Phase 4 objectives have been completed:
 - Activation/deactivation endpoints
 - Pydantic request/response models
 
-### ✅ Step 4: StrategyInstance Domain Model
-- `StrategyInstance` entity in `src/domain/strategies/strategy_instance.py`
+### ✅ Step 4: AlgorithmInstance Domain Model
+- `AlgorithmInstance` entity in `src/domain/algorithms/algorithm_instance.py`
 - State machine (stopped → running → paused → stopped)
-- `StrategyInstanceState` enum
+- `AlgorithmInstanceState` enum
 
-### ✅ Step 5: StrategyInstance Repository & API
-- Migration `migrations/004_strategy_instances.sql`
-- `StrategyInstanceRepository` + `StrategyInstanceRepositoryPG`
+### ✅ Step 5: AlgorithmInstance Repository & API
+- Migration `migrations/004_algorithm_instances.sql`
+- `AlgorithmInstanceRepository` + `AlgorithmInstanceRepositoryPG`
 - Hot-plug endpoints (start/stop/pause/resume)
 
 ### ✅ Step 6: Real Backtest Engine Service
@@ -38,7 +38,7 @@ All Phase 4 objectives have been completed:
 - Full metrics: Sharpe, max drawdown, profit factor
 
 ### ✅ Step 7: Backtest API & Integration
-- Updated `src/infrastructure/api/routes/strategy_backtest.py`
+- Updated `src/infrastructure/api/routes/algorithm_backtest.py`
 - Uses real BacktestService (not simulation)
 - Time range presets (4h, 12h, 1d, 3d, 7d, 30d)
 
@@ -47,9 +47,9 @@ All Phase 4 objectives have been completed:
 - `dashboard/js/config_sets.js` with dynamic parameters
 - Add/remove custom parameters
 
-### ✅ Step 9: Dashboard - StrategyInstance Management
-- `dashboard/strategy-instances.html` with hot-plug controls
-- `dashboard/js/strategy-instances.js` with real-time polling
+### ✅ Step 9: Dashboard - AlgorithmInstance Management
+- `dashboard/algorithm-instances.html` with hot-plug controls
+- `dashboard/js/algorithm-instances.js` with real-time polling
 - Start/stop/pause/resume buttons
 
 ### ✅ Step 10: Dashboard - Enhanced Backtest Page
@@ -58,7 +58,7 @@ All Phase 4 objectives have been completed:
 - Equity curve chart, trade blotter, metrics cards
 
 ### ✅ Step 11: Grid Algorithm Implementation
-- `src/domain/strategies/grid_strategy.py`
+- `src/domain/algorithms/grid_algorithm.py`
 - Grid trading logic with configurable levels
 - Buy/sell signal generation
 
@@ -68,18 +68,18 @@ All Phase 4 objectives have been completed:
 - Positive PnL verification
 
 ### ✅ Step 13: Pipeline Integration
-- `src/application/services/strategy_instance_service.py`
+- `src/application/services/algorithm_instance_service.py`
 - Hot-plug/unplug integration with pipeline
-- StrategyManager updated to handle instances
+- AlgorithmManager updated to handle instances
 
 ## Acceptance Criteria - ALL MET ✅
 
 1. ✅ User can create ConfigurationSet with custom parameters via Dashboard
-2. ✅ User can link Algorithm + ConfigurationSet into StrategyInstance
-3. ✅ User can hot-plug StrategyInstance without pipeline restart
-4. ✅ Backtest for StrategyInstance runs real calculations with historical data
+2. ✅ User can link Algorithm + ConfigurationSet into AlgorithmInstance
+3. ✅ User can hot-plug AlgorithmInstance without pipeline restart
+4. ✅ Backtest for AlgorithmInstance runs real calculations with historical data
 5. ✅ Backtest results show PnL, buy/sell points, equity curve
-6. ✅ Grid strategy on TEST/USDT shows positive PnL on noised sin data
+6. ✅ Grid algorithm on TEST/USDT shows positive PnL on noised sin data
 7. ✅ All new code has >80% test coverage
 8. ✅ Lint and type checks pass
 
@@ -97,7 +97,7 @@ All Phase 4 objectives have been completed:
 - [ ] Run database migrations:
   ```bash
   psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f migrations/003_configuration_sets.sql
-  psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f migrations/004_strategy_instances.sql
+  psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f migrations/004_algorithm_instances.sql
   ```
 - [ ] Deploy backend:
   ```bash

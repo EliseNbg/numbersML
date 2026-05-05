@@ -2,7 +2,7 @@
 
 ## Objective
 
-Build a realistic, reproducible backtesting system for strategy versions over configurable time ranges.
+Build a realistic, reproducible backtesting system for algorithm versions over configurable time ranges.
 
 ## Scope
 
@@ -52,7 +52,7 @@ Implement Step 7 only: event-driven backtesting engine with detailed statistics.
 
 Tasks:
 1) Implement chronological event-driven backtest runner.
-2) Reuse strategy config and risk logic from runtime path where possible.
+2) Reuse algorithm config and risk logic from runtime path where possible.
 3) Execute orders through consistent paper execution semantics (fees/slippage/fill rules).
 4) Compute and persist:
    - summary metrics

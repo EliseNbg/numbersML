@@ -1,16 +1,16 @@
-# Step 9: Dashboard - StrategyInstance Management#
+# Step 9: Dashboard - AlgorithmInstance Management#
 
 ## Objective#
-Create dashboard page for managing StrategyInstances (linking Algorithm + ConfigurationSet) with hot-plug controls.
+Create dashboard page for managing AlgorithmInstances (linking Algorithm + ConfigurationSet) with hot-plug controls.
 
 ## Context#
-- Step 4-5 complete: StrategyInstance entity, repository, and API exist
+- Step 4-5 complete: AlgorithmInstance entity, repository, and API exist
 - Step 8 complete: ConfigurationSet dashboard page exists
-- Need to show StrategyInstances with status, runtime stats, and hot-plug controls#
+- Need to show AlgorithmInstances with status, runtime stats, and hot-plug controls#
 
 ## DDD Architecture Decision (ADR)#
 
-**Decision**: StrategyInstance dashboard shows linked entities#
+**Decision**: AlgorithmInstance dashboard shows linked entities#
 - **Table Columns**: Algorithm Name, Config Set Name, Status, Runtime Stats, Actions#
 - **Hot-Plug**: Start/Stop/Pause/Resume buttons#
 - **Real-time Stats**: PnL, trades, uptime (poll every 5 seconds)#
@@ -20,17 +20,17 @@ Create dashboard page for managing StrategyInstances (linking Algorithm + Config
 - Dropdown selectors for Algorithm and ConfigurationSet when creating#
 - Status badges with colors (running=green, stopped=gray, paused=yellow, error=red)#
 - Real-time statistics panel#
-- Navigation to backtest page with pre-filled StrategyInstance#
+- Navigation to backtest page with pre-filled AlgorithmInstance#
 
 ## TDD Approach#
 
 1. **Manual Testing Checklist**: Create HTML/JS, test all interactions#
-2. **Integration Test**: Test API calls to StrategyInstance endpoints#
+2. **Integration Test**: Test API calls to AlgorithmInstance endpoints#
 3. **State Management**: Test start/stop/pause/resume transitions#
 
 ## Implementation Files#
 
-### 1. `dashboard/strategy-instances.html`#
+### 1. `dashboard/algorithm-instances.html`#
 
 HTML page following existing pattern:
 
@@ -72,8 +72,8 @@ HTML page following existing pattern:
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="strategies.html">
-                            <i class="bi bi-cpu"></i> Strategies
+                        <a class="nav-link" href="algorithms.html">
+                            <i class="bi bi-cpu"></i> Algorithms
                         </a>
                     </li>
                     <li class="nav-item">
@@ -82,7 +82,7 @@ HTML page following existing pattern:
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link active" href="strategy-instances.html">
+                        <a class="nav-link active" href="algorithm-instances.html">
                             <i class="bi bi-diagram-3"></i> Instances
                         </a>
                     </li>
@@ -102,7 +102,7 @@ HTML page following existing pattern:
         <div class="row mb-4">
             <div class="col-12">
                 <h1><i class="bi bi-diagram-3"></i> Algorithm Instances</h1>
-                <p class="text-muted">Manage deployed strategies with specific configurations</p>
+                <p class="text-muted">Manage deployed algorithms with specific configurations</p>
             </div>
         </div>
 
@@ -181,8 +181,8 @@ HTML page following existing pattern:
                     <form id="instance-form">
                         <div class="mb-3">
                             <label class="form-label">Algorithm *</label>
-                            <select class="form-select" id="instance-strategy" required>
-                                <option value="">Select a strategy...</option>
+                            <select class="form-select" id="instance-algorithm" required>
+                                <option value="">Select a algorithm...</option>
                             </select>
                         </div>
                         <div class="mb-3">
@@ -257,22 +257,22 @@ HTML page following existing pattern:
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- StrategyInstances JS -->
-    <script src="js/strategy-instances.js"></script>
+    <!-- AlgorithmInstances JS -->
+    <script src="js/algorithm-instances.js"></script>
 </body>
 </html>
 ```
 
-### 2. `dashboard/js/strategy-instances.js`#
+### 2. `dashboard/js/algorithm-instances.js`#
 
 JavaScript module:
 
 ```javascript
 /**
- * StrategyInstance Management Dashboard Module
+ * AlgorithmInstance Management Dashboard Module
  * 
  * Handles:
- * - StrategyInstance CRUD operations
+ * - AlgorithmInstance CRUD operations
  * - Hot-plug (start/stop/pause/resume)
  * - Real-time statistics polling
  * - Navigation to backtest
@@ -282,7 +282,7 @@ const API_BASE_URL = '/api';
 
 // State
 let instances = [];
-let strategies = [];
+let algorithms = [];
 let configSets = [];
 let currentInstanceId = null;
 let pollInterval = null;
@@ -294,7 +294,7 @@ let instanceModal, statsModal;
 document.addEventListener('DOMContentLoaded', () => {
     initModals();
     bindEventListeners();
-    loadStrategies();
+    loadAlgorithms();
     loadConfigSets();
     loadInstances();
 });
@@ -312,7 +312,7 @@ function initModals() {
  */
 function bindEventListeners() {
     document.getElementById('btn-create').addEventListener('click', () => {
-        loadStrategies();
+        loadAlgorithms();
         loadConfigSets();
         instanceModal.show();
     });
@@ -323,24 +323,24 @@ function bindEventListeners() {
 }
 
 /**
- * Load strategies for dropdown
+ * Load algorithms for dropdown
  */
-async function loadStrategies() {
+async function loadAlgorithms() {
     try {
-        const response = await fetch(`${API_BASE_URL}/strategies?status=validated`);
+        const response = await fetch(`${API_BASE_URL}/algorithms?status=validated`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        strategies = await response.json();
+        algorithms = await response.json();
         
-        const select = document.getElementById('instance-strategy');
-        select.innerHTML = '<option value="">Select a strategy...</option>';
-        strategies.forEach(s => {
+        const select = document.getElementById('instance-algorithm');
+        select.innerHTML = '<option value="">Select a algorithm...</option>';
+        algorithms.forEach(s => {
             const option = document.createElement('option');
             option.value = s.id;
             option.textContent = s.name;
             select.appendChild(option);
         });
     } catch (error) {
-        showAlert('warning', `Failed to load strategies: ${error.message}`);
+        showAlert('warning', `Failed to load algorithms: ${error.message}`);
     }
 }
 
@@ -367,12 +367,12 @@ async function loadConfigSets() {
 }
 
 /**
- * Load all StrategyInstances from API
+ * Load all AlgorithmInstances from API
  */
 async function loadInstances() {
     try {
         showLoading();
-        const response = await fetch(`${API_BASE_URL}/strategy-instances`);
+        const response = await fetch(`${API_BASE_URL}/algorithm-instances`);
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -390,7 +390,7 @@ async function loadInstances() {
 }
 
 /**
- * Render StrategyInstances table
+ * Render AlgorithmInstances table
  */
 function renderInstances() {
     const tbody = document.getElementById('instances-tbody');
@@ -419,7 +419,7 @@ function renderInstances() {
     tbody.innerHTML = filtered.map(instance => `
         <tr class="instance-row" data-id="${instance.id}">
             <td>
-                <strong>${getStrategyName(instance.strategy_id)}</strong>
+                <strong>${getAlgorithmName(instance.algorithm_id)}</strong>
             </td>
             <td>${getConfigSetName(instance.config_set_id)}</td>
             <td>${renderStatusBadge(instance.status)}</td>
@@ -463,11 +463,11 @@ function renderInstances() {
 }
 
 /**
- * Get strategy name by ID
+ * Get algorithm name by ID
  */
-function getStrategyName(strategyId) {
-    const strategy = strategies.find(s => s.id === strategyId);
-    return strategy ? escapeHtml(strategy.name) : '<span class="text-muted">Unknown</span>';
+function getAlgorithmName(algorithmId) {
+    const algorithm = algorithms.find(s => s.id === algorithmId);
+    return algorithm ? escapeHtml(algorithm.name) : '<span class="text-muted">Unknown</span>';
 }
 
 /**
@@ -516,20 +516,20 @@ function formatUptime(seconds) {
  * Save Instance (create)
  */
 async function saveInstance() {
-    const strategyId = document.getElementById('instance-strategy').value;
+    const algorithmId = document.getElementById('instance-algorithm').value;
     const configSetId = document.getElementById('instance-config-set').value;
     
-    if (!strategyId || !configSetId) {
-        showAlert('warning', 'Please select both strategy and config set');
+    if (!algorithmId || !configSetId) {
+        showAlert('warning', 'Please select both algorithm and config set');
         return;
     }
     
     try {
-        const response = await fetch(`${API_BASE_URL}/strategy-instances`, {
+        const response = await fetch(`${API_BASE_URL}/algorithm-instances`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                strategy_id: strategyId,
+                algorithm_id: algorithmId,
                 config_set_id: configSetId,
             }),
         });
@@ -553,7 +553,7 @@ async function saveInstance() {
  */
 async function startInstance(instanceId) {
     try {
-        const response = await fetch(`${API_BASE_URL}/strategy-instances/${instanceId}/start`, {
+        const response = await fetch(`${API_BASE_URL}/algorithm-instances/${instanceId}/start`, {
             method: 'POST',
         });
         
@@ -576,7 +576,7 @@ async function stopInstance(instanceId) {
     if (!confirm('Are you sure you want to stop this instance?')) return;
     
     try {
-        const response = await fetch(`${API_BASE_URL}/strategy-instances/${instanceId}/stop`, {
+        const response = await fetch(`${API_BASE_URL}/algorithm-instances/${instanceId}/stop`, {
             method: 'POST',
         });
         
@@ -597,7 +597,7 @@ async function stopInstance(instanceId) {
  */
 async function pauseInstance(instanceId) {
     try {
-        const response = await fetch(`${API_BASE_URL}/strategy-instances/${instanceId}/pause`, {
+        const response = await fetch(`${API_BASE_URL}/algorithm-instances/${instanceId}/pause`, {
             method: 'POST',
         });
         
@@ -618,7 +618,7 @@ async function pauseInstance(instanceId) {
  */
 async function resumeInstance(instanceId) {
     try {
-        const response = await fetch(`${API_BASE_URL}/strategy-instances/${instanceId}/resume`, {
+        const response = await fetch(`${API_BASE_URL}/algorithm-instances/${instanceId}/resume`, {
             method: 'POST',
         });
         
@@ -668,7 +668,7 @@ async function deleteInstance(instanceId) {
     if (!confirm('Are you sure you want to delete this instance?')) return;
     
     try {
-        const response = await fetch(`${API_BASE_URL}/strategy-instances/${instanceId}`, {
+        const response = await fetch(`${API_BASE_URL}/algorithm-instances/${instanceId}`, {
             method: 'DELETE',
         });
         
@@ -757,44 +757,44 @@ function escapeHtml(text) {
 ## LLM Implementation Prompt#
 
 ```text
-You are implementing Step 9 of Phase 4: Dashboard - StrategyInstance Management.
+You are implementing Step 9 of Phase 4: Dashboard - AlgorithmInstance Management.
 
 ## Your Task#
 
-Create dashboard page for managing StrategyInstances with hot-plug controls.
+Create dashboard page for managing AlgorithmInstances with hot-plug controls.
 
 ## Context#
 
-- Step 4-5 complete: StrategyInstance entity, repository, and API exist
+- Step 4-5 complete: AlgorithmInstance entity, repository, and API exist
 - Step 8 complete: ConfigurationSet dashboard page exists as pattern
 - Use Bootstrap 5 + vanilla JavaScript (no React/Vue)
 - Follow existing dashboard styling (css/dashboard.css)
 
 ## Requirements#
 
-1. Create `dashboard/strategy-instances.html` with:
+1. Create `dashboard/algorithm-instances.html` with:
    - Navigation bar with "Instances" as active item
    - Action bar: New Instance, Refresh, Show Inactive toggle
    - Table with columns: Algorithm, Config Set, Status, PnL, Trades, Uptime, Actions
    - Create Instance Modal:
-     * Dropdown for Algorithm (load from /api/strategies)
+     * Dropdown for Algorithm (load from /api/algorithms)
      * Dropdown for ConfigurationSet (load from /api/config-sets)
    - Statistics Modal showing PnL, trades, win rate, uptime, last error
    - Update navigation in ALL dashboard pages to include "Instances" link
 
-2. Create `dashboard/js/strategy-instances.js` with:
-   - loadInstances(): Fetch from GET /api/strategy-instances
-   - loadStrategies(): Load strategies for dropdown
+2. Create `dashboard/js/algorithm-instances.js` with:
+   - loadInstances(): Fetch from GET /api/algorithm-instances
+   - loadAlgorithms(): Load algorithms for dropdown
    - loadConfigSets(): Load config sets for dropdown
    - renderInstances(): Display in table with status badges
-   - saveInstance(): Create (POST /api/strategy-instances)
-   - startInstance(id): Hot-plug (POST /api/strategy-instances/{id}/start)
-   - stopInstance(id): Unplug (POST /api/strategy-instances/{id}/stop)
-   - pauseInstance(id): POST /api/strategy-instances/{id}/pause
-   - resumeInstance(id): POST /api/strategy-instances/{id}/resume
+   - saveInstance(): Create (POST /api/algorithm-instances)
+   - startInstance(id): Hot-plug (POST /api/algorithm-instances/{id}/start)
+   - stopInstance(id): Unplug (POST /api/algorithm-instances/{id}/stop)
+   - pauseInstance(id): POST /api/algorithm-instances/{id}/pause
+   - resumeInstance(id): POST /api/algorithm-instances/{id}/resume
    - viewStats(id): Show statistics modal
    - runBacktest(id): Navigate to backtest.html?instance_id=...
-   - deleteInstance(id): DELETE /api/strategy-instances/{id}
+   - deleteInstance(id): DELETE /api/algorithm-instances/{id}
    - startPolling(): Poll every 5s for running instances
 
 3. Key Features:
@@ -815,7 +815,7 @@ Create dashboard page for managing StrategyInstances with hot-plug controls.
 
 ## Acceptance Criteria#
 
-1. Can create StrategyInstance (link Algorithm + ConfigSet)
+1. Can create AlgorithmInstance (link Algorithm + ConfigSet)
 2. Table shows all instances with correct data
 3. Start/Stop/Pause/Resume buttons work (hot-plug)
 4. Real-time stats polling for running instances
@@ -831,10 +831,10 @@ Create dashboard page for managing StrategyInstances with hot-plug controls.
 cd /home/andy/projects/numbers/numbersML
 .venv/bin/uvicorn src.infrastructure.api.app:app --reload
 
-# Open browser to http://localhost:8000/dashboard/strategy-instances.html
+# Open browser to http://localhost:8000/dashboard/algorithm-instances.html
 
 # Test cases:
-1. Click "New Instance" → Select strategy + config set → Save → Verify appears in table
+1. Click "New Instance" → Select algorithm + config set → Save → Verify appears in table
 2. Click Start button (play icon) → Verify status changes to "Running"
 3. Click Pause button → Verify status changes to "Paused"
 4. Click Resume button → Verify status changes back to "Running"
@@ -854,8 +854,8 @@ cd /home/andy/projects/numbers/numbersML
 
 ## Success Criteria#
 
-- [ ] strategy-instances.html created with all UI elements
-- [ ] strategy-instances.js created with all operations
+- [ ] algorithm-instances.html created with all UI elements
+- [ ] algorithm-instances.js created with all operations
 - [ ] Hot-plug controls working (start/stop/pause/resume)
 - [ ] Real-time polling for running instances
 - [ ] Statistics modal with PnL, trades, uptime

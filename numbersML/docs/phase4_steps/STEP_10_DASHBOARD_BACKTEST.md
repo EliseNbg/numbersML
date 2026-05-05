@@ -5,11 +5,11 @@ Create comprehensive backtest dashboard page with charts, statistics, and trade 
 
 ## Context#
 - Step 6-7 complete: BacktestService and API exist with real data#
-- Step 5 complete: StrategyInstance API exists#
+- Step 5 complete: AlgorithmInstance API exists#
 - Need to create page with:#
 
 **Key Features**:#
-- StrategyInstance selector#
+- AlgorithmInstance selector#
 - Time range presets (4h, 12h, 1d, 3d, 7d, 30d) + custom#
 - Results display:#
 
@@ -84,8 +84,8 @@ HTML page with Chart.js:
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="strategies.html">
-                            <i class="bi bi-cpu"></i> Strategies
+                        <a class="nav-link" href="algorithms.html">
+                            <i class="bi bi-cpu"></i> Algorithms
                         </a>
                     </li>
                     <li class="nav-item">
@@ -94,7 +94,7 @@ HTML page with Chart.js:
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="strategy-instances.html">
+                        <a class="nav-link" href="algorithm-instances.html">
                             <i class="bi bi-diagram-3"></i> Instances
                         </a>
                     </li>
@@ -114,7 +114,7 @@ HTML page with Chart.js:
         <div class="row mb-4">
             <div class="col-12">
                 <h1><i class="bi bi-graph-up-arrow"></i> Algorithm Backtest</h1>
-                <p class="text-muted">Test strategy performance on historical data</p>
+                <p class="text-muted">Test algorithm performance on historical data</p>
             </div>
         </div>
 
@@ -361,11 +361,11 @@ function bindEventListeners() {
 }
 
 /**
- * Load StrategyInstances for dropdown
+ * Load AlgorithmInstances for dropdown
  */
 async function loadInstances() {
     try {
-        const response = await fetch(`${API_BASE_URL}/strategy-instances`);
+        const response = await fetch(`${API_BASE_URL}/algorithm-instances`);
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -409,7 +409,7 @@ async function startBacktest() {
     const timeRange = activeBtn.dataset.range;
     
     let requestBody = {
-        strategy_instance_id: instanceId,
+        algorithm_instance_id: instanceId,
         time_range: timeRange,
         initial_balance: initialBalance,
     };
@@ -433,7 +433,7 @@ async function startBacktest() {
         btnStart.disabled = true;
         btnStart.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Submitting...';
         
-        const response = await fetch(`${API_BASE_URL}/strategy-backtests/jobs`, {
+        const response = await fetch(`${API_BASE_URL}/algorithm-backtests/jobs`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody),
@@ -479,7 +479,7 @@ async function checkJobStatus() {
     if (!currentJobId) return;
     
     try {
-        const response = await fetch(`${API_BASE_URL}/strategy-backtests/jobs/${currentJobId}`);
+        const response = await fetch(`${API_BASE_URL}/algorithm-backtests/jobs/${currentJobId}`);
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -710,16 +710,16 @@ Create comprehensive backtest dashboard with charts, statistics, and trade blott
 ## Context#
 
 - Step 6-7 complete: BacktestService and API exist
-- Step 5 complete: StrategyInstance API exists
+- Step 5 complete: AlgorithmInstance API exists
 - Use Bootstrap 5 + vanilla JavaScript + Chart.js
-- Follow existing dashboard pattern (see dashboard/strategies.html)
+- Follow existing dashboard pattern (see dashboard/algorithms.html)
 
 ## Requirements#
 
 1. Create `dashboard/backtest.html` with:
    - Navigation with "Backtest" as active item
    - Configuration section:
-     * StrategyInstance selector (dropdown)
+     * AlgorithmInstance selector (dropdown)
      * Initial Balance input
      * Time range presets: 4h, 12h, 1d, 3d, 7d, 30d
      * Custom range toggle (datetime-local inputs)
@@ -731,10 +731,10 @@ Create comprehensive backtest dashboard with charts, statistics, and trade blott
      * Trade Blotter table with all trade details
 
 2. Create `dashboard/js/backtest.js` with:
-   - loadInstances(): Fetch from GET /api/strategy-instances
-   - startBacktest(): POST /api/strategy-backtests/jobs
+   - loadInstances(): Fetch from GET /api/algorithm-instances
+   - startBacktest(): POST /api/algorithm-backtests/jobs
    - startPolling(): Poll every 2s for job status
-   - checkJobStatus(): GET /api/strategy-backtests/jobs/{id}
+   - checkJobStatus(): GET /api/algorithm-backtests/jobs/{id}
    - updateJobStatusCard(): Display progress/status
    - displayResults(metrics): Show summary + charts + trades
    - renderEquityCurve(data): Chart.js line chart
@@ -760,7 +760,7 @@ Create comprehensive backtest dashboard with charts, statistics, and trade blott
 
 ## Acceptance Criteria#
 
-1. Can select StrategyInstance from dropdown
+1. Can select AlgorithmInstance from dropdown
 2. Time range presets work (4h, 12h, 1d, 3d, 7d, 30d)
 3. Custom time range works with datetime-local inputs
 4. Backtest job submitted successfully

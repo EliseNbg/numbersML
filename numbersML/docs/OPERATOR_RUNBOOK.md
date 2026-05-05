@@ -1,4 +1,4 @@
-# Strategy System - Operator Runbook
+# Algorithm System - Operator Runbook
 
 ## Emergency Contacts
 
@@ -32,30 +32,30 @@ curl -X POST http://api-host/api/v1/system/emergency-stop \
 - On-call engineer judgment
 
 **After trigger:**
-1. All strategies stop immediately
+1. All algorithms stop immediately
 2. All new orders blocked
 3. Open positions remain (may need manual close)
 4. Audit log records the stop
 
 ---
 
-### 🟡 Single Strategy Stop
+### 🟡 Single Algorithm Stop
 ```bash
 # Via API
 curl -X POST http://api-host/api/v1/system/emergency-stop \
   -H "Content-Type: application/json" \
   -d '{
-    "level": "strategy",
-    "strategy_id": "<uuid>",
-    "reason": "Strategy malfunction",
+    "level": "algorithm",
+    "algorithm_id": "<uuid>",
+    "reason": "Algorithm malfunction",
     "triggered_by": "operator-name"
   }'
 ```
 
 **When to use:**
-- Single strategy generating bad signals
-- Strategy exceeding its risk limits
-- Suspected bug in one strategy
+- Single algorithm generating bad signals
+- Algorithm exceeding its risk limits
+- Suspected bug in one algorithm
 
 ---
 
@@ -97,13 +97,13 @@ curl -X POST http://api-host/api/v1/system/emergency-stop/release \
 # Check audit logs
 curl http://api-host/api/v1/audit?event_type=GUARDRAIL_BREACH&since=<timestamp>
 
-# Check strategy status
-curl http://api-host/api/v1/strategies/<id>/status
+# Check algorithm status
+curl http://api-host/api/v1/algorithms/<id>/status
 ```
 
 **Resolution:**
 - If legitimate market move: Document, wait for next day (reset)
-- If strategy bug: Fix before reactivating
+- If algorithm bug: Fix before reactivating
 - If data issue: Recalculate indicators
 
 ---
@@ -112,7 +112,7 @@ curl http://api-host/api/v1/strategies/<id>/status
 
 **Detection:**
 - Alert: `STALE_DATA: Data feed delayed > 60s`
-- Strategies auto-paused
+- Algorithms auto-paused
 
 **Immediate Actions:**
 1. Check data pipeline health
@@ -135,11 +135,11 @@ curl http://api-host/api/v1/candles/latest?symbol=BTC/USDC
 
 **Recovery:**
 - Data will auto-resume when fresh
-- Strategies auto-resume (or manual resume if needed)
+- Algorithms auto-resume (or manual resume if needed)
 
 ---
 
-### Type 3: Strategy Generating Bad Signals
+### Type 3: Algorithm Generating Bad Signals
 
 **Detection:**
 - Alert: `Signal quality degraded`
@@ -147,20 +147,20 @@ curl http://api-host/api/v1/candles/latest?symbol=BTC/USDC
 - Unusual trade patterns
 
 **Immediate Actions:**
-1. Pause the strategy (don't kill - preserve state)
+1. Pause the algorithm (don't kill - preserve state)
 2. Check recent signal history
 3. Compare to backtest expectations
 
 **Investigation:**
 ```bash
-# Get strategy telemetry
-curl http://api-host/api/v1/strategies/<id>/telemetry
+# Get algorithm telemetry
+curl http://api-host/api/v1/algorithms/<id>/telemetry
 
 # Check recent signals
-curl http://api-host/api/v1/strategies/<id>/signals?limit=100
+curl http://api-host/api/v1/algorithms/<id>/signals?limit=100
 
 # Run fresh backtest
-curl -X POST http://api-host/api/v1/strategies/<id>/backtest \
+curl -X POST http://api-host/api/v1/algorithms/<id>/backtest \
   -d '{"start_time": "...", "end_time": "..."}'
 ```
 
@@ -191,7 +191,7 @@ curl -X POST http://api-host/api/v1/strategies/<id>/backtest \
 **Investigation:**
 ```bash
 # Check order history
-curl http://api-host/api/v1/strategies/<id>/orders?status=error
+curl http://api-host/api/v1/algorithms/<id>/orders?status=error
 
 # Check exchange balance
 curl http://api-host/api/v1/market/balance
@@ -217,14 +217,14 @@ curl http://api-host/api/v1/market/balance
 # Check system metrics
 curl http://api-host/api/v1/system/metrics
 
-# Check strategy health
-curl http://api-host/api/v1/strategies/health
+# Check algorithm health
+curl http://api-host/api/v1/algorithms/health
 ```
 
 **Resolution:**
 - Scale horizontally (add instances)
 - Restart affected services
-- Reduce active strategy count temporarily
+- Reduce active algorithm count temporarily
 
 ---
 
@@ -236,12 +236,12 @@ curl http://api-host/api/v1/strategies/health
 
 **Procedure:**
 ```bash
-# 1. Emergency stop all strategies
+# 1. Emergency stop all algorithms
 curl -X POST /api/v1/system/emergency-stop \
   -d '{"level": "full", "reason": "Code rollback"}'
 
 # 2. Rollback deployment
-kubectl rollout undo deployment/strategy-api
+kubectl rollout undo deployment/algorithm-api
 # OR
 docker-compose down && docker-compose up -d --build
 
@@ -250,7 +250,7 @@ curl http://api-host/api/v1/health
 
 # 4. Resume in paper mode first
 curl -X POST /api/v1/system/emergency-stop/release
-# Activate strategies in paper mode
+# Activate algorithms in paper mode
 
 # 5. Verify stable, then enable live
 ```
@@ -280,17 +280,17 @@ pg_restore --clean --if-exists backup.dump
 **Procedure:**
 ```bash
 # 1. Identify bad config version
-curl http://api-host/api/v1/strategies/<id>/config/history
+curl http://api-host/api/v1/algorithms/<id>/config/history
 
 # 2. Revert to previous version
-curl -X POST /api/v1/strategies/<id>/config/revert \
+curl -X POST /api/v1/algorithms/<id>/config/revert \
   -d '{"to_version": <previous_version>}'
 
-# 3. If strategy stuck, kill and reactivate
+# 3. If algorithm stuck, kill and reactivate
 curl -X POST /api/v1/system/emergency-stop
 # Wait 5 seconds
 curl -X POST /api/v1/system/emergency-stop/release
-curl -X POST /api/v1/strategies/<id>/activate
+curl -X POST /api/v1/algorithms/<id>/activate
 ```
 
 ---
@@ -302,8 +302,8 @@ curl -X POST /api/v1/strategies/<id>/activate
 # System health
 curl http://api-host/api/v1/health
 
-# Strategy health
-curl http://api-host/api/v1/strategies/health
+# Algorithm health
+curl http://api-host/api/v1/algorithms/health
 
 # Risk status
 curl http://api-host/api/v1/risk/status
@@ -320,26 +320,26 @@ curl "http://api-host/api/v1/audit?limit=100"
 # Critical events only
 curl "http://api-host/api/v1/audit?min_severity=critical&since=2024-01-01"
 
-# Specific strategy
-curl "http://api-host/api/v1/audit?target_type=strategy&target_id=<uuid>"
+# Specific algorithm
+curl "http://api-host/api/v1/audit?target_type=algorithm&target_id=<uuid>"
 
 # Kill switch events
 curl "http://api-host/api/v1/audit?event_type=KILL_SWITCH_TRIGGERED"
 ```
 
-### Strategy Operations
+### Algorithm Operations
 ```bash
-# List all strategies
-curl http://api-host/api/v1/strategies
+# List all algorithms
+curl http://api-host/api/v1/algorithms
 
-# Get strategy status
-curl http://api-host/api/v1/strategies/<id>/status
+# Get algorithm status
+curl http://api-host/api/v1/algorithms/<id>/status
 
 # Get P&L
-curl http://api-host/api/v1/strategies/<id>/pnl
+curl http://api-host/api/v1/algorithms/<id>/pnl
 
 # Get telemetry
-curl http://api-host/api/v1/strategies/<id>/telemetry
+curl http://api-host/api/v1/algorithms/<id>/telemetry
 ```
 
 ---
@@ -375,7 +375,7 @@ curl http://api-host/api/v1/strategies/<id>/telemetry
 | HH:MM | Resolution |
 
 ### Impact
-- Strategies affected: 
+- Algorithms affected: 
 - P&L impact: 
 - Data gaps: 
 
@@ -410,7 +410,7 @@ curl http://api-host/api/v1/strategies/<id>/telemetry
 | Change Type | Approver | Testing Required |
 |-------------|----------|------------------|
 | Config change (minor) | Risk Manager | Paper mode |
-| New strategy | Risk Committee | 7-day paper |
+| New algorithm | Risk Committee | 7-day paper |
 | Code deployment | Tech Lead | Full suite |
 | Risk limit change | CFO | N/A |
 | Emergency patch | On-call | Minimal |

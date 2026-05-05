@@ -1,5 +1,5 @@
 """
-Backtest Engine - Event-driven strategy backtesting with detailed statistics.
+Backtest Engine - Event-driven algorithm backtesting with detailed statistics.
 
 Provides:
 - Chronological event-driven backtest loop
@@ -19,7 +19,7 @@ from uuid import UUID, uuid4
 
 import numpy as np
 
-from src.domain.strategies.base import (
+from src.domain.algorithms.base import (
     EnrichedTick,
     Signal,
     SignalType,
@@ -127,8 +127,8 @@ class BacktestResult:
     """Complete backtest result."""
 
     run_id: UUID
-    strategy_id: UUID
-    strategy_version: int
+    algorithm_id: UUID
+    algorithm_version: int
     config_snapshot: dict[str, Any]
 
     start_time: datetime
@@ -445,7 +445,7 @@ class BacktestMetricsCalculator:
 
 class BacktestEngine:
     """
-    Event-driven backtesting engine for trading strategies.
+    Event-driven backtesting engine for trading algorithms.
 
     Features:
     - Chronological event processing (no lookahead bias)
@@ -466,8 +466,8 @@ class BacktestEngine:
 
     async def run_backtest(
         self,
-        strategy_id: UUID,
-        strategy_version: int,
+        algorithm_id: UUID,
+        algorithm_version: int,
         config: dict[str, Any],
         symbols: list[str],
         start_time: datetime,
@@ -476,12 +476,12 @@ class BacktestEngine:
         progress_callback: Optional[Callable[[float], None]] = None,
     ) -> BacktestResult:
         """
-        Run a complete backtest for a strategy.
+        Run a complete backtest for a algorithm.
 
         Args:
-            strategy_id: Strategy ID
-            strategy_version: Strategy version number
-            config: Strategy configuration
+            algorithm_id: Algorithm ID
+            algorithm_version: Algorithm version number
+            config: Algorithm configuration
             symbols: List of symbols to trade
             start_time: Backtest start time
             end_time: Backtest end time
@@ -492,7 +492,7 @@ class BacktestEngine:
             Complete backtest result with metrics
         """
         run_id = uuid4()
-        logger.info(f"Starting backtest {run_id}: {strategy_id} v{strategy_version}")
+        logger.info(f"Starting backtest {run_id}: {algorithm_id} v{algorithm_version}")
 
         # Reset simulator
         self.execution_sim.reset()
@@ -559,7 +559,7 @@ class BacktestEngine:
                     del positions[symbol]
                     continue
 
-            # Generate signal (simplified - would use actual strategy)
+            # Generate signal (simplified - would use actual algorithm)
             signal = self._generate_signal(config, candle, positions)
 
             if signal:
@@ -637,8 +637,8 @@ class BacktestEngine:
 
         return BacktestResult(
             run_id=run_id,
-            strategy_id=strategy_id,
-            strategy_version=strategy_version,
+            algorithm_id=algorithm_id,
+            algorithm_version=algorithm_version,
             config_snapshot=config,
             start_time=start_time,
             end_time=end_time,
@@ -721,7 +721,7 @@ class BacktestEngine:
         """
         Generate trading signal based on config.
 
-        Simplified implementation - would use actual strategy logic.
+        Simplified implementation - would use actual algorithm logic.
         """
         signal_config = config.get("signal", {})
         signal_type = signal_config.get("type", "rsi")
@@ -741,7 +741,7 @@ class BacktestEngine:
                 if rsi_value < oversold and not positions:
                     # Buy signal
                     return Signal(
-                        strategy_id="backtest",
+                        algorithm_id="backtest",
                         symbol="BTC/USDC",
                         signal_type=SignalType.BUY,
                         price=Decimal(str(candle["close"])),
@@ -751,7 +751,7 @@ class BacktestEngine:
                 elif rsi_value > overbought and positions:
                     # Sell signal
                     return Signal(
-                        strategy_id="backtest",
+                        algorithm_id="backtest",
                         symbol="BTC/USDC",
                         signal_type=SignalType.SELL,
                         price=Decimal(str(candle["close"])),

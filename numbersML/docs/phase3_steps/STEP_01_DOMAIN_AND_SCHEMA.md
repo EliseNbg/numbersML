@@ -2,23 +2,23 @@
 
 ## Objective
 
-Create the canonical strategy/backtest data model and persistence layer so every later step builds on stable contracts.
+Create the canonical algorithm/backtest data model and persistence layer so every later step builds on stable contracts.
 
 ## Why This Step First
 
-- Enables versioned strategy configs.
+- Enables versioned algorithm configs.
 - Provides audit and reproducibility baseline.
 - Decouples runtime/UI work from database uncertainty.
 
 ## Scope
 
 - DB migrations for:
-  - `strategies`
-  - `strategy_versions`
-  - `strategy_runs`
-  - `strategy_backtests`
-  - `strategy_events`
-- Canonical strategy JSON schema (`schema_version: 1`)
+  - `algorithms`
+  - `algorithm_versions`
+  - `algorithm_runs`
+  - `algorithm_backtests`
+  - `algorithm_events`
+- Canonical algorithm JSON schema (`schema_version: 1`)
 - Domain models and repository interfaces
 - PostgreSQL repository implementation
 - Unit tests for CRUD, versioning, and validation
@@ -38,7 +38,7 @@ Create the canonical strategy/backtest data model and persistence layer so every
 ## Deliverables
 
 - Migration SQL files
-- Schema file for strategy config
+- Schema file for algorithm config
 - Domain entities/value objects
 - Repository interface + PG implementation
 - Unit tests and fixtures
@@ -58,17 +58,17 @@ You are implementing Step 1 only: Domain and Schema Foundation for a Python 3.11
 
 Requirements:
 1) Add SQL migrations for:
-   - strategies
-   - strategy_versions
-   - strategy_runs
-   - strategy_backtests
-   - strategy_events
-2) Create a canonical strategy JSON schema v1 with sections:
+   - algorithms
+   - algorithm_versions
+   - algorithm_runs
+   - algorithm_backtests
+   - algorithm_events
+2) Create a canonical algorithm JSON schema v1 with sections:
    meta, universe, signal, risk, execution, mode, status.
 3) Implement domain models/value objects and repository interfaces.
 4) Implement PostgreSQL repository adapter with asyncpg.
 5) Add unit tests for:
-   - create/read/update strategy
+   - create/read/update algorithm
    - publish new version and version increment rules
    - config schema validation (valid + invalid payloads)
 
@@ -93,7 +93,7 @@ Tasks:
 1) Run lint/format/type checks relevant to changed files.
 2) Run all step-specific unit tests.
 3) Add/adjust tests for uncovered edge cases:
-   - duplicate strategy names policy
+   - duplicate algorithm names policy
    - invalid schema_version
    - invalid risk bounds (negative limits, impossible ranges)
    - version race-safety assumptions

@@ -179,7 +179,7 @@ numbersML/
 | Step | Description | Effort | Priority |
 |------|-------------|--------|----------|
 | **012** | Algorithm Interface | 3 hours | MEDIUM |
-| **013** | Sample Strategies | 4 hours | MEDIUM |
+| **013** | Sample Algorithms | 4 hours | MEDIUM |
 
 ### LOW PRIORITY (Phase 2/3 per Architecture)
 
@@ -210,20 +210,20 @@ Focus on reliability and testing:
 
 ### Option 2: Feature Complete
 
-Focus on strategy integration:
+Focus on algorithm integration:
 
 1. **Step 012**: Algorithm Interface
    - Redis subscription interface
-   - Strategy base class
+   - Algorithm base class
    - Signal generation
 
-2. **Step 013**: Sample Strategies
-   - RSI strategy
-   - MACD strategy
+2. **Step 013**: Sample Algorithms
+   - RSI algorithm
+   - MACD algorithm
    - Moving average crossover
 
 **Time**: ~7 hours
-**Outcome**: Working strategy framework
+**Outcome**: Working algorithm framework
 
 ### Option 3: Documentation & Polish
 
@@ -267,7 +267,7 @@ Focus on usability:
 - [x] 15+ indicators implemented
 - [x] Real-time calculation
 - [x] Auto-recalculation on changes
-- [x] Redis pub/sub for strategies
+- [x] Redis pub/sub for algorithms
 
 ### Operations ⚠️
 
@@ -330,7 +330,7 @@ Focus on usability:
 ✅ Detects anomalies (8 types)
 ✅ Calculates 15+ indicators in real-time
 ✅ Auto-recalculates on indicator changes
-✅ Publishes to Redis for strategies
+✅ Publishes to Redis for algorithms
 ✅ Syncs asset metadata daily
 ✅ EU compliance filtering
 ✅ Health monitoring

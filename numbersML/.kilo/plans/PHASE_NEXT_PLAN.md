@@ -1,21 +1,21 @@
-# Trading Strategy Management Platform - Next Phase Plan
+# Trading Algorithm Management Platform - Next Phase Plan
 
 ## Overview
-This plan details the implementation of a complete trading strategy management system with web GUI, market service, strategy activation/deactivation, and backtesting capabilities.
+This plan details the implementation of a complete trading algorithm management system with web GUI, market service, algorithm activation/deactivation, and backtesting capabilities.
 
 ## Architecture
 
 ### Core Components to Build
 
-#### 1. Strategy Configuration & Persistence Layer
-**Objective**: Store, retrieve, and manage trading strategies in the database
+#### 1. Algorithm Configuration & Persistence Layer
+**Objective**: Store, retrieve, and manage trading algorithms in the database
 
 **Database Schema Additions**:
 ```sql
-CREATE TABLE trading_strategies (
+CREATE TABLE trading_algorithms (
     id SERIAL PRIMARY KEY,
-    strategy_id VARCHAR(100) UNIQUE NOT NULL,
-    strategy_type VARCHAR(50) NOT NULL,
+    algorithm_id VARCHAR(100) UNIQUE NOT NULL,
+    algorithm_type VARCHAR(50) NOT NULL,
     name VARCHAR(200) NOT NULL,
     description TEXT,
     symbols TEXT[] NOT NULL,
@@ -29,9 +29,9 @@ CREATE TABLE trading_strategies (
     version INTEGER DEFAULT 1
 );
 
-CREATE TABLE strategy_execution_log (
+CREATE TABLE algorithm_execution_log (
     id BIGSERIAL PRIMARY KEY,
-    strategy_id VARCHAR(100) NOT NULL,
+    algorithm_id VARCHAR(100) NOT NULL,
     execution_mode VARCHAR(20) NOT NULL,
     symbol VARCHAR(50) NOT NULL,
     signal_type VARCHAR(10) NOT NULL,
@@ -47,7 +47,7 @@ CREATE TABLE strategy_execution_log (
 
 CREATE TABLE backtest_results (
     id SERIAL PRIMARY KEY,
-    strategy_id VARCHAR(100) NOT NULL,
+    algorithm_id VARCHAR(100) NOT NULL,
     symbol VARCHAR(50) NOT NULL,
     start_time TIMESTAMPTZ NOT NULL,
     end_time TIMESTAMPTZ NOT NULL,
@@ -68,20 +68,20 @@ CREATE TABLE backtest_results (
 );
 ```
 
-#### 2. Strategy Management Service (Application Layer)
-**File**: `src/application/services/strategy_manager.py`
+#### 2. Algorithm Management Service (Application Layer)
+**File**: `src/application/services/algorithm_manager.py`
 
 ```python
-class StrategyManager:
-    async def create_strategy(self, strategy_data: Dict) -> Dict
-    async def update_strategy(self, strategy_id: str, updates: Dict) -> bool
-    async def delete_strategy(self, strategy_id: str) -> bool
-    async def get_strategy(self, strategy_id: str) -> Dict
-    async def list_strategies(self, active_only: bool = False) -> List[Dict]
-    async def activate_strategy(self, strategy_id: str) -> bool
-    async def deactivate_strategy(self, strategy_id: str) -> bool
-    async def execute_strategy(self, strategy_id: str, mode: str) -> Signal
-    async def get_strategy_stats(self, strategy_id: str) -> Dict
+class AlgorithmManager:
+    async def create_algorithm(self, algorithm_data: Dict) -> Dict
+    async def update_algorithm(self, algorithm_id: str, updates: Dict) -> bool
+    async def delete_algorithm(self, algorithm_id: str) -> bool
+    async def get_algorithm(self, algorithm_id: str) -> Dict
+    async def list_algorithms(self, active_only: bool = False) -> List[Dict]
+    async def activate_algorithm(self, algorithm_id: str) -> bool
+    async def deactivate_algorithm(self, algorithm_id: str) -> bool
+    async def execute_algorithm(self, algorithm_id: str, mode: str) -> Signal
+    async def get_algorithm_stats(self, algorithm_id: str) -> Dict
 ```
 
 #### 3. Market Service (Trading Execution)
@@ -107,7 +107,7 @@ class MarketService:
 ```python
 class BacktestEngine:
     async def run_backtest(
-        self, strategy_id: str, symbol: str,
+        self, algorithm_id: str, symbol: str,
         start_time: datetime, end_time: datetime,
         initial_capital: float
     ) -> BacktestResult
@@ -117,16 +117,16 @@ class BacktestEngine:
 ```
 
 #### 5. Dashboard API Routes
-- `src/infrastructure/api/routes/strategies.py`
+- `src/infrastructure/api/routes/algorithms.py`
 - `src/infrastructure/api/routes/market.py`
 - `src/infrastructure/api/routes/backtest.py` (extend)
 
 #### 6. Web GUI Components
-- `dashboard/strategy-manager.html`
+- `dashboard/algorithm-manager.html`
 - `dashboard/market-controls.html`
 - `dashboard/backtest-interface.html`
-- `dashboard/strategy-activator.html`
-- `dashboard/js/strategy-manager.js`
+- `dashboard/algorithm-activator.html`
+- `dashboard/js/algorithm-manager.js`
 - `dashboard/js/market-service.js`
 - `dashboard/js/backtest-runner.js`
 
@@ -134,42 +134,42 @@ class BacktestEngine:
 
 ### Phase 1: Database & Domain Layer (Week 1)
 **Tasks**:
-1. Add strategy tables to database schema
+1. Add algorithm tables to database schema
 2. Create database migration scripts
-3. Update domain models for strategies
-4. Implement strategy repository pattern
+3. Update domain models for algorithms
+4. Implement algorithm repository pattern
 
 **Files**:
 - `migrations/` - Migration SQL files
-- `src/domain/models/strategy.py` - New model
-- `src/domain/strategies/base.py` - Enhance base class
-- `src/domain/repositories/strategy_repo.py` - Repository
+- `src/domain/models/algorithm.py` - New model
+- `src/domain/algorithms/base.py` - Enhance base class
+- `src/domain/repositories/algorithm_repo.py` - Repository
 
 ### Phase 2: Service Layer (Week 1-2)
 **Tasks**:
-1. Implement StrategyManager service
+1. Implement AlgorithmManager service
 2. Implement MarketService with test/prod modes
 3. Implement BacktestEngine
-4. Integrate with existing StrategyRunner
+4. Integrate with existing AlgorithmRunner
 
 **Files to create**:
-- `src/application/services/strategy_manager.py`
+- `src/application/services/algorithm_manager.py`
 - `src/infrastructure/exchanges/market_service.py`
 - `src/application/services/backtest_engine.py`
 
 **Files to modify**:
-- `src/application/services/strategy_runner.py`
-- `src/domain/strategies/__init__.py`
+- `src/application/services/algorithm_runner.py`
+- `src/domain/algorithms/__init__.py`
 
 ### Phase 3: API Layer (Week 2)
 **Tasks**:
-1. Create Strategy API routes (CRUD, activate/deactivate)
+1. Create Algorithm API routes (CRUD, activate/deactivate)
 2. Create Market Service API routes
 3. Create Backtest API routes
 4. Add routes to FastAPI app
 
 **Files to create**:
-- `src/infrastructure/api/routes/strategies.py`
+- `src/infrastructure/api/routes/algorithms.py`
 - `src/infrastructure/api/routes/market.py`
 
 **Files to modify**:
@@ -179,21 +179,21 @@ class BacktestEngine:
 
 ### Phase 4: Web GUI (Week 2-3)
 **Tasks**:
-1. Create HTML templates for strategy management
+1. Create HTML templates for algorithm management
 2. Create market controls interface
 3. Create backtesting interface
 4. Add JavaScript for API interactions
 5. Style with existing CSS framework
 
 **Files to create**:
-- `dashboard/strategy-manager.html`
+- `dashboard/algorithm-manager.html`
 - `dashboard/market-controls.html`
 - `dashboard/backtest-interface.html`
-- `dashboard/strategy-activator.html`
-- `dashboard/js/strategy-manager.js`
+- `dashboard/algorithm-activator.html`
+- `dashboard/js/algorithm-manager.js`
 - `dashboard/js/market-service.js`
 - `dashboard/js/backtest-runner.js`
-- `dashboard/css/strategy-styles.css`
+- `dashboard/css/algorithm-styles.css`
 
 ### Phase 5: Integration & Testing (Week 3)
 **Tasks**:
@@ -203,24 +203,24 @@ class BacktestEngine:
 4. Documentation updates
 
 **Files to create**:
-- `tests/unit/test_strategy_manager.py`
+- `tests/unit/test_algorithm_manager.py`
 - `tests/unit/test_market_service.py`
 - `tests/unit/test_backtest_engine.py`
-- `tests/integration/test_strategy_flow.py`
+- `tests/integration/test_algorithm_flow.py`
 
 ## API Endpoints
 
-### Strategy Management
+### Algorithm Management
 ```
-GET    /api/strategies              - List all strategies
-POST   /api/strategies              - Create new strategy
-GET    /api/strategies/{id}         - Get strategy details
-PUT    /api/strategies/{id}         - Update strategy
-DELETE /api/strategies/{id}         - Delete strategy
-POST   /api/strategies/{id}/activate   - Activate strategy
-POST   /api/strategies/{id}/deactivate - Deactivate strategy
-POST   /api/strategies/{id}/execute    - Execute strategy (test/prod)
-GET    /api/strategies/{id}/stats   - Get strategy statistics
+GET    /api/algorithms              - List all algorithms
+POST   /api/algorithms              - Create new algorithm
+GET    /api/algorithms/{id}         - Get algorithm details
+PUT    /api/algorithms/{id}         - Update algorithm
+DELETE /api/algorithms/{id}         - Delete algorithm
+POST   /api/algorithms/{id}/activate   - Activate algorithm
+POST   /api/algorithms/{id}/deactivate - Deactivate algorithm
+POST   /api/algorithms/{id}/execute    - Execute algorithm (test/prod)
+GET    /api/algorithms/{id}/stats   - Get algorithm statistics
 ```
 
 ### Market Service
@@ -238,17 +238,17 @@ POST   /api/market/mode                 - Set mode (test/prod)
 POST   /api/backtest_ml/run                - Run backtest
 GET    /api/backtest_ml/results/{id}       - Get backtest results
 GET    /api/backtest_ml/list               - List all backtests
-POST   /api/backtest_ml/compare            - Compare multiple strategies
+POST   /api/backtest_ml/compare            - Compare multiple algorithms
 ```
 
 ## Database Schema Details
 
-### trading_strategies table
+### trading_algorithms table
 ```sql
-CREATE TABLE trading_strategies (
+CREATE TABLE trading_algorithms (
     id SERIAL PRIMARY KEY,
-    strategy_id VARCHAR(100) UNIQUE NOT NULL,
-    strategy_type VARCHAR(50) NOT NULL,
+    algorithm_id VARCHAR(100) UNIQUE NOT NULL,
+    algorithm_type VARCHAR(50) NOT NULL,
     name VARCHAR(200) NOT NULL,
     description TEXT,
     symbols TEXT[] NOT NULL,
@@ -262,15 +262,15 @@ CREATE TABLE trading_strategies (
     version INTEGER DEFAULT 1
 );
 
-CREATE INDEX idx_strategies_active ON trading_strategies(is_active) WHERE is_active = true;
-CREATE INDEX idx_strategies_type ON trading_strategies(strategy_type);
+CREATE INDEX idx_algorithms_active ON trading_algorithms(is_active) WHERE is_active = true;
+CREATE INDEX idx_algorithms_type ON trading_algorithms(algorithm_type);
 ```
 
-### strategy_execution_log table
+### algorithm_execution_log table
 ```sql
-CREATE TABLE strategy_execution_log (
+CREATE TABLE algorithm_execution_log (
     id BIGSERIAL PRIMARY KEY,
-    strategy_id VARCHAR(100) NOT NULL,
+    algorithm_id VARCHAR(100) NOT NULL,
     execution_mode VARCHAR(20) NOT NULL,
     symbol VARCHAR(50) NOT NULL,
     signal_type VARCHAR(10) NOT NULL,
@@ -282,18 +282,18 @@ CREATE TABLE strategy_execution_log (
     executed_at TIMESTAMPTZ DEFAULT NOW(),
     status VARCHAR(20) DEFAULT 'pending',
     metadata JSONB,
-    FOREIGN KEY (strategy_id) REFERENCES trading_strategies(strategy_id)
+    FOREIGN KEY (algorithm_id) REFERENCES trading_algorithms(algorithm_id)
 );
 
-CREATE INDEX idx_exec_log_strategy ON strategy_execution_log(strategy_id);
-CREATE INDEX idx_exec_log_time ON strategy_execution_log(executed_at DESC);
+CREATE INDEX idx_exec_log_algorithm ON algorithm_execution_log(algorithm_id);
+CREATE INDEX idx_exec_log_time ON algorithm_execution_log(executed_at DESC);
 ```
 
 ### backtest_results table
 ```sql
 CREATE TABLE backtest_results (
     id SERIAL PRIMARY KEY,
-    strategy_id VARCHAR(100) NOT NULL,
+    algorithm_id VARCHAR(100) NOT NULL,
     symbol VARCHAR(50) NOT NULL,
     start_time TIMESTAMPTZ NOT NULL,
     end_time TIMESTAMPTZ NOT NULL,
@@ -311,24 +311,24 @@ CREATE TABLE backtest_results (
     avg_trade_duration INTERVAL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     parameters_snapshot JSONB,
-    FOREIGN KEY (strategy_id) REFERENCES trading_strategies(strategy_id)
+    FOREIGN KEY (algorithm_id) REFERENCES trading_algorithms(algorithm_id)
 );
 
-CREATE INDEX idx_backtest_strategy ON backtest_results(strategy_id);
+CREATE INDEX idx_backtest_algorithm ON backtest_results(algorithm_id);
 CREATE INDEX idx_backtest_time ON backtest_results(start_time, end_time);
 ```
 
 ## Best Practices
 
 ### Configuration Variables Design
-- JSONB for flexible strategy parameters
+- JSONB for flexible algorithm parameters
 - Parameter validation schemas
-- Version strategies for audit trail
+- Version algorithms for audit trail
 - Dynamic parameter updates
 - Confidence thresholds
 
 ### Integration with Existing System
-- Reuses Strategy base class from domain layer
+- Reuses Algorithm base class from domain layer
 - Leverages existing Redis pub/sub for tick data
 - Uses existing indicator calculator
 - Compatible with existing pipeline architecture
@@ -374,7 +374,7 @@ CREATE INDEX idx_backtest_time ON backtest_results(start_time, end_time);
 ## Success Metrics
 
 - All CRUD operations working
-- Strategies can be activated from dashboard
+- Algorithms can be activated from dashboard
 - Backtests complete with >95% accuracy
 - Paper trading mode functional
 - Live trading mode ready (with safeguards)
@@ -394,4 +394,4 @@ CREATE INDEX idx_backtest_time ON backtest_results(start_time, end_time);
 2. **Data Integrity**: DB transactions, backup before migrations
 3. **Performance**: Proper indexing, async throughout
 4. **Security**: Input validation, rate limiting, mode separation
-5. **Rollback**: Reversible migrations, versioned strategies
+5. **Rollback**: Reversible migrations, versioned algorithms

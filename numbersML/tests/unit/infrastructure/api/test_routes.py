@@ -19,8 +19,8 @@ from src.infrastructure.api.routes.indicators import router as indicators_router
 from src.infrastructure.api.routes.market import router as market_router
 from src.infrastructure.api.routes.ml import router as ml_router
 from src.infrastructure.api.routes.pipeline import router as pipeline_router
-from src.infrastructure.api.routes.strategies import router as strategies_router
-from src.infrastructure.api.routes.strategy_backtest import router as strategy_backtest_router
+from src.infrastructure.api.routes.algorithms import router as algorithms_router
+from src.infrastructure.api.routes.algorithm_backtest import router as algorithm_backtest_router
 from src.infrastructure.api.routes.symbols import router as symbols_router
 from src.infrastructure.api.routes.target_values import router as target_values_router
 
@@ -400,12 +400,12 @@ class TestPipelineRoutes:
         assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
 
 
-class TestStrategyRoutes:
-    """Test strategy API routes."""
+class TestAlgorithmRoutes:
+    """Test algorithm API routes."""
 
     @pytest.fixture
     def app(self) -> FastAPI:
-        """Create test app with strategy routes."""
+        """Create test app with algorithm routes."""
         from unittest.mock import MagicMock
 
         import asyncpg
@@ -421,7 +421,7 @@ class TestStrategyRoutes:
 
         set_db_pool(mock_pool)
 
-        app.include_router(strategies_router)
+        app.include_router(algorithms_router)
         return app
 
     @pytest.fixture
@@ -430,16 +430,16 @@ class TestStrategyRoutes:
         return TestClient(app, raise_server_exceptions=False)
 
     def test_routes_registered(self, client: TestClient) -> None:
-        """Test that strategy routes are registered."""
-        # All strategy CRUD routes
-        response = client.get("/api/strategies")
+        """Test that algorithm routes are registered."""
+        # All algorithm CRUD routes
+        response = client.get("/api/algorithms")
         assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
 
-        response = client.get("/api/strategies/123e4567-e89b-12d3-a456-426614174000")
+        response = client.get("/api/algorithms/123e4567-e89b-12d3-a456-426614174000")
         assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
 
         response = client.post(
-            "/api/strategies",
+            "/api/algorithms",
             json={
                 "name": "test",
                 "config": {
@@ -456,34 +456,34 @@ class TestStrategyRoutes:
         assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
 
         response = client.put(
-            "/api/strategies/123e4567-e89b-12d3-a456-426614174000", json={"name": "updated"}
+            "/api/algorithms/123e4567-e89b-12d3-a456-426614174000", json={"name": "updated"}
         )
         assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
 
         # Lifecycle endpoints
         response = client.post(
-            "/api/strategies/123e4567-e89b-12d3-a456-426614174000/activate", json={}
+            "/api/algorithms/123e4567-e89b-12d3-a456-426614174000/activate", json={}
         )
         assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
 
         response = client.post(
-            "/api/strategies/123e4567-e89b-12d3-a456-426614174000/deactivate", json={}
+            "/api/algorithms/123e4567-e89b-12d3-a456-426614174000/deactivate", json={}
         )
         assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
 
         response = client.post(
-            "/api/strategies/123e4567-e89b-12d3-a456-426614174000/pause", json={}
+            "/api/algorithms/123e4567-e89b-12d3-a456-426614174000/pause", json={}
         )
         assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
 
         response = client.post(
-            "/api/strategies/123e4567-e89b-12d3-a456-426614174000/resume", json={}
+            "/api/algorithms/123e4567-e89b-12d3-a456-426614174000/resume", json={}
         )
         assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
 
         # Versions
         response = client.post(
-            "/api/strategies/123e4567-e89b-12d3-a456-426614174000/versions",
+            "/api/algorithms/123e4567-e89b-12d3-a456-426614174000/versions",
             json={
                 "config": {
                     "meta": {},
@@ -498,17 +498,17 @@ class TestStrategyRoutes:
         )
         assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
 
-        response = client.get("/api/strategies/123e4567-e89b-12d3-a456-426614174000/versions")
+        response = client.get("/api/algorithms/123e4567-e89b-12d3-a456-426614174000/versions")
         assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
 
         # LLM generation
-        response = client.post("/api/strategies/generate", json={})
+        response = client.post("/api/algorithms/generate", json={})
         assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
 
-    def test_strategy_lifecycle_validation(self, client: TestClient) -> None:
-        """Test strategy lifecycle validation."""
+    def test_algorithm_lifecycle_validation(self, client: TestClient) -> None:
+        """Test algorithm lifecycle validation."""
         # Invalid UUID format - returns 422 or 404
-        response = client.get("/api/strategies/invalid-uuid")
+        response = client.get("/api/algorithms/invalid-uuid")
         assert response.status_code in [
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             status.HTTP_404_NOT_FOUND,
@@ -516,7 +516,7 @@ class TestStrategyRoutes:
 
         # Missing required fields for creation
         response = client.post(
-            "/api/strategies",
+            "/api/algorithms",
             json={
                 "name": "test"
                 # Missing config
@@ -584,14 +584,14 @@ class TestMarketRoutes:
         assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
 
 
-class TestStrategyBacktestRoutes:
-    """Test strategy backtest API routes."""
+class TestAlgorithmBacktestRoutes:
+    """Test algorithm backtest API routes."""
 
     @pytest.fixture
     def app(self) -> FastAPI:
-        """Create test app with strategy backtest routes."""
+        """Create test app with algorithm backtest routes."""
         app = FastAPI()
-        app.include_router(strategy_backtest_router)
+        app.include_router(algorithm_backtest_router)
         return app
 
     @pytest.fixture
@@ -603,9 +603,9 @@ class TestStrategyBacktestRoutes:
         """Test that backtest routes are registered."""
         # Submit job
         response = client.post(
-            "/api/strategy-backtests/jobs",
+            "/api/algorithm-backtests/jobs",
             json={
-                "strategy_id": "123e4567-e89b-12d3-a456-426614174000",
+                "algorithm_id": "123e4567-e89b-12d3-a456-426614174000",
                 "time_range_start": "2024-01-01T00:00:00",
                 "time_range_end": "2024-01-08T00:00:00",
                 "initial_balance": 10000.0,
@@ -614,13 +614,13 @@ class TestStrategyBacktestRoutes:
         assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
 
         # Get job status (returns unknown job error, not 501)
-        response = client.get("/api/strategy-backtests/jobs/unknown-job")
+        response = client.get("/api/algorithm-backtests/jobs/unknown-job")
         assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
 
         # List jobs
-        response = client.get("/api/strategy-backtests/jobs")
+        response = client.get("/api/algorithm-backtests/jobs")
         assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED
 
         # List saved results
-        response = client.get("/api/strategy-backtests/results")
+        response = client.get("/api/algorithm-backtests/results")
         assert response.status_code != status.HTTP_501_NOT_IMPLEMENTED

@@ -115,18 +115,18 @@ class TestConfigurationSetsE2E:
         expect(page.locator(".alert-success")).to_be_visible()
 
 
-class TestStrategyInstancesE2E:
-    """E2E tests for StrategyInstance management."""
+class TestAlgorithmInstancesE2E:
+    """E2E tests for AlgorithmInstance management."""
     
     def test_create_instance(self, page: Page, base_url):
-        """Test creating a StrategyInstance."""
-        page.goto(f"{base_url}/dashboard/strategy-instances.html")
+        """Test creating a AlgorithmInstance."""
+        page.goto(f"{base_url}/dashboard/algorithm-instances.html")
         
         # Click create
         page.click("text=New Instance")
         
-        # Select strategy
-        page.select_option("#instance-strategy", index=1)
+        # Select algorithm
+        page.select_option("#instance-algorithm", index=1)
         
         # Select config set
         page.select_option("#instance-config-set", index=1)
@@ -138,8 +138,8 @@ class TestStrategyInstancesE2E:
         expect(page.locator(".alert-success")).to_be_visible()
     
     def test_start_instance(self, page: Page, base_url):
-        """Test starting (hot-plug) a StrategyInstance."""
-        page.goto(f"{base_url}/dashboard/strategy-instances.html")
+        """Test starting (hot-plug) a AlgorithmInstance."""
+        page.goto(f"{base_url}/dashboard/algorithm-instances.html")
         
         # Click start button (play icon, first row)
         page.click(".instance-row:first-child .bi-play-fill")
@@ -148,8 +148,8 @@ class TestStrategyInstancesE2E:
         page.wait_for_selector("text=Running", timeout=5000)
     
     def test_stop_instance(self, page: Page, base_url):
-        """Test stopping (unplug) a StrategyInstance."""
-        page.goto(f"{base_url}/dashboard/strategy-instances.html")
+        """Test stopping (unplug) a AlgorithmInstance."""
+        page.goto(f"{base_url}/dashboard/algorithm-instances.html")
         
         # Click stop button (stop icon)
         page.click(".instance-row:first-child .bi-stop-fill")
@@ -227,7 +227,7 @@ Update with final implementation status:
 All Phase 4 objectives have been completed:
 
 ### ✅ Step 1: ConfigurationSet Domain Model
-- `ConfigurationSet` entity created in `src/domain/strategies/config_set.py`
+- `ConfigurationSet` entity created in `src/domain/algorithms/config_set.py`
 - `RuntimeStats` value object for statistics
 - Full unit test coverage
 
@@ -241,14 +241,14 @@ All Phase 4 objectives have been completed:
 - Activation/deactivation endpoints
 - Pydantic request/response models
 
-### ✅ Step 4: StrategyInstance Domain Model
-- `StrategyInstance` entity in `src/domain/strategies/strategy_instance.py`
+### ✅ Step 4: AlgorithmInstance Domain Model
+- `AlgorithmInstance` entity in `src/domain/algorithms/algorithm_instance.py`
 - State machine (stopped → running → paused → stopped)
-- `StrategyInstanceState` enum
+- `AlgorithmInstanceState` enum
 
-### ✅ Step 5: StrategyInstance Repository & API
-- Migration `migrations/004_strategy_instances.sql`
-- `StrategyInstanceRepository` + `StrategyInstanceRepositoryPG`
+### ✅ Step 5: AlgorithmInstance Repository & API
+- Migration `migrations/004_algorithm_instances.sql`
+- `AlgorithmInstanceRepository` + `AlgorithmInstanceRepositoryPG`
 - Hot-plug endpoints (start/stop/pause/resume)
 
 ### ✅ Step 6: Real Backtest Engine Service
@@ -258,7 +258,7 @@ All Phase 4 objectives have been completed:
 - Full metrics: Sharpe, max drawdown, profit factor
 
 ### ✅ Step 7: Backtest API & Integration
-- Updated `src/infrastructure/api/routes/strategy_backtest.py`
+- Updated `src/infrastructure/api/routes/algorithm_backtest.py`
 - Uses real BacktestService (not simulation)
 - Time range presets (4h, 12h, 1d, 3d, 7d, 30d)
 
@@ -267,9 +267,9 @@ All Phase 4 objectives have been completed:
 - `dashboard/js/config_sets.js` with dynamic parameters
 - Add/remove custom parameters
 
-### ✅ Step 9: Dashboard - StrategyInstance Management
-- `dashboard/strategy-instances.html` with hot-plug controls
-- `dashboard/js/strategy-instances.js` with real-time polling
+### ✅ Step 9: Dashboard - AlgorithmInstance Management
+- `dashboard/algorithm-instances.html` with hot-plug controls
+- `dashboard/js/algorithm-instances.js` with real-time polling
 - Start/stop/pause/resume buttons
 
 ### ✅ Step 10: Dashboard - Enhanced Backtest Page
@@ -278,7 +278,7 @@ All Phase 4 objectives have been completed:
 - Equity curve chart, trade blotter, metrics cards
 
 ### ✅ Step 11: Grid Algorithm Implementation
-- `src/domain/strategies/grid_strategy.py`
+- `src/domain/algorithms/grid_algorithm.py`
 - Grid trading logic with configurable levels
 - Buy/sell signal generation
 
@@ -288,18 +288,18 @@ All Phase 4 objectives have been completed:
 - Positive PnL verification
 
 ### ✅ Step 13: Pipeline Integration
-- `src/application/services/strategy_instance_service.py`
+- `src/application/services/algorithm_instance_service.py`
 - Hot-plug/unplug integration with pipeline
-- StrategyManager updated to handle instances
+- AlgorithmManager updated to handle instances
 
 ## Acceptance Criteria - ALL MET ✅
 
 1. ✅ User can create ConfigurationSet with custom parameters via Dashboard
-2. ✅ User can link Algorithm + ConfigurationSet into StrategyInstance
-3. ✅ User can hot-plug StrategyInstance without pipeline restart
-4. ✅ Backtest for StrategyInstance runs real calculations with historical data
+2. ✅ User can link Algorithm + ConfigurationSet into AlgorithmInstance
+3. ✅ User can hot-plug AlgorithmInstance without pipeline restart
+4. ✅ Backtest for AlgorithmInstance runs real calculations with historical data
 5. ✅ Backtest results show PnL, buy/sell points, equity curve
-6. ✅ Grid strategy on TEST/USDT shows positive PnL on noised sin data
+6. ✅ Grid algorithm on TEST/USDT shows positive PnL on noised sin data
 7. ✅ All new code has >80% test coverage
 8. ✅ Lint and type checks pass
 
@@ -317,7 +317,7 @@ All Phase 4 objectives have been completed:
 - [ ] Run database migrations:
   ```bash
   psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f migrations/003_configuration_sets.sql
-  psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f migrations/004_strategy_instances.sql
+  psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f migrations/004_algorithm_instances.sql
   ```
 - [ ] Deploy backend:
   ```bash
@@ -349,27 +349,27 @@ Add Phase 4 to main project README:
 ## Phase 4: Algorithm Management & Backtesting ✅
 
 ### New Features
-- **ConfigurationSets**: Reusable parameter sets for strategies
-- **StrategyInstances**: Link strategies with configuration for deployment
-- **Hot-Plug**: Start/stop strategies without pipeline restart
+- **ConfigurationSets**: Reusable parameter sets for algorithms
+- **AlgorithmInstances**: Link algorithms with configuration for deployment
+- **Hot-Plug**: Start/stop algorithms without pipeline restart
 - **Real Backtesting**: Historical data replay with NO indicator recalculation
 - **Dashboard Pages**:
   - ConfigurationSet management with dynamic parameters
-  - StrategyInstance management with hot-plug controls
+  - AlgorithmInstance management with hot-plug controls
   - Enhanced backtest page with Chart.js visualizations
-- **Grid Algorithm**: Simple grid trading strategy for TEST/USDT
+- **Grid Algorithm**: Simple grid trading algorithm for TEST/USDT
 
 ### API Endpoints
 - `POST /api/config-sets` - Create ConfigurationSet
 - `GET /api/config-sets` - List ConfigurationSets
-- `POST /api/strategy-instances` - Create StrategyInstance
-- `POST /api/strategy-instances/{id}/start` - Hot-plug
-- `POST /api/strategy-backtests/jobs` - Submit backtest
-- `GET /api/strategy-backtests/jobs/{id}` - Get results
+- `POST /api/algorithm-instances` - Create AlgorithmInstance
+- `POST /api/algorithm-instances/{id}/start` - Hot-plug
+- `POST /api/algorithm-backtests/jobs` - Submit backtest
+- `GET /api/algorithm-backtests/jobs/{id}` - Get results
 
 ### Database Migrations
 - `migrations/003_configuration_sets.sql`
-- `migrations/004_strategy_instances.sql`
+- `migrations/004_algorithm_instances.sql`
 
 ### Test Coverage
 - >80% for all new code
@@ -398,7 +398,7 @@ class TestFullPhase4Flow:
         """
         Test complete flow:
         1. Create ConfigurationSet
-        2. Create StrategyInstance
+        2. Create AlgorithmInstance
         3. Submit backtest
         4. Verify results
         """
@@ -423,7 +423,7 @@ class TestFullPhase4Flow:
         pytest.skip("Requires running pipeline")
     
     
-    def test_grid_strategy_positive_pnl(self):
+    def test_grid_algorithm_positive_pnl(self):
         """
         Test that Grid Algorithm shows positive PnL on TEST/USDT.
         
@@ -465,7 +465,7 @@ Comprehensive testing, documentation, and rollout preparation.
 
 1. Create `tests/e2e/test_phase4_e2e.py` with Playwright:
    - TestConfigurationSetsE2E: create, edit, delete
-   - TestStrategyInstancesE2E: create, start, stop, pause
+   - TestAlgorithmInstancesE2E: create, start, stop, pause
    - TestBacktestE2E: submit, wait for completion, verify charts
    - Use Playwright sync API (page, expect)
    - Run with: pytest tests/e2e/test_phase4_e2e.py -v --headed
@@ -485,7 +485,7 @@ Comprehensive testing, documentation, and rollout preparation.
    - TestFullPhase4Flow: complete flow test
    - test_config_set_to_backtest_flow
    - test_hot_plug_flow
-   - test_grid_strategy_positive_pnl
+   - test_grid_algorithm_positive_pnl
 
 5. Run ALL tests and verify passing:
    ```bash

@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from src.domain.repositories.config_set_repository import ConfigSetRepository
-from src.domain.strategies.config_set import ConfigurationSet
+from src.domain.algorithms.config_set import ConfigurationSet
 from src.infrastructure.api.auth import require_admin, require_read, require_trader
 from src.infrastructure.database import get_db_pool_async
 from src.infrastructure.repositories.config_set_repository_pg import (

@@ -5,7 +5,7 @@ Create dashboard page for managing ConfigurationSets (CRUD) with dynamic paramet
 
 ## Context
 - Step 1-3 complete: ConfigurationSet entity, repository, and API endpoints exist
-- Existing dashboard pattern: `dashboard/strategies.html` and `dashboard/js/strategies.js`
+- Existing dashboard pattern: `dashboard/algorithms.html` and `dashboard/js/algorithms.js`
 - Need to follow existing Bootstrap 5 + vanilla JS pattern
 
 ## DDD Architecture Decision (ADR)
@@ -74,8 +74,8 @@ HTML page following existing pattern:
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="strategies.html">
-                            <i class="bi bi-cpu"></i> Strategies
+                        <a class="nav-link" href="algorithms.html">
+                            <i class="bi bi-cpu"></i> Algorithms
                         </a>
                     </li>
                     <li class="nav-item">
@@ -84,7 +84,7 @@ HTML page following existing pattern:
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="strategy-instances.html">
+                        <a class="nav-link" href="algorithm-instances.html">
                             <i class="bi bi-diagram-3"></i> Instances
                         </a>
                     </li>
@@ -104,7 +104,7 @@ HTML page following existing pattern:
         <div class="row mb-4">
             <div class="col-12">
                 <h1><i class="bi bi-sliders"></i> Configuration Sets</h1>
-                <p class="text-muted">Manage reusable configuration parameters for strategies</p>
+                <p class="text-muted">Manage reusable configuration parameters for algorithms</p>
             </div>
         </div>
 
@@ -677,7 +677,7 @@ Create dashboard page for managing ConfigurationSets with CRUD and dynamic param
 ## Context#
 
 - Step 1-3 complete: ConfigurationSet entity, repository, and API endpoints exist
-- Existing pattern: `dashboard/strategies.html` and `dashboard/js/strategies.js`
+- Existing pattern: `dashboard/algorithms.html` and `dashboard/js/algorithms.js`
 - Use Bootstrap 5 + vanilla JavaScript (no React/Vue)
 - Follow existing dashboard styling (css/dashboard.css)
 
@@ -709,7 +709,7 @@ Create dashboard page for managing ConfigurationSets with CRUD and dynamic param
    - showAlert(), escapeHtml() utilities
 
 3. Update existing dashboard pages to link to config_sets.html:
-   - Update navigation in index.html, strategies.html, symbols.html, etc.
+   - Update navigation in index.html, algorithms.html, symbols.html, etc.
    - Add "Config Sets" nav item with bi-sliders icon
 
 ## Constraints#

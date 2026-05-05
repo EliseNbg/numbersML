@@ -66,11 +66,11 @@ function bindEventListeners() {
 }
 
 /**
- * Load StrategyInstances for dropdown
+ * Load AlgorithmInstances for dropdown
  */
 async function loadInstances() {
     try {
-        const response = await fetch(`${API_BASE_URL}/strategy-instances`);
+        const response = await fetch(`${API_BASE_URL}/algorithm-instances`);
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -114,7 +114,7 @@ async function startBacktest() {
     const timeRange = activeBtn.dataset.range;
     
     let requestBody = {
-        strategy_instance_id: instanceId,
+        algorithm_instance_id: instanceId,
         time_range: timeRange,
         initial_balance: initialBalance,
     };
@@ -138,7 +138,7 @@ async function startBacktest() {
         btnStart.disabled = true;
         btnStart.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Submitting...';
         
-        const response = await fetch(`${API_BASE_URL}/strategy-backtests/jobs`, {
+        const response = await fetch(`${API_BASE_URL}/algorithm-backtests/jobs`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody),
@@ -184,7 +184,7 @@ async function checkJobStatus() {
     if (!currentJobId) return;
     
     try {
-        const response = await fetch(`${API_BASE_URL}/strategy-backtests/jobs/${currentJobId}`);
+        const response = await fetch(`${API_BASE_URL}/algorithm-backtests/jobs/${currentJobId}`);
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);

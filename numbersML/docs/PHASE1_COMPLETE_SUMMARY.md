@@ -257,7 +257,7 @@ Configure in GitHub Settings:
 ## 🎯 What's NOT in Phase 1
 
 **Deferred to Phase 2/3**:
-- ❌ Trading strategies
+- ❌ Trading algorithms
 - ❌ Risk management
 - ❌ Order execution
 - ❌ Backtesting engine
@@ -305,7 +305,7 @@ cat TEST_SUITE_COMPLETE.md
 3. **Add more historical data** (backfill)
 4. **Implement Phase 2 features**:
    - Backtesting engine
-   - Trading strategies
+   - Trading algorithms
    - Risk management
 
 ---

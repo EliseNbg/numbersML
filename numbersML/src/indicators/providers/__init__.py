@@ -1,7 +1,7 @@
 """
 Indicator Providers Package
 
-This package provides different indicator loading strategies:
+This package provides different indicator loading algorithms:
 
 - provider: IIndicatorProvider interface
 - python: PythonIndicatorProvider (explicit registration)

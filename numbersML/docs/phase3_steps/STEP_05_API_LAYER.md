@@ -1,8 +1,8 @@
-# Step 5: API Layer (Strategies, Market, Backtesting)
+# Step 5: API Layer (Algorithms, Market, Backtesting)
 
 ## Objective
 
-Expose strategy lifecycle, market operations, and backtesting through consistent FastAPI routes.
+Expose algorithm lifecycle, market operations, and backtesting through consistent FastAPI routes.
 
 ## Scope
 
@@ -23,7 +23,7 @@ Expose strategy lifecycle, market operations, and backtesting through consistent
 ## Out of Scope
 
 - Dashboard UI
-- Deep strategy runtime refactors
+- Deep algorithm runtime refactors
 
 ## Dependencies
 
@@ -45,10 +45,10 @@ Expose strategy lifecycle, market operations, and backtesting through consistent
 ## Implementation Prompt (Best Prompt for LLM)
 
 ```text
-Implement Step 5 only: FastAPI routes for strategies, market, and backtesting.
+Implement Step 5 only: FastAPI routes for algorithms, market, and backtesting.
 
 Tasks:
-1) Create/extend route modules for strategy, market, backtest domains.
+1) Create/extend route modules for algorithm, market, backtest domains.
 2) Add request/response pydantic models with strong validation.
 3) Wire routes into API app and ensure dependency injection for services.
 4) Add authorization checks for:

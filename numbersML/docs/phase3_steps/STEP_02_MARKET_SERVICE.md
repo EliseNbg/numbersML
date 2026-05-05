@@ -19,7 +19,7 @@ Implement a single market execution abstraction with two modes: paper/test and l
 - Implement `LiveMarketService` adapter:
   - exchange request translation
   - retries/backoff
-  - idempotency key strategy
+  - idempotency key algorithm
   - robust error mapping
 - Implement mode-based factory
 - Integration tests for paper flow
@@ -54,7 +54,7 @@ Implement Step 2 only: Market Service abstraction with paper and live adapters.
 
 Project constraints:
 - Python 3.11, asyncpg, DDD layering.
-- Preserve clear boundary: strategy signal logic must not know exchange specifics.
+- Preserve clear boundary: algorithm signal logic must not know exchange specifics.
 
 Tasks:
 1) Define MarketService interface and domain order/fill/position models.
@@ -74,7 +74,7 @@ Tasks:
    - retry/idempotency behavior
    - mode switch safety
 
-Out of scope: API routes, dashboard, strategy runner.
+Out of scope: API routes, dashboard, algorithm runner.
 
 Output:
 - Files changed

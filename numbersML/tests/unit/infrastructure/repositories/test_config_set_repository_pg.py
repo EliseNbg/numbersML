@@ -13,7 +13,7 @@ from uuid import uuid4
 import asyncpg
 import pytest
 
-from src.domain.strategies.config_set import ConfigurationSet
+from src.domain.algorithms.config_set import ConfigurationSet
 from src.infrastructure.repositories.config_set_repository_pg import ConfigSetRepositoryPG
 
 

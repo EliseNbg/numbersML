@@ -977,10 +977,10 @@ COMMENT ON TABLE "public"."service_status" IS 'Real-time service status';
 
 
 --
--- Name: strategies; Type: TABLE; Schema: public; Owner: -
+-- Name: algorithms; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE "public"."strategies" (
+CREATE TABLE "public"."algorithms" (
     "id" "uuid" DEFAULT "public"."uuid_generate_v4"() NOT NULL,
     "name" "text" NOT NULL,
     "description" "text",
@@ -990,20 +990,20 @@ CREATE TABLE "public"."strategies" (
     "created_by" "text" DEFAULT 'system'::"text" NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    CONSTRAINT "strategies_current_version_check" CHECK (("current_version" > 0)),
-    CONSTRAINT "strategies_mode_check" CHECK (("mode" = ANY (ARRAY['paper'::"text", 'live'::"text"]))),
-    CONSTRAINT "strategies_status_check" CHECK (("status" = ANY (ARRAY['draft'::"text", 'validated'::"text", 'active'::"text", 'paused'::"text", 'archived'::"text"])))
+    CONSTRAINT "algorithms_current_version_check" CHECK (("current_version" > 0)),
+    CONSTRAINT "algorithms_mode_check" CHECK (("mode" = ANY (ARRAY['paper'::"text", 'live'::"text"]))),
+    CONSTRAINT "algorithms_status_check" CHECK (("status" = ANY (ARRAY['draft'::"text", 'validated'::"text", 'active'::"text", 'paused'::"text", 'archived'::"text"])))
 );
 
 
 --
--- Name: strategy_backtests; Type: TABLE; Schema: public; Owner: -
+-- Name: algorithm_backtests; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE "public"."strategy_backtests" (
+CREATE TABLE "public"."algorithm_backtests" (
     "id" "uuid" DEFAULT "public"."uuid_generate_v4"() NOT NULL,
-    "strategy_id" "uuid" NOT NULL,
-    "strategy_version_id" "uuid" NOT NULL,
+    "algorithm_id" "uuid" NOT NULL,
+    "algorithm_version_id" "uuid" NOT NULL,
     "time_range_start" timestamp with time zone NOT NULL,
     "time_range_end" timestamp with time zone NOT NULL,
     "initial_balance" numeric(20,10) NOT NULL,
@@ -1013,18 +1013,18 @@ CREATE TABLE "public"."strategy_backtests" (
     "equity_curve" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
     "created_by" "text" DEFAULT 'system'::"text" NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    CONSTRAINT "strategy_backtests_check" CHECK (("time_range_start" < "time_range_end"))
+    CONSTRAINT "algorithm_backtests_check" CHECK (("time_range_start" < "time_range_end"))
 );
 
 
 --
--- Name: strategy_events; Type: TABLE; Schema: public; Owner: -
+-- Name: algorithm_events; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE "public"."strategy_events" (
+CREATE TABLE "public"."algorithm_events" (
     "id" "uuid" DEFAULT "public"."uuid_generate_v4"() NOT NULL,
-    "strategy_id" "uuid" NOT NULL,
-    "strategy_version_id" "uuid",
+    "algorithm_id" "uuid" NOT NULL,
+    "algorithm_version_id" "uuid",
     "event_type" "text" NOT NULL,
     "event_payload" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
     "actor" "text" DEFAULT 'system'::"text" NOT NULL,
@@ -1033,38 +1033,38 @@ CREATE TABLE "public"."strategy_events" (
 
 
 --
--- Name: strategy_runs; Type: TABLE; Schema: public; Owner: -
+-- Name: algorithm_runs; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE "public"."strategy_runs" (
+CREATE TABLE "public"."algorithm_runs" (
     "id" "uuid" DEFAULT "public"."uuid_generate_v4"() NOT NULL,
-    "strategy_id" "uuid" NOT NULL,
-    "strategy_version_id" "uuid" NOT NULL,
+    "algorithm_id" "uuid" NOT NULL,
+    "algorithm_version_id" "uuid" NOT NULL,
     "run_mode" "text" NOT NULL,
     "state" "text" DEFAULT 'running'::"text" NOT NULL,
     "started_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "ended_at" timestamp with time zone,
     "metadata" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
-    CONSTRAINT "strategy_runs_run_mode_check" CHECK (("run_mode" = ANY (ARRAY['paper'::"text", 'live'::"text"]))),
-    CONSTRAINT "strategy_runs_state_check" CHECK (("state" = ANY (ARRAY['running'::"text", 'stopped'::"text", 'failed'::"text"])))
+    CONSTRAINT "algorithm_runs_run_mode_check" CHECK (("run_mode" = ANY (ARRAY['paper'::"text", 'live'::"text"]))),
+    CONSTRAINT "algorithm_runs_state_check" CHECK (("state" = ANY (ARRAY['running'::"text", 'stopped'::"text", 'failed'::"text"])))
 );
 
 
 --
--- Name: strategy_versions; Type: TABLE; Schema: public; Owner: -
+-- Name: algorithm_versions; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE "public"."strategy_versions" (
+CREATE TABLE "public"."algorithm_versions" (
     "id" "uuid" DEFAULT "public"."uuid_generate_v4"() NOT NULL,
-    "strategy_id" "uuid" NOT NULL,
+    "algorithm_id" "uuid" NOT NULL,
     "version" integer NOT NULL,
     "schema_version" integer NOT NULL,
     "config" "jsonb" NOT NULL,
     "is_active" boolean DEFAULT false NOT NULL,
     "created_by" "text" DEFAULT 'system'::"text" NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    CONSTRAINT "strategy_versions_schema_version_check" CHECK (("schema_version" = 1)),
-    CONSTRAINT "strategy_versions_version_check" CHECK (("version" > 0))
+    CONSTRAINT "algorithm_versions_schema_version_check" CHECK (("schema_version" = 1)),
+    CONSTRAINT "algorithm_versions_version_check" CHECK (("version" > 0))
 );
 
 
@@ -1412,51 +1412,51 @@ ALTER TABLE ONLY "public"."service_status"
 
 
 --
--- Name: strategies strategies_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: algorithms algorithms_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY "public"."strategies"
-    ADD CONSTRAINT "strategies_pkey" PRIMARY KEY ("id");
-
-
---
--- Name: strategy_backtests strategy_backtests_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY "public"."strategy_backtests"
-    ADD CONSTRAINT "strategy_backtests_pkey" PRIMARY KEY ("id");
+ALTER TABLE ONLY "public"."algorithms"
+    ADD CONSTRAINT "algorithms_pkey" PRIMARY KEY ("id");
 
 
 --
--- Name: strategy_events strategy_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: algorithm_backtests algorithm_backtests_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY "public"."strategy_events"
-    ADD CONSTRAINT "strategy_events_pkey" PRIMARY KEY ("id");
-
-
---
--- Name: strategy_runs strategy_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY "public"."strategy_runs"
-    ADD CONSTRAINT "strategy_runs_pkey" PRIMARY KEY ("id");
+ALTER TABLE ONLY "public"."algorithm_backtests"
+    ADD CONSTRAINT "algorithm_backtests_pkey" PRIMARY KEY ("id");
 
 
 --
--- Name: strategy_versions strategy_versions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: algorithm_events algorithm_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY "public"."strategy_versions"
-    ADD CONSTRAINT "strategy_versions_pkey" PRIMARY KEY ("id");
+ALTER TABLE ONLY "public"."algorithm_events"
+    ADD CONSTRAINT "algorithm_events_pkey" PRIMARY KEY ("id");
 
 
 --
--- Name: strategy_versions strategy_versions_strategy_id_version_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: algorithm_runs algorithm_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY "public"."strategy_versions"
-    ADD CONSTRAINT "strategy_versions_strategy_id_version_key" UNIQUE ("strategy_id", "version");
+ALTER TABLE ONLY "public"."algorithm_runs"
+    ADD CONSTRAINT "algorithm_runs_pkey" PRIMARY KEY ("id");
+
+
+--
+-- Name: algorithm_versions algorithm_versions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY "public"."algorithm_versions"
+    ADD CONSTRAINT "algorithm_versions_pkey" PRIMARY KEY ("id");
+
+
+--
+-- Name: algorithm_versions algorithm_versions_algorithm_id_version_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY "public"."algorithm_versions"
+    ADD CONSTRAINT "algorithm_versions_algorithm_id_version_key" UNIQUE ("algorithm_id", "version");
 
 
 --
@@ -1677,66 +1677,66 @@ CREATE INDEX "idx_recalculation_jobs_status" ON "public"."recalculation_jobs" US
 
 
 --
--- Name: idx_strategies_mode; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_algorithms_mode; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX "idx_strategies_mode" ON "public"."strategies" USING "btree" ("mode");
-
-
---
--- Name: idx_strategies_name; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX "idx_strategies_name" ON "public"."strategies" USING "btree" ("name");
+CREATE INDEX "idx_algorithms_mode" ON "public"."algorithms" USING "btree" ("mode");
 
 
 --
--- Name: idx_strategies_status; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_algorithms_name; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX "idx_strategies_status" ON "public"."strategies" USING "btree" ("status");
-
-
---
--- Name: idx_strategy_backtests_strategy_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX "idx_strategy_backtests_strategy_id" ON "public"."strategy_backtests" USING "btree" ("strategy_id", "created_at" DESC);
+CREATE UNIQUE INDEX "idx_algorithms_name" ON "public"."algorithms" USING "btree" ("name");
 
 
 --
--- Name: idx_strategy_events_event_type; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_algorithms_status; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX "idx_strategy_events_event_type" ON "public"."strategy_events" USING "btree" ("event_type", "created_at" DESC);
-
-
---
--- Name: idx_strategy_events_strategy_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX "idx_strategy_events_strategy_id" ON "public"."strategy_events" USING "btree" ("strategy_id", "created_at" DESC);
+CREATE INDEX "idx_algorithms_status" ON "public"."algorithms" USING "btree" ("status");
 
 
 --
--- Name: idx_strategy_runs_strategy_id; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_algorithm_backtests_algorithm_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX "idx_strategy_runs_strategy_id" ON "public"."strategy_runs" USING "btree" ("strategy_id", "started_at" DESC);
-
-
---
--- Name: idx_strategy_versions_active; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX "idx_strategy_versions_active" ON "public"."strategy_versions" USING "btree" ("strategy_id") WHERE ("is_active" = true);
+CREATE INDEX "idx_algorithm_backtests_algorithm_id" ON "public"."algorithm_backtests" USING "btree" ("algorithm_id", "created_at" DESC);
 
 
 --
--- Name: idx_strategy_versions_strategy_id; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_algorithm_events_event_type; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX "idx_strategy_versions_strategy_id" ON "public"."strategy_versions" USING "btree" ("strategy_id", "version" DESC);
+CREATE INDEX "idx_algorithm_events_event_type" ON "public"."algorithm_events" USING "btree" ("event_type", "created_at" DESC);
+
+
+--
+-- Name: idx_algorithm_events_algorithm_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX "idx_algorithm_events_algorithm_id" ON "public"."algorithm_events" USING "btree" ("algorithm_id", "created_at" DESC);
+
+
+--
+-- Name: idx_algorithm_runs_algorithm_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX "idx_algorithm_runs_algorithm_id" ON "public"."algorithm_runs" USING "btree" ("algorithm_id", "started_at" DESC);
+
+
+--
+-- Name: idx_algorithm_versions_active; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX "idx_algorithm_versions_active" ON "public"."algorithm_versions" USING "btree" ("algorithm_id") WHERE ("is_active" = true);
+
+
+--
+-- Name: idx_algorithm_versions_algorithm_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX "idx_algorithm_versions_algorithm_id" ON "public"."algorithm_versions" USING "btree" ("algorithm_id", "version" DESC);
 
 
 --
@@ -1957,59 +1957,59 @@ ALTER TABLE ONLY "public"."recalculation_jobs"
 
 
 --
--- Name: strategy_backtests strategy_backtests_strategy_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: algorithm_backtests algorithm_backtests_algorithm_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY "public"."strategy_backtests"
-    ADD CONSTRAINT "strategy_backtests_strategy_id_fkey" FOREIGN KEY ("strategy_id") REFERENCES "public"."strategies"("id") ON DELETE CASCADE;
-
-
---
--- Name: strategy_backtests strategy_backtests_strategy_version_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY "public"."strategy_backtests"
-    ADD CONSTRAINT "strategy_backtests_strategy_version_id_fkey" FOREIGN KEY ("strategy_version_id") REFERENCES "public"."strategy_versions"("id") ON DELETE RESTRICT;
+ALTER TABLE ONLY "public"."algorithm_backtests"
+    ADD CONSTRAINT "algorithm_backtests_algorithm_id_fkey" FOREIGN KEY ("algorithm_id") REFERENCES "public"."algorithms"("id") ON DELETE CASCADE;
 
 
 --
--- Name: strategy_events strategy_events_strategy_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: algorithm_backtests algorithm_backtests_algorithm_version_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY "public"."strategy_events"
-    ADD CONSTRAINT "strategy_events_strategy_id_fkey" FOREIGN KEY ("strategy_id") REFERENCES "public"."strategies"("id") ON DELETE CASCADE;
-
-
---
--- Name: strategy_events strategy_events_strategy_version_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY "public"."strategy_events"
-    ADD CONSTRAINT "strategy_events_strategy_version_id_fkey" FOREIGN KEY ("strategy_version_id") REFERENCES "public"."strategy_versions"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."algorithm_backtests"
+    ADD CONSTRAINT "algorithm_backtests_algorithm_version_id_fkey" FOREIGN KEY ("algorithm_version_id") REFERENCES "public"."algorithm_versions"("id") ON DELETE RESTRICT;
 
 
 --
--- Name: strategy_runs strategy_runs_strategy_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: algorithm_events algorithm_events_algorithm_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY "public"."strategy_runs"
-    ADD CONSTRAINT "strategy_runs_strategy_id_fkey" FOREIGN KEY ("strategy_id") REFERENCES "public"."strategies"("id") ON DELETE CASCADE;
-
-
---
--- Name: strategy_runs strategy_runs_strategy_version_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY "public"."strategy_runs"
-    ADD CONSTRAINT "strategy_runs_strategy_version_id_fkey" FOREIGN KEY ("strategy_version_id") REFERENCES "public"."strategy_versions"("id") ON DELETE RESTRICT;
+ALTER TABLE ONLY "public"."algorithm_events"
+    ADD CONSTRAINT "algorithm_events_algorithm_id_fkey" FOREIGN KEY ("algorithm_id") REFERENCES "public"."algorithms"("id") ON DELETE CASCADE;
 
 
 --
--- Name: strategy_versions strategy_versions_strategy_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: algorithm_events algorithm_events_algorithm_version_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY "public"."strategy_versions"
-    ADD CONSTRAINT "strategy_versions_strategy_id_fkey" FOREIGN KEY ("strategy_id") REFERENCES "public"."strategies"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."algorithm_events"
+    ADD CONSTRAINT "algorithm_events_algorithm_version_id_fkey" FOREIGN KEY ("algorithm_version_id") REFERENCES "public"."algorithm_versions"("id") ON DELETE SET NULL;
+
+
+--
+-- Name: algorithm_runs algorithm_runs_algorithm_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY "public"."algorithm_runs"
+    ADD CONSTRAINT "algorithm_runs_algorithm_id_fkey" FOREIGN KEY ("algorithm_id") REFERENCES "public"."algorithms"("id") ON DELETE CASCADE;
+
+
+--
+-- Name: algorithm_runs algorithm_runs_algorithm_version_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY "public"."algorithm_runs"
+    ADD CONSTRAINT "algorithm_runs_algorithm_version_id_fkey" FOREIGN KEY ("algorithm_version_id") REFERENCES "public"."algorithm_versions"("id") ON DELETE RESTRICT;
+
+
+--
+-- Name: algorithm_versions algorithm_versions_algorithm_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY "public"."algorithm_versions"
+    ADD CONSTRAINT "algorithm_versions_algorithm_id_fkey" FOREIGN KEY ("algorithm_id") REFERENCES "public"."algorithms"("id") ON DELETE CASCADE;
 
 
 --

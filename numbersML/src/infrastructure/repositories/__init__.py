@@ -2,14 +2,14 @@
 
 from .indicator_repo import IndicatorRepository
 from .pipeline_metrics_repo import PipelineMetricsRepository
-from .strategy_backtest_repository_pg import StrategyBacktestRepositoryPG
-from .strategy_repository_pg import StrategyRepositoryPG
+from .algorithm_backtest_repository_pg import AlgorithmBacktestRepositoryPG
+from .algorithm_repository_pg import AlgorithmRepositoryPG
 from .symbol_repo import SymbolRepository
 
 __all__ = [
     "PipelineMetricsRepository",
     "SymbolRepository",
     "IndicatorRepository",
-    "StrategyRepositoryPG",
-    "StrategyBacktestRepositoryPG",
+    "AlgorithmRepositoryPG",
+    "AlgorithmBacktestRepositoryPG",
 ]

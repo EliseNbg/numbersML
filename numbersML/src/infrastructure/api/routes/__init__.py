@@ -9,9 +9,9 @@ from .indicators import router as indicators_router
 from .market import router as market_router
 from .ml import router as ml_router
 from .pipeline import router as pipeline_router
-from .strategies import router as strategies_router
-from .strategy_backtest import router as strategy_backtest_router
-from .strategy_instances import router as strategy_instances_router
+from .algorithms import router as algorithms_router
+from .algorithm_backtest import router as algorithm_backtest_router
+from .algorithm_instances import router as algorithm_instances_router
 from .symbols import router as symbols_router
 from .target_values import router as target_values_router
 
@@ -21,13 +21,13 @@ __all__ = [
     "indicators_router",
     "config_router",
     "pipeline_router",
-    "strategies_router",
+    "algorithms_router",
     "market_router",
-    "strategy_backtest_router",
+    "algorithm_backtest_router",
     "candles_router",
     "target_values_router",
     "ml_router",
     "backup_router",
     "config_sets_router",
-    "strategy_instances_router",
+    "algorithm_instances_router",
 ]
