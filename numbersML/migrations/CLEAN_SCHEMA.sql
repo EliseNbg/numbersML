@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict bCWgjSKsjefTrYhE7iSX524t3XMlMOd1GVNnsvBE4bvGCJFhinEDciVDdBevqOQ
+\restrict 8VcNe4bR0Y2Yh7SA2XnDPAver32X3WI1wG4yotVoiQ3ryPzT6E62evmbrVVFaB5
 
 -- Dumped from database version 15.17
 -- Dumped by pg_dump version 15.17
@@ -338,6 +338,57 @@ CREATE TABLE public.algorithm_backtests (
     created_by text DEFAULT 'system'::text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT strategy_backtests_check CHECK ((time_range_start < time_range_end))
+);
+
+
+--
+-- Name: algorithm_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.algorithm_events (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    algorithm_id uuid NOT NULL,
+    algorithm_version_id uuid,
+    event_type text NOT NULL,
+    event_payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+    actor text DEFAULT 'system'::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: algorithm_runs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.algorithm_runs (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    algorithm_id uuid NOT NULL,
+    algorithm_version_id uuid NOT NULL,
+    run_mode text NOT NULL,
+    state text DEFAULT 'running'::text NOT NULL,
+    started_at timestamp with time zone DEFAULT now() NOT NULL,
+    ended_at timestamp with time zone,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    CONSTRAINT algorithm_runs_run_mode_check CHECK ((run_mode = ANY (ARRAY['paper'::text, 'live'::text]))),
+    CONSTRAINT algorithm_runs_state_check CHECK ((state = ANY (ARRAY['running'::text, 'stopped'::text, 'failed'::text])))
+);
+
+
+--
+-- Name: algorithm_versions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.algorithm_versions (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    algorithm_id uuid NOT NULL,
+    version integer NOT NULL,
+    schema_version integer NOT NULL,
+    config jsonb NOT NULL,
+    is_active boolean DEFAULT false NOT NULL,
+    created_by text DEFAULT 'system'::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT algorithm_versions_schema_version_check CHECK ((schema_version = 1)),
+    CONSTRAINT algorithm_versions_version_check CHECK ((version > 0))
 );
 
 
@@ -1429,6 +1480,30 @@ ALTER TABLE ONLY public.symbols ALTER COLUMN id SET DEFAULT nextval('public.symb
 
 
 --
+-- Name: algorithm_events algorithm_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.algorithm_events
+    ADD CONSTRAINT algorithm_events_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: algorithm_runs algorithm_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.algorithm_runs
+    ADD CONSTRAINT algorithm_runs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: algorithm_versions algorithm_versions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.algorithm_versions
+    ADD CONSTRAINT algorithm_versions_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: candles_1s candles_1s_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1658,6 +1733,41 @@ ALTER TABLE ONLY public.strategy_instances
 
 ALTER TABLE ONLY public.wide_vectors
     ADD CONSTRAINT wide_vectors_pkey PRIMARY KEY ("time");
+
+
+--
+-- Name: idx_algorithm_events_algorithm_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_algorithm_events_algorithm_id ON public.algorithm_events USING btree (algorithm_id);
+
+
+--
+-- Name: idx_algorithm_events_event_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_algorithm_events_event_type ON public.algorithm_events USING btree (event_type);
+
+
+--
+-- Name: idx_algorithm_runs_algorithm_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_algorithm_runs_algorithm_id ON public.algorithm_runs USING btree (algorithm_id);
+
+
+--
+-- Name: idx_algorithm_versions_active; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_algorithm_versions_active ON public.algorithm_versions USING btree (is_active) WHERE (is_active = true);
+
+
+--
+-- Name: idx_algorithm_versions_algorithm_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_algorithm_versions_algorithm_id ON public.algorithm_versions USING btree (algorithm_id, version);
 
 
 --
@@ -2095,6 +2205,46 @@ CREATE TRIGGER update_system_config_timestamp BEFORE UPDATE ON public.system_con
 
 
 --
+-- Name: algorithm_events algorithm_events_algorithm_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.algorithm_events
+    ADD CONSTRAINT algorithm_events_algorithm_id_fkey FOREIGN KEY (algorithm_id) REFERENCES public.algorithms(id) ON DELETE CASCADE;
+
+
+--
+-- Name: algorithm_events algorithm_events_algorithm_version_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.algorithm_events
+    ADD CONSTRAINT algorithm_events_algorithm_version_id_fkey FOREIGN KEY (algorithm_version_id) REFERENCES public.algorithm_versions(id) ON DELETE SET NULL;
+
+
+--
+-- Name: algorithm_runs algorithm_runs_algorithm_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.algorithm_runs
+    ADD CONSTRAINT algorithm_runs_algorithm_id_fkey FOREIGN KEY (algorithm_id) REFERENCES public.algorithms(id) ON DELETE CASCADE;
+
+
+--
+-- Name: algorithm_runs algorithm_runs_algorithm_version_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.algorithm_runs
+    ADD CONSTRAINT algorithm_runs_algorithm_version_id_fkey FOREIGN KEY (algorithm_version_id) REFERENCES public.algorithm_versions(id) ON DELETE CASCADE;
+
+
+--
+-- Name: algorithm_versions algorithm_versions_algorithm_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.algorithm_versions
+    ADD CONSTRAINT algorithm_versions_algorithm_id_fkey FOREIGN KEY (algorithm_id) REFERENCES public.algorithms(id) ON DELETE CASCADE;
+
+
+--
 -- Name: candles_1s candles_1s_symbol_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2250,5 +2400,5 @@ ALTER TABLE ONLY public.trades
 -- PostgreSQL database dump complete
 --
 
-\unrestrict bCWgjSKsjefTrYhE7iSX524t3XMlMOd1GVNnsvBE4bvGCJFhinEDciVDdBevqOQ
+\unrestrict 8VcNe4bR0Y2Yh7SA2XnDPAver32X3WI1wG4yotVoiQ3ryPzT6E62evmbrVVFaB5
 

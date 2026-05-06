@@ -9,6 +9,7 @@ import asyncpg
 
 from src.domain.repositories.runtime_event_repository import AlgorithmRuntimeEventRepository
 from src.domain.algorithms.runtime import AlgorithmLifecycleEvent
+from src.domain.algorithms.strategy_instance import StrategyInstanceState
 
 
 class AlgorithmRuntimeEventRepositoryPG(AlgorithmRuntimeEventRepository):
@@ -222,8 +223,8 @@ class AlgorithmRuntimeEventRepositoryPG(AlgorithmRuntimeEventRepository):
         payload = row["event_payload"]
         if isinstance(payload, str):
             payload = json.loads(payload)
-        from_state = StrategyInstanceState(payload.get("from_state", "STOPPED"))
-        to_state = StrategyInstanceState(payload.get("to_state", "STOPPED"))
+        from_state = StrategyInstanceState(payload.get("from_state", "stopped"))
+        to_state = StrategyInstanceState(payload.get("to_state", "stopped"))
         return AlgorithmLifecycleEvent(
             event_id=row["id"],
             algorithm_id=row["algorithm_id"],

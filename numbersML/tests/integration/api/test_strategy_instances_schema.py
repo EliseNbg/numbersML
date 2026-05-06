@@ -46,30 +46,30 @@ def setup_test_data():
             database=os.environ.get("DB_NAME", "crypto_trading"),
         )
         try:
-            # Create test algorithm
+            import time
+            # Create test algorithm with unique name
             alg_row = await conn.fetchrow(
                 """
                 INSERT INTO algorithms (name, description, status)
-                VALUES ('Test Algorithm', 'For testing', 'validated')
+                VALUES ($1, 'For testing', 'validated')
                 RETURNING id
                 """
-            )
+            , f'Test Algorithm {time.time()}')
             algorithm_id = alg_row["id"]
 
             # Create test config set
             config_row = await conn.fetchrow(
                 """
                 INSERT INTO configuration_sets (name, description, config)
-                VALUES ('Test Config', 'For testing', '{}')
+                VALUES ($1, 'For testing', '{}')
                 RETURNING id
                 """
-            )
+            , f'Test Config {time.time()}')
             config_set_id = config_row["id"]
 
             return algorithm_id, config_set_id
         finally:
             await conn.close()
-
     return asyncio.run(setup())
 
 
