@@ -22,6 +22,7 @@ Phase 4 focuses on creating a robust, decoupled management system for trading al
 - ✅ **Step 12** (`STEP_12_GRID_TEST_DATA.md`): Completed - Test data setup, TEST/USDT config, synthetic data for positive PnL
 - ✅ **Step 13** (`STEP_13_PIPELINE_INTEGRATION.md`): Completed - Pipeline integration, algorithm execution, signal generation
 - ✅ **Step 14** (`STEP_14_TESTING_ROLLOUT.md`): Completed - Integration testing, automated tests, rollout checklist
+- ✅ **Step 15** (`STEP_15_CUSTOM_ALGORITHM.md`): Completed - Custom algorithm development guide, RSIMovingAverageAlgorithm implementation, comprehensive tests
 
 ## Definition of Done (DoD) for Each Step
 
@@ -83,6 +84,7 @@ Each step is considered complete when ALL of the following criteria are met:
 12. `STEP_12_GRID_TEST_DATA.md` - Test data & synthetic data
 13. `STEP_13_PIPELINE_INTEGRATION.md` - Pipeline integration
 14. `STEP_14_TESTING_ROLLOUT.md` - Final testing & rollout
+15. `STEP_15_CUSTOM_ALGORITHM.md` - Custom algorithm development guide
 
 **Dependency Chain:**
 - Steps 1-3 must complete before 4-5
@@ -92,6 +94,7 @@ Each step is considered complete when ALL of the following criteria are met:
 - Steps 11-12 can run in parallel after 4-5
 - Step 13 requires 11-12 complete
 - Step 14 is final integration testing
+- Step 15 can be done after Steps 1-4 (base algorithm + instance domain)
 
 ## Session Kickoff Template
 
@@ -111,6 +114,7 @@ Use `SESSION_KICKOFF_TEMPLATE.md` at the start of each implementation session. I
 5. `SimpleGridAlgorithm` is functional and included in the default test data
 6. All dashboard features (config sets, instances, backtest) are fully functional
 7. Integration tests verify end-to-end functionality with positive PnL on test data
+8. Developers can write custom algorithms with state, indicator access, and signal generation
 
 ## Notes for LLM Implementers
 
@@ -122,6 +126,14 @@ Use `SESSION_KICKOFF_TEMPLATE.md` at the start of each implementation session. I
 - Keep changes scoped to the step - don't implement future steps prematurely
 - If blocked by missing context, stop and ask targeted questions
 
+## Notes for Human Developers (Step 15)
+
+- Step 15 is a guide for writing custom algorithms manually
+- No LLM generation required - write code directly based on the patterns shown
+- Target audience: Senior developers, quantitative researchers, financial engineers
+- Includes state management, indicator access, and signal generation patterns
+- Follow the implementation guide and checklist for best results
+
 ## File Structure Per Step
 
 Each step file should contain:
@@ -130,7 +142,9 @@ Each step file should contain:
 3. **DDD Architecture Decision** (if applicable) - ADR section
 4. **TDD Approach** - Red-Green-Refactor notes
 5. **Implementation Files** - Code examples and structure
-6. **LLM Implementation Prompt** - Copy-paste prompt for implementation
+6. **LLM Implementation Prompt** - Copy-paste prompt for implementation (Steps 1-14)
 7. **Success Criteria** - Checkbox list for verification
 8. **Commands to Run** - Specific test/lint commands
 9. **Output** - Expected deliverables format
+
+**Note**: Step 15 is a documentation/guide step for human developers, not an LLM implementation step. It provides patterns and examples for writing custom algorithms manually.

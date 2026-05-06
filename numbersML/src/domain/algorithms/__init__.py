@@ -31,6 +31,12 @@ from src.domain.algorithms.algorithms_impl import (
     RSIAlgorithm,
     SMACrossoverAlgorithm,
 )
+from src.domain.algorithms.simple_grid_algorithm import (
+    SimpleGridAlgorithm,
+)
+from src.domain.algorithms.rsi_moving_average_algorithm import (
+    RSIMovingAverageAlgorithm,
+)
 from src.domain.algorithms.algorithm_config import (
     AlgorithmConfigVersion,
     AlgorithmDefinition,
@@ -56,6 +62,8 @@ __all__ = [
     "SMACrossoverAlgorithm",
     "BollingerBandsAlgorithm",
     "MultiIndicatorAlgorithm",
+    "SimpleGridAlgorithm",
+    "RSIMovingAverageAlgorithm",
     # Runtime and lifecycle
     "AlgorithmLifecycleEvent",
     "VALID_TRANSITIONS",
