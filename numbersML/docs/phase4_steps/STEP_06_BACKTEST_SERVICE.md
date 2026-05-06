@@ -4,7 +4,7 @@
 Implement a real backtest engine that uses historical data and existing indicators (no recalculation) to simulate algorithm performance.
 
 ## Context
-- Step 1-5 complete: ConfigurationSet and AlgorithmInstance entities, repositories, and APIs exist
+- Step 1-5 complete: ConfigurationSet and StrategyInstance entities, repositories, and APIs exist
 - Phase 3 complete: MarketService (PaperMarketService) exists
 - Phase 3 partial: Backtest API exists but uses simulated data (see `src/infrastructure/api/routes/algorithm_backtest.py`)
 - **Key Requirement**: Use pipeline Ticker, read indicators from `candle_indicators` table (NO recalculation)
@@ -12,7 +12,7 @@ Implement a real backtest engine that uses historical data and existing indicato
 ## DDD Architecture Decision (ADR)
 
 **Decision**: BacktestEngine is an Application Service
-- **Input**: AlgorithmInstance (Algorithm + ConfigurationSet)
+- **Input**: StrategyInstance (Algorithm + ConfigurationSet)
 - **Data Source**: `candles_1s` + `candle_indicators` tables (historical)
 - **Execution**: Replay candles through algorithm, simulate trades via PaperMarketService
 - **Output**: BacktestResult with PnL, trades, equity curve, metrics
@@ -54,7 +54,7 @@ from uuid import UUID
 import asyncpg
 
 from src.domain.algorithms.base import Algorithm, Signal, SignalType, EnrichedTick
-from src.domain.algorithms.algorithm_instance import AlgorithmInstance, RuntimeStats
+from src.domain.algorithms.strategy_instance import StrategyInstance, RuntimeStats
 from src.infrastructure.database import get_db_pool_async
 from src.infrastructure.market.paper_market_service import PaperMarketService
 
@@ -79,7 +79,7 @@ class TradeRecord:
 class BacktestResult:
     """Complete backtest results."""
     job_id: str
-    algorithm_instance_id: UUID
+    strategy_instance_id: UUID
     time_range_start: datetime
     time_range_end: datetime
     initial_balance: float
@@ -107,7 +107,7 @@ class BacktestResult:
         """Convert to dictionary for JSON serialization."""
         return {
             "job_id": self.job_id,
-            "algorithm_instance_id": str(self.algorithm_instance_id),
+            "strategy_instance_id": str(self.strategy_instance_id),
             "time_range_start": self.time_range_start.isoformat(),
             "time_range_end": self.time_range_end.isoformat(),
             "initial_balance": self.initial_balance,
@@ -146,17 +146,17 @@ class BacktestService:
     async def run_backtest(
         self,
         job_id: str,
-        algorithm_instance: AlgorithmInstance,
+        strategy_instance: StrategyInstance,
         time_range_start: datetime,
         time_range_end: datetime,
         initial_balance: float = 10000.0,
     ) -> BacktestResult:
         """
-        Run a backtest for a AlgorithmInstance.
+        Run a backtest for a StrategyInstance.
         
         Args:
             job_id: Unique job identifier
-            algorithm_instance: AlgorithmInstance to backtest
+            strategy_instance: StrategyInstance to backtest
             time_range_start: Start of backtest period
             time_range_end: End of backtest period
             initial_balance: Starting capital
@@ -172,7 +172,7 @@ class BacktestService:
         
         # Load historical candles with indicators (NO recalculation)
         candles = await self._load_candles(
-            algorithm_instance, time_range_start, time_range_end
+            strategy_instance, time_range_start, time_range_end
         )
         
         if not candles:
@@ -188,7 +188,7 @@ class BacktestService:
         # Replay candles and simulate
         result = await self._replay_candles(
             job_id=job_id,
-            algorithm_instance=algorithm_instance,
+            strategy_instance=strategy_instance,
             candles=candles,
             market_service=market_service,
             initial_balance=initial_balance,
@@ -198,7 +198,7 @@ class BacktestService:
     
     async def _load_candles(
         self,
-        algorithm_instance: AlgorithmInstance,
+        strategy_instance: StrategyInstance,
         start: datetime,
         end: datetime,
     ) -> List[Dict[str, Any]]:
@@ -208,7 +208,7 @@ class BacktestService:
         KEY: Reads from candle_indicators table (NO recalculation).
         
         Args:
-            algorithm_instance: AlgorithmInstance (provides config_set with symbols)
+            strategy_instance: StrategyInstance (provides config_set with symbols)
             start: Start time
             end: End time
             
@@ -268,7 +268,7 @@ class BacktestService:
     async def _replay_candles(
         self,
         job_id: str,
-        algorithm_instance: AlgorithmInstance,
+        strategy_instance: StrategyInstance,
         candles: List[Dict[str, Any]],
         market_service: PaperMarketService,
         initial_balance: float,
@@ -278,7 +278,7 @@ class BacktestService:
         
         Args:
             job_id: Job identifier
-            algorithm_instance: AlgorithmInstance
+            strategy_instance: StrategyInstance
             candles: Historical candle data with indicators
             market_service: Paper market service for simulation
             initial_balance: Starting balance
@@ -304,7 +304,7 @@ class BacktestService:
             
             # Generate signal (would call algorithm.on_tick())
             # For now, simulate simple algorithm
-            signal = self._generate_signal(tick, algorithm_instance)
+            signal = self._generate_signal(tick, strategy_instance)
             
             if signal:
                 if signal.signal_type == SignalType.BUY and not open_position:
@@ -368,7 +368,7 @@ class BacktestService:
         # Calculate metrics
         return self._calculate_metrics(
             job_id=job_id,
-            algorithm_instance=algorithm_instance,
+            strategy_instance=strategy_instance,
             trades=trades,
             equity_curve=equity_curve,
             initial_balance=initial_balance,
@@ -378,7 +378,7 @@ class BacktestService:
         )
     
     def _generate_signal(
-        self, tick: EnrichedTick, instance: AlgorithmInstance
+        self, tick: EnrichedTick, instance: StrategyInstance
     ) -> Optional[Signal]:
         """
         Generate trading signal from tick.
@@ -428,7 +428,7 @@ class BacktestService:
     def _calculate_metrics(
         self,
         job_id: str,
-        algorithm_instance: AlgorithmInstance,
+        strategy_instance: StrategyInstance,
         trades: List[TradeRecord],
         equity_curve: List[Dict[str, Any]],
         initial_balance: float,
@@ -477,7 +477,7 @@ class BacktestService:
         
         return BacktestResult(
             job_id=job_id,
-            algorithm_instance_id=algorithm_instance.id,
+            strategy_instance_id=strategy_instance.id,
             time_range_start=time_range_start,
             time_range_end=time_range_end,
             initial_balance=initial_balance,
@@ -516,7 +516,7 @@ from src.application.services.backtest_service import (
     BacktestResult,
     TradeRecord,
 )
-from src.domain.algorithms.algorithm_instance import AlgorithmInstance, RuntimeStats
+from src.domain.algorithms.strategy_instance import StrategyInstance, RuntimeStats
 
 
 @pytest.fixture
@@ -533,9 +533,9 @@ def backtest_service(db_pool):
 
 
 @pytest.fixture
-def sample_algorithm_instance():
-    """Create a sample AlgorithmInstance."""
-    return AlgorithmInstance(
+def sample_strategy_instance():
+    """Create a sample StrategyInstance."""
+    return StrategyInstance(
         algorithm_id=uuid4(),
         config_set_id=uuid4(),
     )
@@ -598,7 +598,7 @@ class TestLoadCandles:
     """Tests for _load_candles method."""
     
     @pytest.mark.asyncio
-    async def test_load_candles_with_data(self, backtest_service, sample_algorithm_instance):
+    async def test_load_candles_with_data(self, backtest_service, sample_strategy_instance):
         """Test loading candles from database."""
         # Mock database response
         mock_conn = AsyncMock()
@@ -620,7 +620,7 @@ class TestLoadCandles:
             backtest_service._pool.acquire = AsyncMock(return_value=mock_conn)
             
             candles = await backtest_service._load_candles(
-                sample_algorithm_instance,
+                sample_strategy_instance,
                 datetime(2024, 1, 1, tzinfo=timezone.utc),
                 datetime(2024, 1, 2, tzinfo=timezone.utc),
             )
@@ -629,7 +629,7 @@ class TestLoadCandles:
             assert candles[0]["close"] == 50050.0
     
     @pytest.mark.asyncio
-    async def test_load_candles_no_data(self, backtest_service, sample_algorithm_instance):
+    async def test_load_candles_no_data(self, backtest_service, sample_strategy_instance):
         """Test loading when no data exists."""
         mock_conn = AsyncMock()
         mock_conn.fetch.return_value = []
@@ -638,7 +638,7 @@ class TestLoadCandles:
         backtest_service._pool.acquire = AsyncMock(return_value=mock_conn)
         
         candles = await backtest_service._load_candles(
-            sample_algorithm_instance,
+            sample_strategy_instance,
             datetime(2024, 1, 1, tzinfo=timezone.utc),
             datetime(2024, 1, 2, tzinfo=timezone.utc),
         )
@@ -649,7 +649,7 @@ class TestLoadCandles:
 class TestCalculateMetrics:
     """Tests for _calculate_metrics method."""
     
-    def test_calculate_with_trades(self, backtest_service, sample_algorithm_instance):
+    def test_calculate_with_trades(self, backtest_service, sample_strategy_instance):
         """Test calculating metrics with winning and losing trades."""
         trades = [
             TradeRecord(
@@ -684,7 +684,7 @@ class TestCalculateMetrics:
         
         result = backtest_service._calculate_metrics(
             job_id="test-job",
-            algorithm_instance=sample_algorithm_instance,
+            strategy_instance=sample_strategy_instance,
             trades=trades,
             equity_curve=equity_curve,
             initial_balance=10000.0,
@@ -700,11 +700,11 @@ class TestCalculateMetrics:
         assert result.total_return == 50.0
         assert result.total_return_pct == 0.5
     
-    def test_calculate_no_trades(self, backtest_service, sample_algorithm_instance):
+    def test_calculate_no_trades(self, backtest_service, sample_strategy_instance):
         """Test calculating metrics with no trades."""
         result = backtest_service._calculate_metrics(
             job_id="test-job",
-            algorithm_instance=sample_algorithm_instance,
+            strategy_instance=sample_strategy_instance,
             trades=[],
             equity_curve=[{"time": "2024-01-01T00:00:00+00:00", "balance": 10000.0}],
             initial_balance=10000.0,
@@ -760,11 +760,11 @@ class TestFlattenIndicators:
 class TestBacktestResult:
     """Tests for BacktestResult dataclass."""
     
-    def test_to_dict(self, sample_algorithm_instance):
+    def test_to_dict(self, sample_strategy_instance):
         """Test converting BacktestResult to dictionary."""
         result = BacktestResult(
             job_id="test-job",
-            algorithm_instance_id=sample_algorithm_instance.id,
+            strategy_instance_id=sample_strategy_instance.id,
             time_range_start=datetime(2024, 1, 1, tzinfo=timezone.utc),
             time_range_end=datetime(2024, 1, 4, tzinfo=timezone.utc),
             initial_balance=10000.0,
@@ -788,7 +788,7 @@ class TestBacktestResult:
         assert d["job_id"] == "test-job"
         assert d["total_return"] == 500.0
         assert d["win_rate"] == 50.0
-        assert "algorithm_instance_id" in d
+        assert "strategy_instance_id" in d
 ```
 
 ## LLM Implementation Prompt
@@ -802,7 +802,7 @@ Implement a real backtest engine that uses historical data and existing indicato
 
 ## Context
 
-- Step 1-5 complete: ConfigurationSet and AlgorithmInstance entities, repos, APIs exist
+- Step 1-5 complete: ConfigurationSet and StrategyInstance entities, repos, APIs exist
 - Phase 3 complete: MarketService (PaperMarketService) exists
 - Phase 3 partial: Backtest API exists but uses SIMULATED data
 - **CRITICAL**: Must read indicators from `candle_indicators` table (NO recalculation)
@@ -814,7 +814,7 @@ Implement a real backtest engine that uses historical data and existing indicato
    - BacktestResult dataclass (all metrics, trades, equity curve)
    - BacktestService class:
      * __init__(db_pool): Store asyncpg pool
-     * run_backtest(job_id, algorithm_instance, time_range, initial_balance):
+     * run_backtest(job_id, strategy_instance, time_range, initial_balance):
        - Load historical candles from `candles_1s`
        - Load indicators from `candle_indicators` (NO recalculation!)
        - Replay candles, generate signals, simulate trades

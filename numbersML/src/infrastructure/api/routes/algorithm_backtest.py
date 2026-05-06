@@ -2,12 +2,12 @@
 Algorithm backtest API endpoints (REAL implementation).
 
 Provides REST API for algorithm backtesting:
-- Submit backtest job with AlgorithmInstance
+- Submit backtest job with StrategyInstance
 - Check job status
 - Retrieve backtest results
 
 Architecture: Infrastructure Layer (API)
-Dependencies: BacktestService, AlgorithmInstance repository, Auth
+Dependencies: BacktestService, StrategyInstance repository, Auth
 """
 
 import asyncio
@@ -21,11 +21,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
 
 from src.application.services.backtest_service import BacktestService
-from src.domain.repositories.algorithm_instance_repository import AlgorithmInstanceRepository
+from src.domain.repositories.strategy_instance_repository import StrategyInstanceRepository
 from src.infrastructure.api.auth import require_read, require_trader
 from src.infrastructure.database import get_db_pool_async
-from src.infrastructure.repositories.algorithm_instance_repository_pg import (
-    AlgorithmInstanceRepositoryPG,
+from src.infrastructure.repositories.strategy_instance_repository_pg import (
+    StrategyInstanceRepositoryPG,
 )
 
 router = APIRouter(prefix="/api/algorithm-backtests", tags=["algorithm-backtests"])
@@ -54,7 +54,7 @@ TIME_RANGE_PRESETS = {
 class BacktestSubmitRequest(BaseModel):
     """Request to submit a backtest job."""
 
-    algorithm_instance_id: str = Field(..., description="AlgorithmInstance UUID")
+    strategy_instance_id: str = Field(..., description="StrategyInstance UUID")
     time_range: str = Field(..., description="Preset (4h, 12h, 1d, 3d, 7d, 30d) or custom")
     custom_start: datetime | None = None
     custom_end: datetime | None = None
@@ -89,11 +89,11 @@ async def get_backtest_service() -> BacktestService:
     return BacktestService(db_pool)
 
 
-async def get_instance_repository() -> AsyncGenerator[AlgorithmInstanceRepository, None]:
-    """Get AlgorithmInstanceRepository instance."""
+async def get_instance_repository() -> AsyncGenerator[StrategyInstanceRepository, None]:
+    """Get StrategyInstanceRepository instance."""
     db_pool = await get_db_pool_async()
     async with db_pool.acquire() as conn:
-        yield AlgorithmInstanceRepositoryPG(conn)
+        yield StrategyInstanceRepositoryPG(conn)
 
 
 # ============================================================================
@@ -109,7 +109,7 @@ async def get_instance_repository() -> AsyncGenerator[AlgorithmInstanceRepositor
 async def submit_backtest_job(
     req: BacktestSubmitRequest,
     service: BacktestService = Depends(get_backtest_service),  # noqa: B008
-    instance_repo: AlgorithmInstanceRepository = Depends(get_instance_repository),  # noqa: B008
+    instance_repo: StrategyInstanceRepository = Depends(get_instance_repository),  # noqa: B008
     _auth: None = Depends(require_trader),
 ) -> BacktestJobResponse:
     """
@@ -118,23 +118,23 @@ async def submit_backtest_job(
     Args:
         req: Backtest submission request
         service: BacktestService instance
-        instance_repo: AlgorithmInstance repository
+        instance_repo: StrategyInstance repository
 
     Returns:
         Job submission confirmation
 
     Raises:
-        404: AlgorithmInstance not found
+        404: StrategyInstance not found
         400: Invalid time range
         500: Failed to submit job
     """
     try:
-        instance_id = UUID(req.algorithm_instance_id)
+        instance_id = UUID(req.strategy_instance_id)
         instance = await instance_repo.get_by_id(instance_id)
         if not instance:
             raise HTTPException(
                 status_code=404,
-                detail=f"AlgorithmInstance {instance_id} not found",
+                detail=f"StrategyInstance {instance_id} not found",
             )
 
         now = datetime.now(tz=UTC)
@@ -164,7 +164,7 @@ async def submit_backtest_job(
             "job_id": job_id,
             "status": "pending",
             "progress": 0.0,
-            "algorithm_instance_id": instance_id,
+            "strategy_instance_id": instance_id,
             "algorithm_name": "Unknown",
             "time_range_start": start_time,
             "time_range_end": end_time,
@@ -215,7 +215,7 @@ async def _execute_real_backtest(
     Args:
         job_id: Job identifier
         service: BacktestService instance
-        instance: AlgorithmInstance to backtest
+        instance: StrategyInstance to backtest
         start_time: Start of backtest period
         end_time: End of backtest period
         initial_balance: Starting capital
@@ -230,7 +230,7 @@ async def _execute_real_backtest(
 
         result = await service.run_backtest(
             job_id=job_id,
-            algorithm_instance=instance,
+            strategy_instance=instance,
             time_range_start=start_time,
             time_range_end=end_time,
             initial_balance=initial_balance,
@@ -279,7 +279,7 @@ async def get_job_status(
         "job_id": job_id,
         "status": job["status"],
         "progress": job["progress"],
-        "algorithm_instance_id": str(job["algorithm_instance_id"]),
+        "strategy_instance_id": str(job["strategy_instance_id"]),
         "created_at": job["created_at"].isoformat(),
     }
 
@@ -306,7 +306,7 @@ async def list_backtest_jobs(
             "job_id": job_id,
             "status": job["status"],
             "progress": job["progress"],
-            "algorithm_instance_id": str(job["algorithm_instance_id"]),
+            "strategy_instance_id": str(job["strategy_instance_id"]),
             "created_at": job["created_at"].isoformat(),
         }
         for job_id, job in _backtest_jobs.items()

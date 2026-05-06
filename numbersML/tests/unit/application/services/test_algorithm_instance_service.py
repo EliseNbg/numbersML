@@ -1,5 +1,5 @@
 """
-Unit tests for AlgorithmInstanceService.
+Unit tests for StrategyInstanceService.
 
 Follows TDD approach: tests first, then implementation.
 """
@@ -9,13 +9,13 @@ from uuid import uuid4
 
 import pytest
 
-from src.application.services.algorithm_instance_service import AlgorithmInstanceService
-from src.domain.algorithms.algorithm_instance import AlgorithmInstance, AlgorithmInstanceState
+from src.application.services.strategy_instance_service import StrategyInstanceService
+from src.domain.algorithms.strategy_instance import StrategyInstance, StrategyInstanceState
 
 
 @pytest.fixture
 def instance_repo():
-    """Mock AlgorithmInstanceRepository."""
+    """Mock StrategyInstanceRepository."""
     return AsyncMock()
 
 
@@ -42,8 +42,8 @@ def algorithm_manager():
 
 @pytest.fixture
 def service(instance_repo, algorithm_repo, config_set_repo, algorithm_manager):
-    """Create AlgorithmInstanceService with mocks."""
-    return AlgorithmInstanceService(
+    """Create StrategyInstanceService with mocks."""
+    return StrategyInstanceService(
         instance_repo=instance_repo,
         algorithm_repo=algorithm_repo,
         config_set_repo=config_set_repo,
@@ -53,8 +53,8 @@ def service(instance_repo, algorithm_repo, config_set_repo, algorithm_manager):
 
 @pytest.fixture
 def sample_instance():
-    """Create a sample AlgorithmInstance."""
-    return AlgorithmInstance(
+    """Create a sample StrategyInstance."""
+    return StrategyInstance(
         algorithm_id=uuid4(),
         config_set_id=uuid4(),
     )
@@ -84,7 +84,7 @@ class TestHotPlug:
 
     async def test_hot_plug_cannot_start(self, service, instance_repo, sample_instance):
         """Test hot-plug when instance cannot start."""
-        sample_instance._status = AlgorithmInstanceState.RUNNING  # Already running
+        sample_instance._status = StrategyInstanceState.RUNNING  # Already running
 
         instance_repo.get_by_id.return_value = sample_instance
 
@@ -97,7 +97,7 @@ class TestUnplug:
 
     async def test_unplug_success(self, service, instance_repo, algorithm_manager, sample_instance):
         """Test successfully unplugging an instance."""
-        sample_instance._status = AlgorithmInstanceState.RUNNING
+        sample_instance._status = StrategyInstanceState.RUNNING
         instance_repo.get_by_id.return_value = sample_instance
 
         result = await service.unplug(sample_instance.id)
@@ -119,7 +119,7 @@ class TestPauseResume:
 
     async def test_pause_success(self, service, instance_repo, sample_instance):
         """Test pausing a running instance."""
-        sample_instance._status = AlgorithmInstanceState.RUNNING
+        sample_instance._status = StrategyInstanceState.RUNNING
         instance_repo.get_by_id.return_value = sample_instance
 
         result = await service.pause_instance(sample_instance.id)
@@ -129,7 +129,7 @@ class TestPauseResume:
 
     async def test_resume_success(self, service, instance_repo, sample_instance):
         """Test resuming a paused instance."""
-        sample_instance._status = AlgorithmInstanceState.PAUSED
+        sample_instance._status = StrategyInstanceState.PAUSED
         instance_repo.get_by_id.return_value = sample_instance
 
         result = await service.resume_instance(sample_instance.id)

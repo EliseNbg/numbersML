@@ -66,7 +66,7 @@ function bindEventListeners() {
 }
 
 /**
- * Load AlgorithmInstances for dropdown
+ * Load StrategyInstances for dropdown
  */
 async function loadInstances() {
     try {
@@ -114,7 +114,7 @@ async function startBacktest() {
     const timeRange = activeBtn.dataset.range;
     
     let requestBody = {
-        algorithm_instance_id: instanceId,
+        strategy_instance_id: instanceId,
         time_range: timeRange,
         initial_balance: initialBalance,
     };

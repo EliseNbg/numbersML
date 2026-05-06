@@ -339,7 +339,7 @@ class TestGridAlgorithmPnL:
         """
         from src.application.services.backtest_service import BacktestService
         from src.domain.algorithms.grid_algorithm import GridAlgorithm
-        from src.domain.algorithms.algorithm_instance import AlgorithmInstance
+        from src.domain.algorithms.strategy_instance import StrategyInstance
         
         # This test requires:
         # 1. Database with test data
@@ -349,7 +349,7 @@ class TestGridAlgorithmPnL:
         # For now, this is a placeholder
         # In full implementation:
         # - Load GridAlgorithm
-        # - Create AlgorithmInstance with Grid config
+        # - Create StrategyInstance with Grid config
         # - Run backtest
         # - Assert PnL > 0
         

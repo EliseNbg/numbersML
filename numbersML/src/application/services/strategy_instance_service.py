@@ -1,7 +1,7 @@
 """
-AlgorithmInstance application service.
+StrategyInstance application service.
 
-Handles hot-plug of AlgorithmInstances into the pipeline.
+Handles hot-plug of StrategyInstances into the pipeline.
 Follows DDD: Application Layer service.
 """
 
@@ -10,26 +10,26 @@ from typing import Any
 from uuid import UUID
 
 from src.domain.repositories.config_set_repository import ConfigSetRepository
-from src.domain.repositories.algorithm_instance_repository import (
-    AlgorithmInstanceRepository,
+from src.domain.repositories.strategy_instance_repository import (
+    StrategyInstanceRepository,
 )
 from src.domain.repositories.algorithm_repository import AlgorithmRepository
 from src.domain.algorithms.base import AlgorithmManager
-from src.domain.algorithms.algorithm_instance import AlgorithmInstanceState
+from src.domain.algorithms.strategy_instance import StrategyInstanceState
 
 logger = logging.getLogger(__name__)
 
 
-class AlgorithmInstanceService:
+class StrategyInstanceService:
     """
-    Application service for AlgorithmInstance lifecycle.
+    Application service for StrategyInstance lifecycle.
 
     Handles hot-plug/unplug from running pipeline.
     """
 
     def __init__(
         self,
-        instance_repo: AlgorithmInstanceRepository,
+        instance_repo: StrategyInstanceRepository,
         algorithm_repo: AlgorithmRepository,
         config_set_repo: ConfigSetRepository,
         algorithm_manager: AlgorithmManager,
@@ -38,7 +38,7 @@ class AlgorithmInstanceService:
         Initialize with repositories and manager.
 
         Args:
-            instance_repo: AlgorithmInstance repository
+            instance_repo: StrategyInstance repository
             algorithm_repo: Algorithm repository
             config_set_repo: ConfigSet repository
             algorithm_manager: Running AlgorithmManager
@@ -50,10 +50,10 @@ class AlgorithmInstanceService:
 
     async def hot_plug(self, instance_id: UUID) -> bool:
         """
-        Hot-plug a AlgorithmInstance into the pipeline.
+        Hot-plug a StrategyInstance into the pipeline.
 
         Args:
-            instance_id: AlgorithmInstance ID to start
+            instance_id: StrategyInstance ID to start
 
         Returns:
             True if successful
@@ -80,10 +80,10 @@ class AlgorithmInstanceService:
 
     async def unplug(self, instance_id: UUID) -> bool:
         """
-        Unplug a AlgorithmInstance from the pipeline.
+        Unplug a StrategyInstance from the pipeline.
 
         Args:
-            instance_id: AlgorithmInstance ID to stop
+            instance_id: StrategyInstance ID to stop
 
         Returns:
             True if successful
@@ -126,7 +126,7 @@ class AlgorithmInstanceService:
         if not instance:
             raise ValueError(f"Instance {instance_id} not found")
 
-        if instance.status != AlgorithmInstanceState.PAUSED:
+        if instance.status != StrategyInstanceState.PAUSED:
             raise ValueError(f"Cannot resume instance from state: {instance.status.value}")
 
         instance.resume()

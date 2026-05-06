@@ -33,7 +33,7 @@ from src.infrastructure.api.routes import (
     pipeline_router,
     algorithms_router,
     algorithm_backtest_router,
-    algorithm_instances_router,
+    strategy_instances_router,
     symbols_router,
 )
 from src.infrastructure.api.routes.backtest import router as backtest_router
@@ -156,7 +156,7 @@ In production mode, all requests are allowed without authentication.
     app.include_router(algorithms_router)
     app.include_router(market_router)
     app.include_router(algorithm_backtest_router)
-    app.include_router(algorithm_instances_router)
+    app.include_router(strategy_instances_router)
     app.include_router(config_sets_router)
     app.include_router(candles_router)
     app.include_router(target_values_router)

@@ -362,13 +362,13 @@ class TestRuntimeState:
 
     def test_get_runtime_state(self, client, mock_lifecycle_svc):
         """Test getting runtime state for a algorithm."""
-        from src.domain.algorithms.algorithm_instance import AlgorithmInstanceState
+        from src.domain.algorithms.strategy_instance import StrategyInstanceState
 
         # Mock the service to return an object with attributes
         state = MagicMock()
         state.algorithm_id = uuid4()
         state.algorithm_name = "Test"
-        state.state = AlgorithmInstanceState.RUNNING  # Enum with .value
+        state.state = StrategyInstanceState.RUNNING  # Enum with .value
         state.version = 1
         state.last_error = None
         state.error_count = 0
@@ -391,13 +391,13 @@ class TestRuntimeState:
 
     def test_get_all_runtime_states(self, client, mock_lifecycle_svc):
         """Test getting all runtime states."""
-        from src.domain.algorithms.algorithm_instance import AlgorithmInstanceState
+        from src.domain.algorithms.strategy_instance import StrategyInstanceState
 
         # Mock the service to return objects with attributes
         state1 = MagicMock()
         state1.algorithm_id = uuid4()
         state1.algorithm_name = "Test"
-        state1.state = AlgorithmInstanceState.RUNNING
+        state1.state = StrategyInstanceState.RUNNING
         state1.version = 1
         state1.last_error = None
         state1.error_count = 0

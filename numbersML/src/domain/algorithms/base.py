@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, Optional
 from uuid import UUID
 
 if TYPE_CHECKING:
-    from src.domain.algorithms.algorithm_instance import AlgorithmInstance
+    from src.domain.algorithms.strategy_instance import StrategyInstance
 
 logger = logging.getLogger(__name__)
 
@@ -264,32 +264,32 @@ class AlgorithmManager:
 
     def __init__(self) -> None:
         """Initialize algorithm manager."""
-        self._instances: dict[UUID, AlgorithmInstance] = {}
+        self._instances: dict[UUID, StrategyInstance] = {}
         self._running: bool = False
         logger.info("AlgorithmManager initialized")
 
-    def add_instance(self, instance: "AlgorithmInstance") -> None:
+    def add_instance(self, instance: "StrategyInstance") -> None:
         """
         Add algorithm instance to manager.
 
         Args:
-            instance: AlgorithmInstance to add
+            instance: StrategyInstance to add
 
         Raises:
             ValueError: If instance ID already exists
         """
         if instance.id in self._instances:
-            raise ValueError(f"AlgorithmInstance {instance.id} already exists")
+            raise ValueError(f"StrategyInstance {instance.id} already exists")
 
         self._instances[instance.id] = instance
         logger.info(f"Added algorithm instance: {instance.id}")
 
-    def remove_instance(self, instance_id: UUID) -> Optional["AlgorithmInstance"]:
+    def remove_instance(self, instance_id: UUID) -> Optional["StrategyInstance"]:
         """
         Remove algorithm instance from manager.
 
         Args:
-            instance_id: AlgorithmInstance ID to remove
+            instance_id: StrategyInstance ID to remove
 
         Returns:
             Removed instance if existed, None otherwise
@@ -299,7 +299,7 @@ class AlgorithmManager:
             logger.info(f"Removed algorithm instance: {instance_id}")
         return instance
 
-    def get_instance(self, instance_id: UUID) -> Optional["AlgorithmInstance"]:
+    def get_instance(self, instance_id: UUID) -> Optional["StrategyInstance"]:
         """Get algorithm instance by ID."""
         return self._instances.get(instance_id)
 

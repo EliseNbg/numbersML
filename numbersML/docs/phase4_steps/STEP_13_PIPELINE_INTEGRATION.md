@@ -1,24 +1,24 @@
 # Step 13: Pipeline Integration for Hot-Plug#
 
 ## Objective#
-Integrate AlgorithmInstance hot-plug functionality into the running pipeline without restart.
+Integrate StrategyInstance hot-plug functionality into the running pipeline without restart.
 
 ## Context#
-- Step 5 complete: AlgorithmInstance API with start/stop/pause/resume endpoints#
+- Step 5 complete: StrategyInstance API with start/stop/pause/resume endpoints#
 - Phase 3 complete: `AlgorithmManager` exists in `src/domain/algorithms/base.py`#
 - Pipeline exists in `src/pipeline/` or `src/main.py`#
-- Need to modify pipeline to handle AlgorithmInstances (not just Algorithms)#
+- Need to modify pipeline to handle StrategyInstances (not just Algorithms)#
 
 ## DDD Architecture Decision (ADR)#
 
-**Decision**: Pipeline uses AlgorithmInstance, not just Algorithm#
-- **Input**: AlgorithmInstance (contains algorithm_id + config_set_id)#
+**Decision**: Pipeline uses StrategyInstance, not just Algorithm#
+- **Input**: StrategyInstance (contains algorithm_id + config_set_id)#
 - **Loading**: Load Algorithm from algorithm_id, Config from config_set_id#
 - **State Tracking**: Per-instance statistics in `runtime_stats`#
 - **Hot-Plug**: Add/remove instances without restart#
 
 **Key Design**:#
-- `AlgorithmManager` updated to manage AlgorithmInstances#
+- `AlgorithmManager` updated to manage StrategyInstances#
 - Pipeline subscribes to instance lifecycle events (Redis pub/sub)#
 - When instance starts: Load algorithm + config, add to active list#
 - When instance stops: Remove from active list#
@@ -33,20 +33,20 @@ Integrate AlgorithmInstance hot-plug functionality into the running pipeline wit
 
 ### 1. Update `src/domain/algorithms/base.py`#
 
-Add AlgorithmInstance support to `AlgorithmManager`:
+Add StrategyInstance support to `AlgorithmManager`:
 
 ```python
 # In AlgorithmManager class, add:
 
-    async def add_instance(self, instance: AlgorithmInstance) -> None:
+    async def add_instance(self, instance: StrategyInstance) -> None:
         """
-        Add a AlgorithmInstance to the manager.
+        Add a StrategyInstance to the manager.
         
         Loads the Algorithm and ConfigurationSet,
         then adds to active algorithms.
         
         Args:
-            instance: AlgorithmInstance to add
+            instance: StrategyInstance to add
             
         Raises:
             ValueError: If instance already exists or algorithm/config not found
@@ -63,10 +63,10 @@ Add AlgorithmInstance support to `AlgorithmManager`:
     
     async def remove_instance(self, instance_id: UUID) -> Optional[Algorithm]:
         """
-        Remove a AlgorithmInstance from the manager.
+        Remove a StrategyInstance from the manager.
         
         Args:
-            instance_id: AlgorithmInstance ID to remove
+            instance_id: StrategyInstance ID to remove
             
         Returns:
             Removed Algorithm if existed, None otherwise
@@ -85,13 +85,13 @@ Add AlgorithmInstance support to `AlgorithmManager`:
         return list(self._algorithms.keys())
 ```
 
-### 2. Create `src/application/services/algorithm_instance_service.py`#
+### 2. Create `src/application/services/strategy_instance_service.py`#
 
 ```python
 """
-AlgorithmInstance application service.
+StrategyInstance application service.
 
-Handles hot-plug of AlgorithmInstances into the pipeline.
+Handles hot-plug of StrategyInstances into the pipeline.
 Follows DDD: Application Layer service.
 """
 
@@ -100,12 +100,12 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from src.domain.algorithms.base import AlgorithmManager, Algorithm
-from src.domain.algorithms.algorithm_instance import (
-    AlgorithmInstance,
-    AlgorithmInstanceState,
+from src.domain.algorithms.strategy_instance import (
+    StrategyInstance,
+    StrategyInstanceState,
 )
-from src.domain.repositories.algorithm_instance_repository import (
-    AlgorithmInstanceRepository,
+from src.domain.repositories.strategy_instance_repository import (
+    StrategyInstanceRepository,
 )
 from src.domain.repositories.algorithm_repository import AlgorithmRepository
 from src.domain.repositories.config_set_repository import ConfigSetRepository
@@ -113,16 +113,16 @@ from src.domain.repositories.config_set_repository import ConfigSetRepository
 logger = logging.getLogger(__name__)
 
 
-class AlgorithmInstanceService:
+class StrategyInstanceService:
     """
-    Application service for AlgorithmInstance lifecycle.
+    Application service for StrategyInstance lifecycle.
     
     Handles hot-plug/unplug from running pipeline.
     """
     
     def __init__(
         self,
-        instance_repo: AlgorithmInstanceRepository,
+        instance_repo: StrategyInstanceRepository,
         algorithm_repo: AlgorithmRepository,
         config_set_repo: ConfigSetRepository,
         algorithm_manager: AlgorithmManager,
@@ -131,7 +131,7 @@ class AlgorithmInstanceService:
         Initialize with repositories and manager.
         
         Args:
-            instance_repo: AlgorithmInstance repository
+            instance_repo: StrategyInstance repository
             algorithm_repo: Algorithm repository
             config_set_repo: ConfigSet repository
             algorithm_manager: Running AlgorithmManager
@@ -143,10 +143,10 @@ class AlgorithmInstanceService:
     
     async def hot_plug(self, instance_id: UUID) -> bool:
         """
-        Hot-plug a AlgorithmInstance into the pipeline.
+        Hot-plug a StrategyInstance into the pipeline.
         
         Args:
-            instance_id: AlgorithmInstance ID to start
+            instance_id: StrategyInstance ID to start
             
         Returns:
             True if successful
@@ -181,10 +181,10 @@ class AlgorithmInstanceService:
     
     async def unplug(self, instance_id: UUID) -> bool:
         """
-        Unplug a AlgorithmInstance from the pipeline.
+        Unplug a StrategyInstance from the pipeline.
         
         Args:
-            instance_id: AlgorithmInstance ID to stop
+            instance_id: StrategyInstance ID to stop
             
         Returns:
             True if successful
@@ -232,7 +232,7 @@ class AlgorithmInstanceService:
         if not instance:
             raise ValueError(f"Instance {instance_id} not found")
         
-        if instance.status != AlgorithmInstanceState.PAUSED:
+        if instance.status != StrategyInstanceState.PAUSED:
             raise ValueError(f"Cannot resume instance from state: {instance.status.value}")
         
         instance.resume()
@@ -250,16 +250,16 @@ class AlgorithmInstanceService:
         return instance.runtime_stats.to_dict()
 ```
 
-### 3. Update Pipeline to use AlgorithmInstanceService#
+### 3. Update Pipeline to use StrategyInstanceService#
 
 In `src/main.py` or pipeline module:
 
 ```python
 # Add to pipeline initialization:
-from src.application.services.algorithm_instance_service import AlgorithmInstanceService
+from src.application.services.strategy_instance_service import StrategyInstanceService
 
 # Initialize service
-instance_service = AlgorithmInstanceService(
+instance_service = StrategyInstanceService(
     instance_repo=instance_repo,
     algorithm_repo=algorithm_repo,
     config_set_repo=config_set_repo,
@@ -270,11 +270,11 @@ instance_service = AlgorithmInstanceService(
 # This should call instance_service.hot_plug(instance_id)
 ```
 
-### 4. `tests/unit/application/services/test_algorithm_instance_service.py`#
+### 4. `tests/unit/application/services/test_strategy_instance_service.py`#
 
 ```python
 """
-Unit tests for AlgorithmInstanceService.
+Unit tests for StrategyInstanceService.
 
 Follows TDD approach: tests first, then implementation.
 """
@@ -283,13 +283,13 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4, UUID
 
-from src.application.services.algorithm_instance_service import AlgorithmInstanceService
-from src.domain.algorithms.algorithm_instance import AlgorithmInstance, AlgorithmInstanceState
+from src.application.services.strategy_instance_service import StrategyInstanceService
+from src.domain.algorithms.strategy_instance import StrategyInstance, StrategyInstanceState
 
 
 @pytest.fixture
 def instance_repo():
-    """Mock AlgorithmInstanceRepository."""
+    """Mock StrategyInstanceRepository."""
     return AsyncMock()
 
 
@@ -316,8 +316,8 @@ def algorithm_manager():
 
 @pytest.fixture
 def service(instance_repo, algorithm_repo, config_set_repo, algorithm_manager):
-    """Create AlgorithmInstanceService with mocks."""
-    return AlgorithmInstanceService(
+    """Create StrategyInstanceService with mocks."""
+    return StrategyInstanceService(
         instance_repo=instance_repo,
         algorithm_repo=algorithm_repo,
         config_set_repo=config_set_repo,
@@ -327,8 +327,8 @@ def service(instance_repo, algorithm_repo, config_set_repo, algorithm_manager):
 
 @pytest.fixture
 def sample_instance():
-    """Create a sample AlgorithmInstance."""
-    return AlgorithmInstance(
+    """Create a sample StrategyInstance."""
+    return StrategyInstance(
         algorithm_id=uuid4(),
         config_set_id=uuid4(),
     )
@@ -359,9 +359,9 @@ class TestHotPlug:
     @pytest.mark.asyncio
     async def test_hot_plug_cannot_start(self, service, instance_repo, sample_instance):
         """Test hot-plug when instance cannot start."""
-        from src.domain.algorithms.algorithm_instance import AlgorithmInstanceState
+        from src.domain.algorithms.strategy_instance import StrategyInstanceState
         
-        sample_instance._status = AlgorithmInstanceState.RUNNING  # Already running
+        sample_instance._status = StrategyInstanceState.RUNNING  # Already running
         
         instance_repo.get_by_id.return_value = sample_instance
         
@@ -375,7 +375,7 @@ class TestUnplug:
     @pytest.mark.asyncio
     async def test_unplug_success(self, service, instance_repo, algorithm_manager, sample_instance):
         """Test successfully unplugging an instance."""
-        sample_instance._status = AlgorithmInstanceState.RUNNING
+        sample_instance._status = StrategyInstanceState.RUNNING
         instance_repo.get_by_id.return_value = sample_instance
         
         result = await service.unplug(sample_instance.id)
@@ -399,7 +399,7 @@ class TestPauseResume:
     @pytest.mark.asyncio
     async def test_pause_success(self, service, instance_repo, sample_instance):
         """Test pausing a running instance."""
-        sample_instance._status = AlgorithmInstanceState.RUNNING
+        sample_instance._status = StrategyInstanceState.RUNNING
         instance_repo.get_by_id.return_value = sample_instance
         
         result = await service.pause_instance(sample_instance.id)
@@ -410,7 +410,7 @@ class TestPauseResume:
     @pytest.mark.asyncio
     async def test_resume_success(self, service, instance_repo, sample_instance):
         """Test resuming a paused instance."""
-        sample_instance._status = AlgorithmInstanceState.PAUSED
+        sample_instance._status = StrategyInstanceState.PAUSED
         instance_repo.get_by_id.return_value = sample_instance
         
         result = await service.resume_instance(sample_instance.id)
@@ -426,11 +426,11 @@ You are implementing Step 13 of Phase 4: Pipeline Integration for Hot-Plug.
 
 ## Your Task#
 
-Integrate AlgorithmInstance hot-plug functionality into the running pipeline.
+Integrate StrategyInstance hot-plug functionality into the running pipeline.
 
 ## Context#
 
-- Step 5 complete: AlgorithmInstance API with start/stop/pause/resume#
+- Step 5 complete: StrategyInstance API with start/stop/pause/resume#
 - Phase 3 complete: AlgorithmManager in src/domain/algorithms/base.py`
 
 ## Requirements#
@@ -440,8 +440,8 @@ Integrate AlgorithmInstance hot-plug functionality into the running pipeline.
    - Add `remove_instance(instance_id)` method#
    - Add `get_instance_ids()` method#
 
-2. Create `src/application/services/algorithm_instance_service.py` with:#
-   - AlgorithmInstanceService class#
+2. Create `src/application/services/strategy_instance_service.py` with:#
+   - StrategyInstanceService class#
    - __init__(instance_repo, algorithm_repo, config_set_repo, algorithm_manager)#
    - hot_plug(instance_id) -> bool:#
      * Load instance from repository#
@@ -457,10 +457,10 @@ Integrate AlgorithmInstance hot-plug functionality into the running pipeline.
    - get_stats(instance_id) -> Optional[Dict]#
 
 3. Update pipeline (`src/main.py` or pipeline module):#
-   - Initialize AlgorithmInstanceService#
+   - Initialize StrategyInstanceService#
    - Wire up API endpoints to use service methods#
 
-4. Create `tests/unit/application/services/test_algorithm_instance_service.py`:#
+4. Create `tests/unit/application/services/test_strategy_instance_service.py`:#
    - TestHotPlug: success, not found, cannot start#
    - TestUnplug: success, not found#
    - TestPauseResume: pause, resume#
@@ -477,8 +477,8 @@ Integrate AlgorithmInstance hot-plug functionality into the running pipeline.
 
 ## Acceptance Criteria#
 
-1. AlgorithmInstanceService can hot-plug instances#
-2. AlgorithmInstanceService can unplug instances#
+1. StrategyInstanceService can hot-plug instances#
+2. StrategyInstanceService can unplug instances#
 3. Pause/resume work correctly#
 4. AlgorithmManager updated to handle instances#
 5. Pipeline can run without restart when adding/removing instances#
@@ -491,12 +491,12 @@ Integrate AlgorithmInstance hot-plug functionality into the running pipeline.
 
 ```bash
 # Format and lint
-black src/application/services/algorithm_instance_service.py tests/unit/application/services/test_algorithm_instance_service.py
-ruff check src/application/services/algorithm_instance_service.py tests/unit/application/services/test_algorithm_instance_service.py
-mypy src/application/services/algorithm_instance_service.py
+black src/application/services/strategy_instance_service.py tests/unit/application/services/test_strategy_instance_service.py
+ruff check src/application/services/strategy_instance_service.py tests/unit/application/services/test_strategy_instance_service.py
+mypy src/application/services/strategy_instance_service.py
 
 # Run tests
-.venv/bin/python -m pytest tests/unit/application/services/test_algorithm_instance_service.py -v
+.venv/bin/python -m pytest tests/unit/application/services/test_strategy_instance_service.py -v
 ```
 
 ## Output#
@@ -509,7 +509,7 @@ mypy src/application/services/algorithm_instance_service.py
 
 ## Success Criteria#
 
-- [ ] AlgorithmInstanceService created with all methods#
+- [ ] StrategyInstanceService created with all methods#
 - [ ] Pipeline integration complete (hot-plug/unplug)#
 - [ ] AlgorithmManager updated to handle instances#
 - [ ] All unit tests pass (mocked repositories)#

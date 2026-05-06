@@ -16,7 +16,7 @@ class TestFullPhase4Flow:
         """
         Test complete flow:
         1. Create ConfigurationSet
-        2. Create AlgorithmInstance
+        2. Create StrategyInstance
         3. Submit backtest
         4. Verify results
         """

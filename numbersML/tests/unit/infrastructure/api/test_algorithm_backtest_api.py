@@ -51,7 +51,7 @@ def mock_backtest_service():
 
 @pytest.fixture
 def mock_instance_repo():
-    """Create a mock AlgorithmInstanceRepository."""
+    """Create a mock StrategyInstanceRepository."""
     repo = AsyncMock()
     return repo
 
@@ -61,16 +61,16 @@ class TestSubmitBacktestJob:
 
     def test_submit_with_preset(self, client, mock_backtest_service, mock_instance_repo):
         """Test submitting backtest with time preset."""
-        from src.domain.algorithms.algorithm_instance import AlgorithmInstance
+        from src.domain.algorithms.strategy_instance import StrategyInstance
 
-        instance = AlgorithmInstance(algorithm_id=uuid4(), config_set_id=uuid4())
+        instance = StrategyInstance(algorithm_id=uuid4(), config_set_id=uuid4())
         mock_instance_repo.get_by_id.return_value = instance
 
         from src.application.services.backtest_service import BacktestResult
 
         mock_result = BacktestResult(
             job_id="test",
-            algorithm_instance_id=instance.id,
+            strategy_instance_id=instance.id,
             time_range_start=datetime.now(tz=UTC),
             time_range_end=datetime.now(tz=UTC),
             initial_balance=10000.0,
@@ -93,7 +93,7 @@ class TestSubmitBacktestJob:
         response = client.post(
             "/api/algorithm-backtests/jobs",
             json={
-                "algorithm_instance_id": str(uuid4()),
+                "strategy_instance_id": str(uuid4()),
                 "time_range": "1d",
                 "initial_balance": 10000.0,
             },
@@ -109,7 +109,7 @@ class TestSubmitBacktestJob:
         response = client.post(
             "/api/algorithm-backtests/jobs",
             json={
-                "algorithm_instance_id": str(uuid4()),
+                "strategy_instance_id": str(uuid4()),
                 "time_range": "invalid",
             },
         )
@@ -118,9 +118,9 @@ class TestSubmitBacktestJob:
 
     def test_submit_custom_range(self, client, mock_backtest_service, mock_instance_repo):
         """Test submitting with custom time range."""
-        from src.domain.algorithms.algorithm_instance import AlgorithmInstance
+        from src.domain.algorithms.strategy_instance import StrategyInstance
 
-        instance = AlgorithmInstance(algorithm_id=uuid4(), config_set_id=uuid4())
+        instance = StrategyInstance(algorithm_id=uuid4(), config_set_id=uuid4())
         mock_instance_repo.get_by_id.return_value = instance
 
         now = datetime.now(tz=UTC)
@@ -128,7 +128,7 @@ class TestSubmitBacktestJob:
         response = client.post(
             "/api/algorithm-backtests/jobs",
             json={
-                "algorithm_instance_id": str(uuid4()),
+                "strategy_instance_id": str(uuid4()),
                 "time_range": "custom",
                 "custom_start": (now - timedelta(days=1)).isoformat(),
                 "custom_end": now.isoformat(),
@@ -139,13 +139,13 @@ class TestSubmitBacktestJob:
         assert response.status_code == 202
 
     def test_submit_nonexistent_instance(self, client, mock_instance_repo):
-        """Test submitting with non-existent AlgorithmInstance."""
+        """Test submitting with non-existent StrategyInstance."""
         mock_instance_repo.get_by_id.return_value = None
 
         response = client.post(
             "/api/algorithm-backtests/jobs",
             json={
-                "algorithm_instance_id": str(uuid4()),
+                "strategy_instance_id": str(uuid4()),
                 "time_range": "1d",
             },
         )
@@ -163,7 +163,7 @@ class TestGetJobStatus:
             "job_id": job_id,
             "status": "completed",
             "progress": 1.0,
-            "algorithm_instance_id": uuid4(),
+            "strategy_instance_id": uuid4(),
             "created_at": datetime.now(tz=UTC),
             "started_at": None,
             "completed_at": None,
@@ -193,7 +193,7 @@ class TestListBacktestJobs:
             "job_id": "job1",
             "status": "completed",
             "progress": 1.0,
-            "algorithm_instance_id": uuid4(),
+            "strategy_instance_id": uuid4(),
             "created_at": datetime.now(tz=UTC),
             "started_at": None,
             "completed_at": None,
@@ -204,7 +204,7 @@ class TestListBacktestJobs:
             "job_id": "job2",
             "status": "running",
             "progress": 0.5,
-            "algorithm_instance_id": uuid4(),
+            "strategy_instance_id": uuid4(),
             "created_at": datetime.now(tz=UTC),
             "started_at": None,
             "completed_at": None,

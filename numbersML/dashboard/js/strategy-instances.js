@@ -1,8 +1,8 @@
 /**
- * AlgorithmInstance Management Dashboard Module
+ * StrategyInstance Management Dashboard Module
  *
  * Handles:
- * - AlgorithmInstance CRUD operations
+ * - StrategyInstance CRUD operations
  * - Hot-plug (start/stop/pause/resume)
  * - Real-time statistics polling
  * - Navigation to backtest
@@ -95,7 +95,7 @@ async function loadConfigSets() {
 }
 
 /**
- * Load all AlgorithmInstances from API
+ * Load all StrategyInstances from API
  */
 async function loadInstances() {
     try {
@@ -118,7 +118,7 @@ async function loadInstances() {
 }
 
 /**
- * Render AlgorithmInstances table
+ * Render StrategyInstances table
  */
 function renderInstances() {
     const tbody = document.getElementById('instances-tbody');

@@ -1,12 +1,12 @@
 """
-Integration tests for AlgorithmInstance API lifecycle.
+Integration tests for StrategyInstance API lifecycle.
 
 Tests cover:
-- Create AlgorithmInstance (link Algorithm + ConfigurationSet)
-- Read AlgorithmInstance
-- List AlgorithmInstances with filters
+- Create StrategyInstance (link Algorithm + ConfigurationSet)
+- Read StrategyInstance
+- List StrategyInstances with filters
 - Start/Stop/Pause/Resume (hot-plug controls)
-- Delete AlgorithmInstance
+- Delete StrategyInstance
 - Authorization checks
 - Error handling
 
@@ -58,7 +58,7 @@ def client():
         yield mock_repo
 
     # Import the real dependency
-    from src.infrastructure.api.routes.algorithm_instances import (
+    from src.infrastructure.api.routes.strategy_instances import (
         get_instance_repository,
     )
 
@@ -88,7 +88,7 @@ def read_headers():
 
 
 @pytest.fixture
-def algorithm_instance_payload():
+def strategy_instance_payload():
     return {
         "algorithm_id": "123e4567-e89b-12d3-a456-426614174000",
         "config_set_id": "223e4567-e89b-12d3-a456-426614174001",
@@ -100,21 +100,21 @@ def algorithm_instance_payload():
 # ============================================================================
 
 
-class TestAlgorithmInstanceLifecycle:
-    """Test AlgorithmInstance full lifecycle via API."""
+class TestStrategyInstanceLifecycle:
+    """Test StrategyInstance full lifecycle via API."""
 
     def test_create_and_list_instances(
-        self, client, trader_headers, algorithm_instance_payload
+        self, client, trader_headers, strategy_instance_payload
     ):
-        """Test creating a AlgorithmInstance and listing it."""
+        """Test creating a StrategyInstance and listing it."""
         # Mock get_by_algorithm_and_config to return None (no duplicate)
         mock_repo.get_by_algorithm_and_config = AsyncMock(return_value=None)
 
         # Mock saved instance
         mock_instance = MagicMock()
         mock_instance.id = UUID("323e4567-e89b-12d3-a456-426614174002")
-        mock_instance.algorithm_id = UUID(algorithm_instance_payload["algorithm_id"])
-        mock_instance.config_set_id = UUID(algorithm_instance_payload["config_set_id"])
+        mock_instance.algorithm_id = UUID(strategy_instance_payload["algorithm_id"])
+        mock_instance.config_set_id = UUID(strategy_instance_payload["config_set_id"])
         mock_instance.status.value = "stopped"
         mock_instance.runtime_stats.to_dict.return_value = {}
         mock_instance.started_at = None
@@ -127,7 +127,7 @@ class TestAlgorithmInstanceLifecycle:
         # Create
         create_resp = client.post(
             "/api/algorithm-instances",
-            json=algorithm_instance_payload,
+            json=strategy_instance_payload,
             headers=trader_headers,
         )
         assert create_resp.status_code == 201, f"Create failed: {create_resp.json()}"
@@ -141,9 +141,9 @@ class TestAlgorithmInstanceLifecycle:
         assert isinstance(list_resp.json(), list)
 
     def test_get_instance_by_id(
-        self, client, read_headers, algorithm_instance_payload
+        self, client, read_headers, strategy_instance_payload
     ):
-        """Test getting a AlgorithmInstance by ID."""
+        """Test getting a StrategyInstance by ID."""
         mock_instance = MagicMock()
         mock_instance.id = UUID("323e4567-e89b-12d3-a456-426614174002")
         mock_instance.status.value = "stopped"
@@ -172,7 +172,7 @@ class TestAlgorithmInstanceLifecycle:
         assert resp.status_code == 404
 
     def test_start_instance(self, client, trader_headers):
-        """Test starting a AlgorithmInstance (hot-plug)."""
+        """Test starting a StrategyInstance (hot-plug)."""
         mock_instance = MagicMock()
         mock_instance.id = UUID("323e4567-e89b-12d3-a456-426614174002")
         mock_instance.status.value = "stopped"
@@ -190,7 +190,7 @@ class TestAlgorithmInstanceLifecycle:
         mock_instance.start.assert_called_once()
 
     def test_stop_instance(self, client, trader_headers):
-        """Test stopping a running AlgorithmInstance (unplug)."""
+        """Test stopping a running StrategyInstance (unplug)."""
         mock_instance = MagicMock()
         mock_instance.status.value = "running"
         mock_instance.stop = MagicMock()
@@ -207,7 +207,7 @@ class TestAlgorithmInstanceLifecycle:
         mock_instance.stop.assert_called_once()
 
     def test_pause_instance(self, client, trader_headers):
-        """Test pausing a running AlgorithmInstance."""
+        """Test pausing a running StrategyInstance."""
         mock_instance = MagicMock()
         mock_instance.status.value = "running"
         mock_instance.pause = MagicMock()
@@ -224,7 +224,7 @@ class TestAlgorithmInstanceLifecycle:
         mock_instance.pause.assert_called_once()
 
     def test_resume_instance(self, client, trader_headers):
-        """Test resuming a paused AlgorithmInstance."""
+        """Test resuming a paused StrategyInstance."""
         mock_instance = MagicMock()
         mock_instance.status.value = "paused"
         mock_instance.resume = MagicMock()
@@ -241,7 +241,7 @@ class TestAlgorithmInstanceLifecycle:
         mock_instance.resume.assert_called_once()
 
     def test_delete_instance(self, client, trader_headers):
-        """Test deleting a AlgorithmInstance."""
+        """Test deleting a StrategyInstance."""
         mock_repo.delete = AsyncMock(return_value=True)
 
         instance_id = "323e4567-e89b-12d3-a456-426614174002"
@@ -256,12 +256,12 @@ class TestAlgorithmInstanceLifecycle:
 # ============================================================================
 
 
-class TestAlgorithmInstanceAuth:
-    """Test authorization for AlgorithmInstance endpoints."""
+class TestStrategyInstanceAuth:
+    """Test authorization for StrategyInstance endpoints."""
 
-    def test_create_requires_auth(self, client, algorithm_instance_payload):
+    def test_create_requires_auth(self, client, strategy_instance_payload):
         resp = client.post(
-            "/api/algorithm-instances", json=algorithm_instance_payload
+            "/api/algorithm-instances", json=strategy_instance_payload
         )
         assert resp.status_code == 401
 
@@ -288,8 +288,8 @@ class TestAlgorithmInstanceAuth:
 # ============================================================================
 
 
-class TestAlgorithmInstanceErrors:
-    """Test error handling for AlgorithmInstance endpoints."""
+class TestStrategyInstanceErrors:
+    """Test error handling for StrategyInstance endpoints."""
 
     def test_create_invalid_uuid_returns_400(self, client, trader_headers):
         invalid_payload = {

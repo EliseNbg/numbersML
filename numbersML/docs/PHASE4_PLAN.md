@@ -21,14 +21,14 @@ All Phase 4 objectives have been completed:
 - Activation/deactivation endpoints
 - Pydantic request/response models
 
-### ✅ Step 4: AlgorithmInstance Domain Model
-- `AlgorithmInstance` entity in `src/domain/algorithms/algorithm_instance.py`
+### ✅ Step 4: StrategyInstance Domain Model
+- `StrategyInstance` entity in `src/domain/algorithms/strategy_instance.py`
 - State machine (stopped → running → paused → stopped)
-- `AlgorithmInstanceState` enum
+- `StrategyInstanceState` enum
 
-### ✅ Step 5: AlgorithmInstance Repository & API
-- Migration `migrations/004_algorithm_instances.sql`
-- `AlgorithmInstanceRepository` + `AlgorithmInstanceRepositoryPG`
+### ✅ Step 5: StrategyInstance Repository & API
+- Migration `migrations/004_strategy_instances.sql`
+- `StrategyInstanceRepository` + `StrategyInstanceRepositoryPG`
 - Hot-plug endpoints (start/stop/pause/resume)
 
 ### ✅ Step 6: Real Backtest Engine Service
@@ -47,7 +47,7 @@ All Phase 4 objectives have been completed:
 - `dashboard/js/config_sets.js` with dynamic parameters
 - Add/remove custom parameters
 
-### ✅ Step 9: Dashboard - AlgorithmInstance Management
+### ✅ Step 9: Dashboard - StrategyInstance Management
 - `dashboard/algorithm-instances.html` with hot-plug controls
 - `dashboard/js/algorithm-instances.js` with real-time polling
 - Start/stop/pause/resume buttons
@@ -68,16 +68,16 @@ All Phase 4 objectives have been completed:
 - Positive PnL verification
 
 ### ✅ Step 13: Pipeline Integration
-- `src/application/services/algorithm_instance_service.py`
+- `src/application/services/strategy_instance_service.py`
 - Hot-plug/unplug integration with pipeline
 - AlgorithmManager updated to handle instances
 
 ## Acceptance Criteria - ALL MET ✅
 
 1. ✅ User can create ConfigurationSet with custom parameters via Dashboard
-2. ✅ User can link Algorithm + ConfigurationSet into AlgorithmInstance
-3. ✅ User can hot-plug AlgorithmInstance without pipeline restart
-4. ✅ Backtest for AlgorithmInstance runs real calculations with historical data
+2. ✅ User can link Algorithm + ConfigurationSet into StrategyInstance
+3. ✅ User can hot-plug StrategyInstance without pipeline restart
+4. ✅ Backtest for StrategyInstance runs real calculations with historical data
 5. ✅ Backtest results show PnL, buy/sell points, equity curve
 6. ✅ Grid algorithm on TEST/USDT shows positive PnL on noised sin data
 7. ✅ All new code has >80% test coverage
@@ -97,7 +97,7 @@ All Phase 4 objectives have been completed:
 - [ ] Run database migrations:
   ```bash
   psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f migrations/003_configuration_sets.sql
-  psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f migrations/004_algorithm_instances.sql
+  psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f migrations/004_strategy_instances.sql
   ```
 - [ ] Deploy backend:
   ```bash

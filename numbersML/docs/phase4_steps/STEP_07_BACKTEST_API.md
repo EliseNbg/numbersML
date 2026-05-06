@@ -1,18 +1,18 @@
 # Step 7: Backtest API & Integration
 
 ## Objective
-Update the backtest API to use the real BacktestService and integrate with AlgorithmInstance.
+Update the backtest API to use the real BacktestService and integrate with StrategyInstance.
 
 ## Context
 - Step 6 complete: `BacktestService` with real historical data and no recalculation
-- Step 5 complete: AlgorithmInstance API and repository exist
+- Step 5 complete: StrategyInstance API and repository exist
 - Phase 3 partial: `src/infrastructure/api/routes/algorithm_backtest.py` exists but uses SIMULATED data
 - Need to replace simulation with real BacktestService
 
 ## DDD Architecture Decision (ADR)
 
 **Decision**: Backtest API updates to use real service
-- **Input**: AlgorithmInstance ID (not just algorithm_id)
+- **Input**: StrategyInstance ID (not just algorithm_id)
 - **Service**: `BacktestService` (Application layer)
 - **Persistence**: Update `algorithm_backtests` table with real results
 - **Time Ranges**: Presets (4h, 12h, 1d, 3d, 7d, 30d) + custom range
@@ -38,12 +38,12 @@ Replace simulated backtest with real implementation:
 Algorithm backtest API endpoints (REAL implementation).
 
 Provides REST API for algorithm backtesting:
-- Submit backtest job with AlgorithmInstance
+- Submit backtest job with StrategyInstance
 - Check job status
 - Retrieve backtest results
 
 Architecture: Infrastructure Layer (API)
-Dependencies: BacktestService, AlgorithmInstance repository
+Dependencies: BacktestService, StrategyInstance repository
 """
 
 import logging
@@ -56,10 +56,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
 
 from src.application.services.backtest_service import BacktestService, BacktestResult
-from src.domain.repositories.algorithm_instance_repository import AlgorithmInstanceRepository
+from src.domain.repositories.strategy_instance_repository import StrategyInstanceRepository
 from src.infrastructure.database import get_db_pool_async
-from src.infrastructure.repositories.algorithm_instance_repository_pg import (
-    AlgorithmInstanceRepositoryPG,
+from src.infrastructure.repositories.strategy_instance_repository_pg import (
+    StrategyInstanceRepositoryPG,
 )
 
 router = APIRouter(prefix="/api/algorithm-backtests", tags=["algorithm-backtests"])
@@ -87,7 +87,7 @@ TIME_RANGE_PRESETS = {
 class BacktestSubmitRequest(BaseModel):
     """Request to submit a backtest job."""
     
-    algorithm_instance_id: str = Field(..., description="AlgorithmInstance UUID")
+    strategy_instance_id: str = Field(..., description="StrategyInstance UUID")
     time_range: str = Field(..., description="Preset (4h, 12h, 1d, 3d, 7d, 30d) or custom")
     custom_start: Optional[datetime] = None
     custom_end: Optional[datetime] = None
@@ -121,11 +121,11 @@ async def get_backtest_service() -> BacktestService:
     return BacktestService(db_pool)
 
 
-async def get_instance_repository() -> AlgorithmInstanceRepository:
-    """Get AlgorithmInstanceRepository instance."""
+async def get_instance_repository() -> StrategyInstanceRepository:
+    """Get StrategyInstanceRepository instance."""
     db_pool = await get_db_pool_async()
     async with db_pool.acquire() as conn:
-        return AlgorithmInstanceRepositoryPG(conn)
+        return StrategyInstanceRepositoryPG(conn)
 
 
 # ============================================================================
@@ -140,7 +140,7 @@ async def get_instance_repository() -> AlgorithmInstanceRepository:
 async def submit_backtest_job(
     req: BacktestSubmitRequest,
     service: BacktestService = Depends(get_backtest_service),
-    instance_repo: AlgorithmInstanceRepository = Depends(get_instance_repository),
+    instance_repo: StrategyInstanceRepository = Depends(get_instance_repository),
 ) -> BacktestJobResponse:
     """
     Submit a backtest job for asynchronous execution.
@@ -148,24 +148,24 @@ async def submit_backtest_job(
     Args:
         req: Backtest submission request
         service: BacktestService instance
-        instance_repo: AlgorithmInstance repository
+        instance_repo: StrategyInstance repository
         
     Returns:
         Job submission confirmation
         
     Raises:
-        404: AlgorithmInstance not found
+        404: StrategyInstance not found
         400: Invalid time range
         500: Failed to submit job
     """
     try:
-        # Validate AlgorithmInstance exists
-        instance_id = UUID(req.algorithm_instance_id)
+        # Validate StrategyInstance exists
+        instance_id = UUID(req.strategy_instance_id)
         instance = await instance_repo.get_by_id(instance_id)
         if not instance:
             raise HTTPException(
                 status_code=404,
-                detail=f"AlgorithmInstance {instance_id} not found"
+                detail=f"StrategyInstance {instance_id} not found"
             )
         
         # Calculate time range
@@ -197,7 +197,7 @@ async def submit_backtest_job(
             "job_id": job_id,
             "status": "pending",
             "progress": 0.0,
-            "algorithm_instance_id": instance_id,
+            "strategy_instance_id": instance_id,
             "algorithm_name": "Unknown",  # TODO: Get from algorithm
             "time_range_start": start_time,
             "time_range_end": end_time,
@@ -247,7 +247,7 @@ async def _execute_real_backtest(
     Args:
         job_id: Job identifier
         service: BacktestService instance
-        instance: AlgorithmInstance to backtest
+        instance: StrategyInstance to backtest
         start_time: Start of backtest period
         end_time: End of backtest period
         initial_balance: Starting capital
@@ -263,7 +263,7 @@ async def _execute_real_backtest(
         # Run real backtest
         result = await service.run_backtest(
             job_id=job_id,
-            algorithm_instance=instance,
+            strategy_instance=instance,
             time_range_start=start_time,
             time_range_end=end_time,
             initial_balance=initial_balance,
@@ -312,7 +312,7 @@ async def get_job_status(job_id: str) -> Dict[str, Any]:
         "job_id": job_id,
         "status": job["status"],
         "progress": job["progress"],
-        "algorithm_instance_id": str(job["algorithm_instance_id"]),
+        "strategy_instance_id": str(job["strategy_instance_id"]),
         "created_at": job["created_at"].isoformat(),
     }
     
@@ -338,7 +338,7 @@ async def list_backtest_jobs() -> List[Dict[str, Any]]:
             "job_id": job_id,
             "status": job["status"],
             "progress": job["progress"],
-            "algorithm_instance_id": str(job["algorithm_instance_id"]),
+            "strategy_instance_id": str(job["strategy_instance_id"]),
             "created_at": job["created_at"].isoformat(),
         }
         for job_id, job in _backtest_jobs.items()
@@ -378,7 +378,7 @@ def mock_backtest_service():
 
 @pytest.fixture
 def mock_instance_repo():
-    """Create a mock AlgorithmInstanceRepository."""
+    """Create a mock StrategyInstanceRepository."""
     repo = AsyncMock()
     return repo
 
@@ -391,20 +391,20 @@ class TestSubmitBacktestJob:
         from src.infrastructure.api.routes.algorithm_backtest import (
             get_backtest_service, get_instance_repository
         )
-        from src.domain.algorithms.algorithm_instance import AlgorithmInstance
+        from src.domain.algorithms.strategy_instance import StrategyInstance
         
         app.dependency_overrides[get_backtest_service] = lambda: mock_backtest_service
         app.dependency_overrides[get_instance_repository] = lambda: mock_instance_repo
         
         # Mock instance
-        instance = AlgorithmInstance(algorithm_id=uuid4(), config_set_id=uuid4())
+        instance = StrategyInstance(algorithm_id=uuid4(), config_set_id=uuid4())
         mock_instance_repo.get_by_id.return_value = instance
         
         # Mock backtest result
         from src.application.services.backtest_service import BacktestResult
         mock_result = BacktestResult(
             job_id="test",
-            algorithm_instance_id=instance.id,
+            strategy_instance_id=instance.id,
             time_range_start=datetime.now(tz=timezone.utc),
             time_range_end=datetime.now(tz=timezone.utc),
             initial_balance=10000.0,
@@ -427,7 +427,7 @@ class TestSubmitBacktestJob:
         response = client.post(
             "/api/algorithm-backtests/jobs",
             json={
-                "algorithm_instance_id": str(uuid4()),
+                "strategy_instance_id": str(uuid4()),
                 "time_range": "1d",
                 "initial_balance": 10000.0,
             }
@@ -445,7 +445,7 @@ class TestSubmitBacktestJob:
         response = client.post(
             "/api/algorithm-backtests/jobs",
             json={
-                "algorithm_instance_id": str(uuid4()),
+                "strategy_instance_id": str(uuid4()),
                 "time_range": "invalid",
             }
         )
@@ -457,12 +457,12 @@ class TestSubmitBacktestJob:
         from src.infrastructure.api.routes.algorithm_backtest import (
             get_backtest_service, get_instance_repository
         )
-        from src.domain.algorithms.algorithm_instance import AlgorithmInstance
+        from src.domain.algorithms.strategy_instance import StrategyInstance
         
         app.dependency_overrides[get_backtest_service] = lambda: mock_backtest_service
         app.dependency_overrides[get_instance_repository] = lambda: mock_instance_repo
         
-        instance = AlgorithmInstance(algorithm_id=uuid4(), config_set_id=uuid4())
+        instance = StrategyInstance(algorithm_id=uuid4(), config_set_id=uuid4())
         mock_instance_repo.get_by_id.return_value = instance
         
         from datetime import datetime, timedelta
@@ -471,7 +471,7 @@ class TestSubmitBacktestJob:
         response = client.post(
             "/api/algorithm-backtests/jobs",
             json={
-                "algorithm_instance_id": str(uuid4()),
+                "strategy_instance_id": str(uuid4()),
                 "time_range": "custom",
                 "custom_start": (now - timedelta(days=1)).isoformat(),
                 "custom_end": now.isoformat(),
@@ -484,7 +484,7 @@ class TestSubmitBacktestJob:
         app.dependency_overrides.clear()
     
     def test_submit_nonexistent_instance(self, client, mock_instance_repo):
-        """Test submitting with non-existent AlgorithmInstance."""
+        """Test submitting with non-existent StrategyInstance."""
         from src.infrastructure.api.routes.algorithm_backtest import get_instance_repository
         
         app.dependency_overrides[get_instance_repository] = lambda: mock_instance_repo
@@ -493,7 +493,7 @@ class TestSubmitBacktestJob:
         response = client.post(
             "/api/algorithm-backtests/jobs",
             json={
-                "algorithm_instance_id": str(uuid4()),
+                "strategy_instance_id": str(uuid4()),
                 "time_range": "1d",
             }
         )
@@ -515,7 +515,7 @@ class TestGetJobStatus:
             "job_id": job_id,
             "status": "completed",
             "progress": 1.0,
-            "algorithm_instance_id": uuid4(),
+            "strategy_instance_id": uuid4(),
             "created_at": datetime.now(tz=timezone.utc),
         }
         
@@ -546,14 +546,14 @@ class TestListBacktestJobs:
             "job_id": "job1",
             "status": "completed",
             "progress": 1.0,
-            "algorithm_instance_id": uuid4(),
+            "strategy_instance_id": uuid4(),
             "created_at": datetime.now(tz=timezone.utc),
         }
         _backtest_jobs["job2"] = {
             "job_id": "job2",
             "status": "running",
             "progress": 0.5,
-            "algorithm_instance_id": uuid4(),
+            "strategy_instance_id": uuid4(),
             "created_at": datetime.now(tz=timezone.utc),
         }
         
@@ -579,7 +579,7 @@ Update the backtest API to use the real BacktestService (no more simulation).
 ## Context
 
 - Step 6 complete: BacktestService in src/application/services/backtest_service.py
-- Step 5 complete: AlgorithmInstance API and repository exist
+- Step 5 complete: StrategyInstance API and repository exist
 - Phase 3 partial: algorithm_backtest.py exists but uses SIMULATED data
 - **CRITICAL**: Must use real BacktestService, NOT simulation
 
@@ -588,12 +588,12 @@ Update the backtest API to use the real BacktestService (no more simulation).
 1. Update `src/infrastructure/api/routes/algorithm_backtest.py`:
    - Replace simulated backtest with real BacktestService
    - Pydantic model: BacktestSubmitRequest with:
-     * algorithm_instance_id (UUID of AlgorithmInstance)
+     * strategy_instance_id (UUID of StrategyInstance)
      * time_range (preset: 4h, 12h, 1d, 3d, 7d, 30d, or custom)
      * custom_start, custom_end (for custom range)
      * initial_balance
    - POST /api/algorithm-backtests/jobs:
-     * Validate AlgorithmInstance exists
+     * Validate StrategyInstance exists
      * Calculate time range from preset or custom
      * Submit async job using BacktestService.run_backtest()
      * Return job_id with 202 status
@@ -607,7 +607,7 @@ Update the backtest API to use the real BacktestService (no more simulation).
    - TestSubmitBacktestJob: with preset, invalid preset, custom range, non-existent instance
    - TestGetJobStatus: existing job, non-existent job
    - TestListBacktestJobs: list jobs
-   - Mock BacktestService and AlgorithmInstanceRepository
+   - Mock BacktestService and StrategyInstanceRepository
    - Use FastAPI TestClient
 
 3. Key Implementation Details:
@@ -631,7 +631,7 @@ Update the backtest API to use the real BacktestService (no more simulation).
 1. Backtest API uses real BacktestService (not simulation)
 2. Time range presets work (4h, 12h, 1d, 3d, 7d, 30d)
 3. Custom time range works with custom_start/custom_end
-4. AlgorithmInstance validation (404 if not found)
+4. StrategyInstance validation (404 if not found)
 5. Async job execution with status tracking
 6. Results include PnL, trades, equity curve, metrics
 7. All tests pass
@@ -664,7 +664,7 @@ mypy src/infrastructure/api/routes/algorithm_backtest.py
 - [ ] Backtest API uses real BacktestService
 - [ ] Time range presets implemented (4h, 12h, 1d, 3d, 7d, 30d)
 - [ ] Custom time range with validation
-- [ ] AlgorithmInstance validation before starting backtest
+- [ ] StrategyInstance validation before starting backtest
 - [ ] Async job execution with progress tracking
 - [ ] Results include all metrics and trade data
 - [ ] All tests pass (TestClient)

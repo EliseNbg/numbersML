@@ -1,7 +1,7 @@
 """
-AlgorithmInstance API endpoints.
+StrategyInstance API endpoints.
 
-Provides REST API for AlgorithmInstance management:
+Provides REST API for StrategyInstance management:
 - CRUD operations
 - Start/stop/pause/resume (hot-plug)
 - Runtime statistics
@@ -19,14 +19,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from src.domain.repositories.algorithm_instance_repository import AlgorithmInstanceRepository
-from src.domain.algorithms.algorithm_instance import (
-    AlgorithmInstance,
+from src.domain.repositories.strategy_instance_repository import StrategyInstanceRepository
+from src.domain.algorithms.strategy_instance import (
+    StrategyInstance,
 )
 from src.infrastructure.api.auth import require_read, require_trader
 from src.infrastructure.database import get_db_pool_async
-from src.infrastructure.repositories.algorithm_instance_repository_pg import (
-    AlgorithmInstanceRepositoryPG,
+from src.infrastructure.repositories.strategy_instance_repository_pg import (
+    StrategyInstanceRepositoryPG,
 )
 
 router = APIRouter(prefix="/api/algorithm-instances", tags=["algorithm-instances"])
@@ -34,15 +34,15 @@ logger = logging.getLogger(__name__)
 
 
 # Pydantic Models
-class AlgorithmInstanceCreateRequest(BaseModel):
-    """Request model for creating AlgorithmInstance."""
+class StrategyInstanceCreateRequest(BaseModel):
+    """Request model for creating StrategyInstance."""
 
     algorithm_id: str = Field(..., description="UUID of the Algorithm")
     config_set_id: str = Field(..., description="UUID of the ConfigurationSet")
 
 
-class AlgorithmInstanceResponse(BaseModel):
-    """Response model for AlgorithmInstance."""
+class StrategyInstanceResponse(BaseModel):
+    """Response model for StrategyInstance."""
 
     id: str
     algorithm_id: str
@@ -55,7 +55,7 @@ class AlgorithmInstanceResponse(BaseModel):
     updated_at: datetime
 
     @classmethod
-    def from_domain(cls, instance: AlgorithmInstance) -> "AlgorithmInstanceResponse":
+    def from_domain(cls, instance: StrategyInstance) -> "StrategyInstanceResponse":
         """Convert domain entity to response model."""
         return cls(
             id=str(instance.id),
@@ -71,38 +71,38 @@ class AlgorithmInstanceResponse(BaseModel):
 
 
 # Dependencies
-async def get_instance_repository() -> AsyncGenerator[AlgorithmInstanceRepository, None]:
-    """Get AlgorithmInstanceRepository instance with database connection."""
+async def get_instance_repository() -> AsyncGenerator[StrategyInstanceRepository, None]:
+    """Get StrategyInstanceRepository instance with database connection."""
     db_pool = await get_db_pool_async()
     async with db_pool.acquire() as conn:
-        yield AlgorithmInstanceRepositoryPG(conn)
+        yield StrategyInstanceRepositoryPG(conn)
 
 
 # Endpoints
-@router.get("", response_model=list[AlgorithmInstanceResponse])
+@router.get("", response_model=list[StrategyInstanceResponse])
 async def list_instances(
     status: str | None = None,
     limit: int = 100,
     offset: int = 0,
-    repo: AlgorithmInstanceRepository = Depends(get_instance_repository),
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
     _auth: None = Depends(require_read),
-) -> list[AlgorithmInstanceResponse]:
-    """List AlgorithmInstances with optional status filter."""
+) -> list[StrategyInstanceResponse]:
+    """List StrategyInstances with optional status filter."""
     instances = await repo.list_all(status=status, limit=limit, offset=offset)
-    return [AlgorithmInstanceResponse.from_domain(i) for i in instances]
+    return [StrategyInstanceResponse.from_domain(i) for i in instances]
 
 
 @router.post(
     "",
-    response_model=AlgorithmInstanceResponse,
+    response_model=StrategyInstanceResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def create_instance(
-    req: AlgorithmInstanceCreateRequest,
-    repo: AlgorithmInstanceRepository = Depends(get_instance_repository),
+    req: StrategyInstanceCreateRequest,
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
     _auth: None = Depends(require_trader),
-) -> AlgorithmInstanceResponse:
-    """Create a new AlgorithmInstance (link Algorithm + ConfigurationSet)."""
+) -> StrategyInstanceResponse:
+    """Create a new StrategyInstance (link Algorithm + ConfigurationSet)."""
     try:
         algorithm_id = UUID(req.algorithm_id)
         config_set_id = UUID(req.config_set_id)
@@ -115,12 +115,12 @@ async def create_instance(
                 detail="Instance with this algorithm and config set already exists",
             )
 
-        instance = AlgorithmInstance(
+        instance = StrategyInstance(
             algorithm_id=algorithm_id,
             config_set_id=config_set_id,
         )
         saved = await repo.save(instance)
-        return AlgorithmInstanceResponse.from_domain(saved)
+        return StrategyInstanceResponse.from_domain(saved)
 
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from None
@@ -134,29 +134,29 @@ async def create_instance(
         ) from None
 
 
-@router.get("/{instance_id}", response_model=AlgorithmInstanceResponse)
+@router.get("/{instance_id}", response_model=StrategyInstanceResponse)
 async def get_instance(
     instance_id: UUID,
-    repo: AlgorithmInstanceRepository = Depends(get_instance_repository),
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
     _auth: None = Depends(require_read),
-) -> AlgorithmInstanceResponse:
-    """Get AlgorithmInstance by ID."""
+) -> StrategyInstanceResponse:
+    """Get StrategyInstance by ID."""
     instance = await repo.get_by_id(instance_id)
     if not instance:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Instance {instance_id} not found",
         )
-    return AlgorithmInstanceResponse.from_domain(instance)
+    return StrategyInstanceResponse.from_domain(instance)
 
 
 @router.post("/{instance_id}/start", status_code=status.HTTP_200_OK)
 async def start_instance(
     instance_id: UUID,
-    repo: AlgorithmInstanceRepository = Depends(get_instance_repository),
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
     _auth: None = Depends(require_trader),
 ) -> dict[str, Any]:
-    """Start a AlgorithmInstance (hot-plug into pipeline)."""
+    """Start a StrategyInstance (hot-plug into pipeline)."""
     instance = await repo.get_by_id(instance_id)
     if not instance:
         raise HTTPException(
@@ -175,10 +175,10 @@ async def start_instance(
 @router.post("/{instance_id}/stop", status_code=status.HTTP_200_OK)
 async def stop_instance(
     instance_id: UUID,
-    repo: AlgorithmInstanceRepository = Depends(get_instance_repository),
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
     _auth: None = Depends(require_trader),
 ) -> dict[str, Any]:
-    """Stop a AlgorithmInstance (unplug from pipeline)."""
+    """Stop a StrategyInstance (unplug from pipeline)."""
     instance = await repo.get_by_id(instance_id)
     if not instance:
         raise HTTPException(
@@ -197,10 +197,10 @@ async def stop_instance(
 @router.post("/{instance_id}/pause", status_code=status.HTTP_200_OK)
 async def pause_instance(
     instance_id: UUID,
-    repo: AlgorithmInstanceRepository = Depends(get_instance_repository),
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
     _auth: None = Depends(require_trader),
 ) -> dict[str, Any]:
-    """Pause a running AlgorithmInstance."""
+    """Pause a running StrategyInstance."""
     instance = await repo.get_by_id(instance_id)
     if not instance:
         raise HTTPException(
@@ -219,10 +219,10 @@ async def pause_instance(
 @router.post("/{instance_id}/resume", status_code=status.HTTP_200_OK)
 async def resume_instance(
     instance_id: UUID,
-    repo: AlgorithmInstanceRepository = Depends(get_instance_repository),
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
     _auth: None = Depends(require_trader),
 ) -> dict[str, Any]:
-    """Resume a paused AlgorithmInstance."""
+    """Resume a paused StrategyInstance."""
     instance = await repo.get_by_id(instance_id)
     if not instance:
         raise HTTPException(
@@ -241,10 +241,10 @@ async def resume_instance(
 @router.delete("/{instance_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_instance(
     instance_id: UUID,
-    repo: AlgorithmInstanceRepository = Depends(get_instance_repository),
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
     _auth: None = Depends(require_trader),
 ) -> None:
-    """Delete a AlgorithmInstance."""
+    """Delete a StrategyInstance."""
     success = await repo.delete(instance_id)
     if not success:
         raise HTTPException(

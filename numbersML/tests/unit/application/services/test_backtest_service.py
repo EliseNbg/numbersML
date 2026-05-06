@@ -16,7 +16,7 @@ from src.application.services.backtest_service import (
     BacktestService,
     TradeRecord,
 )
-from src.domain.algorithms.algorithm_instance import AlgorithmInstance
+from src.domain.algorithms.strategy_instance import StrategyInstance
 
 
 @pytest.fixture
@@ -33,9 +33,9 @@ def backtest_service(db_pool):
 
 
 @pytest.fixture
-def sample_algorithm_instance():
-    """Create a sample AlgorithmInstance."""
-    return AlgorithmInstance(
+def sample_strategy_instance():
+    """Create a sample StrategyInstance."""
+    return StrategyInstance(
         algorithm_id=uuid4(),
         config_set_id=uuid4(),
     )
@@ -98,7 +98,7 @@ class TestLoadCandles:
     """Tests for _load_candles method."""
 
     @pytest.mark.asyncio
-    async def test_load_candles_with_data(self, backtest_service, sample_algorithm_instance):
+    async def test_load_candles_with_data(self, backtest_service, sample_strategy_instance):
         """Test loading candles from database."""
         # Mock database response
         mock_conn = AsyncMock()
@@ -123,7 +123,7 @@ class TestLoadCandles:
         backtest_service._pool.acquire.return_value = mock_cm
 
         candles = await backtest_service._load_candles(
-            sample_algorithm_instance,
+            sample_strategy_instance,
             datetime(2024, 1, 1, tzinfo=UTC),
             datetime(2024, 1, 2, tzinfo=UTC),
         )
@@ -132,7 +132,7 @@ class TestLoadCandles:
         assert candles[0]["close"] == 50050.0
 
     @pytest.mark.asyncio
-    async def test_load_candles_no_data(self, backtest_service, sample_algorithm_instance):
+    async def test_load_candles_no_data(self, backtest_service, sample_strategy_instance):
         """Test loading when no data exists."""
         mock_conn = AsyncMock()
         mock_conn.fetch.side_effect = [
@@ -145,7 +145,7 @@ class TestLoadCandles:
         backtest_service._pool.acquire.return_value = mock_cm
 
         candles = await backtest_service._load_candles(
-            sample_algorithm_instance,
+            sample_strategy_instance,
             datetime(2024, 1, 1, tzinfo=UTC),
             datetime(2024, 1, 2, tzinfo=UTC),
         )
@@ -156,7 +156,7 @@ class TestLoadCandles:
 class TestCalculateMetrics:
     """Tests for _calculate_metrics method."""
 
-    def test_calculate_with_trades(self, backtest_service, sample_algorithm_instance):
+    def test_calculate_with_trades(self, backtest_service, sample_strategy_instance):
         """Test calculating metrics with winning and losing trades."""
         trades = [
             TradeRecord(
@@ -191,7 +191,7 @@ class TestCalculateMetrics:
 
         result = backtest_service._calculate_metrics(
             job_id="test-job",
-            algorithm_instance=sample_algorithm_instance,
+            strategy_instance=sample_strategy_instance,
             trades=trades,
             equity_curve=equity_curve,
             initial_balance=10000.0,
@@ -207,11 +207,11 @@ class TestCalculateMetrics:
         assert result.total_return == 50.0
         assert result.total_return_pct == 0.5
 
-    def test_calculate_no_trades(self, backtest_service, sample_algorithm_instance):
+    def test_calculate_no_trades(self, backtest_service, sample_strategy_instance):
         """Test calculating metrics with no trades."""
         result = backtest_service._calculate_metrics(
             job_id="test-job",
-            algorithm_instance=sample_algorithm_instance,
+            strategy_instance=sample_strategy_instance,
             trades=[],
             equity_curve=[{"time": "2024-01-01T00:00:00+00:00", "balance": 10000.0}],
             initial_balance=10000.0,
@@ -267,11 +267,11 @@ class TestFlattenIndicators:
 class TestBacktestResult:
     """Tests for BacktestResult dataclass."""
 
-    def test_to_dict(self, sample_algorithm_instance):
+    def test_to_dict(self, sample_strategy_instance):
         """Test converting BacktestResult to dictionary."""
         result = BacktestResult(
             job_id="test-job",
-            algorithm_instance_id=sample_algorithm_instance.id,
+            strategy_instance_id=sample_strategy_instance.id,
             time_range_start=datetime(2024, 1, 1, tzinfo=UTC),
             time_range_end=datetime(2024, 1, 4, tzinfo=UTC),
             initial_balance=10000.0,
@@ -295,4 +295,4 @@ class TestBacktestResult:
         assert d["job_id"] == "test-job"
         assert d["total_return"] == 500.0
         assert d["win_rate"] == 50.0
-        assert "algorithm_instance_id" in d
+        assert "strategy_instance_id" in d

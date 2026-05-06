@@ -22,7 +22,7 @@ tests/
 ├── integration/
 │   ├── api/
 │   │   ├── test_config_set_api.py (EXISTS - ConfigSet lifecycle)
-│   │   ├── test_algorithm_instances_lifecycle.py (CREATED - needs fixes)
+│   │   ├── test_strategy_instances_lifecycle.py (CREATED - needs fixes)
 │   │   ├── test_algorithm_backtest_lifecycle.py (CREATED - needs fixes)
 │   │   └── test_dashboard_api.py (TO CREATE)
 ```
@@ -63,8 +63,8 @@ tests/
 | Error: Duplicate name | POST | `/api/config-sets` | 400 |
 | Error: Non-existent ID | GET | `/api/config-sets/{fake_id}` | 404 |
 
-### 2. AlgorithmInstance Endpoints (`/api/algorithm-instances`)
-**Test File**: `test_algorithm_instances_lifecycle.py`
+### 2. StrategyInstance Endpoints (`/api/algorithm-instances`)
+**Test File**: `test_strategy_instances_lifecycle.py`
 
 | Test Case | Method | Endpoint | Expected |
 |-----------|--------|----------|----------|
@@ -115,7 +115,7 @@ tests/
 ## Recommended Implementation Steps
 
 ### Step 1: Fix Mock Approach
-The current mock-based approach in `test_algorithm_instances_lifecycle.py` doesn't work because:
+The current mock-based approach in `test_strategy_instances_lifecycle.py` doesn't work because:
 - FastAPI's dependency injection creates fresh repository instances
 - Patching the class doesn't affect the dependency
 
@@ -145,8 +145,8 @@ Follow the pattern in `test_config_set_api.py`:
 For database-based tests:
 ```python
 @pytest.fixture
-async def test_algorithm_instance(db_pool):
-    """Create a test AlgorithmInstance in the database."""
+async def test_strategy_instance(db_pool):
+    """Create a test StrategyInstance in the database."""
     # Insert into database
     # Yield instance data
     # Cleanup after test
@@ -155,7 +155,7 @@ async def test_algorithm_instance(db_pool):
 ### Step 4: Run and Validate
 ```bash
 # Run specific test file
-.venv/bin/python -m pytest tests/integration/api/test_algorithm_instances_lifecycle.py -v
+.venv/bin/python -m pytest tests/integration/api/test_strategy_instances_lifecycle.py -v
 
 # Run all integration tests
 .venv/bin/python -m pytest tests/integration/ -v
@@ -172,11 +172,11 @@ async def test_algorithm_instance(db_pool):
 - [x] `src/infrastructure/market/paper_market_service.py` - Added `get_orders()`, `get_trades()` implementation
 
 ### Created Test Files (Need Fixes)
-- [x] `tests/integration/api/test_algorithm_instances_lifecycle.py` - Created (mock approach broken)
+- [x] `tests/integration/api/test_strategy_instances_lifecycle.py` - Created (mock approach broken)
 - [x] `tests/integration/api/test_algorithm_backtest_lifecycle.py` - Created (mock approach broken)
 
 ### TODO
-- [ ] Fix dependency mocking in `test_algorithm_instances_lifecycle.py`
+- [ ] Fix dependency mocking in `test_strategy_instances_lifecycle.py`
 - [ ] Fix dependency mocking in `test_algorithm_backtest_lifecycle.py`
 - [ ] Create `test_dashboard_api.py`
 - [ ] Run all tests and verify they pass
@@ -189,15 +189,15 @@ async def test_algorithm_instance(db_pool):
 .venv/bin/python -m pytest tests/integration/api/ -v --tb=short
 
 # Run specific test class
-.venv/bin/python -m pytest tests/integration/api/test_algorithm_instances_lifecycle.py::TestAlgorithmInstanceLifecycle -v
+.venv/bin/python -m pytest tests/integration/api/test_strategy_instances_lifecycle.py::TestStrategyInstanceLifecycle -v
 
 # Run single test
-.venv/bin/python -m pytest tests/integration/api/test_algorithm_instances_lifecycle.py::TestAlgorithmInstanceLifecycle::test_create_and_list_instances -v
+.venv/bin/python -m pytest tests/integration/api/test_strategy_instances_lifecycle.py::TestStrategyInstanceLifecycle::test_create_and_list_instances -v
 ```
 
 ## Notes
 
 1. The existing `test_config_set_api.py` uses a simple approach that works for basic CRUD
-2. For AlgorithmInstance tests with state transitions (start/stop/pause/resume), proper mocking is crucial
+2. For StrategyInstance tests with state transitions (start/stop/pause/resume), proper mocking is crucial
 3. Backtest tests may require actual BacktestService implementation or more complex mocking
 4. Consider using `pytest-httpx` or `pytest-fastapi` for better async test support

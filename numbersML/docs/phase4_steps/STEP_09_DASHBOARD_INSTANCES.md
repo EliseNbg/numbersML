@@ -1,16 +1,16 @@
-# Step 9: Dashboard - AlgorithmInstance Management#
+# Step 9: Dashboard - StrategyInstance Management#
 
 ## Objective#
-Create dashboard page for managing AlgorithmInstances (linking Algorithm + ConfigurationSet) with hot-plug controls.
+Create dashboard page for managing StrategyInstances (linking Algorithm + ConfigurationSet) with hot-plug controls.
 
 ## Context#
-- Step 4-5 complete: AlgorithmInstance entity, repository, and API exist
+- Step 4-5 complete: StrategyInstance entity, repository, and API exist
 - Step 8 complete: ConfigurationSet dashboard page exists
-- Need to show AlgorithmInstances with status, runtime stats, and hot-plug controls#
+- Need to show StrategyInstances with status, runtime stats, and hot-plug controls#
 
 ## DDD Architecture Decision (ADR)#
 
-**Decision**: AlgorithmInstance dashboard shows linked entities#
+**Decision**: StrategyInstance dashboard shows linked entities#
 - **Table Columns**: Algorithm Name, Config Set Name, Status, Runtime Stats, Actions#
 - **Hot-Plug**: Start/Stop/Pause/Resume buttons#
 - **Real-time Stats**: PnL, trades, uptime (poll every 5 seconds)#
@@ -20,12 +20,12 @@ Create dashboard page for managing AlgorithmInstances (linking Algorithm + Confi
 - Dropdown selectors for Algorithm and ConfigurationSet when creating#
 - Status badges with colors (running=green, stopped=gray, paused=yellow, error=red)#
 - Real-time statistics panel#
-- Navigation to backtest page with pre-filled AlgorithmInstance#
+- Navigation to backtest page with pre-filled StrategyInstance#
 
 ## TDD Approach#
 
 1. **Manual Testing Checklist**: Create HTML/JS, test all interactions#
-2. **Integration Test**: Test API calls to AlgorithmInstance endpoints#
+2. **Integration Test**: Test API calls to StrategyInstance endpoints#
 3. **State Management**: Test start/stop/pause/resume transitions#
 
 ## Implementation Files#
@@ -257,7 +257,7 @@ HTML page following existing pattern:
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- AlgorithmInstances JS -->
+    <!-- StrategyInstances JS -->
     <script src="js/algorithm-instances.js"></script>
 </body>
 </html>
@@ -269,10 +269,10 @@ JavaScript module:
 
 ```javascript
 /**
- * AlgorithmInstance Management Dashboard Module
+ * StrategyInstance Management Dashboard Module
  * 
  * Handles:
- * - AlgorithmInstance CRUD operations
+ * - StrategyInstance CRUD operations
  * - Hot-plug (start/stop/pause/resume)
  * - Real-time statistics polling
  * - Navigation to backtest
@@ -367,7 +367,7 @@ async function loadConfigSets() {
 }
 
 /**
- * Load all AlgorithmInstances from API
+ * Load all StrategyInstances from API
  */
 async function loadInstances() {
     try {
@@ -390,7 +390,7 @@ async function loadInstances() {
 }
 
 /**
- * Render AlgorithmInstances table
+ * Render StrategyInstances table
  */
 function renderInstances() {
     const tbody = document.getElementById('instances-tbody');
@@ -757,15 +757,15 @@ function escapeHtml(text) {
 ## LLM Implementation Prompt#
 
 ```text
-You are implementing Step 9 of Phase 4: Dashboard - AlgorithmInstance Management.
+You are implementing Step 9 of Phase 4: Dashboard - StrategyInstance Management.
 
 ## Your Task#
 
-Create dashboard page for managing AlgorithmInstances with hot-plug controls.
+Create dashboard page for managing StrategyInstances with hot-plug controls.
 
 ## Context#
 
-- Step 4-5 complete: AlgorithmInstance entity, repository, and API exist
+- Step 4-5 complete: StrategyInstance entity, repository, and API exist
 - Step 8 complete: ConfigurationSet dashboard page exists as pattern
 - Use Bootstrap 5 + vanilla JavaScript (no React/Vue)
 - Follow existing dashboard styling (css/dashboard.css)
@@ -815,7 +815,7 @@ Create dashboard page for managing AlgorithmInstances with hot-plug controls.
 
 ## Acceptance Criteria#
 
-1. Can create AlgorithmInstance (link Algorithm + ConfigSet)
+1. Can create StrategyInstance (link Algorithm + ConfigSet)
 2. Table shows all instances with correct data
 3. Start/Stop/Pause/Resume buttons work (hot-plug)
 4. Real-time stats polling for running instances

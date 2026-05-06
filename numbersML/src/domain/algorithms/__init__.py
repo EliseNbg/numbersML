@@ -35,9 +35,9 @@ from src.domain.algorithms.algorithm_config import (
     AlgorithmConfigVersion,
     AlgorithmDefinition,
 )
-from src.domain.algorithms.algorithm_instance import (
+from src.domain.algorithms.strategy_instance import (
     VALID_TRANSITIONS,
-    AlgorithmInstanceState,
+    StrategyInstanceState,
 )
 
 __all__ = [
@@ -49,7 +49,7 @@ __all__ = [
     "EnrichedTick",
     "SignalType",
     "TimeFrame",
-    "AlgorithmInstanceState",
+    "StrategyInstanceState",
     # Sample algorithms
     "RSIAlgorithm",
     "MACDAlgorithm",

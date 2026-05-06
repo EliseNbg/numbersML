@@ -1,5 +1,5 @@
 --
--- Migration: Create algorithm_instances table
+-- Migration: Create strategy_instances table
 -- Phase 4 Step 5
 --
 
@@ -7,9 +7,9 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 --
--- Create algorithm_instances table
+-- Create strategy_instances table
 --
-CREATE TABLE algorithm_instances (
+CREATE TABLE strategy_instances (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     algorithm_id UUID NOT NULL REFERENCES algorithms(id) ON DELETE CASCADE,
     config_set_id UUID NOT NULL REFERENCES configuration_sets(id) ON DELETE CASCADE,
@@ -29,14 +29,14 @@ CREATE TABLE algorithm_instances (
 --
 -- Indexes
 --
-CREATE INDEX idx_algorithm_instances_status ON algorithm_instances(status);
-CREATE INDEX idx_algorithm_instances_algorithm ON algorithm_instances(algorithm_id);
-CREATE INDEX idx_algorithm_instances_config ON algorithm_instances(config_set_id);
+CREATE INDEX idx_strategy_instances_status ON strategy_instances(status);
+CREATE INDEX idx_strategy_instances_algorithm ON strategy_instances(algorithm_id);
+CREATE INDEX idx_strategy_instances_config ON strategy_instances(config_set_id);
 
 --
 -- Auto-update updated_at trigger
 --
-CREATE OR REPLACE FUNCTION update_algorithm_instance_updated_at()
+CREATE OR REPLACE FUNCTION update_strategy_instance_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = NOW();
@@ -44,13 +44,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trigger_algorithm_instances_updated_at
-    BEFORE UPDATE ON algorithm_instances
+CREATE TRIGGER trigger_strategy_instances_updated_at
+    BEFORE UPDATE ON strategy_instances
     FOR EACH ROW
-    EXECUTE FUNCTION update_algorithm_instance_updated_at();
+    EXECUTE FUNCTION update_strategy_instance_updated_at();
 
 --
 -- Comments
 --
-COMMENT ON TABLE algorithm_instances IS 'Links Algorithm with ConfigurationSet for deployment';
-COMMENT ON COLUMN algorithm_instances.runtime_stats IS 'JSONB with PnL, trades, uptime, etc.';
+COMMENT ON TABLE strategy_instances IS 'Links Algorithm with ConfigurationSet for deployment';
+COMMENT ON COLUMN strategy_instances.runtime_stats IS 'JSONB with PnL, trades, uptime, etc.';

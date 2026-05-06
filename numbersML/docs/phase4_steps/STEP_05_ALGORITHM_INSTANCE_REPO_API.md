@@ -1,24 +1,24 @@
-# Step 5: AlgorithmInstance Repository & API
+# Step 5: StrategyInstance Repository & API
 
 ## Objective
-Create repository and API endpoints for AlgorithmInstance management, enabling CRUD operations and hot-plug functionality.
+Create repository and API endpoints for StrategyInstance management, enabling CRUD operations and hot-plug functionality.
 
 ## Context
-- Step 4 complete: `AlgorithmInstance` domain entity with state machine exists
+- Step 4 complete: `StrategyInstance` domain entity with state machine exists
 - Step 2-3 complete: ConfigurationSet repository and API patterns established
-- Need to persist AlgorithmInstance and expose via REST API
+- Need to persist StrategyInstance and expose via REST API
 - Hot-plug: start/stop without pipeline restart
 
 ## DDD Architecture Decision (ADR)
 
-**Decision**: AlgorithmInstance follows same pattern as ConfigurationSet
-- **Domain layer**: `AlgorithmInstanceRepository` abstract base class
-- **Infrastructure layer**: `AlgorithmInstanceRepositoryPG` asyncpg implementation
-- **API layer**: `algorithm_instances.py` with FastAPI endpoints
+**Decision**: StrategyInstance follows same pattern as ConfigurationSet
+- **Domain layer**: `StrategyInstanceRepository` abstract base class
+- **Infrastructure layer**: `StrategyInstanceRepositoryPG` asyncpg implementation
+- **API layer**: `strategy_instances.py` with FastAPI endpoints
 
 **Database Schema**:
 ```sql
-CREATE TABLE algorithm_instances (
+CREATE TABLE strategy_instances (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     algorithm_id UUID NOT NULL REFERENCES algorithms(id),
     config_set_id UUID NOT NULL REFERENCES configuration_sets(id),
@@ -40,15 +40,15 @@ CREATE TABLE algorithm_instances (
 
 ## Implementation Files
 
-### 1. `migrations/004_algorithm_instances.sql`
+### 1. `migrations/004_strategy_instances.sql`
 
 ```sql
 --
--- Migration: Create algorithm_instances table
+-- Migration: Create strategy_instances table
 -- Phase 4 Step 5
 --
 
-CREATE TABLE algorithm_instances (
+CREATE TABLE strategy_instances (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     algorithm_id UUID NOT NULL REFERENCES algorithms(id) ON DELETE CASCADE,
     config_set_id UUID NOT NULL REFERENCES configuration_sets(id) ON DELETE CASCADE,
@@ -65,11 +65,11 @@ CREATE TABLE algorithm_instances (
     CONSTRAINT chk_runtime_stats_json CHECK (jsonb_typeof(runtime_stats) = 'object')
 );
 
-CREATE INDEX idx_algorithm_instances_status ON algorithm_instances(status);
-CREATE INDEX idx_algorithm_instances_algorithm ON algorithm_instances(algorithm_id);
-CREATE INDEX idx_algorithm_instances_config ON algorithm_instances(config_set_id);
+CREATE INDEX idx_strategy_instances_status ON strategy_instances(status);
+CREATE INDEX idx_strategy_instances_algorithm ON strategy_instances(algorithm_id);
+CREATE INDEX idx_strategy_instances_config ON strategy_instances(config_set_id);
 
-CREATE OR REPLACE FUNCTION update_algorithm_instance_updated_at()
+CREATE OR REPLACE FUNCTION update_strategy_instance_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = NOW();
@@ -77,55 +77,55 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trigger_algorithm_instances_updated_at
-    BEFORE UPDATE ON algorithm_instances
+CREATE TRIGGER trigger_strategy_instances_updated_at
+    BEFORE UPDATE ON strategy_instances
     FOR EACH ROW
-    EXECUTE FUNCTION update_algorithm_instance_updated_at();
+    EXECUTE FUNCTION update_strategy_instance_updated_at();
 
-COMMENT ON TABLE algorithm_instances IS 'Links Algorithm with ConfigurationSet for deployment';
-COMMENT ON COLUMN algorithm_instances.runtime_stats IS 'JSONB with PnL, trades, uptime, etc.';
+COMMENT ON TABLE strategy_instances IS 'Links Algorithm with ConfigurationSet for deployment';
+COMMENT ON COLUMN strategy_instances.runtime_stats IS 'JSONB with PnL, trades, uptime, etc.';
 ```
 
-### 2. `src/domain/repositories/algorithm_instance_repository.py`
+### 2. `src/domain/repositories/strategy_instance_repository.py`
 
 ```python
 """
-AlgorithmInstance repository interface (Domain Layer).
+StrategyInstance repository interface (Domain Layer).
 
-Defines contract for AlgorithmInstance persistence.
+Defines contract for StrategyInstance persistence.
 """
 
 from abc import ABC, abstractmethod
 from typing import List, Optional
 from uuid import UUID
 
-from src.domain.algorithms.algorithm_instance import AlgorithmInstance
+from src.domain.algorithms.strategy_instance import StrategyInstance
 
 
-class AlgorithmInstanceRepository(ABC):
+class StrategyInstanceRepository(ABC):
     """
-    Abstract base class for AlgorithmInstance repository.
+    Abstract base class for StrategyInstance repository.
     
     Example:
-        >>> from src.infrastructure.repositories.algorithm_instance_repository_pg import AlgorithmInstanceRepositoryPG
-        >>> repo = AlgorithmInstanceRepositoryPG(connection)
+        >>> from src.infrastructure.repositories.strategy_instance_repository_pg import StrategyInstanceRepositoryPG
+        >>> repo = StrategyInstanceRepositoryPG(connection)
         >>> instance = await repo.save(instance)
     """
     
     @abstractmethod
-    async def save(self, instance: AlgorithmInstance) -> AlgorithmInstance:
-        """Save (insert or update) a AlgorithmInstance."""
+    async def save(self, instance: StrategyInstance) -> StrategyInstance:
+        """Save (insert or update) a StrategyInstance."""
         pass
     
     @abstractmethod
-    async def get_by_id(self, instance_id: UUID) -> Optional[AlgorithmInstance]:
-        """Get AlgorithmInstance by ID."""
+    async def get_by_id(self, instance_id: UUID) -> Optional[StrategyInstance]:
+        """Get StrategyInstance by ID."""
         pass
     
     @abstractmethod
     async def get_by_algorithm_and_config(
         self, algorithm_id: UUID, config_set_id: UUID
-    ) -> Optional[AlgorithmInstance]:
+    ) -> Optional[StrategyInstance]:
         """Get instance by algorithm + config_set combination."""
         pass
     
@@ -135,33 +135,33 @@ class AlgorithmInstanceRepository(ABC):
         status: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[AlgorithmInstance]:
+    ) -> List[StrategyInstance]:
         """List instances with optional status filter."""
         pass
     
     @abstractmethod
-    async def list_by_algorithm(self, algorithm_id: UUID) -> List[AlgorithmInstance]:
+    async def list_by_algorithm(self, algorithm_id: UUID) -> List[StrategyInstance]:
         """List all instances for a specific algorithm."""
         pass
     
     @abstractmethod
     async def delete(self, instance_id: UUID) -> bool:
-        """Delete a AlgorithmInstance (hard delete)."""
+        """Delete a StrategyInstance (hard delete)."""
         pass
     
     @abstractmethod
     async def update_status(
         self, instance_id: UUID, status: str, runtime_stats: Optional[dict] = None
-    ) -> Optional[AlgorithmInstance]:
+    ) -> Optional[StrategyInstance]:
         """Update instance status and optionally runtime stats."""
         pass
 ```
 
-### 3. `src/infrastructure/repositories/algorithm_instance_repository_pg.py`
+### 3. `src/infrastructure/repositories/strategy_instance_repository_pg.py`
 
 ```python
 """
-AlgorithmInstance repository PostgreSQL implementation.
+StrategyInstance repository PostgreSQL implementation.
 
 Uses asyncpg for async database access.
 """
@@ -172,29 +172,29 @@ from uuid import UUID
 
 import asyncpg
 
-from src.domain.repositories.algorithm_instance_repository import AlgorithmInstanceRepository
-from src.domain.algorithms.algorithm_instance import AlgorithmInstance, AlgorithmInstanceState
+from src.domain.repositories.strategy_instance_repository import StrategyInstanceRepository
+from src.domain.algorithms.strategy_instance import StrategyInstance, StrategyInstanceState
 
 logger = logging.getLogger(__name__)
 
 
-class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
-    """PostgreSQL implementation of AlgorithmInstanceRepository."""
+class StrategyInstanceRepositoryPG(StrategyInstanceRepository):
+    """PostgreSQL implementation of StrategyInstanceRepository."""
     
     def __init__(self, conn: asyncpg.Connection) -> None:
         self._conn = conn
     
-    async def save(self, instance: AlgorithmInstance) -> AlgorithmInstance:
-        """Save (insert or update) a AlgorithmInstance."""
+    async def save(self, instance: StrategyInstance) -> StrategyInstance:
+        """Save (insert or update) a StrategyInstance."""
         try:
             existing = await self._conn.fetchrow(
-                "SELECT id FROM algorithm_instances WHERE id = $1", instance.id
+                "SELECT id FROM strategy_instances WHERE id = $1", instance.id
             )
             
             if existing:
                 await self._conn.execute(
                     """
-                    UPDATE algorithm_instances
+                    UPDATE strategy_instances
                     SET status = $2, runtime_stats = $3,
                         started_at = $4, stopped_at = $5, updated_at = NOW()
                     WHERE id = $1
@@ -208,7 +208,7 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
             else:
                 await self._conn.execute(
                     """
-                    INSERT INTO algorithm_instances
+                    INSERT INTO strategy_instances
                         (id, algorithm_id, config_set_id, status, runtime_stats,
                          started_at, stopped_at)
                     VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -225,16 +225,16 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
             return await self.get_by_id(instance.id)
             
         except Exception as e:
-            logger.error(f"Failed to save AlgorithmInstance: {e}")
+            logger.error(f"Failed to save StrategyInstance: {e}")
             raise
     
-    async def get_by_id(self, instance_id: UUID) -> Optional[AlgorithmInstance]:
-        """Get AlgorithmInstance by ID."""
+    async def get_by_id(self, instance_id: UUID) -> Optional[StrategyInstance]:
+        """Get StrategyInstance by ID."""
         row = await self._conn.fetchrow(
             """
             SELECT id, algorithm_id, config_set_id, status, runtime_stats,
                    started_at, stopped_at, created_at, updated_at
-            FROM algorithm_instances
+            FROM strategy_instances
             WHERE id = $1
             """,
             instance_id,
@@ -243,13 +243,13 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
     
     async def get_by_algorithm_and_config(
         self, algorithm_id: UUID, config_set_id: UUID
-    ) -> Optional[AlgorithmInstance]:
+    ) -> Optional[StrategyInstance]:
         """Get instance by algorithm + config_set combination."""
         row = await self._conn.fetchrow(
             """
             SELECT id, algorithm_id, config_set_id, status, runtime_stats,
                    started_at, stopped_at, created_at, updated_at
-            FROM algorithm_instances
+            FROM strategy_instances
             WHERE algorithm_id = $1 AND config_set_id = $2
             """,
             algorithm_id,
@@ -259,14 +259,14 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
     
     async def list_all(
         self, status: Optional[str] = None, limit: int = 100, offset: int = 0
-    ) -> List[AlgorithmInstance]:
+    ) -> List[StrategyInstance]:
         """List instances with optional status filter."""
         if status:
             rows = await self._conn.fetch(
                 """
                 SELECT id, algorithm_id, config_set_id, status, runtime_stats,
                        started_at, stopped_at, created_at, updated_at
-                FROM algorithm_instances
+                FROM strategy_instances
                 WHERE status = $1
                 ORDER BY created_at DESC
                 LIMIT $2 OFFSET $3
@@ -280,7 +280,7 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
                 """
                 SELECT id, algorithm_id, config_set_id, status, runtime_stats,
                        started_at, stopped_at, created_at, updated_at
-                FROM algorithm_instances
+                FROM strategy_instances
                 ORDER BY created_at DESC
                 LIMIT $1 OFFSET $2
                 """,
@@ -289,13 +289,13 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
             )
         return [self._row_to_entity(row) for row in rows]
     
-    async def list_by_algorithm(self, algorithm_id: UUID) -> List[AlgorithmInstance]:
+    async def list_by_algorithm(self, algorithm_id: UUID) -> List[StrategyInstance]:
         """List all instances for a specific algorithm."""
         rows = await self._conn.fetch(
             """
             SELECT id, algorithm_id, config_set_id, status, runtime_stats,
                    started_at, stopped_at, created_at, updated_at
-            FROM algorithm_instances
+            FROM strategy_instances
             WHERE algorithm_id = $1
             ORDER BY created_at DESC
             """,
@@ -304,20 +304,20 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
         return [self._row_to_entity(row) for row in rows]
     
     async def delete(self, instance_id: UUID) -> bool:
-        """Delete a AlgorithmInstance."""
+        """Delete a StrategyInstance."""
         result = await self._conn.execute(
-            "DELETE FROM algorithm_instances WHERE id = $1", instance_id
+            "DELETE FROM strategy_instances WHERE id = $1", instance_id
         )
         return "DELETE 1" in result
     
     async def update_status(
         self, instance_id: UUID, status: str, runtime_stats: Optional[dict] = None
-    ) -> Optional[AlgorithmInstance]:
+    ) -> Optional[StrategyInstance]:
         """Update instance status and optionally runtime stats."""
         if runtime_stats:
             result = await self._conn.execute(
                 """
-                UPDATE algorithm_instances
+                UPDATE strategy_instances
                 SET status = $2, runtime_stats = $3, updated_at = NOW()
                 WHERE id = $1
                 """,
@@ -328,7 +328,7 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
         else:
             result = await self._conn.execute(
                 """
-                UPDATE algorithm_instances
+                UPDATE strategy_instances
                 SET status = $2, updated_at = NOW()
                 WHERE id = $1
                 """,
@@ -340,17 +340,17 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
             return None
         return await self.get_by_id(instance_id)
     
-    def _row_to_entity(self, row: asyncpg.Record) -> AlgorithmInstance:
-        """Convert database row to AlgorithmInstance entity."""
-        from src.domain.algorithms.algorithm_instance import RuntimeStats
+    def _row_to_entity(self, row: asyncpg.Record) -> StrategyInstance:
+        """Convert database row to StrategyInstance entity."""
+        from src.domain.algorithms.strategy_instance import RuntimeStats
         
         runtime_stats = RuntimeStats(**row["runtime_stats"]) if row["runtime_stats"] else RuntimeStats()
         
-        instance = AlgorithmInstance(
+        instance = StrategyInstance(
             algorithm_id=row["algorithm_id"],
             config_set_id=row["config_set_id"],
             id=row["id"],
-            status=AlgorithmInstanceState(row["status"]),
+            status=StrategyInstanceState(row["status"]),
             runtime_stats=runtime_stats,
             started_at=row["started_at"],
             stopped_at=row["stopped_at"],
@@ -358,13 +358,13 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
         return instance
 ```
 
-### 4. `src/infrastructure/api/routes/algorithm_instances.py`
+### 4. `src/infrastructure/api/routes/strategy_instances.py`
 
 ```python
 """
-AlgorithmInstance API endpoints.
+StrategyInstance API endpoints.
 
-Provides REST API for AlgorithmInstance management:
+Provides REST API for StrategyInstance management:
 - CRUD operations
 - Start/stop/pause/resume (hot-plug)
 - Runtime statistics
@@ -378,14 +378,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from src.domain.repositories.algorithm_instance_repository import AlgorithmInstanceRepository
-from src.domain.algorithms.algorithm_instance import (
-    AlgorithmInstance,
-    AlgorithmInstanceState,
+from src.domain.repositories.strategy_instance_repository import StrategyInstanceRepository
+from src.domain.algorithms.strategy_instance import (
+    StrategyInstance,
+    StrategyInstanceState,
 )
 from src.infrastructure.database import get_db_pool_async
-from src.infrastructure.repositories.algorithm_instance_repository_pg import (
-    AlgorithmInstanceRepositoryPG,
+from src.infrastructure.repositories.strategy_instance_repository_pg import (
+    StrategyInstanceRepositoryPG,
 )
 
 router = APIRouter(prefix="/api/algorithm-instances", tags=["algorithm-instances"])
@@ -393,12 +393,12 @@ logger = logging.getLogger(__name__)
 
 
 # Pydantic Models
-class AlgorithmInstanceCreateRequest(BaseModel):
+class StrategyInstanceCreateRequest(BaseModel):
     algorithm_id: str = Field(..., description="UUID of the Algorithm")
     config_set_id: str = Field(..., description="UUID of the ConfigurationSet")
 
 
-class AlgorithmInstanceResponse(BaseModel):
+class StrategyInstanceResponse(BaseModel):
     id: str
     algorithm_id: str
     config_set_id: str
@@ -410,7 +410,7 @@ class AlgorithmInstanceResponse(BaseModel):
     updated_at: datetime
     
     @classmethod
-    def from_domain(cls, instance: AlgorithmInstance) -> "AlgorithmInstanceResponse":
+    def from_domain(cls, instance: StrategyInstance) -> "StrategyInstanceResponse":
         return cls(
             id=str(instance.id),
             algorithm_id=str(instance.algorithm_id),
@@ -425,31 +425,31 @@ class AlgorithmInstanceResponse(BaseModel):
 
 
 # Dependencies
-async def get_instance_repository() -> AlgorithmInstanceRepository:
+async def get_instance_repository() -> StrategyInstanceRepository:
     db_pool = await get_db_pool_async()
     async with db_pool.acquire() as conn:
-        return AlgorithmInstanceRepositoryPG(conn)
+        return StrategyInstanceRepositoryPG(conn)
 
 
 # Endpoints
-@router.get("", response_model=List[AlgorithmInstanceResponse])
+@router.get("", response_model=List[StrategyInstanceResponse])
 async def list_instances(
     status: Optional[str] = None,
     limit: int = 100,
     offset: int = 0,
-    repo: AlgorithmInstanceRepository = Depends(get_instance_repository),
-) -> List[AlgorithmInstanceResponse]:
-    """List AlgorithmInstances with optional status filter."""
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
+) -> List[StrategyInstanceResponse]:
+    """List StrategyInstances with optional status filter."""
     instances = await repo.list_all(status=status, limit=limit, offset=offset)
-    return [AlgorithmInstanceResponse.from_domain(i) for i in instances]
+    return [StrategyInstanceResponse.from_domain(i) for i in instances]
 
 
-@router.post("", response_model=AlgorithmInstanceResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=StrategyInstanceResponse, status_code=status.HTTP_201_CREATED)
 async def create_instance(
-    req: AlgorithmInstanceCreateRequest,
-    repo: AlgorithmInstanceRepository = Depends(get_instance_repository),
-) -> AlgorithmInstanceResponse:
-    """Create a new AlgorithmInstance (link Algorithm + ConfigurationSet)."""
+    req: StrategyInstanceCreateRequest,
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
+) -> StrategyInstanceResponse:
+    """Create a new StrategyInstance (link Algorithm + ConfigurationSet)."""
     try:
         from uuid import UUID
         algorithm_id = UUID(req.algorithm_id)
@@ -463,12 +463,12 @@ async def create_instance(
                 detail="Instance with this algorithm and config set already exists",
             )
         
-        instance = AlgorithmInstance(
+        instance = StrategyInstance(
             algorithm_id=algorithm_id,
             config_set_id=config_set_id,
         )
         saved = await repo.save(instance)
-        return AlgorithmInstanceResponse.from_domain(saved)
+        return StrategyInstanceResponse.from_domain(saved)
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -477,24 +477,24 @@ async def create_instance(
         raise HTTPException(status_code=500, detail="Failed to create instance")
 
 
-@router.get("/{instance_id}", response_model=AlgorithmInstanceResponse)
+@router.get("/{instance_id}", response_model=StrategyInstanceResponse)
 async def get_instance(
     instance_id: UUID,
-    repo: AlgorithmInstanceRepository = Depends(get_instance_repository),
-) -> AlgorithmInstanceResponse:
-    """Get AlgorithmInstance by ID."""
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
+) -> StrategyInstanceResponse:
+    """Get StrategyInstance by ID."""
     instance = await repo.get_by_id(instance_id)
     if not instance:
         raise HTTPException(status_code=404, detail=f"Instance {instance_id} not found")
-    return AlgorithmInstanceResponse.from_domain(instance)
+    return StrategyInstanceResponse.from_domain(instance)
 
 
 @router.post("/{instance_id}/start", status_code=status.HTTP_200_OK)
 async def start_instance(
     instance_id: UUID,
-    repo: AlgorithmInstanceRepository = Depends(get_instance_repository),
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
 ) -> Dict[str, Any]:
-    """Start a AlgorithmInstance (hot-plug into pipeline)."""
+    """Start a StrategyInstance (hot-plug into pipeline)."""
     instance = await repo.get_by_id(instance_id)
     if not instance:
         raise HTTPException(status_code=404, detail=f"Instance {instance_id} not found")
@@ -510,9 +510,9 @@ async def start_instance(
 @router.post("/{instance_id}/stop", status_code=status.HTTP_200_OK)
 async def stop_instance(
     instance_id: UUID,
-    repo: AlgorithmInstanceRepository = Depends(get_instance_repository),
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
 ) -> Dict[str, Any]:
-    """Stop a AlgorithmInstance (unplug from pipeline)."""
+    """Stop a StrategyInstance (unplug from pipeline)."""
     instance = await repo.get_by_id(instance_id)
     if not instance:
         raise HTTPException(status_code=404, detail=f"Instance {instance_id} not found")
@@ -528,9 +528,9 @@ async def stop_instance(
 @router.post("/{instance_id}/pause", status_code=status.HTTP_200_OK)
 async def pause_instance(
     instance_id: UUID,
-    repo: AlgorithmInstanceRepository = Depends(get_instance_repository),
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
 ) -> Dict[str, Any]:
-    """Pause a running AlgorithmInstance."""
+    """Pause a running StrategyInstance."""
     instance = await repo.get_by_id(instance_id)
     if not instance:
         raise HTTPException(status_code=404, detail=f"Instance {instance_id} not found")
@@ -546,9 +546,9 @@ async def pause_instance(
 @router.post("/{instance_id}/resume", status_code=status.HTTP_200_OK)
 async def resume_instance(
     instance_id: UUID,
-    repo: AlgorithmInstanceRepository = Depends(get_instance_repository),
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
 ) -> Dict[str, Any]:
-    """Resume a paused AlgorithmInstance."""
+    """Resume a paused StrategyInstance."""
     instance = await repo.get_by_id(instance_id)
     if not instance:
         raise HTTPException(status_code=404, detail=f"Instance {instance_id} not found")
@@ -564,9 +564,9 @@ async def resume_instance(
 @router.delete("/{instance_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_instance(
     instance_id: UUID,
-    repo: AlgorithmInstanceRepository = Depends(get_instance_repository),
+    repo: StrategyInstanceRepository = Depends(get_instance_repository),
 ) -> None:
-    """Delete a AlgorithmInstance."""
+    """Delete a StrategyInstance."""
     success = await repo.delete(instance_id)
     if not success:
         raise HTTPException(status_code=404, detail=f"Instance {instance_id} not found")
@@ -575,44 +575,44 @@ async def delete_instance(
 ## LLM Implementation Prompt
 
 ```text
-You are implementing Step 5 of Phase 4: AlgorithmInstance Repository & API.
+You are implementing Step 5 of Phase 4: StrategyInstance Repository & API.
 
 ## Your Task
 
-Create repository and API endpoints for AlgorithmInstance management with hot-plug functionality.
+Create repository and API endpoints for StrategyInstance management with hot-plug functionality.
 
 ## Context
 
-- Step 4 complete: AlgorithmInstance domain entity in src/domain/algorithms/algorithm_instance.py
+- Step 4 complete: StrategyInstance domain entity in src/domain/algorithms/strategy_instance.py
 - Step 2-3 complete: ConfigurationSet repository/API patterns established
 - Follow DDD: Interface in domain, implementation in infrastructure
 - Use FastAPI with pydantic v2 for API
 
 ## Requirements
 
-1. Create `migrations/004_algorithm_instances.sql` with:
-   - CREATE TABLE algorithm_instances with all columns
+1. Create `migrations/004_strategy_instances.sql` with:
+   - CREATE TABLE strategy_instances with all columns
    - Foreign keys to algorithms and configuration_sets
    - UNIQUE constraint on (algorithm_id, config_set_id)
    - CHECK constraint on status values
    - Indexes on status, algorithm_id, config_set_id
    - Trigger for updated_at auto-update
 
-2. Create `src/domain/repositories/algorithm_instance_repository.py` with:
-   - Abstract base class AlgorithmInstanceRepository(ABC)
+2. Create `src/domain/repositories/strategy_instance_repository.py` with:
+   - Abstract base class StrategyInstanceRepository(ABC)
    - Methods: save, get_by_id, get_by_algorithm_and_config, list_all, list_by_algorithm, delete, update_status
    - Full type annotations
 
-3. Create `src/infrastructure/repositories/algorithm_instance_repository_pg.py` with:
-   - AlgorithmInstanceRepositoryPG implementing interface
+3. Create `src/infrastructure/repositories/strategy_instance_repository_pg.py` with:
+   - StrategyInstanceRepositoryPG implementing interface
    - save(): upsert (INSERT ON CONFLICT)
    - get_by_id(), get_by_algorithm_and_config()
    - list_all() with status filter, pagination
    - update_status(): update status and optionally runtime_stats
-   - _row_to_entity(): Convert Record to AlgorithmInstance
+   - _row_to_entity(): Convert Record to StrategyInstance
 
-4. Create `src/infrastructure/api/routes/algorithm_instances.py` with:
-   - Pydantic models: AlgorithmInstanceCreateRequest, AlgorithmInstanceResponse
+4. Create `src/infrastructure/api/routes/strategy_instances.py` with:
+   - Pydantic models: StrategyInstanceCreateRequest, StrategyInstanceResponse
    - GET /api/algorithm-instances (list with status filter)
    - POST /api/algorithm-instances (create)
    - GET /api/algorithm-instances/{id} (get by ID)
@@ -623,8 +623,8 @@ Create repository and API endpoints for AlgorithmInstance management with hot-pl
    - DELETE /api/algorithm-instances/{id} (delete)
 
 5. Create tests following TDD:
-   - tests/unit/infrastructure/repositories/test_algorithm_instance_repository_pg.py
-   - tests/unit/infrastructure/api/test_algorithm_instances_api.py
+   - tests/unit/infrastructure/repositories/test_strategy_instance_repository_pg.py
+   - tests/unit/infrastructure/api/test_strategy_instances_api.py
    - Mock asyncpg.Connection with AsyncMock
    - Test all state transitions
 
@@ -641,8 +641,8 @@ Create repository and API endpoints for AlgorithmInstance management with hot-pl
 ## Acceptance Criteria
 
 1. Migration 004 creates table with correct schema
-2. AlgorithmInstanceRepository interface defines all methods
-3. AlgorithmInstanceRepositoryPG implements all methods
+2. StrategyInstanceRepository interface defines all methods
+3. StrategyInstanceRepositoryPG implements all methods
 4. All CRUD endpoints working
 5. Hot-plug endpoints (start/stop/pause/resume) working
 6. State machine validation in API (cannot start from running, etc.)
@@ -655,12 +655,12 @@ Create repository and API endpoints for AlgorithmInstance management with hot-pl
 
 ```bash
 # Format and lint
-black src/domain/repositories/algorithm_instance_repository.py src/infrastructure/repositories/algorithm_instance_repository_pg.py src/infrastructure/api/routes/algorithm_instances.py
-ruff check src/domain/repositories/algorithm_instance_repository.py src/infrastructure/repositories/algorithm_instance_repository_pg.py src/infrastructure/api/routes/algorithm_instances.py
-mypy src/domain/repositories/algorithm_instance_repository.py src/infrastructure/repositories/algorithm_instance_repository_pg.py
+black src/domain/repositories/strategy_instance_repository.py src/infrastructure/repositories/strategy_instance_repository_pg.py src/infrastructure/api/routes/strategy_instances.py
+ruff check src/domain/repositories/strategy_instance_repository.py src/infrastructure/repositories/strategy_instance_repository_pg.py src/infrastructure/api/routes/strategy_instances.py
+mypy src/domain/repositories/strategy_instance_repository.py src/infrastructure/repositories/strategy_instance_repository_pg.py
 
 # Run tests
-.venv/bin/python -m pytest tests/unit/infrastructure/repositories/test_algorithm_instance_repository_pg.py tests/unit/infrastructure/api/test_algorithm_instances_api.py -v
+.venv/bin/python -m pytest tests/unit/infrastructure/repositories/test_strategy_instance_repository_pg.py tests/unit/infrastructure/api/test_strategy_instances_api.py -v
 ```
 
 ## Output
@@ -673,7 +673,7 @@ mypy src/domain/repositories/algorithm_instance_repository.py src/infrastructure
 
 ## Success Criteria
 
-- [ ] AlgorithmInstance repository created with all CRUD operations
+- [ ] StrategyInstance repository created with all CRUD operations
 - [ ] API endpoints for all operations including hot-plug
 - [ ] State machine enforced in API (can_start(), can_stop(), etc.)
 - [ ] UNIQUE constraint prevents duplicate algorithm+config pairs

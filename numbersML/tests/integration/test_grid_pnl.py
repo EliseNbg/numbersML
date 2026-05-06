@@ -39,7 +39,7 @@ class TestGridAlgorithmPnL:
         # For now, this is a placeholder
         # In full implementation:
         # - Load GridAlgorithm
-        # - Create AlgorithmInstance with Grid config
+        # - Create StrategyInstance with Grid config
         # - Run backtest
         # - Assert PnL > 0
 

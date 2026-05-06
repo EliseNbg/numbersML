@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from typing import Any, Optional
 from uuid import UUID, uuid4
 
-from src.domain.algorithms.algorithm_instance import AlgorithmInstanceState
+from src.domain.algorithms.strategy_instance import StrategyInstanceState
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +25,8 @@ class AlgorithmLifecycleEvent:
     algorithm_id: UUID
     algorithm_name: str
     algorithm_version: int
-    from_state: AlgorithmInstanceState
-    to_state: AlgorithmInstanceState
+    from_state: StrategyInstanceState
+    to_state: StrategyInstanceState
     trigger: str  # "system", "api", "error", etc.
     event_id: UUID = field(default_factory=uuid4)
     occurred_at: datetime = field(default_factory=lambda: datetime.now(UTC))
@@ -44,7 +44,7 @@ class AlgorithmRuntimeSnapshot:
     """Snapshot of algorithm runtime statistics."""
 
     algorithm_id: UUID
-    state: AlgorithmInstanceState
+    state: StrategyInstanceState
     ticks_processed: int = 0
     signals_generated: int = 0
     orders_placed: int = 0

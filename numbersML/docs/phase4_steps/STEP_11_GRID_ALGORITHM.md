@@ -5,7 +5,7 @@ Implement a simple Grid Algorithm that generates positive PnL on noised sin wave
 
 ## Context#
 - Phase 3 complete: Algorithm base class in `src/domain/algorithms/base.py`#
-- Step 4 complete: AlgorithmInstance entity exists#
+- Step 4 complete: StrategyInstance entity exists#
 - Need a algorithm that works with TEST/USDT synthetic data#
 
 ## DDD Architecture Decision (ADR)#
@@ -549,7 +549,7 @@ Implement a simple Grid Algorithm that generates positive PnL on TEST/USDT.
 ## Context#
 
 - Phase 3 complete: Algorithm base class in src/domain/algorithms/base.py`
-- Step 4 complete: AlgorithmInstance entity exists
+- Step 4 complete: StrategyInstance entity exists
 - Grid algorithm places buy orders below price, sell above
 - Must follow existing Algorithm base class pattern#
 

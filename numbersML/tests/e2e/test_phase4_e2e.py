@@ -79,11 +79,11 @@ class TestConfigurationSetsE2E:
         expect(page.locator(".alert-success")).to_be_visible()
 
 
-class TestAlgorithmInstancesE2E:
-    """E2E tests for AlgorithmInstance management."""
+class TestStrategyInstancesE2E:
+    """E2E tests for StrategyInstance management."""
 
     def test_create_instance(self, page: Page, base_url):
-        """Test creating a AlgorithmInstance."""
+        """Test creating a StrategyInstance."""
         page.goto(f"{base_url}/dashboard/algorithm-instances.html")
 
         # Click create
@@ -102,7 +102,7 @@ class TestAlgorithmInstancesE2E:
         expect(page.locator(".alert-success")).to_be_visible()
 
     def test_start_instance(self, page: Page, base_url):
-        """Test starting (hot-plug) a AlgorithmInstance."""
+        """Test starting (hot-plug) a StrategyInstance."""
         page.goto(f"{base_url}/dashboard/algorithm-instances.html")
 
         # Click start button (play icon, first row)
@@ -112,7 +112,7 @@ class TestAlgorithmInstancesE2E:
         page.wait_for_selector("text=Running", timeout=5000)
 
     def test_stop_instance(self, page: Page, base_url):
-        """Test stopping (unplug) a AlgorithmInstance."""
+        """Test stopping (unplug) a StrategyInstance."""
         page.goto(f"{base_url}/dashboard/algorithm-instances.html")
 
         # Click stop button (stop icon)

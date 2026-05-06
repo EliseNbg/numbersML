@@ -1,5 +1,5 @@
 """
-Unit tests for AlgorithmInstanceRepositoryPG.
+Unit tests for StrategyInstanceRepositoryPG.
 
 Uses unittest.mock.AsyncMock to mock asyncpg.Connection.
 """
@@ -11,12 +11,12 @@ from uuid import uuid4
 import asyncpg  # type: ignore[import-untyped]
 import pytest
 
-from src.domain.algorithms.algorithm_instance import (
-    AlgorithmInstance,
-    AlgorithmInstanceState,
+from src.domain.algorithms.strategy_instance import (
+    StrategyInstance,
+    StrategyInstanceState,
 )
-from src.infrastructure.repositories.algorithm_instance_repository_pg import (
-    AlgorithmInstanceRepositoryPG,
+from src.infrastructure.repositories.strategy_instance_repository_pg import (
+    StrategyInstanceRepositoryPG,
 )
 
 
@@ -28,18 +28,18 @@ def mock_conn():
 
 @pytest.fixture
 def sample_instance():
-    """Create a sample AlgorithmInstance."""
-    return AlgorithmInstance(
+    """Create a sample StrategyInstance."""
+    return StrategyInstance(
         algorithm_id=uuid4(),
         config_set_id=uuid4(),
     )
 
 
-class TestAlgorithmInstanceRepositoryPGSave:
+class TestStrategyInstanceRepositoryPGSave:
     """Tests for save method."""
 
     async def test_save_new_instance(self, mock_conn, sample_instance):
-        """Test saving a new AlgorithmInstance."""
+        """Test saving a new StrategyInstance."""
         mock_conn.fetchrow.return_value = {
             "id": sample_instance.id,
             "algorithm_id": sample_instance.algorithm_id,
@@ -52,7 +52,7 @@ class TestAlgorithmInstanceRepositoryPGSave:
             "updated_at": datetime.now(UTC),
         }
 
-        repo = AlgorithmInstanceRepositoryPG(mock_conn)
+        repo = StrategyInstanceRepositoryPG(mock_conn)
         saved = await repo.save(sample_instance)
 
         assert saved.id == sample_instance.id
@@ -60,7 +60,7 @@ class TestAlgorithmInstanceRepositoryPGSave:
         mock_conn.fetchrow.assert_called_once()
 
     async def test_save_existing_instance(self, mock_conn, sample_instance):
-        """Test updating an existing AlgorithmInstance."""
+        """Test updating an existing StrategyInstance."""
         sample_instance.start()
         mock_conn.fetchrow.return_value = {
             "id": sample_instance.id,
@@ -74,22 +74,22 @@ class TestAlgorithmInstanceRepositoryPGSave:
             "updated_at": datetime.now(UTC),
         }
 
-        repo = AlgorithmInstanceRepositoryPG(mock_conn)
+        repo = StrategyInstanceRepositoryPG(mock_conn)
         saved = await repo.save(sample_instance)
 
-        assert saved.status == AlgorithmInstanceState.RUNNING
+        assert saved.status == StrategyInstanceState.RUNNING
         assert saved.started_at is not None
 
     async def test_save_unique_violation(self, mock_conn, sample_instance):
         """Test save raises ValueError on unique violation."""
         mock_conn.fetchrow.side_effect = asyncpg.UniqueViolationError("duplicate key")
 
-        repo = AlgorithmInstanceRepositoryPG(mock_conn)
+        repo = StrategyInstanceRepositoryPG(mock_conn)
         with pytest.raises(ValueError, match="already exists"):
             await repo.save(sample_instance)
 
 
-class TestAlgorithmInstanceRepositoryPGGetById:
+class TestStrategyInstanceRepositoryPGGetById:
     """Tests for get_by_id method."""
 
     async def test_get_existing_instance(self, mock_conn):
@@ -107,24 +107,24 @@ class TestAlgorithmInstanceRepositoryPGGetById:
             "updated_at": datetime.now(UTC),
         }
 
-        repo = AlgorithmInstanceRepositoryPG(mock_conn)
+        repo = StrategyInstanceRepositoryPG(mock_conn)
         instance = await repo.get_by_id(instance_id)
 
         assert instance is not None
         assert instance.id == instance_id
-        assert instance.status == AlgorithmInstanceState.STOPPED
+        assert instance.status == StrategyInstanceState.STOPPED
 
     async def test_get_nonexistent_instance(self, mock_conn):
         """Test getting a non-existent instance returns None."""
         mock_conn.fetchrow.return_value = None
 
-        repo = AlgorithmInstanceRepositoryPG(mock_conn)
+        repo = StrategyInstanceRepositoryPG(mock_conn)
         instance = await repo.get_by_id(uuid4())
 
         assert instance is None
 
 
-class TestAlgorithmInstanceRepositoryPGGetByAlgorithmAndConfig:
+class TestStrategyInstanceRepositoryPGGetByAlgorithmAndConfig:
     """Tests for get_by_algorithm_and_config method."""
 
     async def test_get_existing_combination(self, mock_conn):
@@ -143,7 +143,7 @@ class TestAlgorithmInstanceRepositoryPGGetByAlgorithmAndConfig:
             "updated_at": datetime.now(UTC),
         }
 
-        repo = AlgorithmInstanceRepositoryPG(mock_conn)
+        repo = StrategyInstanceRepositoryPG(mock_conn)
         instance = await repo.get_by_algorithm_and_config(algorithm_id, config_set_id)
 
         assert instance is not None
@@ -154,13 +154,13 @@ class TestAlgorithmInstanceRepositoryPGGetByAlgorithmAndConfig:
         """Test getting non-existent combination returns None."""
         mock_conn.fetchrow.return_value = None
 
-        repo = AlgorithmInstanceRepositoryPG(mock_conn)
+        repo = StrategyInstanceRepositoryPG(mock_conn)
         instance = await repo.get_by_algorithm_and_config(uuid4(), uuid4())
 
         assert instance is None
 
 
-class TestAlgorithmInstanceRepositoryPGListAll:
+class TestStrategyInstanceRepositoryPGListAll:
     """Tests for list_all method."""
 
     async def test_list_all_no_filter(self, mock_conn):
@@ -180,7 +180,7 @@ class TestAlgorithmInstanceRepositoryPGListAll:
             for _ in range(3)
         ]
 
-        repo = AlgorithmInstanceRepositoryPG(mock_conn)
+        repo = StrategyInstanceRepositoryPG(mock_conn)
         instances = await repo.list_all()
 
         assert len(instances) == 3
@@ -201,14 +201,14 @@ class TestAlgorithmInstanceRepositoryPGListAll:
             }
         ]
 
-        repo = AlgorithmInstanceRepositoryPG(mock_conn)
+        repo = StrategyInstanceRepositoryPG(mock_conn)
         instances = await repo.list_all(status="running")
 
         assert len(instances) == 1
-        assert instances[0].status == AlgorithmInstanceState.RUNNING
+        assert instances[0].status == StrategyInstanceState.RUNNING
 
 
-class TestAlgorithmInstanceRepositoryPGListByAlgorithm:
+class TestStrategyInstanceRepositoryPGListByAlgorithm:
     """Tests for list_by_algorithm method."""
 
     async def test_list_by_algorithm(self, mock_conn):
@@ -229,21 +229,21 @@ class TestAlgorithmInstanceRepositoryPGListByAlgorithm:
             for _ in range(2)
         ]
 
-        repo = AlgorithmInstanceRepositoryPG(mock_conn)
+        repo = StrategyInstanceRepositoryPG(mock_conn)
         instances = await repo.list_by_algorithm(algorithm_id)
 
         assert len(instances) == 2
         assert all(i.algorithm_id == algorithm_id for i in instances)
 
 
-class TestAlgorithmInstanceRepositoryPGDelete:
+class TestStrategyInstanceRepositoryPGDelete:
     """Tests for delete method."""
 
     async def test_delete_existing_instance(self, mock_conn):
         """Test deleting an existing instance."""
         mock_conn.execute.return_value = "DELETE 1"
 
-        repo = AlgorithmInstanceRepositoryPG(mock_conn)
+        repo = StrategyInstanceRepositoryPG(mock_conn)
         result = await repo.delete(uuid4())
 
         assert result is True
@@ -252,13 +252,13 @@ class TestAlgorithmInstanceRepositoryPGDelete:
         """Test deleting a non-existent instance returns False."""
         mock_conn.execute.return_value = "DELETE 0"
 
-        repo = AlgorithmInstanceRepositoryPG(mock_conn)
+        repo = StrategyInstanceRepositoryPG(mock_conn)
         result = await repo.delete(uuid4())
 
         assert result is False
 
 
-class TestAlgorithmInstanceRepositoryPGUpdateStatus:
+class TestStrategyInstanceRepositoryPGUpdateStatus:
     """Tests for update_status method."""
 
     async def test_update_status_with_runtime_stats(self, mock_conn):
@@ -277,17 +277,17 @@ class TestAlgorithmInstanceRepositoryPGUpdateStatus:
             "updated_at": datetime.now(UTC),
         }
 
-        repo = AlgorithmInstanceRepositoryPG(mock_conn)
+        repo = StrategyInstanceRepositoryPG(mock_conn)
         instance = await repo.update_status(instance_id, "paused", {"pnl": 100.0})
 
         assert instance is not None
-        assert instance.status == AlgorithmInstanceState.PAUSED
+        assert instance.status == StrategyInstanceState.PAUSED
 
     async def test_update_status_nonexistent_instance(self, mock_conn):
         """Test updating status for non-existent instance returns None."""
         mock_conn.execute.return_value = "UPDATE 0"
 
-        repo = AlgorithmInstanceRepositoryPG(mock_conn)
+        repo = StrategyInstanceRepositoryPG(mock_conn)
         instance = await repo.update_status(uuid4(), "running")
 
         assert instance is None

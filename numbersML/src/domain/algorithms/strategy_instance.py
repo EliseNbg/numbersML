@@ -1,5 +1,5 @@
 """
-AlgorithmInstance domain entity.
+StrategyInstance domain entity.
 
 Represents a deployed algorithm with specific configuration.
 Links Algorithm (logic) with ConfigurationSet (parameters).
@@ -25,8 +25,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class AlgorithmInstanceState(StrEnum):
-    """Algorithm instance lifecycle states."""
+class StrategyInstanceState(StrEnum):
+    """Strategy instance lifecycle states."""
 
     STOPPED = "stopped"
     RUNNING = "running"
@@ -34,24 +34,24 @@ class AlgorithmInstanceState(StrEnum):
     ERROR = "error"
 
 
-VALID_TRANSITIONS: dict[AlgorithmInstanceState, set[AlgorithmInstanceState]] = {
-    AlgorithmInstanceState.STOPPED: {AlgorithmInstanceState.RUNNING},
-    AlgorithmInstanceState.RUNNING: {
-        AlgorithmInstanceState.PAUSED,
-        AlgorithmInstanceState.STOPPED,
-        AlgorithmInstanceState.ERROR,
+VALID_TRANSITIONS: dict[StrategyInstanceState, set[StrategyInstanceState]] = {
+    StrategyInstanceState.STOPPED: {StrategyInstanceState.RUNNING},
+    StrategyInstanceState.RUNNING: {
+        StrategyInstanceState.PAUSED,
+        StrategyInstanceState.STOPPED,
+        StrategyInstanceState.ERROR,
     },
-    AlgorithmInstanceState.PAUSED: {
-        AlgorithmInstanceState.RUNNING,
-        AlgorithmInstanceState.STOPPED,
+    StrategyInstanceState.PAUSED: {
+        StrategyInstanceState.RUNNING,
+        StrategyInstanceState.STOPPED,
     },
-    AlgorithmInstanceState.ERROR: {AlgorithmInstanceState.STOPPED},
+    StrategyInstanceState.ERROR: {StrategyInstanceState.STOPPED},
 }
 
 
 @dataclass(frozen=True)
 class RuntimeStats:
-    """Immutable runtime statistics for a AlgorithmInstance.
+    """Immutable runtime statistics for a StrategyInstance.
 
     Tracks PnL, trades, and uptime for monitoring.
     """
@@ -87,7 +87,7 @@ class RuntimeStats:
         }
 
 
-class AlgorithmInstance(Entity):
+class StrategyInstance(Entity):
     """Domain entity for algorithm instances.
 
     Links an Algorithm (logic) with a ConfigurationSet (parameters).
@@ -97,7 +97,7 @@ class AlgorithmInstance(Entity):
         Created → Stopped → Running → Paused → Stopped
 
     Example:
-        >>> instance = AlgorithmInstance(
+        >>> instance = StrategyInstance(
         ...     algorithm=RSIAlgorithm(...),
         ...     config_set_id=uuid4(),
         ... )
@@ -105,7 +105,7 @@ class AlgorithmInstance(Entity):
         True
         >>> instance.start()
         >>> instance.status
-        <AlgorithmInstanceState.RUNNING: 'running'>
+        <StrategyInstanceState.RUNNING: 'running'>
     """
 
     def __init__(
@@ -113,12 +113,12 @@ class AlgorithmInstance(Entity):
         algorithm_id: UUID,
         config_set_id: UUID,
         id: UUID | None = None,
-        status: AlgorithmInstanceState = AlgorithmInstanceState.STOPPED,
+        status: StrategyInstanceState = StrategyInstanceState.STOPPED,
         runtime_stats: RuntimeStats | None = None,
         started_at: datetime | None = None,
         stopped_at: datetime | None = None,
     ) -> None:
-        """Initialize AlgorithmInstance.
+        """Initialize StrategyInstance.
 
         Args:
             algorithm_id: UUID of the Algorithm
@@ -179,12 +179,12 @@ class AlgorithmInstance(Entity):
         return self._algorithm.symbols.copy()
 
     @property
-    def status(self) -> AlgorithmInstanceState:
+    def status(self) -> StrategyInstanceState:
         """Get current status."""
         return self._status
 
     @property
-    def state(self) -> AlgorithmInstanceState:
+    def state(self) -> StrategyInstanceState:
         """Get current state (alias for status)."""
         return self._status
 
@@ -220,18 +220,18 @@ class AlgorithmInstance(Entity):
 
     def can_start(self) -> bool:
         """Check if instance can transition to RUNNING (only from STOPPED)."""
-        return self._status == AlgorithmInstanceState.STOPPED
+        return self._status == StrategyInstanceState.STOPPED
 
     def can_stop(self) -> bool:
         """Check if instance can transition to STOPPED (from RUNNING or PAUSED)."""
         return self._status in (
-            AlgorithmInstanceState.RUNNING,
-            AlgorithmInstanceState.PAUSED,
+            StrategyInstanceState.RUNNING,
+            StrategyInstanceState.PAUSED,
         )
 
     def can_pause(self) -> bool:
         """Check if instance can transition to PAUSED (only from RUNNING)."""
-        return self._status == AlgorithmInstanceState.RUNNING
+        return self._status == StrategyInstanceState.RUNNING
 
     def start(self) -> None:
         """Start the instance (transition to RUNNING).
@@ -242,7 +242,7 @@ class AlgorithmInstance(Entity):
         if not self.can_start():
             raise ValueError(f"Cannot start from state: {self._status.value}")
 
-        self._status = AlgorithmInstanceState.RUNNING
+        self._status = StrategyInstanceState.RUNNING
         self._started_at = datetime.now(UTC)
         self.updated_at = datetime.now(UTC)
 
@@ -255,7 +255,7 @@ class AlgorithmInstance(Entity):
         if not self.can_stop():
             raise ValueError(f"Cannot stop from state: {self._status.value}")
 
-        self._status = AlgorithmInstanceState.STOPPED
+        self._status = StrategyInstanceState.STOPPED
         self._stopped_at = datetime.now(UTC)
         self.updated_at = datetime.now(UTC)
 
@@ -268,7 +268,7 @@ class AlgorithmInstance(Entity):
         if not self.can_pause():
             raise ValueError(f"Cannot pause from state: {self._status.value}")
 
-        self._status = AlgorithmInstanceState.PAUSED
+        self._status = StrategyInstanceState.PAUSED
         self.updated_at = datetime.now(UTC)
 
     def resume(self) -> None:
@@ -277,17 +277,17 @@ class AlgorithmInstance(Entity):
         Raises:
             ValueError: If not currently paused
         """
-        if self._status != AlgorithmInstanceState.PAUSED:
+        if self._status != StrategyInstanceState.PAUSED:
             raise ValueError(f"Cannot resume from state: {self._status.value}")
 
-        self._status = AlgorithmInstanceState.RUNNING
+        self._status = StrategyInstanceState.RUNNING
         self.updated_at = datetime.now(UTC)
 
-    def can_transition_to(self, new_state: AlgorithmInstanceState) -> bool:
+    def can_transition_to(self, new_state: StrategyInstanceState) -> bool:
         """Check if transition to new state is valid."""
         return new_state in VALID_TRANSITIONS.get(self._status, set())
 
-    def transition_to(self, new_state: AlgorithmInstanceState) -> "AlgorithmInstance":
+    def transition_to(self, new_state: StrategyInstanceState) -> "StrategyInstance":
         """Transition to a new state.
 
         Args:
@@ -305,14 +305,14 @@ class AlgorithmInstance(Entity):
         self._status = new_state
         self.updated_at = datetime.now(UTC)
 
-        if new_state == AlgorithmInstanceState.RUNNING:
+        if new_state == StrategyInstanceState.RUNNING:
             self._started_at = datetime.now(UTC)
-        elif new_state == AlgorithmInstanceState.STOPPED:
+        elif new_state == StrategyInstanceState.STOPPED:
             self._stopped_at = datetime.now(UTC)
 
         return self
 
-    def record_error(self, error: str) -> "AlgorithmInstance":
+    def record_error(self, error: str) -> "StrategyInstance":
         """Record an error and transition to ERROR state.
 
         Args:
@@ -321,7 +321,7 @@ class AlgorithmInstance(Entity):
         Returns:
             Self for chaining
         """
-        self._status = AlgorithmInstanceState.ERROR
+        self._status = StrategyInstanceState.ERROR
         self._runtime_stats = RuntimeStats(
             pnl=self._runtime_stats.pnl,
             total_trades=self._runtime_stats.total_trades,
@@ -362,7 +362,7 @@ class AlgorithmInstance(Entity):
         Returns:
             Signal if generated, None otherwise
         """
-        if self._status != AlgorithmInstanceState.RUNNING:
+        if self._status != StrategyInstanceState.RUNNING:
             return None
 
         if not self._algorithm:

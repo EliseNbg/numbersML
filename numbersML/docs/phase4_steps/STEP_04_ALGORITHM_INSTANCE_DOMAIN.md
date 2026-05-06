@@ -1,34 +1,34 @@
-# Step 4: AlgorithmInstance Domain Model & Schema
+# Step 4: StrategyInstance Domain Model & Schema
 
 ## Objective
-Create the `AlgorithmInstance` domain entity that links a Algorithm with a ConfigurationSet, enabling hot-plug functionality and runtime statistics tracking.
+Create the `StrategyInstance` domain entity that links a Algorithm with a ConfigurationSet, enabling hot-plug functionality and runtime statistics tracking.
 
 ## Context
 - Step 1-3 complete: ConfigurationSet entity, repository, and API endpoints exist
 - Phase 3 complete: Algorithm domain models exist (`src/domain/algorithms/`)
 - Need to link Algorithm + ConfigurationSet for independent operation
-- AlgorithmInstance represents a "deployed" algorithm with specific configuration
+- StrategyInstance represents a "deployed" algorithm with specific configuration
 
 ## DDD Architecture Decision (ADR)
 
-**Decision**: AlgorithmInstance is a Domain Entity with state machine
+**Decision**: StrategyInstance is a Domain Entity with state machine
 - **Identity**: UUID (not tied to Algorithm or ConfigSet alone)
 - **State Machine**: stopped → running → paused → stopped (with error state)
 - **Runtime Statistics**: Value object tracking PnL, trades, uptime
-- **Lifecycle**: Managed by AlgorithmInstanceService (Application layer)
+- **Lifecycle**: Managed by StrategyInstanceService (Application layer)
 
 **Key Design Patterns**:
-- AlgorithmInstance does NOT contain Algorithm logic (that's in Algorithm entity)
-- AlgorithmInstance references Algorithm by ID and loads config from ConfigurationSet
+- StrategyInstance does NOT contain Algorithm logic (that's in Algorithm entity)
+- StrategyInstance references Algorithm by ID and loads config from ConfigurationSet
 - Hot-plug: Can start/stop without affecting other instances
 
 **Data Structure**:
 ```python
-AlgorithmInstance:
+StrategyInstance:
     id: UUID
     algorithm_id: UUID  # Reference to Algorithm
     config_set_id: UUID  # Reference to ConfigurationSet
-    status: AlgorithmInstanceState  # stopped, running, paused, error
+    status: StrategyInstanceState  # stopped, running, paused, error
     runtime_stats: RuntimeStats  # PnL, trades, uptime
     started_at: Optional[datetime]
     stopped_at: Optional[datetime]
@@ -38,17 +38,17 @@ AlgorithmInstance:
 
 ## TDD Approach
 
-1. **Red**: Write failing tests for AlgorithmInstance and RuntimeStats
+1. **Red**: Write failing tests for StrategyInstance and RuntimeStats
 2. **Green**: Implement minimal code to pass tests
 3. **Refactor**: Add state machine validation, docstrings
 
 ## Implementation Files
 
-### 1. `src/domain/algorithms/algorithm_instance.py`
+### 1. `src/domain/algorithms/strategy_instance.py`
 
 ```python
 """
-AlgorithmInstance domain entity.
+StrategyInstance domain entity.
 
 Represents a deployed algorithm with specific configuration.
 Links Algorithm (logic) with ConfigurationSet (parameters).
@@ -65,7 +65,7 @@ from uuid import UUID, uuid4
 from src.domain.models.base import Entity
 
 
-class AlgorithmInstanceState(str, Enum):
+class StrategyInstanceState(str, Enum):
     """Algorithm instance lifecycle states."""
     STOPPED = "stopped"
     RUNNING = "running"
@@ -73,25 +73,25 @@ class AlgorithmInstanceState(str, Enum):
     ERROR = "error"
 
 
-VALID_TRANSITIONS: Dict[AlgorithmInstanceState, set[AlgorithmInstanceState]] = {
-    AlgorithmInstanceState.STOPPED: {AlgorithmInstanceState.RUNNING},
-    AlgorithmInstanceState.RUNNING: {
-        AlgorithmInstanceState.PAUSED,
-        AlgorithmInstanceState.STOPPED,
-        AlgorithmInstanceState.ERROR,
+VALID_TRANSITIONS: Dict[StrategyInstanceState, set[StrategyInstanceState]] = {
+    StrategyInstanceState.STOPPED: {StrategyInstanceState.RUNNING},
+    StrategyInstanceState.RUNNING: {
+        StrategyInstanceState.PAUSED,
+        StrategyInstanceState.STOPPED,
+        StrategyInstanceState.ERROR,
     },
-    AlgorithmInstanceState.PAUSED: {
-        AlgorithmInstanceState.RUNNING,
-        AlgorithmInstanceState.STOPPED,
+    StrategyInstanceState.PAUSED: {
+        StrategyInstanceState.RUNNING,
+        StrategyInstanceState.STOPPED,
     },
-    AlgorithmInstanceState.ERROR: {AlgorithmInstanceState.STOPPED},
+    StrategyInstanceState.ERROR: {StrategyInstanceState.STOPPED},
 }
 
 
 @dataclass(frozen=True)
 class RuntimeStats:
     """
-    Immutable runtime statistics for a AlgorithmInstance.
+    Immutable runtime statistics for a StrategyInstance.
     
     Tracks PnL, trades, and uptime for monitoring.
     """
@@ -126,7 +126,7 @@ class RuntimeStats:
         }
 
 
-class AlgorithmInstance(Entity):
+class StrategyInstance(Entity):
     """
     Domain entity for algorithm instances.
     
@@ -137,7 +137,7 @@ class AlgorithmInstance(Entity):
         Created → Stopped → Running → Paused → Stopped
         
     Example:
-        >>> instance = AlgorithmInstance(
+        >>> instance = StrategyInstance(
         ...     algorithm_id=uuid4(),
         ...     config_set_id=uuid4(),
         ... )
@@ -145,7 +145,7 @@ class AlgorithmInstance(Entity):
         True
         >>> instance.start()
         >>> instance.status
-        <AlgorithmInstanceState.RUNNING: 'running'>
+        <StrategyInstanceState.RUNNING: 'running'>
     """
     
     def __init__(
@@ -153,13 +153,13 @@ class AlgorithmInstance(Entity):
         algorithm_id: UUID,
         config_set_id: UUID,
         id: UUID = None,
-        status: AlgorithmInstanceState = AlgorithmInstanceState.STOPPED,
+        status: StrategyInstanceState = StrategyInstanceState.STOPPED,
         runtime_stats: Optional[RuntimeStats] = None,
         started_at: Optional[datetime] = None,
         stopped_at: Optional[datetime] = None,
     ) -> None:
         """
-        Initialize AlgorithmInstance.
+        Initialize StrategyInstance.
         
         Args:
             algorithm_id: UUID of the Algorithm
@@ -200,7 +200,7 @@ class AlgorithmInstance(Entity):
         return self._config_set_id
     
     @property
-    def status(self) -> AlgorithmInstanceState:
+    def status(self) -> StrategyInstanceState:
         """Get current status."""
         return self._status
     
@@ -231,16 +231,16 @@ class AlgorithmInstance(Entity):
     
     def can_start(self) -> bool:
         """Check if instance can transition to RUNNING."""
-        return self._status in VALID_TRANSITIONS.get(AlgorithmInstanceState.STOPPED, set())
+        return self._status in VALID_TRANSITIONS.get(StrategyInstanceState.STOPPED, set())
     
     def can_stop(self) -> bool:
         """Check if instance can transition to STOPPED."""
-        return self._status in VALID_TRANSITIONS.get(AlgorithmInstanceState.RUNNING, set()) or \
-               self._status in VALID_TRANSITIONS.get(AlgorithmInstanceState.PAUSED, set())
+        return self._status in VALID_TRANSITIONS.get(StrategyInstanceState.RUNNING, set()) or \
+               self._status in VALID_TRANSITIONS.get(StrategyInstanceState.PAUSED, set())
     
     def can_pause(self) -> bool:
         """Check if instance can transition to PAUSED."""
-        return self._status in VALID_TRANSITIONS.get(AlgorithmInstanceState.RUNNING, set())
+        return self._status in VALID_TRANSITIONS.get(StrategyInstanceState.RUNNING, set())
     
     def start(self) -> None:
         """
@@ -252,7 +252,7 @@ class AlgorithmInstance(Entity):
         if not self.can_start():
             raise ValueError(f"Cannot start from state: {self._status.value}")
         
-        self._status = AlgorithmInstanceState.RUNNING
+        self._status = StrategyInstanceState.RUNNING
         self._started_at = datetime.now(timezone.utc)
         self._updated_at = self._started_at
     
@@ -266,7 +266,7 @@ class AlgorithmInstance(Entity):
         if not self.can_stop():
             raise ValueError(f"Cannot stop from state: {self._status.value}")
         
-        self._status = AlgorithmInstanceState.STOPPED
+        self._status = StrategyInstanceState.STOPPED
         self._stopped_at = datetime.now(timezone.utc)
         self._updated_at = self._stopped_at
     
@@ -280,7 +280,7 @@ class AlgorithmInstance(Entity):
         if not self.can_pause():
             raise ValueError(f"Cannot pause from state: {self._status.value}")
         
-        self._status = AlgorithmInstanceState.PAUSED
+        self._status = StrategyInstanceState.PAUSED
         self._updated_at = datetime.now(timezone.utc)
     
     def resume(self) -> None:
@@ -290,10 +290,10 @@ class AlgorithmInstance(Entity):
         Raises:
             ValueError: If not currently paused
         """
-        if self._status != AlgorithmInstanceState.PAUSED:
+        if self._status != StrategyInstanceState.PAUSED:
             raise ValueError(f"Cannot resume from state: {self._status.value}")
         
-        self._status = AlgorithmInstanceState.RUNNING
+        self._status = StrategyInstanceState.RUNNING
         self._updated_at = datetime.now(timezone.utc)
     
     def record_error(self, error: str) -> None:
@@ -303,7 +303,7 @@ class AlgorithmInstance(Entity):
         Args:
             error: Error message
         """
-        self._status = AlgorithmInstanceState.ERROR
+        self._status = StrategyInstanceState.ERROR
         self._runtime_stats = RuntimeStats(
             pnl=self._runtime_stats.pnl,
             total_trades=self._runtime_stats.total_trades,
@@ -355,11 +355,11 @@ class AlgorithmInstance(Entity):
         }
 ```
 
-### 2. `tests/unit/domain/algorithms/test_algorithm_instance.py`
+### 2. `tests/unit/domain/algorithms/test_strategy_instance.py`
 
 ```python
 """
-Unit tests for AlgorithmInstance domain entity.
+Unit tests for StrategyInstance domain entity.
 
 Follows TDD approach: tests first, then implementation.
 """
@@ -368,9 +368,9 @@ import pytest
 from datetime import datetime, timezone
 from uuid import uuid4, UUID
 
-from src.domain.algorithms.algorithm_instance import (
-    AlgorithmInstance,
-    AlgorithmInstanceState,
+from src.domain.algorithms.strategy_instance import (
+    StrategyInstance,
+    StrategyInstanceState,
     RuntimeStats,
 )
 
@@ -417,15 +417,15 @@ class TestRuntimeStats:
         assert "win_rate" in result
 
 
-class TestAlgorithmInstanceCreation:
-    """Tests for AlgorithmInstance creation."""
+class TestStrategyInstanceCreation:
+    """Tests for StrategyInstance creation."""
     
     def test_create_valid(self):
-        """Test creating a valid AlgorithmInstance."""
+        """Test creating a valid StrategyInstance."""
         algorithm_id = uuid4()
         config_set_id = uuid4()
         
-        instance = AlgorithmInstance(
+        instance = StrategyInstance(
             algorithm_id=algorithm_id,
             config_set_id=config_set_id,
         )
@@ -433,13 +433,13 @@ class TestAlgorithmInstanceCreation:
         assert isinstance(instance.id, UUID)
         assert instance.algorithm_id == algorithm_id
         assert instance.config_set_id == config_set_id
-        assert instance.status == AlgorithmInstanceState.STOPPED
+        assert instance.status == StrategyInstanceState.STOPPED
         assert instance.can_start() is True
     
     def test_create_with_custom_id(self):
         """Test creating with custom UUID."""
         custom_id = uuid4()
-        instance = AlgorithmInstance(
+        instance = StrategyInstance(
             algorithm_id=uuid4(),
             config_set_id=uuid4(),
             id=custom_id,
@@ -449,19 +449,19 @@ class TestAlgorithmInstanceCreation:
     
     def test_create_with_status(self):
         """Test creating with specific status."""
-        instance = AlgorithmInstance(
+        instance = StrategyInstance(
             algorithm_id=uuid4(),
             config_set_id=uuid4(),
-            status=AlgorithmInstanceState.PAUSED,
+            status=StrategyInstanceState.PAUSED,
         )
         
-        assert instance.status == AlgorithmInstanceState.PAUSED
+        assert instance.status == StrategyInstanceState.PAUSED
         assert instance.can_start() is False  # Can't start from PAUSED
     
     def test_create_missing_algorithm_id(self):
         """Test that missing algorithm_id raises ValueError."""
         with pytest.raises(ValueError, match="algorithm_id cannot be None"):
-            AlgorithmInstance(
+            StrategyInstance(
                 algorithm_id=None,
                 config_set_id=uuid4(),
             )
@@ -469,33 +469,33 @@ class TestAlgorithmInstanceCreation:
     def test_create_missing_config_set_id(self):
         """Test that missing config_set_id raises ValueError."""
         with pytest.raises(ValueError, match="config_set_id cannot be None"):
-            AlgorithmInstance(
+            StrategyInstance(
                 algorithm_id=uuid4(),
                 config_set_id=None,
             )
 
 
-class TestAlgorithmInstanceLifecycle:
+class TestStrategyInstanceLifecycle:
     """Tests for state transitions."""
     
     def test_start_from_stopped(self):
         """Test starting from STOPPED state."""
-        instance = AlgorithmInstance(
+        instance = StrategyInstance(
             algorithm_id=uuid4(),
             config_set_id=uuid4(),
         )
         
-        assert instance.status == AlgorithmInstanceState.STOPPED
+        assert instance.status == StrategyInstanceState.STOPPED
         assert instance.can_start() is True
         
         instance.start()
         
-        assert instance.status == AlgorithmInstanceState.RUNNING
+        assert instance.status == StrategyInstanceState.RUNNING
         assert instance.started_at is not None
     
     def test_stop_from_running(self):
         """Test stopping from RUNNING state."""
-        instance = AlgorithmInstance(
+        instance = StrategyInstance(
             algorithm_id=uuid4(),
             config_set_id=uuid4(),
         )
@@ -503,12 +503,12 @@ class TestAlgorithmInstanceLifecycle:
         
         instance.stop()
         
-        assert instance.status == AlgorithmInstanceState.STOPPED
+        assert instance.status == StrategyInstanceState.STOPPED
         assert instance.stopped_at is not None
     
     def test_pause_from_running(self):
         """Test pausing from RUNNING state."""
-        instance = AlgorithmInstance(
+        instance = StrategyInstance(
             algorithm_id=uuid4(),
             config_set_id=uuid4(),
         )
@@ -516,11 +516,11 @@ class TestAlgorithmInstanceLifecycle:
         
         instance.pause()
         
-        assert instance.status == AlgorithmInstanceState.PAUSED
+        assert instance.status == StrategyInstanceState.PAUSED
     
     def test_resume_from_paused(self):
         """Test resuming from PAUSED state."""
-        instance = AlgorithmInstance(
+        instance = StrategyInstance(
             algorithm_id=uuid4(),
             config_set_id=uuid4(),
         )
@@ -529,11 +529,11 @@ class TestAlgorithmInstanceLifecycle:
         
         instance.resume()
         
-        assert instance.status == AlgorithmInstanceState.RUNNING
+        assert instance.status == StrategyInstanceState.RUNNING
     
     def test_start_from_running_raises_error(self):
         """Test that starting from RUNNING raises ValueError."""
-        instance = AlgorithmInstance(
+        instance = StrategyInstance(
             algorithm_id=uuid4(),
             config_set_id=uuid4(),
         )
@@ -544,7 +544,7 @@ class TestAlgorithmInstanceLifecycle:
     
     def test_stop_from_stopped_raises_error(self):
         """Test that stopping from STOPPED raises ValueError."""
-        instance = AlgorithmInstance(
+        instance = StrategyInstance(
             algorithm_id=uuid4(),
             config_set_id=uuid4(),
         )
@@ -554,7 +554,7 @@ class TestAlgorithmInstanceLifecycle:
     
     def test_resume_from_running_raises_error(self):
         """Test that resuming from RUNNING raises ValueError."""
-        instance = AlgorithmInstance(
+        instance = StrategyInstance(
             algorithm_id=uuid4(),
             config_set_id=uuid4(),
         )
@@ -564,12 +564,12 @@ class TestAlgorithmInstanceLifecycle:
             instance.resume()
 
 
-class TestAlgorithmInstanceStats:
+class TestStrategyInstanceStats:
     """Tests for runtime statistics updates."""
     
     def test_update_stats(self):
         """Test updating runtime statistics."""
-        instance = AlgorithmInstance(
+        instance = StrategyInstance(
             algorithm_id=uuid4(),
             config_set_id=uuid4(),
         )
@@ -582,7 +582,7 @@ class TestAlgorithmInstanceStats:
     
     def test_record_error(self):
         """Test recording an error."""
-        instance = AlgorithmInstance(
+        instance = StrategyInstance(
             algorithm_id=uuid4(),
             config_set_id=uuid4(),
         )
@@ -590,12 +590,12 @@ class TestAlgorithmInstanceStats:
         
         instance.record_error("Connection failed")
         
-        assert instance.status == AlgorithmInstanceState.ERROR
+        assert instance.status == StrategyInstanceState.ERROR
         assert instance.runtime_stats.last_error == "Connection failed"
     
     def test_stats_preserved_on_error(self):
         """Test that stats are preserved when error recorded."""
-        instance = AlgorithmInstance(
+        instance = StrategyInstance(
             algorithm_id=uuid4(),
             config_set_id=uuid4(),
         )
@@ -608,12 +608,12 @@ class TestAlgorithmInstanceStats:
         assert instance.runtime_stats.total_trades == 2
 
 
-class TestAlgorithmInstanceSerialization:
+class TestStrategyInstanceSerialization:
     """Tests for to_dict serialization."""
     
     def test_to_dict(self):
         """Test converting to dictionary."""
-        instance = AlgorithmInstance(
+        instance = StrategyInstance(
             algorithm_id=uuid4(),
             config_set_id=uuid4(),
         )
@@ -629,7 +629,7 @@ class TestAlgorithmInstanceSerialization:
     
     def test_to_dict_running(self):
         """Test to_dict when instance is running."""
-        instance = AlgorithmInstance(
+        instance = StrategyInstance(
             algorithm_id=uuid4(),
             config_set_id=uuid4(),
         )
@@ -644,26 +644,26 @@ class TestAlgorithmInstanceSerialization:
 ## LLM Implementation Prompt
 
 ```text
-You are implementing Step 4 of Phase 4: AlgorithmInstance Domain Model & Schema.
+You are implementing Step 4 of Phase 4: StrategyInstance Domain Model & Schema.
 
 ## Your Task
 
-Create the AlgorithmInstance domain entity with state machine and runtime statistics.
+Create the StrategyInstance domain entity with state machine and runtime statistics.
 
 ## Context
 
 - Step 1-3 complete: ConfigurationSet entity, repository, and API exist
 - Phase 3 complete: Algorithm domain models in src/domain/algorithms/
-- AlgorithmInstance links Algorithm + ConfigurationSet for deployment
+- StrategyInstance links Algorithm + ConfigurationSet for deployment
 - Must follow DDD Entity pattern (extend base Entity class)
 
 ## Requirements
 
-1. Create `src/domain/algorithms/algorithm_instance.py` with:
-   - AlgorithmInstanceState enum (STOPPED, RUNNING, PAUSED, ERROR)
+1. Create `src/domain/algorithms/strategy_instance.py` with:
+   - StrategyInstanceState enum (STOPPED, RUNNING, PAUSED, ERROR)
    - VALID_TRANSITIONS dict defining allowed state changes
    - RuntimeStats frozen dataclass (pnl, total_trades, win_rate, etc.)
-   - AlgorithmInstance entity class extending Entity base class
+   - StrategyInstance entity class extending Entity base class
    - Properties: algorithm_id, config_set_id, status, runtime_stats, started_at, stopped_at
    - State methods: start(), stop(), pause(), resume(), record_error()
    - Validation methods: can_start(), can_stop(), can_pause()
@@ -671,15 +671,15 @@ Create the AlgorithmInstance domain entity with state machine and runtime statis
    - to_dict() for serialization
    - Validation in __init__: algorithm_id and config_set_id cannot be None
 
-2. Create `tests/unit/domain/algorithms/test_algorithm_instance.py` with TDD:
+2. Create `tests/unit/domain/algorithms/test_strategy_instance.py` with TDD:
    - TestRuntimeStats: creation, win_rate calculation, to_dict
-   - TestAlgorithmInstanceCreation: valid/invalid creation, custom ID
-   - TestAlgorithmInstanceLifecycle: start, stop, pause, resume, error transitions
-   - TestAlgorithmInstanceStats: update_stats, record_error
-   - TestAlgorithmInstanceSerialization: to_dict
+   - TestStrategyInstanceCreation: valid/invalid creation, custom ID
+   - TestStrategyInstanceLifecycle: start, stop, pause, resume, error transitions
+   - TestStrategyInstanceStats: update_stats, record_error
+   - TestStrategyInstanceSerialization: to_dict
 
-3. Add database migration `migrations/004_algorithm_instances.sql`:
-   - CREATE TABLE algorithm_instances with all columns
+3. Add database migration `migrations/004_strategy_instances.sql`:
+   - CREATE TABLE strategy_instances with all columns
    - Foreign keys to algorithms and configuration_sets
    - UNIQUE constraint on (algorithm_id, config_set_id)
    - Index on status for queries
@@ -697,7 +697,7 @@ Create the AlgorithmInstance domain entity with state machine and runtime statis
 
 ## Acceptance Criteria
 
-1. AlgorithmInstance can be created with valid algorithm_id and config_set_id
+1. StrategyInstance can be created with valid algorithm_id and config_set_id
 2. State transitions follow valid state machine
 3. Invalid transitions raise ValueError
 4. RuntimeStats is immutable and calculates win_rate
@@ -712,12 +712,12 @@ Create the AlgorithmInstance domain entity with state machine and runtime statis
 
 ```bash
 # Format and lint
-black src/domain/algorithms/algorithm_instance.py tests/unit/domain/algorithms/test_algorithm_instance.py
-ruff check src/domain/algorithms/algorithm_instance.py tests/unit/domain/algorithms/test_algorithm_instance.py
-mypy src/domain/algorithms/algorithm_instance.py
+black src/domain/algorithms/strategy_instance.py tests/unit/domain/algorithms/test_strategy_instance.py
+ruff check src/domain/algorithms/strategy_instance.py tests/unit/domain/algorithms/test_strategy_instance.py
+mypy src/domain/algorithms/strategy_instance.py
 
 # Run tests
-.venv/bin/python -m pytest tests/unit/domain/algorithms/test_algorithm_instance.py -v
+.venv/bin/python -m pytest tests/unit/domain/algorithms/test_strategy_instance.py -v
 ```
 
 ## Output
@@ -730,7 +730,7 @@ mypy src/domain/algorithms/algorithm_instance.py
 
 ## Success Criteria
 
-- [ ] AlgorithmInstance entity created with state machine
+- [ ] StrategyInstance entity created with state machine
 - [ ] RuntimeStats immutable value object created
 - [ ] State transitions validated (can_start, can_stop, etc.)
 - [ ] All unit tests pass (TDD approach)

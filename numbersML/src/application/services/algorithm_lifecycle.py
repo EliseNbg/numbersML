@@ -27,10 +27,10 @@ from src.domain.algorithms.runtime import (
     AlgorithmLifecycleEvent,
 )
 from src.domain.algorithms.algorithm_config import AlgorithmDefinition
-from src.domain.algorithms.algorithm_instance import (
+from src.domain.algorithms.strategy_instance import (
     VALID_TRANSITIONS,
-    AlgorithmInstance,
-    AlgorithmInstanceState,
+    StrategyInstance,
+    StrategyInstanceState,
 )
 
 logger = logging.getLogger(__name__)
@@ -75,8 +75,8 @@ class AlgorithmLifecycleService:
         self._algorithm_manager = algorithm_manager
         self._actor = actor
 
-        # Runtime state tracking: instance_id -> AlgorithmInstance
-        self._instances: dict[UUID, AlgorithmInstance] = {}
+        # Runtime state tracking: instance_id -> StrategyInstance
+        self._instances: dict[UUID, StrategyInstance] = {}
 
         logger.info("AlgorithmLifecycleService initialized")
 
@@ -111,7 +111,7 @@ class AlgorithmLifecycleService:
         instance = self._instances.get(algorithm_id)
         if instance is None:
             # Load algorithm and create instance
-            instance = await self._load_algorithm_instance(
+            instance = await self._load_strategy_instance(
                 algorithm_def, version or algorithm_def.current_version
             )
             self._instances[algorithm_id] = instance
@@ -135,14 +135,14 @@ class AlgorithmLifecycleService:
             raise RuntimeError(f"Algorithm start failed: {e}") from e
 
         # Record lifecycle event
-        old_state = AlgorithmInstanceState.STOPPED
+        old_state = StrategyInstanceState.STOPPED
         new_state = instance
 
         await self._record_lifecycle_event(
             algorithm_def=algorithm_def,
             runtime_state=new_state,
             from_state=old_state,
-            to_state=AlgorithmInstanceState.RUNNING,
+            to_state=StrategyInstanceState.RUNNING,
             trigger="activate",
             details={"version": version or algorithm_def.current_version, **(metadata or {})},
         )
@@ -173,7 +173,7 @@ class AlgorithmLifecycleService:
         if runtime_state is None:
             raise ValueError(f"No runtime state for algorithm {algorithm_id}")
 
-        if not runtime_state.can_transition_to(AlgorithmInstanceState.STOPPED):
+        if not runtime_state.can_transition_to(StrategyInstanceState.STOPPED):
             raise ValueError(
                 f"Cannot deactivate algorithm {algorithm_id}: "
                 f"invalid transition from {runtime_state.state.value}"
@@ -188,7 +188,7 @@ class AlgorithmLifecycleService:
             logger.warning(f"Algorithm {algorithm_id} not in manager during deactivation")
 
         # Update state
-        new_state = runtime_state.transition_to(AlgorithmInstanceState.STOPPED)
+        new_state = runtime_state.transition_to(StrategyInstanceState.STOPPED)
         self._instances[algorithm_id] = new_state
 
         # Persist event
@@ -197,7 +197,7 @@ class AlgorithmLifecycleService:
                 algorithm_def=algorithm_def,
                 runtime_state=new_state,
                 from_state=old_state,
-                to_state=AlgorithmInstanceState.STOPPED,
+                to_state=StrategyInstanceState.STOPPED,
                 trigger="deactivate",
                 details=metadata or {},
             )
@@ -228,7 +228,7 @@ class AlgorithmLifecycleService:
         if runtime_state is None:
             raise ValueError(f"No runtime state for algorithm {algorithm_id}")
 
-        if not runtime_state.can_transition_to(AlgorithmInstanceState.PAUSED):
+        if not runtime_state.can_transition_to(StrategyInstanceState.PAUSED):
             raise ValueError(
                 f"Cannot pause algorithm {algorithm_id}: "
                 f"invalid transition from {runtime_state.state.value}"
@@ -238,12 +238,12 @@ class AlgorithmLifecycleService:
         old_state = runtime_state.state
 
         # Pause the algorithm instance
-        algorithm_instance = self._algorithm_manager.get_instance(algorithm_id)
-        if algorithm_instance:
-            algorithm_instance.pause()
+        strategy_instance = self._algorithm_manager.get_instance(algorithm_id)
+        if strategy_instance:
+            strategy_instance.pause()
 
         # Update state
-        new_state = runtime_state.transition_to(AlgorithmInstanceState.PAUSED)
+        new_state = runtime_state.transition_to(StrategyInstanceState.PAUSED)
         self._instances[algorithm_id] = new_state
 
         # Persist event
@@ -252,7 +252,7 @@ class AlgorithmLifecycleService:
                 algorithm_def=algorithm_def,
                 runtime_state=new_state,
                 from_state=old_state,
-                to_state=AlgorithmInstanceState.PAUSED,
+                to_state=StrategyInstanceState.PAUSED,
                 trigger="pause",
                 details=metadata or {},
             )
@@ -283,7 +283,7 @@ class AlgorithmLifecycleService:
         if runtime_state is None:
             raise ValueError(f"No runtime state for algorithm {algorithm_id}")
 
-        if not runtime_state.can_transition_to(AlgorithmInstanceState.RUNNING):
+        if not runtime_state.can_transition_to(StrategyInstanceState.RUNNING):
             raise ValueError(
                 f"Cannot resume algorithm {algorithm_id}: "
                 f"invalid transition from {runtime_state.state.value}"
@@ -293,12 +293,12 @@ class AlgorithmLifecycleService:
         old_state = runtime_state.state
 
         # Resume the algorithm instance
-        algorithm_instance = self._algorithm_manager.get_instance(algorithm_id)
-        if algorithm_instance:
-            algorithm_instance.resume()
+        strategy_instance = self._algorithm_manager.get_instance(algorithm_id)
+        if strategy_instance:
+            strategy_instance.resume()
 
         # Update state
-        new_state = runtime_state.transition_to(AlgorithmInstanceState.RUNNING)
+        new_state = runtime_state.transition_to(StrategyInstanceState.RUNNING)
         self._instances[algorithm_id] = new_state
 
         # Persist event
@@ -307,7 +307,7 @@ class AlgorithmLifecycleService:
                 algorithm_def=algorithm_def,
                 runtime_state=new_state,
                 from_state=old_state,
-                to_state=AlgorithmInstanceState.RUNNING,
+                to_state=StrategyInstanceState.RUNNING,
                 trigger="resume",
                 details=metadata or {},
             )
@@ -343,16 +343,16 @@ class AlgorithmLifecycleService:
         old_state = runtime_state.state
 
         # Only transition to ERROR from RUNNING or PAUSED
-        if old_state not in (AlgorithmInstanceState.RUNNING, AlgorithmInstanceState.PAUSED):
+        if old_state not in (StrategyInstanceState.RUNNING, StrategyInstanceState.PAUSED):
             logger.warning(
                 f"Algorithm {algorithm_id} in state {old_state.value}, " f"not transitioning to ERROR"
             )
             return False
 
         # Pause algorithm first
-        algorithm_instance = self._algorithm_manager.get_instance(algorithm_id)
-        if algorithm_instance and old_state == AlgorithmInstanceState.RUNNING:
-            algorithm_instance.pause()
+        strategy_instance = self._algorithm_manager.get_instance(algorithm_id)
+        if strategy_instance and old_state == StrategyInstanceState.RUNNING:
+            strategy_instance.pause()
 
         # Update state with error info
         new_state = runtime_state.record_error(error)
@@ -364,7 +364,7 @@ class AlgorithmLifecycleService:
                 algorithm_def=algorithm_def,
                 runtime_state=new_state,
                 from_state=old_state,
-                to_state=AlgorithmInstanceState.ERROR,
+                to_state=StrategyInstanceState.ERROR,
                 trigger="error",
                 details={"error": error} | (metadata or {}),
             )
@@ -375,11 +375,11 @@ class AlgorithmLifecycleService:
     async def get_runtime_state(
         self,
         algorithm_id: UUID,
-    ) -> AlgorithmInstance | None:
+    ) -> StrategyInstance | None:
         """Get current runtime state for a algorithm."""
         return self._instances.get(algorithm_id)
 
-    async def get_all_instances(self) -> list[AlgorithmInstance]:
+    async def get_all_instances(self) -> list[StrategyInstance]:
         """Get runtime states for all algorithms."""
         return list(self._instances.values())
 
@@ -391,11 +391,11 @@ class AlgorithmLifecycleService:
         """Get lifecycle events for a algorithm."""
         return await self._event_repo.get_events_for_algorithm(algorithm_id, limit=limit)
 
-    async def _load_algorithm_instance(
+    async def _load_strategy_instance(
         self,
         algorithm_def: AlgorithmDefinition,
         version: int,
-    ) -> AlgorithmInstance:
+    ) -> StrategyInstance:
         """Load a algorithm instance from its configuration.
 
         This is a simplified implementation. In production, this would:
@@ -409,7 +409,7 @@ class AlgorithmLifecycleService:
             version: Config version to use
 
         Returns:
-            AlgorithmInstance with loaded algorithm
+            StrategyInstance with loaded algorithm
 
         Raises:
             NotImplementedError: If signal type not supported
@@ -431,13 +431,13 @@ class AlgorithmLifecycleService:
             time_frame=TimeFrame.TICK,
         )
 
-        # Create AlgorithmInstance with the loaded algorithm
-        from src.domain.algorithms.algorithm_instance import AlgorithmInstance
+        # Create StrategyInstance with the loaded algorithm
+        from src.domain.algorithms.strategy_instance import StrategyInstance
 
-        instance = AlgorithmInstance(
+        instance = StrategyInstance(
             algorithm_id=algorithm_def.id,
             config_set_id=uuid4(),  # TODO: link to actual config set
-            status=AlgorithmInstanceState.STOPPED,
+            status=StrategyInstanceState.STOPPED,
         )
         instance._algorithm = algorithm
         return instance
@@ -445,9 +445,9 @@ class AlgorithmLifecycleService:
     async def _record_lifecycle_event(
         self,
         algorithm_def: AlgorithmDefinition,
-        runtime_state: AlgorithmInstance,
-        from_state: AlgorithmInstanceState,
-        to_state: AlgorithmInstanceState,
+        runtime_state: StrategyInstance,
+        from_state: StrategyInstanceState,
+        to_state: StrategyInstanceState,
         trigger: str,
         details: dict[str, Any] | None = None,
     ) -> None:
@@ -468,8 +468,8 @@ class AlgorithmLifecycleService:
         states = self._instances.values()
         return {
             "total_algorithms": len(states),
-            "running": sum(1 for s in states if s.state == AlgorithmInstanceState.RUNNING),
-            "paused": sum(1 for s in states if s.state == AlgorithmInstanceState.PAUSED),
-            "stopped": sum(1 for s in states if s.state == AlgorithmInstanceState.STOPPED),
-            "error": sum(1 for s in states if s.state == AlgorithmInstanceState.ERROR),
+            "running": sum(1 for s in states if s.state == StrategyInstanceState.RUNNING),
+            "paused": sum(1 for s in states if s.state == StrategyInstanceState.PAUSED),
+            "stopped": sum(1 for s in states if s.state == StrategyInstanceState.STOPPED),
+            "error": sum(1 for s in states if s.state == StrategyInstanceState.ERROR),
         }

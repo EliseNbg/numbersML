@@ -5,11 +5,11 @@ Create comprehensive backtest dashboard page with charts, statistics, and trade 
 
 ## Context#
 - Step 6-7 complete: BacktestService and API exist with real data#
-- Step 5 complete: AlgorithmInstance API exists#
+- Step 5 complete: StrategyInstance API exists#
 - Need to create page with:#
 
 **Key Features**:#
-- AlgorithmInstance selector#
+- StrategyInstance selector#
 - Time range presets (4h, 12h, 1d, 3d, 7d, 30d) + custom#
 - Results display:#
 
@@ -361,7 +361,7 @@ function bindEventListeners() {
 }
 
 /**
- * Load AlgorithmInstances for dropdown
+ * Load StrategyInstances for dropdown
  */
 async function loadInstances() {
     try {
@@ -409,7 +409,7 @@ async function startBacktest() {
     const timeRange = activeBtn.dataset.range;
     
     let requestBody = {
-        algorithm_instance_id: instanceId,
+        strategy_instance_id: instanceId,
         time_range: timeRange,
         initial_balance: initialBalance,
     };
@@ -710,7 +710,7 @@ Create comprehensive backtest dashboard with charts, statistics, and trade blott
 ## Context#
 
 - Step 6-7 complete: BacktestService and API exist
-- Step 5 complete: AlgorithmInstance API exists
+- Step 5 complete: StrategyInstance API exists
 - Use Bootstrap 5 + vanilla JavaScript + Chart.js
 - Follow existing dashboard pattern (see dashboard/algorithms.html)
 
@@ -719,7 +719,7 @@ Create comprehensive backtest dashboard with charts, statistics, and trade blott
 1. Create `dashboard/backtest.html` with:
    - Navigation with "Backtest" as active item
    - Configuration section:
-     * AlgorithmInstance selector (dropdown)
+     * StrategyInstance selector (dropdown)
      * Initial Balance input
      * Time range presets: 4h, 12h, 1d, 3d, 7d, 30d
      * Custom range toggle (datetime-local inputs)
@@ -760,7 +760,7 @@ Create comprehensive backtest dashboard with charts, statistics, and trade blott
 
 ## Acceptance Criteria#
 
-1. Can select AlgorithmInstance from dropdown
+1. Can select StrategyInstance from dropdown
 2. Time range presets work (4h, 12h, 1d, 3d, 7d, 30d)
 3. Custom time range works with datetime-local inputs
 4. Backtest job submitted successfully

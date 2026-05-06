@@ -22,7 +22,7 @@ from uuid import UUID
 import asyncpg  # type: ignore
 
 from src.domain.algorithms.base import EnrichedTick, Signal, SignalType
-from src.domain.algorithms.algorithm_instance import AlgorithmInstance
+from src.domain.algorithms.strategy_instance import StrategyInstance
 from src.infrastructure.market.paper_market_service import PaperMarketService
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ class BacktestResult:
     """Complete backtest results."""
 
     job_id: str
-    algorithm_instance_id: UUID
+    strategy_instance_id: UUID
     time_range_start: datetime
     time_range_end: datetime
     initial_balance: float
@@ -76,7 +76,7 @@ class BacktestResult:
         """Convert to dictionary for JSON serialization."""
         return {
             "job_id": self.job_id,
-            "algorithm_instance_id": str(self.algorithm_instance_id),
+            "strategy_instance_id": str(self.strategy_instance_id),
             "time_range_start": self.time_range_start.isoformat(),
             "time_range_end": self.time_range_end.isoformat(),
             "initial_balance": self.initial_balance,
@@ -115,17 +115,17 @@ class BacktestService:
     async def run_backtest(
         self,
         job_id: str,
-        algorithm_instance: AlgorithmInstance,
+        strategy_instance: StrategyInstance,
         time_range_start: datetime,
         time_range_end: datetime,
         initial_balance: float = 10000.0,
     ) -> BacktestResult:
         """
-        Run a backtest for a AlgorithmInstance.
+        Run a backtest for a StrategyInstance.
 
         Args:
             job_id: Unique job identifier
-            algorithm_instance: AlgorithmInstance to backtest
+            strategy_instance: StrategyInstance to backtest
             time_range_start: Start of backtest period
             time_range_end: End of backtest period
             initial_balance: Starting capital
@@ -140,7 +140,7 @@ class BacktestService:
             raise ValueError("time_range_end must be after time_range_start")
 
         # Load historical candles with indicators (NO recalculation)
-        candles = await self._load_candles(algorithm_instance, time_range_start, time_range_end)
+        candles = await self._load_candles(strategy_instance, time_range_start, time_range_end)
 
         if not candles:
             raise ValueError("No candle data found for the specified time range")
@@ -155,7 +155,7 @@ class BacktestService:
         # Replay candles and simulate
         result = await self._replay_candles(
             job_id=job_id,
-            algorithm_instance=algorithm_instance,
+            strategy_instance=strategy_instance,
             candles=candles,
             market_service=market_service,
             initial_balance=initial_balance,
@@ -165,7 +165,7 @@ class BacktestService:
 
     async def _load_candles(
         self,
-        algorithm_instance: AlgorithmInstance,
+        strategy_instance: StrategyInstance,
         start: datetime,
         end: datetime,
     ) -> list[dict[str, Any]]:
@@ -175,7 +175,7 @@ class BacktestService:
         KEY: Reads from candle_indicators table (NO recalculation).
 
         Args:
-            algorithm_instance: AlgorithmInstance (provides config_set with symbols)
+            strategy_instance: StrategyInstance (provides config_set with symbols)
             start: Start time
             end: End time
 
@@ -237,7 +237,7 @@ class BacktestService:
     async def _replay_candles(
         self,
         job_id: str,
-        algorithm_instance: AlgorithmInstance,
+        strategy_instance: StrategyInstance,
         candles: list[dict[str, Any]],
         market_service: PaperMarketService,
         initial_balance: float,
@@ -247,7 +247,7 @@ class BacktestService:
 
         Args:
             job_id: Job identifier
-            algorithm_instance: AlgorithmInstance
+            strategy_instance: StrategyInstance
             candles: Historical candle data with indicators
             market_service: Paper market service for simulation
             initial_balance: Starting balance
@@ -273,7 +273,7 @@ class BacktestService:
 
             # Generate signal (would call algorithm.on_tick())
             # For now, simulate simple algorithm
-            signal = self._generate_signal(tick, algorithm_instance)
+            signal = self._generate_signal(tick, strategy_instance)
 
             if signal:
                 if signal.signal_type == SignalType.BUY and not open_position:
@@ -343,7 +343,7 @@ class BacktestService:
         # Calculate metrics
         return self._calculate_metrics(
             job_id=job_id,
-            algorithm_instance=algorithm_instance,
+            strategy_instance=strategy_instance,
             trades=trades,
             equity_curve=equity_curve,
             initial_balance=initial_balance,
@@ -352,7 +352,7 @@ class BacktestService:
             time_range_end=candles[-1]["time"],
         )
 
-    def _generate_signal(self, tick: EnrichedTick, instance: AlgorithmInstance) -> Signal | None:
+    def _generate_signal(self, tick: EnrichedTick, instance: StrategyInstance) -> Signal | None:
         """
         Generate trading signal from tick.
 
@@ -401,7 +401,7 @@ class BacktestService:
     def _calculate_metrics(
         self,
         job_id: str,
-        algorithm_instance: AlgorithmInstance,
+        strategy_instance: StrategyInstance,
         trades: list[TradeRecord],
         equity_curve: list[dict[str, Any]],
         initial_balance: float,
@@ -448,12 +448,12 @@ class BacktestService:
         gross_loss = abs(sum(t.pnl for t in trades if t.pnl < 0))
         profit_factor = gross_profit / gross_loss if gross_loss > 0 else float("inf")
 
-        assert algorithm_instance.id is not None
-        assert isinstance(algorithm_instance.id, UUID)
+        assert strategy_instance.id is not None
+        assert isinstance(strategy_instance.id, UUID)
 
         return BacktestResult(
             job_id=job_id,
-            algorithm_instance_id=algorithm_instance.id,
+            strategy_instance_id=strategy_instance.id,
             time_range_start=time_range_start,
             time_range_end=time_range_end,
             initial_balance=initial_balance,

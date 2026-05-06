@@ -1,5 +1,5 @@
 """
-AlgorithmInstance repository PostgreSQL implementation.
+StrategyInstance repository PostgreSQL implementation.
 
 Uses asyncpg for async database access.
 Follows DDD: Infrastructure layer implements Domain interface.
@@ -11,15 +11,15 @@ from uuid import UUID
 
 import asyncpg  # type: ignore[import-untyped]
 
-from src.domain.repositories.algorithm_instance_repository import AlgorithmInstanceRepository
-from src.domain.algorithms.algorithm_instance import AlgorithmInstance, AlgorithmInstanceState
+from src.domain.repositories.strategy_instance_repository import StrategyInstanceRepository
+from src.domain.algorithms.strategy_instance import StrategyInstance, StrategyInstanceState
 
 logger = logging.getLogger(__name__)
 
 
-class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
+class StrategyInstanceRepositoryPG(StrategyInstanceRepository):
     """
-    PostgreSQL implementation of AlgorithmInstanceRepository.
+    PostgreSQL implementation of StrategyInstanceRepository.
 
     Architecture: Infrastructure Layer
     Dependencies: asyncpg connection from pool
@@ -34,53 +34,53 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
         """
         self._conn = conn
 
-    async def get_by_id(self, entity_id: UUID) -> AlgorithmInstance | None:
+    async def get_by_id(self, entity_id: UUID) -> StrategyInstance | None:
         """
-        Get AlgorithmInstance by ID.
+        Get StrategyInstance by ID.
 
         Args:
             entity_id: UUID of the instance
 
         Returns:
-            AlgorithmInstance if found, None otherwise
+            StrategyInstance if found, None otherwise
         """
         row = await self._conn.fetchrow(
             """
             SELECT id, algorithm_id, config_set_id, status, runtime_stats,
                    started_at, stopped_at, created_at, updated_at
-            FROM algorithm_instances
+            FROM strategy_instances
             WHERE id = $1
             """,
             entity_id,
         )
         return self._row_to_entity(row) if row else None
 
-    async def get_all(self) -> list[AlgorithmInstance]:
+    async def get_all(self) -> list[StrategyInstance]:
         """
-        Get all AlgorithmInstances.
+        Get all StrategyInstances.
 
         Returns:
-            List of all AlgorithmInstance entities
+            List of all StrategyInstance entities
         """
         rows = await self._conn.fetch(
             """
             SELECT id, algorithm_id, config_set_id, status, runtime_stats,
                    started_at, stopped_at, created_at, updated_at
-            FROM algorithm_instances
+            FROM strategy_instances
             ORDER BY created_at DESC
             """,
         )
         return [self._row_to_entity(row) for row in rows]
 
-    async def save(self, entity: AlgorithmInstance) -> AlgorithmInstance:
+    async def save(self, entity: StrategyInstance) -> StrategyInstance:
         """
-        Save (insert or update) a AlgorithmInstance.
+        Save (insert or update) a StrategyInstance.
 
         Args:
-            entity: AlgorithmInstance entity to save
+            entity: StrategyInstance entity to save
 
         Returns:
-            Saved AlgorithmInstance with updated timestamps
+            Saved StrategyInstance with updated timestamps
 
         Raises:
             ValueError: If entity is invalid
@@ -88,7 +88,7 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
         try:
             row = await self._conn.fetchrow(
                 """
-                INSERT INTO algorithm_instances
+                INSERT INTO strategy_instances
                     (id, algorithm_id, config_set_id, status, runtime_stats,
                      started_at, stopped_at)
                 VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -113,15 +113,15 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
             )
             return self._row_to_entity(row)
         except asyncpg.UniqueViolationError as e:
-            logger.error(f"Unique violation saving AlgorithmInstance: {e}")
+            logger.error(f"Unique violation saving StrategyInstance: {e}")
             raise ValueError("Instance with this algorithm and config set already exists") from e
         except Exception as e:
-            logger.error(f"Failed to save AlgorithmInstance: {e}")
+            logger.error(f"Failed to save StrategyInstance: {e}")
             raise
 
     async def delete(self, entity_id: UUID) -> bool:
         """
-        Delete a AlgorithmInstance.
+        Delete a StrategyInstance.
 
         Args:
             entity_id: UUID of the instance
@@ -129,12 +129,12 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
         Returns:
             True if deleted, False if not found
         """
-        result = await self._conn.execute("DELETE FROM algorithm_instances WHERE id = $1", entity_id)
+        result = await self._conn.execute("DELETE FROM strategy_instances WHERE id = $1", entity_id)
         return "DELETE 1" in result
 
     async def get_by_algorithm_and_config(
         self, algorithm_id: UUID, config_set_id: UUID
-    ) -> AlgorithmInstance | None:
+    ) -> StrategyInstance | None:
         """
         Get instance by algorithm + config_set combination.
 
@@ -143,13 +143,13 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
             config_set_id: UUID of the configuration set
 
         Returns:
-            AlgorithmInstance if found, None otherwise
+            StrategyInstance if found, None otherwise
         """
         row = await self._conn.fetchrow(
             """
             SELECT id, algorithm_id, config_set_id, status, runtime_stats,
                    started_at, stopped_at, created_at, updated_at
-            FROM algorithm_instances
+            FROM strategy_instances
             WHERE algorithm_id = $1 AND config_set_id = $2
             """,
             algorithm_id,
@@ -162,7 +162,7 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
         status: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> list[AlgorithmInstance]:
+    ) -> list[StrategyInstance]:
         """
         List instances with optional status filter.
 
@@ -172,14 +172,14 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
             offset: Pagination offset
 
         Returns:
-            List of AlgorithmInstance entities
+            List of StrategyInstance entities
         """
         if status:
             rows = await self._conn.fetch(
                 """
                 SELECT id, algorithm_id, config_set_id, status, runtime_stats,
                        started_at, stopped_at, created_at, updated_at
-                FROM algorithm_instances
+                FROM strategy_instances
                 WHERE status = $1
                 ORDER BY created_at DESC
                 LIMIT $2 OFFSET $3
@@ -193,7 +193,7 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
                 """
                 SELECT id, algorithm_id, config_set_id, status, runtime_stats,
                        started_at, stopped_at, created_at, updated_at
-                FROM algorithm_instances
+                FROM strategy_instances
                 ORDER BY created_at DESC
                 LIMIT $1 OFFSET $2
                 """,
@@ -202,7 +202,7 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
             )
         return [self._row_to_entity(row) for row in rows]
 
-    async def list_by_algorithm(self, algorithm_id: UUID) -> list[AlgorithmInstance]:
+    async def list_by_algorithm(self, algorithm_id: UUID) -> list[StrategyInstance]:
         """
         List all instances for a specific algorithm.
 
@@ -210,13 +210,13 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
             algorithm_id: UUID of the algorithm
 
         Returns:
-            List of AlgorithmInstance entities for the algorithm
+            List of StrategyInstance entities for the algorithm
         """
         rows = await self._conn.fetch(
             """
             SELECT id, algorithm_id, config_set_id, status, runtime_stats,
                    started_at, stopped_at, created_at, updated_at
-            FROM algorithm_instances
+            FROM strategy_instances
             WHERE algorithm_id = $1
             ORDER BY created_at DESC
             """,
@@ -226,7 +226,7 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
 
     async def update_status(
         self, instance_id: UUID, status: str, runtime_stats: dict[str, Any] | None = None
-    ) -> AlgorithmInstance | None:
+    ) -> StrategyInstance | None:
         """
         Update instance status and optionally runtime stats.
 
@@ -236,12 +236,12 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
             runtime_stats: Optional runtime stats dict to update
 
         Returns:
-            Updated AlgorithmInstance if found, None otherwise
+            Updated StrategyInstance if found, None otherwise
         """
         if runtime_stats:
             result = await self._conn.execute(
                 """
-                UPDATE algorithm_instances
+                UPDATE strategy_instances
                 SET status = $2, runtime_stats = $3, updated_at = NOW()
                 WHERE id = $1
                 """,
@@ -252,7 +252,7 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
         else:
             result = await self._conn.execute(
                 """
-                UPDATE algorithm_instances
+                UPDATE strategy_instances
                 SET status = $2, updated_at = NOW()
                 WHERE id = $1
                 """,
@@ -264,17 +264,17 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
             return None
         return await self.get_by_id(instance_id)
 
-    def _row_to_entity(self, row: asyncpg.Record) -> AlgorithmInstance:
+    def _row_to_entity(self, row: asyncpg.Record) -> StrategyInstance:
         """
-        Convert database row to AlgorithmInstance entity.
+        Convert database row to StrategyInstance entity.
 
         Args:
             row: asyncpg Record from SELECT query
 
         Returns:
-            AlgorithmInstance entity
+            StrategyInstance entity
         """
-        from src.domain.algorithms.algorithm_instance import RuntimeStats
+        from src.domain.algorithms.strategy_instance import RuntimeStats
 
         if row["runtime_stats"]:
             stats_dict = dict(row["runtime_stats"]) if row["runtime_stats"] else {}
@@ -285,11 +285,11 @@ class AlgorithmInstanceRepositoryPG(AlgorithmInstanceRepository):
         else:
             runtime_stats = RuntimeStats()
 
-        instance = AlgorithmInstance(
+        instance = StrategyInstance(
             algorithm_id=row["algorithm_id"],
             config_set_id=row["config_set_id"],
             id=row["id"],
-            status=AlgorithmInstanceState(row["status"]),
+            status=StrategyInstanceState(row["status"]),
             runtime_stats=runtime_stats,
             started_at=row["started_at"],
             stopped_at=row["stopped_at"],

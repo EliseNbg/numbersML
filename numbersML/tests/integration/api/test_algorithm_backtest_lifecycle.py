@@ -97,7 +97,7 @@ def read_headers():
 @pytest.fixture
 def backtest_job_payload():
     return {
-        "algorithm_instance_id": "323e4567-e89b-12d3-a456-426614174002",
+        "strategy_instance_id": "323e4567-e89b-12d3-a456-426614174002",
         "time_range": "1d",
         "initial_balance": 10000.0,
     }
@@ -106,7 +106,7 @@ def backtest_job_payload():
 @pytest.fixture
 def custom_range_payload():
     return {
-        "algorithm_instance_id": "323e4567-e89b-12d3-a456-426614174002",
+        "strategy_instance_id": "323e4567-e89b-12d3-a456-426614174002",
         "time_range": "custom",
         "custom_start": "2026-05-03T00:00:00",
         "custom_end": "2026-05-04T00:00:00",
@@ -183,7 +183,7 @@ class TestBacktestLifecycle:
 
         for preset in time_presets:
             payload = {
-                "algorithm_instance_id": "323e4567-e89b-12d3-a456-426614174002",
+                "strategy_instance_id": "323e4567-e89b-12d3-a456-426614174002",
                 "time_range": preset,
                 "initial_balance": 10000.0,
             }
@@ -233,7 +233,7 @@ class TestBacktestErrors:
     def test_submit_invalid_time_range(self, client, trader_headers):
         """Test that invalid time range returns 422."""
         payload = {
-            "algorithm_instance_id": "323e4567-e89b-12d3-a456-426614174002",
+            "strategy_instance_id": "323e4567-e89b-12d3-a456-426614174002",
             "time_range": "invalid-range",
             "initial_balance": 10000.0,
         }
@@ -247,7 +247,7 @@ class TestBacktestErrors:
     def test_submit_custom_range_without_dates(self, client, trader_headers):
         """Test that custom range without dates returns 400."""
         payload = {
-            "algorithm_instance_id": "323e4567-e89b-12d3-a456-426614174002",
+            "strategy_instance_id": "323e4567-e89b-12d3-a456-426614174002",
             "time_range": "custom",
             "initial_balance": 10000.0,
         }
@@ -264,7 +264,7 @@ class TestBacktestErrors:
         _mock_repo.get_by_id = AsyncMock(return_value=None)
 
         payload = {
-            "algorithm_instance_id": "123e4567-e89b-12d3-a456-426614174000",
+            "strategy_instance_id": "123e4567-e89b-12d3-a456-426614174000",
             "time_range": "1d",
             "initial_balance": 10000.0,
         }
@@ -284,7 +284,7 @@ class TestBacktestErrors:
     def test_submit_invalid_uuid_returns_400(self, client, trader_headers):
         """Test that invalid UUID returns 400."""
         payload = {
-            "algorithm_instance_id": "not-a-uuid",
+            "strategy_instance_id": "not-a-uuid",
             "time_range": "1d",
             "initial_balance": 10000.0,
         }

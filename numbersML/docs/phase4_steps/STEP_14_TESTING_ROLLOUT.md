@@ -115,11 +115,11 @@ class TestConfigurationSetsE2E:
         expect(page.locator(".alert-success")).to_be_visible()
 
 
-class TestAlgorithmInstancesE2E:
-    """E2E tests for AlgorithmInstance management."""
+class TestStrategyInstancesE2E:
+    """E2E tests for StrategyInstance management."""
     
     def test_create_instance(self, page: Page, base_url):
-        """Test creating a AlgorithmInstance."""
+        """Test creating a StrategyInstance."""
         page.goto(f"{base_url}/dashboard/algorithm-instances.html")
         
         # Click create
@@ -138,7 +138,7 @@ class TestAlgorithmInstancesE2E:
         expect(page.locator(".alert-success")).to_be_visible()
     
     def test_start_instance(self, page: Page, base_url):
-        """Test starting (hot-plug) a AlgorithmInstance."""
+        """Test starting (hot-plug) a StrategyInstance."""
         page.goto(f"{base_url}/dashboard/algorithm-instances.html")
         
         # Click start button (play icon, first row)
@@ -148,7 +148,7 @@ class TestAlgorithmInstancesE2E:
         page.wait_for_selector("text=Running", timeout=5000)
     
     def test_stop_instance(self, page: Page, base_url):
-        """Test stopping (unplug) a AlgorithmInstance."""
+        """Test stopping (unplug) a StrategyInstance."""
         page.goto(f"{base_url}/dashboard/algorithm-instances.html")
         
         # Click stop button (stop icon)
@@ -241,14 +241,14 @@ All Phase 4 objectives have been completed:
 - Activation/deactivation endpoints
 - Pydantic request/response models
 
-### ✅ Step 4: AlgorithmInstance Domain Model
-- `AlgorithmInstance` entity in `src/domain/algorithms/algorithm_instance.py`
+### ✅ Step 4: StrategyInstance Domain Model
+- `StrategyInstance` entity in `src/domain/algorithms/strategy_instance.py`
 - State machine (stopped → running → paused → stopped)
-- `AlgorithmInstanceState` enum
+- `StrategyInstanceState` enum
 
-### ✅ Step 5: AlgorithmInstance Repository & API
-- Migration `migrations/004_algorithm_instances.sql`
-- `AlgorithmInstanceRepository` + `AlgorithmInstanceRepositoryPG`
+### ✅ Step 5: StrategyInstance Repository & API
+- Migration `migrations/004_strategy_instances.sql`
+- `StrategyInstanceRepository` + `StrategyInstanceRepositoryPG`
 - Hot-plug endpoints (start/stop/pause/resume)
 
 ### ✅ Step 6: Real Backtest Engine Service
@@ -267,7 +267,7 @@ All Phase 4 objectives have been completed:
 - `dashboard/js/config_sets.js` with dynamic parameters
 - Add/remove custom parameters
 
-### ✅ Step 9: Dashboard - AlgorithmInstance Management
+### ✅ Step 9: Dashboard - StrategyInstance Management
 - `dashboard/algorithm-instances.html` with hot-plug controls
 - `dashboard/js/algorithm-instances.js` with real-time polling
 - Start/stop/pause/resume buttons
@@ -288,16 +288,16 @@ All Phase 4 objectives have been completed:
 - Positive PnL verification
 
 ### ✅ Step 13: Pipeline Integration
-- `src/application/services/algorithm_instance_service.py`
+- `src/application/services/strategy_instance_service.py`
 - Hot-plug/unplug integration with pipeline
 - AlgorithmManager updated to handle instances
 
 ## Acceptance Criteria - ALL MET ✅
 
 1. ✅ User can create ConfigurationSet with custom parameters via Dashboard
-2. ✅ User can link Algorithm + ConfigurationSet into AlgorithmInstance
-3. ✅ User can hot-plug AlgorithmInstance without pipeline restart
-4. ✅ Backtest for AlgorithmInstance runs real calculations with historical data
+2. ✅ User can link Algorithm + ConfigurationSet into StrategyInstance
+3. ✅ User can hot-plug StrategyInstance without pipeline restart
+4. ✅ Backtest for StrategyInstance runs real calculations with historical data
 5. ✅ Backtest results show PnL, buy/sell points, equity curve
 6. ✅ Grid algorithm on TEST/USDT shows positive PnL on noised sin data
 7. ✅ All new code has >80% test coverage
@@ -317,7 +317,7 @@ All Phase 4 objectives have been completed:
 - [ ] Run database migrations:
   ```bash
   psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f migrations/003_configuration_sets.sql
-  psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f migrations/004_algorithm_instances.sql
+  psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f migrations/004_strategy_instances.sql
   ```
 - [ ] Deploy backend:
   ```bash
@@ -350,26 +350,26 @@ Add Phase 4 to main project README:
 
 ### New Features
 - **ConfigurationSets**: Reusable parameter sets for algorithms
-- **AlgorithmInstances**: Link algorithms with configuration for deployment
+- **StrategyInstances**: Link algorithms with configuration for deployment
 - **Hot-Plug**: Start/stop algorithms without pipeline restart
 - **Real Backtesting**: Historical data replay with NO indicator recalculation
 - **Dashboard Pages**:
   - ConfigurationSet management with dynamic parameters
-  - AlgorithmInstance management with hot-plug controls
+  - StrategyInstance management with hot-plug controls
   - Enhanced backtest page with Chart.js visualizations
 - **Grid Algorithm**: Simple grid trading algorithm for TEST/USDT
 
 ### API Endpoints
 - `POST /api/config-sets` - Create ConfigurationSet
 - `GET /api/config-sets` - List ConfigurationSets
-- `POST /api/algorithm-instances` - Create AlgorithmInstance
+- `POST /api/algorithm-instances` - Create StrategyInstance
 - `POST /api/algorithm-instances/{id}/start` - Hot-plug
 - `POST /api/algorithm-backtests/jobs` - Submit backtest
 - `GET /api/algorithm-backtests/jobs/{id}` - Get results
 
 ### Database Migrations
 - `migrations/003_configuration_sets.sql`
-- `migrations/004_algorithm_instances.sql`
+- `migrations/004_strategy_instances.sql`
 
 ### Test Coverage
 - >80% for all new code
@@ -398,7 +398,7 @@ class TestFullPhase4Flow:
         """
         Test complete flow:
         1. Create ConfigurationSet
-        2. Create AlgorithmInstance
+        2. Create StrategyInstance
         3. Submit backtest
         4. Verify results
         """
@@ -465,7 +465,7 @@ Comprehensive testing, documentation, and rollout preparation.
 
 1. Create `tests/e2e/test_phase4_e2e.py` with Playwright:
    - TestConfigurationSetsE2E: create, edit, delete
-   - TestAlgorithmInstancesE2E: create, start, stop, pause
+   - TestStrategyInstancesE2E: create, start, stop, pause
    - TestBacktestE2E: submit, wait for completion, verify charts
    - Use Playwright sync API (page, expect)
    - Run with: pytest tests/e2e/test_phase4_e2e.py -v --headed

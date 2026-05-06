@@ -32,9 +32,9 @@ from src.application.services.algorithm_telemetry import (
 from src.domain.algorithms.base import (
     EnrichedTick,
 )
-from src.domain.algorithms.algorithm_instance import (
-    AlgorithmInstance,
-    AlgorithmInstanceState,
+from src.domain.algorithms.strategy_instance import (
+    StrategyInstance,
+    StrategyInstanceState,
 )
 
 logger = logging.getLogger(__name__)
@@ -146,7 +146,7 @@ class EnhancedAlgorithmRunner(AlgorithmRunner):
             active_algorithms = [
                 sid
                 for sid in self._lifecycle._instances.keys()
-                if (self._lifecycle._instances[sid].state == AlgorithmInstanceState.RUNNING)
+                if (self._lifecycle._instances[sid].state == StrategyInstanceState.RUNNING)
             ]
 
             # Process tick through each active algorithm with error isolation
@@ -409,10 +409,10 @@ class EnhancedAlgorithmRunner(AlgorithmRunner):
 
         logger.info("EnhancedAlgorithmRunner stopped")
 
-    def get_runtime_state(self, algorithm_id: UUID) -> AlgorithmInstance | None:
+    def get_runtime_state(self, algorithm_id: UUID) -> StrategyInstance | None:
         """Get runtime state for a algorithm."""
         return self._lifecycle._instances.get(algorithm_id)
 
-    def get_all_runtime_states(self) -> list[AlgorithmInstance]:
+    def get_all_runtime_states(self) -> list[StrategyInstance]:
         """Get runtime states for all algorithms."""
         return list(self._lifecycle._instances.values())

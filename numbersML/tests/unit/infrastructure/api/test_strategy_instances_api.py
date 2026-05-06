@@ -1,5 +1,5 @@
 """
-Unit tests for AlgorithmInstance API endpoints.
+Unit tests for StrategyInstance API endpoints.
 
 Uses FastAPI's TestClient with mocked repository.
 """
@@ -11,8 +11,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.domain.algorithms.algorithm_instance import AlgorithmInstance
-from src.infrastructure.api.routes.algorithm_instances import get_instance_repository, router
+from src.domain.algorithms.strategy_instance import StrategyInstance
+from src.infrastructure.api.routes.strategy_instances import get_instance_repository, router
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ def app():
 
 @pytest.fixture
 def mock_repo():
-    """Mock AlgorithmInstanceRepository."""
+    """Mock StrategyInstanceRepository."""
     return AsyncMock()
 
 
@@ -38,7 +38,7 @@ def client(app, mock_repo):
 
 def test_list_instances(client, mock_repo):
     """Test listing instances."""
-    sample_instance = AlgorithmInstance(
+    sample_instance = StrategyInstance(
         algorithm_id=uuid4(),
         config_set_id=uuid4(),
     )
@@ -55,7 +55,7 @@ def test_create_instance(client, mock_repo):
     algorithm_id = uuid4()
     config_set_id = uuid4()
     mock_repo.get_by_algorithm_and_config.return_value = None
-    mock_repo.save.return_value = AlgorithmInstance(
+    mock_repo.save.return_value = StrategyInstance(
         algorithm_id=algorithm_id,
         config_set_id=config_set_id,
     )
@@ -71,7 +71,7 @@ def test_create_instance(client, mock_repo):
 
 def test_create_duplicate_instance(client, mock_repo):
     """Test creating duplicate instance returns 400."""
-    existing = AlgorithmInstance(
+    existing = StrategyInstance(
         algorithm_id=uuid4(),
         config_set_id=uuid4(),
     )
@@ -91,7 +91,7 @@ def test_create_duplicate_instance(client, mock_repo):
 
 def test_get_instance(client, mock_repo):
     """Test getting instance by ID."""
-    instance = AlgorithmInstance(
+    instance = StrategyInstance(
         algorithm_id=uuid4(),
         config_set_id=uuid4(),
     )
@@ -114,7 +114,7 @@ def test_get_nonexistent_instance(client, mock_repo):
 
 def test_start_instance(client, mock_repo):
     """Test starting an instance."""
-    instance = AlgorithmInstance(
+    instance = StrategyInstance(
         algorithm_id=uuid4(),
         config_set_id=uuid4(),
     )
@@ -138,7 +138,7 @@ def test_start_nonexistent_instance(client, mock_repo):
 
 def test_stop_instance(client, mock_repo):
     """Test stopping an instance."""
-    instance = AlgorithmInstance(
+    instance = StrategyInstance(
         algorithm_id=uuid4(),
         config_set_id=uuid4(),
     )
@@ -154,7 +154,7 @@ def test_stop_instance(client, mock_repo):
 
 def test_pause_instance(client, mock_repo):
     """Test pausing a running instance."""
-    instance = AlgorithmInstance(
+    instance = StrategyInstance(
         algorithm_id=uuid4(),
         config_set_id=uuid4(),
     )
@@ -170,7 +170,7 @@ def test_pause_instance(client, mock_repo):
 
 def test_resume_instance(client, mock_repo):
     """Test resuming a paused instance."""
-    instance = AlgorithmInstance(
+    instance = StrategyInstance(
         algorithm_id=uuid4(),
         config_set_id=uuid4(),
     )

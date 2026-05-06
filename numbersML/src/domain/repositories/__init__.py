@@ -2,5 +2,6 @@
 
 from .base import Repository
 from .algorithm_repository import AlgorithmRepository
+from .strategy_instance_repository import StrategyInstanceRepository
 
-__all__ = ["Repository", "AlgorithmRepository"]
+__all__ = ["Repository", "AlgorithmRepository", "StrategyInstanceRepository"]

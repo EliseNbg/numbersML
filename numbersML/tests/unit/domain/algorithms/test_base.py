@@ -12,7 +12,7 @@ from src.domain.algorithms.base import (
     SignalType,
     TimeFrame,
 )
-from src.domain.algorithms.algorithm_instance import AlgorithmInstanceState
+from src.domain.algorithms.strategy_instance import StrategyInstanceState
 
 
 class TestSignalType:
@@ -38,15 +38,15 @@ class TestTimeFrame:
         assert TimeFrame.DAY.value == "1D"
 
 
-class TestAlgorithmInstanceState:
-    """Test AlgorithmInstanceState enum."""
+class TestStrategyInstanceState:
+    """Test StrategyInstanceState enum."""
 
     def test_algorithm_state_values(self) -> None:
         """Test algorithm state enum values."""
-        assert AlgorithmInstanceState.STOPPED.value == "stopped"
-        assert AlgorithmInstanceState.RUNNING.value == "running"
-        assert AlgorithmInstanceState.PAUSED.value == "paused"
-        assert AlgorithmInstanceState.ERROR.value == "error"
+        assert StrategyInstanceState.STOPPED.value == "stopped"
+        assert StrategyInstanceState.RUNNING.value == "running"
+        assert StrategyInstanceState.PAUSED.value == "paused"
+        assert StrategyInstanceState.ERROR.value == "error"
 
 
 class TestSignal:

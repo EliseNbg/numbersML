@@ -147,26 +147,26 @@ echo "DELETE ALL DATA" | .venv/bin/python tests/integration/test_dangerous_pipel
 
 ### New Features
 - **ConfigurationSets**: Reusable parameter sets for algorithms
-- **AlgorithmInstances**: Link algorithms with configuration for deployment
+- **StrategyInstances**: Link algorithms with configuration for deployment
 - **Hot-Plug**: Start/stop algorithms without pipeline restart
 - **Real Backtesting**: Historical data replay with NO indicator recalculation
 - **Dashboard Pages**:
   - ConfigurationSet management with dynamic parameters
-  - AlgorithmInstance management with hot-plug controls
+  - StrategyInstance management with hot-plug controls
   - Enhanced backtest page with Chart.js visualizations
 - **Grid Algorithm**: Simple grid trading algorithm for TEST/USDT
 
 ### API Endpoints
 - `POST /api/config-sets` - Create ConfigurationSet
 - `GET /api/config-sets` - List ConfigurationSets
-- `POST /api/algorithm-instances` - Create AlgorithmInstance
+- `POST /api/algorithm-instances` - Create StrategyInstance
 - `POST /api/algorithm-instances/{id}/start` - Hot-plug
 - `POST /api/algorithm-backtests/jobs` - Submit backtest
 - `GET /api/algorithm-backtests/jobs/{id}` - Get results
 
 ### Database Migrations
 - `migrations/003_configuration_sets.sql`
-- `migrations/004_algorithm_instances.sql`
+- `migrations/004_strategy_instances.sql`
 
 ### Test Coverage
 - >80% for all new code

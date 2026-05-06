@@ -1,7 +1,7 @@
 """
-AlgorithmInstance repository interface (Domain Layer).
+StrategyInstance repository interface (Domain Layer).
 
-Defines contract for AlgorithmInstance persistence.
+Defines contract for StrategyInstance persistence.
 Follows DDD Repository pattern - interface in domain, implementation in infrastructure.
 """
 
@@ -10,26 +10,26 @@ from typing import Any
 from uuid import UUID
 
 from src.domain.repositories.base import Repository
-from src.domain.algorithms.algorithm_instance import AlgorithmInstance
+from src.domain.algorithms.strategy_instance import StrategyInstance
 
 
-class AlgorithmInstanceRepository(Repository[AlgorithmInstance, UUID]):
+class StrategyInstanceRepository(Repository[StrategyInstance, UUID]):
     """
-    Abstract base class for AlgorithmInstance repository.
+    Abstract base class for StrategyInstance repository.
 
-    Defines the contract for persisting AlgorithmInstance entities.
+    Defines the contract for persisting StrategyInstance entities.
     Implementation is in infrastructure layer (asyncpg, etc.).
 
     Example:
-        >>> from src.infrastructure.repositories.algorithm_instance_repository_pg import AlgorithmInstanceRepositoryPG
-        >>> repo = AlgorithmInstanceRepositoryPG(connection)
+        >>> from src.infrastructure.repositories.strategy_instance_repository_pg import StrategyInstanceRepositoryPG
+        >>> repo = StrategyInstanceRepositoryPG(connection)
         >>> instance = await repo.save(instance)
     """
 
     @abstractmethod
     async def get_by_algorithm_and_config(
         self, algorithm_id: UUID, config_set_id: UUID
-    ) -> AlgorithmInstance | None:
+    ) -> StrategyInstance | None:
         """
         Get instance by algorithm + config_set combination.
 
@@ -38,7 +38,7 @@ class AlgorithmInstanceRepository(Repository[AlgorithmInstance, UUID]):
             config_set_id: UUID of the configuration set
 
         Returns:
-            AlgorithmInstance if found, None otherwise
+            StrategyInstance if found, None otherwise
         """
 
     @abstractmethod
@@ -47,7 +47,7 @@ class AlgorithmInstanceRepository(Repository[AlgorithmInstance, UUID]):
         status: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> list[AlgorithmInstance]:
+    ) -> list[StrategyInstance]:
         """
         List instances with optional status filter.
 
@@ -57,11 +57,11 @@ class AlgorithmInstanceRepository(Repository[AlgorithmInstance, UUID]):
             offset: Pagination offset
 
         Returns:
-            List of AlgorithmInstance entities
+            List of StrategyInstance entities
         """
 
     @abstractmethod
-    async def list_by_algorithm(self, algorithm_id: UUID) -> list[AlgorithmInstance]:
+    async def list_by_algorithm(self, algorithm_id: UUID) -> list[StrategyInstance]:
         """
         List all instances for a specific algorithm.
 
@@ -69,13 +69,13 @@ class AlgorithmInstanceRepository(Repository[AlgorithmInstance, UUID]):
             algorithm_id: UUID of the algorithm
 
         Returns:
-            List of AlgorithmInstance entities for the algorithm
+            List of StrategyInstance entities for the algorithm
         """
 
     @abstractmethod
     async def update_status(
         self, instance_id: UUID, status: str, runtime_stats: dict[str, Any] | None = None
-    ) -> AlgorithmInstance | None:
+    ) -> StrategyInstance | None:
         """
         Update instance status and optionally runtime stats.
 
@@ -85,5 +85,5 @@ class AlgorithmInstanceRepository(Repository[AlgorithmInstance, UUID]):
             runtime_stats: Optional runtime stats dict to update
 
         Returns:
-            Updated AlgorithmInstance if found, None otherwise
+            Updated StrategyInstance if found, None otherwise
         """
