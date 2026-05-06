@@ -5,6 +5,7 @@ Uses asyncpg for async database access.
 Follows DDD: Infrastructure layer implements Domain interface.
 """
 
+import json
 import logging
 from typing import Any
 from uuid import UUID
@@ -104,12 +105,12 @@ class StrategyInstanceRepositoryPG(StrategyInstanceRepository):
                           started_at, stopped_at, created_at, updated_at
                 """,
                 entity.id,
-                entity.algorithm_id,
-                entity.config_set_id,
-                entity.status.value,
-                entity.runtime_stats.to_dict(),
-                entity.started_at,
-                entity.stopped_at,
+                 entity.algorithm_id,
+                 entity.config_set_id,
+                 entity.status.value,
+                 json.dumps(entity.runtime_stats.to_dict()),
+                 entity.started_at,
+                 entity.stopped_at,
             )
             return self._row_to_entity(row)
         except asyncpg.UniqueViolationError as e:
@@ -277,7 +278,12 @@ class StrategyInstanceRepositoryPG(StrategyInstanceRepository):
         from src.domain.algorithms.strategy_instance import RuntimeStats
 
         if row["runtime_stats"]:
-            stats_dict = dict(row["runtime_stats"]) if row["runtime_stats"] else {}
+            # Handle both string (JSON) and dict cases
+            stats = row["runtime_stats"]
+            if isinstance(stats, str):
+                stats_dict = json.loads(stats)
+            else:
+                stats_dict = dict(stats) if stats else {}
             # Filter out keys not in RuntimeStats.__init__ parameters
             init_params = RuntimeStats.__init__.__code__.co_varnames[1:]  # Skip self
             filtered_stats = {k: v for k, v in stats_dict.items() if k in init_params}
