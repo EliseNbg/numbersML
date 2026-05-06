@@ -68,24 +68,6 @@ src/
 │   ├── api/               # FastAPI endpoints
 │   └── exchanges/         # Binance REST/WebSocket clients
 └── indicators/            # Technical indicator implementations
-
-ml/
-├── model.py               # 3 architectures: SimpleMLP, CNN+Attention, Transformer
-├── dataset.py             # WideVectorDataset (PostgreSQL → PyTorch)
-├── train.py               # Training loop with early stopping
-├── compare.py             # Multi-model comparison
-├── predict.py             # Inference engine
-└── config.py              # PipelineConfig, ModelConfig, TrainingConfig
-
-migrations/
-└── CLEAN_SCHEMA.sql       # Complete database schema (pg_dump)
-
-tests/
-├── unit/                  # 457 unit tests
-│   ├── ml/                # ML model tests (40)
-│   └── pipeline/          # Pipeline + recovery tests (23)
-└── integration/           # End-to-end tests
-    └── test_dangerous_pipeline.py  # Full pipeline integration test
 ```
 
 ## ML Models
@@ -102,7 +84,7 @@ Five architectures available:
 
 **Transformer innovations:** Rotary Positional Embeddings (RoPE), SwiGLU activation, pre‑norm, multi‑scale CNN.
 
-**TemporalCNN:** Pure dilated causal convs with exponential dilation (1,2,4,8,16). Trains reliably, MAE ~0.058–0.065 on BTC/USDC. No RNN/attention issues. See [TemporalCNN Model](TEMPORAL_CNN_MODEL.md).
+**TemporalCNN:** Pure dilated causal convs with exponential dilation (1, 2, 4, 8). Trains reliably, MAE ~0.058–0.065 on BTC/USDC. No RNN/attention issues. See [TemporalCNN Model](TEMPORAL_CNN_MODEL.md).
 
 **TradingTCN (NEW):** State‑of‑the‑art for profit maximization. WaveNet‑style gated residual blocks, multi‑scale dilations, channel mixing, dual heads (expected return + predicted risk). Trained with differentiable PnL / Sharpe losses. See [TradingTCN Model](TRADING_TCN_MODEL.md).
 
@@ -147,26 +129,26 @@ echo "DELETE ALL DATA" | .venv/bin/python tests/integration/test_dangerous_pipel
 
 ### New Features
 - **ConfigurationSets**: Reusable parameter sets for algorithms
-- **StrategyInstances**: Link algorithms with configuration for deployment
+- **AlgorithmInstances**: Link algorithms with configuration for deployment
 - **Hot-Plug**: Start/stop algorithms without pipeline restart
 - **Real Backtesting**: Historical data replay with NO indicator recalculation
 - **Dashboard Pages**:
   - ConfigurationSet management with dynamic parameters
-  - StrategyInstance management with hot-plug controls
+  - AlgorithmInstance management with hot-plug controls
   - Enhanced backtest page with Chart.js visualizations
-- **Grid Algorithm**: Simple grid trading algorithm for TEST/USDT
+- **Grid Algorithm**: Simple grid trading algorithm for TEST/USDT+
 
 ### API Endpoints
 - `POST /api/config-sets` - Create ConfigurationSet
 - `GET /api/config-sets` - List ConfigurationSets
-- `POST /api/algorithm-instances` - Create StrategyInstance
+- `POST /api/algorithm-instances` - Create AlgorithmInstance
 - `POST /api/algorithm-instances/{id}/start` - Hot-plug
 - `POST /api/algorithm-backtests/jobs` - Submit backtest
 - `GET /api/algorithm-backtests/jobs/{id}` - Get results
 
 ### Database Migrations
 - `migrations/003_configuration_sets.sql`
-- `migrations/004_strategy_instances.sql`
+- `migrations/004_algorithm_instances.sql`
 
 ### Test Coverage
 - >80% for all new code
