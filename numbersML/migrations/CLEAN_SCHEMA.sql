@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 8VcNe4bR0Y2Yh7SA2XnDPAver32X3WI1wG4yotVoiQ3ryPzT6E62evmbrVVFaB5
+\restrict QKGOgzokCS2pIfbUDvFWQChiVoeBmDDomfSFBwApHd6nrvdSv5xTbcxk8b30A0I
 
 -- Dumped from database version 15.17
 -- Dumped by pg_dump version 15.17
@@ -326,8 +326,8 @@ CREATE VIEW public.active_symbols AS
 
 CREATE TABLE public.algorithm_backtests (
     id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
-    strategy_id uuid NOT NULL,
-    strategy_version_id uuid NOT NULL,
+    strategy_instance_id uuid NOT NULL,
+    algorithm_version_id uuid NOT NULL,
     time_range_start timestamp with time zone NOT NULL,
     time_range_end timestamp with time zone NOT NULL,
     initial_balance numeric(20,10) NOT NULL,
@@ -337,8 +337,29 @@ CREATE TABLE public.algorithm_backtests (
     equity_curve jsonb DEFAULT '[]'::jsonb NOT NULL,
     created_by text DEFAULT 'system'::text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT strategy_backtests_check CHECK ((time_range_start < time_range_end))
+    CONSTRAINT algorithm_backtests_check CHECK ((time_range_start < time_range_end))
 );
+
+
+--
+-- Name: TABLE algorithm_backtests; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.algorithm_backtests IS 'Backtest results for StrategyInstances (Algorithm + ConfigurationSet)';
+
+
+--
+-- Name: COLUMN algorithm_backtests.strategy_instance_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_backtests.strategy_instance_id IS 'References the strategy_instances table (Algorithm + ConfigSet combination)';
+
+
+--
+-- Name: COLUMN algorithm_backtests.algorithm_version_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_backtests.algorithm_version_id IS 'Algorithm version used for the backtest';
 
 
 --
@@ -1480,6 +1501,14 @@ ALTER TABLE ONLY public.symbols ALTER COLUMN id SET DEFAULT nextval('public.symb
 
 
 --
+-- Name: algorithm_backtests algorithm_backtests_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.algorithm_backtests
+    ADD CONSTRAINT algorithm_backtests_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: algorithm_events algorithm_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1624,14 +1653,6 @@ ALTER TABLE ONLY public.algorithms
 
 
 --
--- Name: algorithm_backtests strategy_backtests_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.algorithm_backtests
-    ADD CONSTRAINT strategy_backtests_pkey PRIMARY KEY (id);
-
-
---
 -- Name: strategy_events strategy_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1733,6 +1754,13 @@ ALTER TABLE ONLY public.strategy_instances
 
 ALTER TABLE ONLY public.wide_vectors
     ADD CONSTRAINT wide_vectors_pkey PRIMARY KEY ("time");
+
+
+--
+-- Name: idx_algorithm_backtests_strategy_instance; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_algorithm_backtests_strategy_instance ON public.algorithm_backtests USING btree (strategy_instance_id, created_at DESC);
 
 
 --
@@ -1967,13 +1995,6 @@ CREATE INDEX idx_strategies_status ON public.algorithms USING btree (status);
 
 
 --
--- Name: idx_strategy_backtests_strategy_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_strategy_backtests_strategy_id ON public.algorithm_backtests USING btree (strategy_id, created_at DESC);
-
-
---
 -- Name: idx_strategy_events_event_type; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2205,6 +2226,22 @@ CREATE TRIGGER update_system_config_timestamp BEFORE UPDATE ON public.system_con
 
 
 --
+-- Name: algorithm_backtests algorithm_backtests_algorithm_version_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.algorithm_backtests
+    ADD CONSTRAINT algorithm_backtests_algorithm_version_id_fkey FOREIGN KEY (algorithm_version_id) REFERENCES public.algorithm_versions(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: algorithm_backtests algorithm_backtests_strategy_instance_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.algorithm_backtests
+    ADD CONSTRAINT algorithm_backtests_strategy_instance_id_fkey FOREIGN KEY (strategy_instance_id) REFERENCES public.strategy_instances(id) ON DELETE CASCADE;
+
+
+--
 -- Name: algorithm_events algorithm_events_algorithm_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2301,22 +2338,6 @@ ALTER TABLE ONLY public.recalculation_jobs
 
 
 --
--- Name: algorithm_backtests strategy_backtests_strategy_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.algorithm_backtests
-    ADD CONSTRAINT strategy_backtests_strategy_id_fkey FOREIGN KEY (strategy_id) REFERENCES public.algorithms(id) ON DELETE CASCADE;
-
-
---
--- Name: algorithm_backtests strategy_backtests_strategy_version_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.algorithm_backtests
-    ADD CONSTRAINT strategy_backtests_strategy_version_id_fkey FOREIGN KEY (strategy_version_id) REFERENCES public.strategy_versions(id) ON DELETE RESTRICT;
-
-
---
 -- Name: strategy_events strategy_events_strategy_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2400,5 +2421,5 @@ ALTER TABLE ONLY public.trades
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 8VcNe4bR0Y2Yh7SA2XnDPAver32X3WI1wG4yotVoiQ3ryPzT6E62evmbrVVFaB5
+\unrestrict QKGOgzokCS2pIfbUDvFWQChiVoeBmDDomfSFBwApHd6nrvdSv5xTbcxk8b30A0I
 
