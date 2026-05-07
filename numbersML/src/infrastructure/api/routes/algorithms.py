@@ -77,11 +77,13 @@ async def get_lifecycle_service(
     from src.application.services.algorithm_runner import AlgorithmRunner
     from src.domain.algorithms.base import AlgorithmManager
 
-    runner = AlgorithmRunner(algorithm_manager=AlgorithmManager())
+    # Create AlgorithmManager (not AlgorithmRunner)
+    # The lifecycle service needs AlgorithmManager (which has add_instance())
+    manager = AlgorithmManager()
     return AlgorithmLifecycleService(
         algorithm_repository=repo,
         event_repository=evt_repo,
-        algorithm_manager=runner,
+        algorithm_manager=manager,
         actor="api",
     )
 
