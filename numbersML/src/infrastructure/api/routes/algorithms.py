@@ -13,13 +13,12 @@ Dependencies: Application services, Domain models
 """
 
 import logging
+import shutil
 from collections.abc import AsyncGenerator
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
-
-import shutil
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -547,32 +546,22 @@ async def get_runtime_state(
     algorithm_id: UUID,
     svc=Depends(get_lifecycle_service),  # noqa: B008
 ) -> AlgorithmRuntimeStateResponse:
-    st = await svc.get_runtime_state(algorithm_id)
-    if not st:
-        # Algorithm not running - get name for response
-        repo = await get_algorithm_repo()
-        s = await repo.get_by_id(algorithm_id)
-        name = s.name if s else "Unknown"
-        return AlgorithmRuntimeStateResponse(
-            algorithm_id=algorithm_id,
-            algorithm_name=name,
-            state="STOPPED",
-            version=0,
-            last_error=None,
-            error_count=0,
-            last_state_change=None,
-        )
+    """Get runtime state of algorithm instances.
+
+    Note: Algorithms themselves don't have runtime state - only StrategyInstances do.
+    This endpoint returns N/A to indicate runtime state belongs to instances.
+    """
+    # Algorithms don't have runtime state - only StrategyInstances do
+    # Return N/A to indicate this
     return AlgorithmRuntimeStateResponse(
-        algorithm_id=st.algorithm_id,
-        algorithm_name=st.algorithm_name,
-        state=st.state.value,
-        version=st.version,
-        last_error=st.last_error,
-        error_count=st.error_count,
-        last_state_change=st.last_state_change,
+        algorithm_id=algorithm_id,
+        algorithm_name="N/A",
+        state="N/A",
+        version=0,
+        last_error=None,
+        error_count=0,
+        last_state_change=None,
     )
-
-
 @router.post("/{algorithm_id}/activate", response_model=dict[str, Any])
 async def activate_algorithm(
     algorithm_id: UUID,

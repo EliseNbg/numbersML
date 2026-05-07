@@ -354,28 +354,26 @@ async function viewAlgorithm(algorithmId) {
     // Update button states
     updateActionButtons(currentAlgorithm.status);
     
+    // Runtime state not applicable to algorithms - only instances have runtime
+    document.getElementById('runtime-status').innerHTML = `
+        <span class="badge bg-secondary">N/A</span>
+        <br><small class="text-muted">Runtime state applies to instances, not algorithms</small>
+    `;
+    
     detailModal.show();
 }
 
 /**
  * Load runtime status
+ * Note: Algorithms don't have runtime state - only StrategyInstances do
  */
 async function loadRuntimeStatus(algorithmId) {
-    try {
-        const response = await apiFetch(`/algorithms/${algorithmId}/runtime`);
-        if (response.ok) {
-            const status = await response.json();
-            document.getElementById('runtime-status').innerHTML = `
-                <span class="badge bg-${getRuntimeColor(status.state)}">${status.state}</span>
-                <br><small class="text-muted">Version: ${status.version}</small>
-                ${status.error_count > 0 ? `<br><span class="badge bg-danger">${status.error_count} errors</span>` : ''}
-            `;
-        } else {
-            document.getElementById('runtime-status').innerHTML = '<span class="badge bg-secondary">Stopped</span>';
-        }
-    } catch (error) {
-        document.getElementById('runtime-status').innerHTML = '<span class="badge bg-secondary">Unknown</span>';
-    }
+    // Deprecated: algorithms don't have runtime state
+    // Runtime state belongs to StrategyInstance (which links algorithm + config)
+    document.getElementById('runtime-status').innerHTML = `
+        <span class="badge bg-secondary">N/A</span>
+        <br><small class="text-muted">Use Strategy Instances for runtime</small>
+    `;
 }
 
 /**
