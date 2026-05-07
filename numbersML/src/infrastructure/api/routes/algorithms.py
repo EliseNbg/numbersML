@@ -549,7 +549,19 @@ async def get_runtime_state(
 ) -> AlgorithmRuntimeStateResponse:
     st = await svc.get_runtime_state(algorithm_id)
     if not st:
-        raise HTTPException(status_code=404, detail="Runtime state not found")
+        # Algorithm not running - get name for response
+        repo = await get_algorithm_repo()
+        s = await repo.get_by_id(algorithm_id)
+        name = s.name if s else "Unknown"
+        return AlgorithmRuntimeStateResponse(
+            algorithm_id=algorithm_id,
+            algorithm_name=name,
+            state="STOPPED",
+            version=0,
+            last_error=None,
+            error_count=0,
+            last_state_change=None,
+        )
     return AlgorithmRuntimeStateResponse(
         algorithm_id=st.algorithm_id,
         algorithm_name=st.algorithm_name,
