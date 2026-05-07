@@ -22,24 +22,26 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from src.application.services.llm_algorithm_service import LLMAlgorithmService
-from src.domain.repositories.runtime_event_repository import AlgorithmRuntimeEventRepository
-from src.domain.repositories.algorithm_repository import AlgorithmRepository
 from src.domain.algorithms.algorithm_config import AlgorithmConfigVersion, AlgorithmDefinition
+from src.domain.repositories.algorithm_repository import AlgorithmRepository
+from src.domain.repositories.runtime_event_repository import AlgorithmRuntimeEventRepository
 from src.infrastructure.api.auth import (
     AuthContext,
     check_live_mode_policy,
     require_trader,
 )
 from src.infrastructure.database import get_db_pool_async
+from src.infrastructure.repositories.algorithm_repository_pg import AlgorithmRepositoryPG
 from src.infrastructure.repositories.runtime_event_repository_pg import (
     AlgorithmRuntimeEventRepositoryPG,
 )
-from src.infrastructure.repositories.algorithm_repository_pg import AlgorithmRepositoryPG
 
 if TYPE_CHECKING:
     from src.application.services.algorithm_lifecycle import AlgorithmLifecycleService
 
 router = APIRouter(prefix="/api/algorithms", tags=["algorithms"])
+
+
 async def get_algorithm_repo() -> AsyncGenerator[AlgorithmRepository, None]:
     """Get AlgorithmRepository instance with database connection."""
     db_pool = await get_db_pool_async()
@@ -63,6 +65,7 @@ async def get_llm_service() -> AsyncGenerator[LLMAlgorithmService, None]:
         repo = AlgorithmRepositoryPG(conn)
         yield LLMAlgorithmService(algorithm_repository=repo)
 
+
 async def get_lifecycle_service(
     repo: AlgorithmRepository = Depends(get_algorithm_repo),  # noqa: B008
     evt_repo: AlgorithmRuntimeEventRepository = Depends(get_event_repo),  # noqa: B008
@@ -79,7 +82,6 @@ async def get_lifecycle_service(
         algorithm_manager=runner,
         actor="api",
     )
-
 
 
 logger = logging.getLogger(__name__)
@@ -273,7 +275,6 @@ async def get_all_runtime_states(
     ]
 
 
-
 @router.get("/{algorithm_id}", response_model=AlgorithmResponse)
 async def get_algorithm(
     algorithm_id: UUID,
@@ -308,6 +309,29 @@ async def update_algorithm(
         raise HTTPException(status_code=400, detail="No fields to update")
     saved = await repo.save(s)
     return AlgorithmResponse.from_domain(saved)
+
+
+@router.delete("/{algorithm_id}", response_model=dict[str, Any])
+async def delete_algorithm(
+    algorithm_id: UUID,
+    repo: AlgorithmRepository = Depends(get_algorithm_repo),  # noqa: B008
+) -> dict[str, Any]:
+    """Delete an algorithm (sets status to archived)."""
+    try:
+        # Get algorithm first to check if it exists
+        s = await repo.get_by_id(algorithm_id)
+        if not s:
+            raise HTTPException(status_code=404, detail=f"Algorithm {algorithm_id} not found")
+
+        # Use archive instead of hard delete for safety
+        s.status = "archived"
+        await repo.save(s)
+        return {"message": f"Algorithm {algorithm_id} archived"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete algorithm: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to delete: {e}") from None
 
 
 # ============================================================================
@@ -589,6 +613,7 @@ async def generate_algorithm_config(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to save algorithm: {str(e)}",
         ) from None
+
 
 @router.post("/{algorithm_id}/modify", summary="Modify algorithm via LLM")
 async def modify_algorithm(

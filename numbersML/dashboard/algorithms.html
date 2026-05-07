@@ -336,11 +336,14 @@
                                         <button id="btn-backtest" class="btn btn-outline-primary">
                                             <i class="bi bi-graph-up-arrow"></i> Run Backtest
                                         </button>
+                                        <button id="btn-edit" class="btn btn-outline-secondary">
+                                            <i class="bi bi-pencil"></i> Edit
+                                        </button>
                                         <button id="btn-llm-suggest" class="btn btn-outline-info">
                                             <i class="bi bi-robot"></i> AI Suggestions
                                         </button>
                                         <button id="btn-modify" class="btn btn-outline-secondary">
-                                            <i class="bi bi-pencil"></i> Modify
+                                            <i class="bi bi-robot"></i> AI Modify
                                         </button>
                                         <hr>
                                         <button id="btn-delete" class="btn btn-outline-danger">
@@ -367,7 +370,7 @@
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-pencil"></i> Modify Algorithm</h5>
+                    <h5 class="modal-title"><i class="bi bi-robot"></i> AI Modify Algorithm</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
@@ -394,6 +397,43 @@
                         <i class="bi bi-robot"></i> AI Modify
                     </button>
                     <button type="button" class="btn btn-primary d-none" id="btn-save-modify">
+                        <i class="bi bi-save"></i> Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Algorithm Modal -->
+    <div class="modal fade" id="editAlgorithmModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-pencil"></i> Edit Algorithm</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="edit-algorithm-form">
+                        <div class="mb-3">
+                            <label class="form-label">Name *</label>
+                            <input type="text" class="form-control" id="edit-name" required minlength="1" maxlength="255">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Description</label>
+                            <textarea class="form-control" id="edit-description" rows="2" maxlength="2000"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Mode</label>
+                            <select class="form-select" id="edit-mode">
+                                <option value="paper">Paper Trading</option>
+                                <option value="live">Live Trading</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="btn-save-edit">
                         <i class="bi bi-save"></i> Save Changes
                     </button>
                 </div>

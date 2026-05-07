@@ -13,6 +13,7 @@
 let algorithms = [];
 let currentAlgorithmId = null;
 let currentAlgorithm = null;
+let currentConfig = null;
 let generatedConfig = null;
 let modifiedConfig = null;
 
@@ -65,6 +66,10 @@ function bindEventListeners() {
     document.getElementById('btn-deactivate').addEventListener('click', deactivateAlgorithm);
     document.getElementById('btn-pause').addEventListener('click', pauseAlgorithm);
     document.getElementById('btn-resume').addEventListener('click', resumeAlgorithm);
+    document.getElementById('btn-edit').addEventListener('click', () => {
+        populateEditForm();
+        editModal.show();
+    });
     document.getElementById('btn-delete').addEventListener('click', deleteAlgorithm);
     document.getElementById('btn-modify').addEventListener('click', () => {
         detailModal.hide();
@@ -75,6 +80,9 @@ function bindEventListeners() {
         window.location.href = `backtest_ml.html?algorithm_id=${currentAlgorithmId}`;
     });
     
+    // Edit modal
+    document.getElementById('btn-save-edit').addEventListener('click', saveEdit);
+
     // Modify modal
     document.getElementById('btn-apply-modify').addEventListener('click', applyLLMModify);
     document.getElementById('btn-save-modify').addEventListener('click', saveModifiedAlgorithm);
@@ -233,17 +241,35 @@ function renderAlgorithms() {
  * Get signal type from algorithm config
  */
 function getSignalType(algorithm) {
-    // This would need to fetch the version config
-    // For now, return placeholder
-    return '<span class="badge bg-secondary">Unknown</span>';
+    if (!currentConfig) return '<span class="badge bg-secondary">Unknown</span>';
+
+    const signal = currentConfig.signal || {};
+    const type = signal.type || 'unknown';
+
+    const typeMap = {
+        'rsi': { label: 'RSI', class: 'bg-info' },
+        'macd': { label: 'MACD', class: 'bg-primary' },
+        'sma': { label: 'SMA', class: 'bg-success' },
+        'bollinger': { label: 'Bollinger', class: 'bg-warning' },
+        'multi': { label: 'Multi', class: 'bg-secondary' }
+    };
+
+    const info = typeMap[type] || { label: type, class: 'bg-secondary' };
+    return `<span class="badge ${info.class}">${info.label}</span>`;
 }
 
 /**
  * Get symbols from algorithm
  */
 function getSymbols(algorithm) {
-    // Would need config to get actual symbols
-    return '<span class="text-muted">-</span>';
+    if (!currentConfig) return '<span class="text-muted">-</span>';
+
+    const universe = currentConfig.universe || {};
+    const symbols = universe.symbols || [];
+
+    if (symbols.length === 0) return '<span class="text-muted">-</span>';
+
+    return symbols.map(s => `<span class="badge bg-light text-dark me-1">${escapeHtml(s)}</span>`).join('');
 }
 
 /**
@@ -368,6 +394,7 @@ async function loadAlgorithmConfig(algorithmId) {
             const activeVersion = versions.find(v => v.is_active) || versions[versions.length - 1];
             if (activeVersion) {
                 document.getElementById('detail-config').textContent = JSON.stringify(activeVersion.config, null, 2);
+                currentConfig = activeVersion.config;
             }
         }
     } catch (error) {
@@ -707,6 +734,63 @@ async function saveModifiedAlgorithm() {
         if (currentAlgorithmId) {
             viewAlgorithm(currentAlgorithmId);
         }
+    } catch (error) {
+        showAlert('danger', `Failed to save: ${error.message}`);
+    }
+}
+
+/**
+ * Populate edit form with current algorithm data
+ */
+function populateEditForm() {
+    if (!currentAlgorithm) return;
+    document.getElementById('edit-name').value = currentAlgorithm.name || '';
+    document.getElementById('edit-description').value = currentAlgorithm.description || '';
+    document.getElementById('edit-mode').value = currentAlgorithm.mode || 'paper';
+}
+
+/**
+ * Save algorithm edits
+ */
+async function saveEdit() {
+    if (!currentAlgorithmId) return;
+
+    const name = document.getElementById('edit-name').value.trim();
+    const description = document.getElementById('edit-description').value.trim();
+    const mode = document.getElementById('edit-mode').value;
+
+    if (!name) {
+        showAlert('warning', 'Name is required');
+        return;
+    }
+
+    const payload = {};
+    if (name !== currentAlgorithm.name) payload.name = name;
+    if (description !== (currentAlgorithm.description || '')) payload.description = description;
+    if (mode !== currentAlgorithm.mode) payload.mode = mode;
+
+    if (Object.keys(payload).length === 0) {
+        showAlert('info', 'No changes to save');
+        editModal.hide();
+        return;
+    }
+
+    try {
+        const response = await apiFetch(`/algorithms/${currentAlgorithmId}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || `HTTP ${response.status}`);
+        }
+
+        const result = await response.json();
+        editModal.hide();
+        showAlert('success', `Algorithm "${result.name}" updated successfully`);
+        loadAlgorithms();
+        viewAlgorithm(currentAlgorithmId);
     } catch (error) {
         showAlert('danger', `Failed to save: ${error.message}`);
     }
