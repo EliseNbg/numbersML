@@ -83,6 +83,11 @@ function bindEventListeners() {
     // Edit modal
     document.getElementById('btn-save-edit').addEventListener('click', saveEdit);
 
+    // Source code editor
+    document.getElementById('btn-toggle-edit-source').addEventListener('click', toggleSourceEdit);
+    document.getElementById('btn-cancel-edit-source').addEventListener('click', cancelSourceEdit);
+    document.getElementById('btn-save-source').addEventListener('click', saveSourceCode);
+
     // Modify modal
     document.getElementById('btn-apply-modify').addEventListener('click', applyLLMModify);
     document.getElementById('btn-save-modify').addEventListener('click', saveModifiedAlgorithm);
@@ -118,7 +123,7 @@ function bindEventListeners() {
 function loadConfigTemplate(type) {
     const templates = {
         rsi: {
-            meta: { name: "RSI Algorithm", description: "RSI oversold/overbought", schema_version: 1 },
+            meta: { name: "RSI Algorithm", description: "RSI oversold/overbought", schema_version: 1, source_module: "src.domain.algorithms.algorithms_impl" },
             universe: { symbols: ["BTC/USDC"], timeframe: "1M" },
             signal: { type: "rsi", params: { period: 14, oversold: 30, overbought: 70 } },
             risk: { max_position_size_pct: 10, max_daily_loss_pct: 5, stop_loss_pct: 2, take_profit_pct: 4 },
@@ -127,7 +132,7 @@ function loadConfigTemplate(type) {
             status: "draft"
         },
         macd: {
-            meta: { name: "MACD Algorithm", description: "MACD crossover", schema_version: 1 },
+            meta: { name: "MACD Algorithm", description: "MACD crossover", schema_version: 1, source_module: "src.domain.algorithms.algorithms_impl" },
             universe: { symbols: ["BTC/USDC"], timeframe: "1M" },
             signal: { type: "macd", params: { fast: 12, slow: 26, signal: 9 } },
             risk: { max_position_size_pct: 10, max_daily_loss_pct: 5, stop_loss_pct: 2, take_profit_pct: 4 },
@@ -136,7 +141,7 @@ function loadConfigTemplate(type) {
             status: "draft"
         },
         bollinger: {
-            meta: { name: "Bollinger Algorithm", description: "Bollinger Bands mean reversion", schema_version: 1 },
+            meta: { name: "Bollinger Algorithm", description: "Bollinger Bands mean reversion", schema_version: 1, source_module: "src.domain.algorithms.algorithms_impl" },
             universe: { symbols: ["BTC/USDC"], timeframe: "1M" },
             signal: { type: "bollinger", params: { period: 20, std_dev: 2.0 } },
             risk: { max_position_size_pct: 10, max_daily_loss_pct: 5, stop_loss_pct: 2, take_profit_pct: 4 },
@@ -337,6 +342,9 @@ async function viewAlgorithm(algorithmId) {
     // Load config
     await loadAlgorithmConfig(algorithmId);
     
+    // Load source code
+    await loadSourceCode(algorithmId);
+    
     // Load versions
     await loadVersions(algorithmId);
     
@@ -455,6 +463,146 @@ async function loadEvents(algorithmId) {
         }
     } catch (error) {
         document.getElementById('events-list').innerHTML = '<p class="text-muted">Failed to load events</p>';
+    }
+}
+
+/**
+ * Load source code
+ */
+async function loadSourceCode(algorithmId) {
+    const container = document.getElementById('source-code-container');
+    const loading = document.getElementById('source-loading');
+    const codeEl = document.getElementById('source-code');
+    const errorEl = document.getElementById('source-error');
+    const infoEl = document.getElementById('source-info');
+
+    loading.classList.remove('d-none');
+    codeEl.textContent = '';
+    errorEl.classList.add('d-none');
+    infoEl.textContent = '';
+
+    try {
+        const response = await apiFetch(`/algorithms/${algorithmId}/source`);
+        loading.classList.add('d-none');
+
+        if (response.ok) {
+            const result = await response.json();
+
+            if (result.source) {
+                codeEl.textContent = result.source;
+                if (result.file_path) {
+                    infoEl.textContent = `Source: ${result.file_path}`;
+                }
+            } else {
+                errorEl.classList.remove('d-none');
+                errorEl.innerHTML = `
+                    <i class="bi bi-exclamation-triangle"></i>
+                    ${result.message || 'Source code not available'}
+                    <hr>
+                    <small class="text-muted">
+                        The algorithm logic is stored in Python files on disk.<br>
+                        To edit the logic, modify the Python source file directly.<br>
+                        The "Configuration" tab shows the JSON config (stored in DB).
+                    </small>
+                `;
+            }
+        } else {
+            throw new Error(`HTTP ${response.status}`);
+        }
+    } catch (error) {
+        loading.classList.add('d-none');
+        errorEl.classList.remove('d-none');
+        errorEl.innerHTML = `
+            <i class="bi bi-exclamation-triangle"></i>
+            Failed to load source code: ${error.message}
+        `;
+    }
+}
+
+/**
+ * Toggle source code edit mode
+ */
+function toggleSourceEdit() {
+    const codeEl = document.getElementById('source-code');
+    const textarea = document.getElementById('source-textarea');
+    const editBtn = document.getElementById('btn-toggle-edit-source');
+    const saveBtn = document.getElementById('btn-save-source');
+    const cancelBtn = document.getElementById('btn-cancel-edit-source');
+    const editor = document.getElementById('source-editor');
+
+    // Populate textarea with current code
+    textarea.value = codeEl.textContent;
+
+    // Toggle visibility
+    codeEl.parentElement.classList.add('d-none');
+    editor.classList.remove('d-none');
+    editBtn.classList.add('d-none');
+    saveBtn.classList.remove('d-none');
+    cancelBtn.classList.remove('d-none');
+}
+
+/**
+ * Cancel source code editing
+ */
+function cancelSourceEdit() {
+    const codeEl = document.getElementById('source-code');
+    const textarea = document.getElementById('source-textarea');
+    const editBtn = document.getElementById('btn-toggle-edit-source');
+    const saveBtn = document.getElementById('btn-save-source');
+    const cancelBtn = document.getElementById('btn-cancel-edit-source');
+    const editor = document.getElementById('source-editor');
+
+    textarea.value = '';
+    codeEl.parentElement.classList.remove('d-none');
+    editor.classList.add('d-none');
+    editBtn.classList.remove('d-none');
+    saveBtn.classList.add('d-none');
+    cancelBtn.classList.add('d-none');
+}
+
+/**
+ * Save edited source code
+ */
+async function saveSourceCode() {
+    if (!currentAlgorithmId) return;
+
+    const textarea = document.getElementById('source-textarea');
+    const code = textarea.value;
+    const statusEl = document.getElementById('source-status');
+    const saveBtn = document.getElementById('btn-save-source');
+
+    if (!code.trim()) {
+        showAlert('warning', 'Source code cannot be empty');
+        return;
+    }
+
+    // Disable button
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Saving...';
+
+    try {
+        const response = await apiFetch(`/algorithms/${currentAlgorithmId}/source`, {
+            method: 'PUT',
+            body: JSON.stringify({ source: code })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || `HTTP ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        // Update the display
+        document.getElementById('source-code').textContent = code;
+        cancelSourceEdit();
+
+        showAlert('success', result.message || 'Source code saved successfully');
+    } catch (error) {
+        showAlert('danger', `Failed to save: ${error.message}`);
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="bi bi-save"></i> Save';
     }
 }
 

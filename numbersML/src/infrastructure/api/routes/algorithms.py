@@ -15,8 +15,11 @@ Dependencies: Application services, Domain models
 import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
+
+import shutil
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -284,6 +287,138 @@ async def get_algorithm(
     if not s:
         raise HTTPException(status_code=404, detail=f"Algorithm {algorithm_id} not found")
     return AlgorithmResponse.from_domain(s)
+
+
+@router.get("/{algorithm_id}/source")
+async def get_algorithm_source(
+    algorithm_id: UUID,
+    repo: AlgorithmRepository = Depends(get_algorithm_repo),  # noqa: B008
+) -> dict[str, Any]:
+    """Get the Python source code for an algorithm.
+
+    Tries to determine the source file from the algorithm config,
+    then reads and returns the source code.
+    """
+    s = await repo.get_by_id(algorithm_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"Algorithm {algorithm_id} not found")
+
+    # Try to get versions to find the config
+    versions = await repo.list_versions(algorithm_id)
+    if not versions:
+        raise HTTPException(status_code=404, detail="No config versions found")
+
+    # Get active version or latest
+    config = versions[-1].config
+
+    # Map signal type to source file
+    signal_type = config.get("signal", {}).get("type", "")
+    source_module = config.get("meta", {}).get("source_module", "")
+
+    # If source_module is specified in config, use it
+    if source_module:
+        file_path = Path(f"{source_module.replace('.', '/')}.py")
+    else:
+        # Try to infer from signal type
+        type_to_file = {
+            "rsi": Path("src/domain/algorithms/algorithms_impl.py"),
+            "macd": Path("src/domain/algorithms/algorithms_impl.py"),
+            "sma": Path("src/domain/algorithms/algorithms_impl.py"),
+            "bollinger": Path("src/domain/algorithms/algorithms_impl.py"),
+            "multi": Path("src/domain/algorithms/algorithms_impl.py"),
+            "simple_grid": Path("src/domain/algorithms/simple_grid_algorithm.py"),
+            "rsi_ma": Path("src/domain/algorithms/rsi_moving_average_algorithm.py"),
+        }
+        file_path = type_to_file.get(signal_type)
+
+    if not file_path or not file_path.exists():
+        return {
+            "source": None,
+            "file_path": None,
+            "message": f"Source file not found for algorithm type '{signal_type}'. "
+            f"Specify 'meta.source_module' in config to map to source file.",
+        }
+
+    try:
+        with open(file_path) as f:
+            source = f.read()
+        return {
+            "source": source,
+            "file_path": str(file_path),
+            "message": "Source code retrieved successfully",
+        }
+    except Exception as e:
+        logger.error(f"Failed to read source file: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to read source: {e}") from None
+
+
+@router.put("/{algorithm_id}/source")
+async def update_algorithm_source(
+    algorithm_id: UUID,
+    body: dict[str, Any],
+    repo: AlgorithmRepository = Depends(get_algorithm_repo),  # noqa: B008
+) -> dict[str, Any]:
+    """Update the Python source code for an algorithm.
+
+    Creates a backup of the original file, then writes the new source.
+    """
+    s = await repo.get_by_id(algorithm_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"Algorithm {algorithm_id} not found")
+
+    source = body.get("source")
+    if not source:
+        raise HTTPException(status_code=400, detail="Missing 'source' in request body")
+
+    # Get file path (same logic as GET)
+    versions = await repo.list_versions(algorithm_id)
+    if not versions:
+        raise HTTPException(status_code=404, detail="No config versions found")
+
+    config = versions[-1].config
+    signal_type = config.get("signal", {}).get("type", "")
+    source_module = config.get("meta", {}).get("source_module", "")
+
+    if source_module:
+        file_path = Path(f"{source_module.replace('.', '/')}.py")
+    else:
+        type_to_file = {
+            "rsi": Path("src/domain/algorithms/algorithms_impl.py"),
+            "macd": Path("src/domain/algorithms/algorithms_impl.py"),
+            "sma": Path("src/domain/algorithms/algorithms_impl.py"),
+            "bollinger": Path("src/domain/algorithms/algorithms_impl.py"),
+            "multi": Path("src/domain/algorithms/algorithms_impl.py"),
+            "simple_grid": Path("src/domain/algorithms/simple_grid_algorithm.py"),
+            "rsi_ma": Path("src/domain/algorithms/rsi_moving_average_algorithm.py"),
+        }
+        file_path = type_to_file.get(signal_type)
+
+    if not file_path or not file_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Source file not found for algorithm type '{signal_type}'",
+        )
+
+    try:
+        # Create backup
+        backup_path = file_path.with_suffix(
+            f".py.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        )
+        shutil.copy2(file_path, backup_path)
+
+        # Write new source
+        with open(file_path, "w") as f:
+            f.write(source)
+
+        logger.info(f"Updated source file: {file_path}, backup: {backup_path}")
+        return {
+            "message": f"Source code saved successfully. Backup created at {backup_path}",
+            "file_path": str(file_path),
+            "backup_path": str(backup_path),
+        }
+    except Exception as e:
+        logger.error(f"Failed to write source file: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to save source: {e}") from None
 
 
 @router.put("/{algorithm_id}", response_model=AlgorithmResponse)
