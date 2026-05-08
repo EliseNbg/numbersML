@@ -11,41 +11,39 @@ Follows DDD principles: Application layer orchestrating domain objects
 and infrastructure services.
 """
 
-import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import Dict, List, Optional
-from uuid import UUID, uuid4
+from typing import Any, cast
 
+from uuid import UUID
+
+from src.domain.repositories.runtime_event_repository import StrategyRuntimeEventRepository
+from src.domain.repositories.strategy_repository import StrategyRepository
 from src.domain.strategies.base import (
-    Strategy,
-    StrategyManager,
     EnrichedTick,
     Signal,
-    StrategyState,
+    Strategy,
+    StrategyManager,
 )
 from src.domain.strategies.runtime import (
-    StrategyRuntimeState,
-    StrategyLifecycleEvent,
-    RuntimeState,
     VALID_TRANSITIONS,
+    RuntimeState,
+    StrategyLifecycleEvent,
+    StrategyRuntimeState,
 )
 from src.domain.strategies.strategy_config import StrategyDefinition
-from src.domain.repositories.strategy_repository import StrategyRepository
-from src.domain.repositories.runtime_event_repository import StrategyRuntimeEventRepository
 
 logger = logging.getLogger(__name__)
 
 
 class StrategyLifecycleService:
     """Manages strategy lifecycle operations at runtime.
-    
+
     Coordinates between:
     - Strategy definitions (persisted configs)
     - Strategy runtime states (in-memory)
     - StrategyManager (tick processing)
     - Event repository (audit trail)
-    
+
     Responsibilities:
     1. Validate and execute state transitions
     2. Persist lifecycle events
@@ -64,7 +62,7 @@ class StrategyLifecycleService:
         actor: str = "system",
     ) -> None:
         """Initialize the lifecycle service.
-        
+
         Args:
             strategy_repository: Repository for strategy definitions
             event_repository: Repository for lifecycle events
@@ -77,28 +75,28 @@ class StrategyLifecycleService:
         self._actor = actor
 
         # Runtime state tracking: strategy_id -> StrategyRuntimeState
-        self._runtime_states: Dict[UUID, StrategyRuntimeState] = {}
+        self._runtime_states: dict[UUID, StrategyRuntimeState] = {}
 
         logger.info("StrategyLifecycleService initialized")
 
     async def activate_strategy(
         self,
         strategy_id: UUID,
-        version: Optional[int] = None,
-        metadata: Optional[dict] = None,
+        version: int | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Activate a strategy (start processing ticks).
-        
+
         Transitions: STOPPED -> RUNNING
-        
+
         Args:
             strategy_id: ID of strategy to activate
             version: Optional specific version (defaults to active version)
             metadata: Optional metadata for the activation event
-            
+
         Returns:
             True if activation succeeded
-            
+
         Raises:
             ValueError: If strategy doesn't exist or transition is invalid
             RuntimeError: If activation fails
@@ -173,19 +171,19 @@ class StrategyLifecycleService:
     async def deactivate_strategy(
         self,
         strategy_id: UUID,
-        metadata: Optional[dict] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Deactivate a strategy (stop processing ticks).
-        
+
         Transitions: RUNNING -> STOPPED
-        
+
         Args:
             strategy_id: ID of strategy to deactivate
             metadata: Optional metadata for the deactivation event
-            
+
         Returns:
             True if deactivation succeeded
-            
+
         Raises:
             ValueError: If strategy not found or transition invalid
         """
@@ -228,19 +226,19 @@ class StrategyLifecycleService:
     async def pause_strategy(
         self,
         strategy_id: UUID,
-        metadata: Optional[dict] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Pause a running strategy.
-        
+
         Transitions: RUNNING -> PAUSED
-        
+
         Args:
             strategy_id: ID of strategy to pause
             metadata: Optional metadata for the pause event
-            
+
         Returns:
             True if pause succeeded
-            
+
         Raises:
             ValueError: If strategy not found or transition invalid
         """
@@ -283,19 +281,19 @@ class StrategyLifecycleService:
     async def resume_strategy(
         self,
         strategy_id: UUID,
-        metadata: Optional[dict] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Resume a paused strategy.
-        
+
         Transitions: PAUSED -> RUNNING
-        
+
         Args:
             strategy_id: ID of strategy to resume
             metadata: Optional metadata for the resume event
-            
+
         Returns:
             True if resume succeeded
-            
+
         Raises:
             ValueError: If strategy not found or transition invalid
         """
@@ -339,20 +337,20 @@ class StrategyLifecycleService:
         self,
         strategy_id: UUID,
         error: str,
-        metadata: Optional[dict] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Record an error for a strategy and transition to ERROR state.
-        
+
         Transitions: RUNNING/PAUSED -> ERROR
-        
+
         Args:
             strategy_id: ID of strategy with error
             error: Error description
             metadata: Optional metadata for the error event
-            
+
         Returns:
             True if error recorded
-            
+
         Raises:
             ValueError: If strategy not found
         """
@@ -365,8 +363,7 @@ class StrategyLifecycleService:
         # Only transition to ERROR from RUNNING or PAUSED
         if old_state not in (RuntimeState.RUNNING, RuntimeState.PAUSED):
             logger.warning(
-                f"Strategy {strategy_id} in state {old_state.value}, "
-                f"not transitioning to ERROR"
+                f"Strategy {strategy_id} in state {old_state.value}, " f"not transitioning to ERROR"
             )
             return False
 
@@ -396,11 +393,11 @@ class StrategyLifecycleService:
     async def get_runtime_state(
         self,
         strategy_id: UUID,
-    ) -> Optional[StrategyRuntimeState]:
+    ) -> StrategyRuntimeState | None:
         """Get current runtime state for a strategy."""
         return self._runtime_states.get(strategy_id)
 
-    async def get_all_runtime_states(self) -> List[StrategyRuntimeState]:
+    async def get_all_runtime_states(self) -> list[StrategyRuntimeState]:
         """Get runtime states for all strategies."""
         return list(self._runtime_states.values())
 
@@ -408,11 +405,9 @@ class StrategyLifecycleService:
         self,
         strategy_id: UUID,
         limit: int = 100,
-    ) -> List[StrategyLifecycleEvent]:
+    ) -> list[StrategyLifecycleEvent]:
         """Get lifecycle events for a strategy."""
-        return await self._event_repo.get_events_for_strategy(
-            strategy_id, limit=limit
-        )
+        return await self._event_repo.get_events_for_strategy(strategy_id, limit=limit)
 
     async def _load_strategy_instance(
         self,
@@ -420,39 +415,75 @@ class StrategyLifecycleService:
         version: int,
     ) -> Strategy:
         """Load a strategy instance from its configuration.
-        
-        This is a simplified implementation. In production, this would:
-        1. Fetch the versioned config from the repository
-        2. Parse the signal config
-        3. Instantiate the appropriate strategy class (RSI, MACD, etc.)
-        4. Apply parameters
-        
+
+        Supports two strategy types:
+        1. class-based: User-written Python class (strategy_type="class")
+        2. config-based: Legacy config-driven strategy (strategy_type="config")
+
         Args:
             strategy_def: Strategy definition
             version: Config version to use
-            
+
         Returns:
             Strategy instance
-            
+
         Raises:
             NotImplementedError: If signal type not supported
+            ValueError: If class not found or invalid config
         """
-        # For now, create a generic strategy based on definition
         from src.domain.strategies.base import TimeFrame
 
-        class DynamicStrategy(Strategy):
-            """Dynamically created strategy from config."""
+        # Fetch versioned config
+        versions = await self._strategy_repo.list_versions(strategy_def.id)
+        config_version = next((v for v in versions if v.version == version), None)
 
-            def on_tick(self, tick) -> Optional[Signal]:
-                # Placeholder: real implementation would use signal config
-                return None
+        if config_version is None:
+            raise ValueError(f"Version {version} not found for strategy {strategy_def.id}")
 
-        symbols = getattr(strategy_def, 'symbols', ['BTC/USDC'])
-        return DynamicStrategy(
-            strategy_id=strategy_def.id,
-            symbols=symbols,
-            time_frame=TimeFrame.TICK,
+        strategy_type = strategy_def.strategy_type
+        symbols = strategy_def.config.get("symbols", ["BTC/USDC"])
+
+        if strategy_type == "class":
+            # Load user-written Python class
+            class_path = strategy_def.class_path
+            if not class_path:
+                raise ValueError("Strategy type is 'class' but no class_path provided")
+
+            try:
+                module_path, class_name = class_path.rsplit(".", 1)
+                module = __import__(module_path, fromlist=[class_name])
+                strategy_class = getattr(module, class_name)
+            except (ValueError, ImportError, AttributeError) as e:
+                raise ValueError(f"Failed to load strategy class {class_path}: {e}") from e
+
+            # Instantiate strategy
+            strategy = strategy_class(
+                strategy_id=str(strategy_def.id),
+                symbols=symbols,
+            )
+        else:
+            # Legacy config-based strategy
+            class DynamicStrategy(Strategy):
+                """Dynamically created strategy from config."""
+
+                def on_tick(self, tick: EnrichedTick) -> Signal | None:
+                    # Placeholder: real implementation would use signal config
+                    return None
+
+            strategy = DynamicStrategy(
+                strategy_id=str(strategy_def.id),
+                symbols=symbols,
+                time_frame=TimeFrame.TICK,
+            )
+
+        # Load config into strategy instance
+        strategy._config = config_version.config.copy()
+        
+        logger.info(
+            f"Loaded strategy {strategy_def.id} (type={strategy_type}, "
+            f"version={version}, class={strategy.__class__.__name__})"
         )
+        return cast(Strategy, strategy)
 
     async def _record_lifecycle_event(
         self,
@@ -461,7 +492,7 @@ class StrategyLifecycleService:
         from_state: RuntimeState,
         to_state: RuntimeState,
         trigger: str,
-        details: Optional[dict] = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Record a lifecycle event in the repository."""
         event = StrategyLifecycleEvent(
@@ -475,7 +506,7 @@ class StrategyLifecycleService:
         )
         await self._event_repo.save(event)
 
-    def get_stats(self) -> dict:
+    def get_stats(self) -> dict[str, Any]:
         """Get lifecycle service statistics."""
         states = self._runtime_states.values()
         return {

@@ -27,30 +27,33 @@ from src.domain.strategies.runtime import (
     RuntimeState,
     VALID_TRANSITIONS,
 )
-from src.domain.strategies.strategy_config import StrategyDefinition
+from src.domain.strategies.strategy_config import StrategyDefinition, StrategyConfigVersion
 from src.domain.repositories.strategy_repository import StrategyRepository
 from src.domain.repositories.runtime_event_repository import StrategyRuntimeEventRepository
 from src.application.services.strategy_lifecycle import StrategyLifecycleService
 
-
 # ============================================================================
 # Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def mock_strategy_repo() -> AsyncMock:
     """Mock strategy repository."""
     return AsyncMock(spec=StrategyRepository)
 
+
 @pytest.fixture
 def mock_event_repo() -> AsyncMock:
     """Mock runtime event repository."""
     return AsyncMock(spec=StrategyRuntimeEventRepository)
 
+
 @pytest.fixture
 def mock_strategy_manager() -> StrategyManager:
     """Mock strategy manager."""
     return MagicMock(spec=StrategyManager)
+
 
 @pytest.fixture
 def lifecycle_service(
@@ -66,6 +69,7 @@ def lifecycle_service(
         actor="test",
     )
 
+
 @pytest.fixture
 def sample_strategy_def() -> StrategyDefinition:
     """Create a sample strategy definition."""
@@ -78,6 +82,7 @@ def sample_strategy_def() -> StrategyDefinition:
         current_version=1,
         created_by="test",
     )
+
 
 @pytest.fixture
 def sample_enriched_tick() -> EnrichedTick:
@@ -94,6 +99,7 @@ def sample_enriched_tick() -> EnrichedTick:
 # ============================================================================
 # StrategyRuntimeState Tests
 # ============================================================================
+
 
 class TestStrategyRuntimeState:
     """Test StrategyRuntimeState domain model."""
@@ -183,6 +189,7 @@ class TestStrategyRuntimeState:
 # StrategyLifecycleEvent Tests
 # ============================================================================
 
+
 class TestStrategyLifecycleEvent:
     """Test StrategyLifecycleEvent domain event."""
 
@@ -220,6 +227,7 @@ class TestStrategyLifecycleEvent:
 # StrategyLifecycleService Tests
 # ============================================================================
 
+
 class TestStrategyLifecycleServiceActivation:
     """Test strategy activation/deactivation."""
 
@@ -227,6 +235,14 @@ class TestStrategyLifecycleServiceActivation:
     async def test_activate_strategy(self, lifecycle_service, sample_strategy_def):
         """Can activate a strategy."""
         lifecycle_service._strategy_repo.get_by_id.return_value = sample_strategy_def
+        lifecycle_service._strategy_repo.list_versions.return_value = [
+            StrategyConfigVersion(
+                strategy_id=sample_strategy_def.id,
+                version=1,
+                schema_version=1,
+                config={},
+            )
+        ]
         lifecycle_service._strategy_manager.add_strategy = MagicMock()
         lifecycle_service._strategy_manager.get_strategy.return_value = MagicMock()
         lifecycle_service._event_repo.save = AsyncMock()
@@ -306,11 +322,18 @@ class TestStrategyLifecycleServiceActivation:
         mock_strategy.resume.assert_called()
 
     @pytest.mark.asyncio
-
     @pytest.mark.asyncio
     async def test_lifecycle_event_recorded(self, lifecycle_service, sample_strategy_def):
         """Lifecycle events are persisted to repository."""
         lifecycle_service._strategy_repo.get_by_id.return_value = sample_strategy_def
+        lifecycle_service._strategy_repo.list_versions.return_value = [
+            StrategyConfigVersion(
+                strategy_id=sample_strategy_def.id,
+                version=1,
+                schema_version=1,
+                config={},
+            )
+        ]
         lifecycle_service._strategy_manager.add_strategy = MagicMock()
         mock_strategy = AsyncMock(spec=Strategy)
         lifecycle_service._strategy_manager.get_strategy.return_value = mock_strategy
@@ -389,6 +412,7 @@ class TestStrategyLifecycleServiceActivation:
 # Valid Transitions Coverage
 # ============================================================================
 
+
 class TestValidTransitions:
     """Ensure all valid transitions are defined and tested."""
 
@@ -400,7 +424,7 @@ class TestValidTransitions:
         for from_state, to_states in VALID_TRANSITIONS.items():
             for to_state in to_states:
                 as_tuples.add((from_state, to_state))
-        
+
         covered = {
             (RuntimeState.STOPPED, RuntimeState.RUNNING),
             (RuntimeState.RUNNING, RuntimeState.PAUSED),
@@ -412,3 +436,177 @@ class TestValidTransitions:
         }
         assert as_tuples == covered
         assert len(as_tuples) == 7
+
+
+# ============================================================================
+# Class-Based Strategy Loading
+# ============================================================================
+
+
+class TestClassBasedStrategyLoading:
+    """Test loading user-written (class-based) strategies."""
+
+    @pytest.fixture
+    def lifecycle_service(self, mock_strategy_repo, mock_event_repo) -> StrategyLifecycleService:  # type: ignore[no-untyped-def]
+        """Create lifecycle service with mocks."""
+        manager = StrategyManager()
+        return StrategyLifecycleService(
+            strategy_repository=mock_strategy_repo,
+            event_repository=mock_event_repo,
+            strategy_manager=manager,
+        )
+
+    def test_load_class_based_strategy(self, lifecycle_service):
+        """Test loading a class-based strategy."""
+        from src.strategies.user.example_rsi_strategy import ExampleRSIStrategy
+
+        # Create strategy definition with class type
+        strategy_def = StrategyDefinition(
+            name="Test RSI Strategy",
+            description="Test class-based strategy",
+            config={
+                "strategy_type": "class",
+                "class_path": "src.strategies.user.example_rsi_strategy.ExampleRSIStrategy",
+                "symbols": ["BTC/USDC"],
+            },
+        )
+
+        # Mock repo responses
+        lifecycle_service._strategy_repo.get_by_id.return_value = strategy_def
+        lifecycle_service._strategy_repo.list_versions.return_value = [
+            StrategyConfigVersion(
+                strategy_id=strategy_def.id,
+                version=1,
+                schema_version=1,
+                config={
+                    "oversold_threshold": 30,
+                    "overbought_threshold": 70,
+                    "rsi_indicator_name": "rsiindicator_period14_rsi",
+                },
+            )
+        ]
+
+        # Load strategy instance
+        import asyncio
+
+        strategy = asyncio.run(lifecycle_service._load_strategy_instance(strategy_def, 1))
+
+        # Verify it's the correct class
+        assert isinstance(strategy, ExampleRSIStrategy)
+        assert strategy.id == str(strategy_def.id)
+
+        # Verify config was loaded
+        assert strategy.get_config("oversold_threshold") == 30
+        assert strategy.get_config("overbought_threshold") == 70
+
+    def test_load_class_based_strategy_invalid_class(self, lifecycle_service):
+        """Test error handling for invalid class path."""
+        strategy_id = uuid4()
+        strategy_def = StrategyDefinition(
+            name="Invalid Strategy",
+            description="Test",
+            config={
+                "strategy_type": "class",
+                "class_path": "nonexistent.module.ClassName",
+            },
+        )
+
+        lifecycle_service._strategy_repo.get_by_id.return_value = strategy_def
+        lifecycle_service._strategy_repo.list_versions.return_value = [
+            StrategyConfigVersion(
+                strategy_id=strategy_id,
+                version=1,
+                schema_version=1,
+                config={},
+            )
+        ]
+
+        import asyncio
+
+        with pytest.raises(ValueError, match="Failed to load strategy class"):
+            asyncio.run(lifecycle_service._load_strategy_instance(strategy_def, 1))
+
+    def test_load_config_based_strategy_fallback(self, lifecycle_service):
+        """Test fallback to config-based strategy when type is not class."""
+        strategy_def = StrategyDefinition(
+            name="Config Strategy",
+            description="Test config-based strategy",
+            config={},  # No strategy_type means config-based
+        )
+
+        lifecycle_service._strategy_repo.get_by_id.return_value = strategy_def
+        lifecycle_service._strategy_repo.list_versions.return_value = [
+            StrategyConfigVersion(
+                strategy_id=strategy_def.id,
+                version=1,
+                schema_version=1,
+                config={"signal": {"type": "rsi", "params": {"period": 14}}},
+            )
+        ]
+
+        import asyncio
+
+        strategy = asyncio.run(
+            lifecycle_service._load_strategy_instance(strategy_def, 1)
+        )
+
+        # Should be a Strategy subclass (DynamicStrategy)
+        assert isinstance(strategy, Strategy)
+        assert strategy.id == str(strategy_def.id)
+
+    def test_class_based_strategy_with_state(self, lifecycle_service):
+        """Test that class-based strategy maintains state."""
+        from src.strategies.user.example_rsi_strategy import ExampleRSIStrategy
+
+        strategy_def = StrategyDefinition(
+            name="Stateful Strategy",
+            description="Test",
+            config={
+                "strategy_type": "class",
+                "class_path": "src.strategies.user.example_rsi_strategy.ExampleRSIStrategy",
+            },
+        )
+
+        lifecycle_service._strategy_repo.get_by_id.return_value = strategy_def
+        lifecycle_service._strategy_repo.list_versions.return_value = [
+            StrategyConfigVersion(
+                strategy_id=strategy_def.id,
+                version=1,
+                schema_version=1,
+                config={"oversold_threshold": 30},
+            )
+        ]
+
+        import asyncio
+
+        strategy = asyncio.run(
+            lifecycle_service._load_strategy_instance(strategy_def, 1)
+        )
+
+        # Verify state attributes exist
+        assert hasattr(strategy, "tick_count")
+        assert hasattr(strategy, "last_rsi")
+        assert hasattr(strategy, "position_open")
+
+        # Process a tick and verify state updates
+        from src.domain.strategies.base import StrategyState
+        from src.domain.strategies.base import EnrichedTick
+        from datetime import datetime, UTC
+        from decimal import Decimal
+
+        tick = EnrichedTick(
+            symbol="BTC/USDC",
+            price=Decimal("50000.0"),
+            volume=Decimal("1.0"),
+            time=datetime.now(UTC),
+            indicators={"rsiindicator_period14_rsi": 25.0},
+        )
+
+        strategy._state = StrategyState.RUNNING
+        signal = strategy.process_tick(tick)
+
+        assert strategy.tick_count == 1
+        assert signal is not None
+        assert signal.signal_type.value == "BUY"
+        assert signal is not None
+        assert signal.signal_type.value == "BUY"

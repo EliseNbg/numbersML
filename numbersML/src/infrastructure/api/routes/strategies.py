@@ -159,6 +159,16 @@ class LifecycleEventResponse(BaseModel):
     occurred_at: datetime
 
 
+class UserStrategyClassResponse(BaseModel):
+    """Information about a user-written strategy class."""
+
+    class_path: str
+    class_name: str
+    module: str
+    docstring: str | None
+    has_on_tick: bool
+
+
 # ============================================================================
 # Dependencies
 # ============================================================================
@@ -443,6 +453,66 @@ async def resume_strategy(
     except Exception as e:
         logger.error(f"Resume failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Resume failed: {e}")
+
+
+# ============================================================================
+# User Strategy Classes
+# ============================================================================
+
+
+def _discover_user_strategy_classes() -> list[dict[str, Any]]:
+    """Scan src/strategies/user/ for user-written strategy classes.
+
+    Returns:
+        List of dicts with class_path, class_name, module, docstring, has_on_tick
+    """
+    import importlib
+    import inspect
+    from pathlib import Path
+
+    results = []
+    user_dir = Path(__file__).parent.parent.parent / "strategies" / "user"
+
+    if not user_dir.exists():
+        return results
+
+    # Scan all Python files in user directory
+    for py_file in user_dir.glob("*.py"):
+        if py_file.name.startswith("_"):
+            continue
+
+        module_path = f"src.strategies.user.{py_file.stem}"
+        try:
+            module = importlib.import_module(module_path)
+        except Exception as e:
+            logger.warning(f"Failed to import {module_path}: {e}")
+            continue
+
+        # Find all Strategy subclasses in the module
+        for name, obj in inspect.getmembers(module, inspect.isclass):
+            if obj.__module__ != module_path:
+                continue
+            from src.domain.strategies.base import Strategy
+
+            if issubclass(obj, Strategy) and obj is not Strategy:
+                results.append(
+                    {
+                        "class_path": f"{module_path}.{name}",
+                        "class_name": name,
+                        "module": module_path,
+                        "docstring": obj.__doc__,
+                        "has_on_tick": "on_tick" in obj.__dict__,
+                    }
+                )
+
+    return results
+
+
+@router.get("/user-classes", response_model=list[UserStrategyClassResponse])
+async def list_user_strategy_classes() -> list[UserStrategyClassResponse]:
+    """List available user-written strategy classes from src/strategies/user/."""
+    classes = _discover_user_strategy_classes()
+    return [UserStrategyClassResponse(**c) for c in classes]
 
 
 # ============================================================================
