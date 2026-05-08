@@ -41,7 +41,7 @@ class RSIIndicator(Indicator):
                 "period": {
                     "type": "integer",
                     "minimum": 2,
-                    "maximum": 5000,
+                    "maximum": 100,
                     "default": 14
                 }
             },

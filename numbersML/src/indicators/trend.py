@@ -41,7 +41,7 @@ class SMAIndicator(Indicator):
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
-                "period": {"type": "integer", "minimum": 2, "maximum": 5000, "default": 50}
+                "period": {"type": "integer", "minimum": 2, "maximum": 3000, "default": 50}
             },
             "required": ["period"],
         }
