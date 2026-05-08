@@ -74,6 +74,46 @@
             </div>
         </div>
 
+        <!-- Market Status Widgets -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-wallet2"></i> Account Balance
+                    </div>
+                    <div class="card-body" id="balance-widget">
+                        <div class="d-flex justify-content-center">
+                            <div class="spinner-border spinner-border-sm" role="status"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-graph-up"></i> Open Positions
+                    </div>
+                    <div class="card-body" id="positions-widget">
+                        <div class="d-flex justify-content-center">
+                            <div class="spinner-border spinner-border-sm" role="status"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-receipt"></i> Recent Orders
+                    </div>
+                    <div class="card-body" id="orders-widget">
+                        <div class="d-flex justify-content-center">
+                            <div class="spinner-border spinner-border-sm" role="status"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Alerts -->
         <div id="alert-container"></div>
 
@@ -85,9 +125,6 @@
                         <div>
                             <button id="btn-create-strategy" class="btn btn-primary me-2">
                                 <i class="bi bi-plus-lg"></i> New Strategy
-                            </button>
-                            <button id="btn-llm-create" class="btn btn-info me-2">
-                                <i class="bi bi-robot"></i> AI Assist
                             </button>
                             <button id="btn-refresh" class="btn btn-outline-secondary">
                                 <i class="bi bi-arrow-clockwise"></i> Refresh
@@ -151,6 +188,14 @@
                 <div class="modal-body">
                     <form id="create-strategy-form">
                         <div class="mb-3">
+                            <label class="form-label">Strategy Type *</label>
+                            <select class="form-select" id="strategy-type" required>
+                                <option value="config" selected>Config-Based (JSON)</option>
+                                <option value="class">Class-Based (Python)</option>
+                            </select>
+                            <div class="form-text">Config-based uses JSON configuration. Class-based uses Python strategy classes.</div>
+                        </div>
+                        <div class="mb-3">
                             <label class="form-label">Name *</label>
                             <input type="text" class="form-control" name="name" required minlength="1" maxlength="255">
                         </div>
@@ -184,13 +229,37 @@
                             <label class="form-label">Symbols (comma-separated) *</label>
                             <input type="text" class="form-control" name="symbols" placeholder="BTC/USDC, ETH/USDC" required>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">Strategy Configuration (JSON)</label>
-                            <textarea class="form-control font-monospace" name="config" rows="10" id="config-json"></textarea>
-                            <div class="form-text">
-                                <a href="#" id="load-template-rsi">RSI Template</a> |
-                                <a href="#" id="load-template-macd">MACD Template</a> |
-                                <a href="#" id="load-template-bollinger">Bollinger Template</a>
+
+                        <!-- Class-Based Strategy Selection (initially hidden) -->
+                        <div id="class-based-section" class="d-none">
+                            <div class="mb-3">
+                                <label class="form-label">Strategy Class *</label>
+                                <select class="form-select" id="strategy-class-select">
+                                    <option value="">Loading classes...</option>
+                                </select>
+                                <div class="form-text">Select a Python strategy class from src/strategies/user/</div>
+                            </div>
+                            <div id="class-metadata" class="d-none">
+                                <div class="card bg-light mb-3">
+                                    <div class="card-body">
+                                        <h6 class="card-title">Class Information</h6>
+                                        <p id="class-docstring" class="card-text text-muted small"></p>
+                                        <p id="class-details" class="card-text small"></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Config-Based Strategy Configuration (initially visible) -->
+                        <div id="config-based-section">
+                            <div class="mb-3">
+                                <label class="form-label">Strategy Configuration (JSON)</label>
+                                <textarea class="form-control font-monospace" name="config" rows="10" id="config-json"></textarea>
+                                <div class="form-text">
+                                    <a href="#" id="load-template-rsi">RSI Template</a> |
+                                    <a href="#" id="load-template-macd">MACD Template</a> |
+                                    <a href="#" id="load-template-bollinger">Bollinger Template</a>
+                                </div>
                             </div>
                         </div>
                     </form>
@@ -198,68 +267,6 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-primary" id="btn-save-strategy">Create Strategy</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- LLM Create Modal -->
-    <div class="modal fade" id="llmCreateModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-robot"></i> AI-Assisted Strategy Creation</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="alert alert-info">
-                        <i class="bi bi-info-circle"></i> Describe your strategy in natural language and AI will generate the configuration.
-                    </div>
-                    <form id="llm-create-form">
-                        <div class="mb-3">
-                            <label class="form-label">Strategy Description *</label>
-                            <textarea class="form-control" name="description" rows="4" required
-                                placeholder="Example: Create an RSI strategy that buys when RSI drops below 30 and sells when it goes above 70. Use 14 period RSI on BTC/USDC."></textarea>
-                            <div class="form-text">Be specific about indicators, thresholds, and symbols.</div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Symbols *</label>
-                                <input type="text" class="form-control" name="symbols" placeholder="BTC/USDC" required>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Timeframe</label>
-                                <select class="form-select" name="timeframe">
-                                    <option value="1M" selected>1 Minute</option>
-                                    <option value="5M">5 Minutes</option>
-                                    <option value="15M">15 Minutes</option>
-                                    <option value="1H">1 Hour</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Mode</label>
-                            <select class="form-select" name="mode">
-                                <option value="paper" selected>Paper Trading</option>
-                                <option value="live">Live Trading</option>
-                            </select>
-                        </div>
-                    </form>
-                    <div id="llm-result" class="d-none">
-                        <hr>
-                        <h6>Generated Configuration</h6>
-                        <pre class="bg-light p-3 rounded"><code id="llm-config-display"></code></pre>
-                        <div id="llm-validation-issues"></div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-info" id="btn-generate-config">
-                        <i class="bi bi-robot"></i> Generate
-                    </button>
-                    <button type="button" class="btn btn-primary d-none" id="btn-save-llm-strategy">
-                        <i class="bi bi-save"></i> Save as Draft
-                    </button>
                 </div>
             </div>
         </div>
@@ -326,11 +333,8 @@
                                         <button id="btn-backtest" class="btn btn-outline-primary">
                                             <i class="bi bi-graph-up-arrow"></i> Run Backtest
                                         </button>
-                                        <button id="btn-llm-suggest" class="btn btn-outline-info">
-                                            <i class="bi bi-robot"></i> AI Suggestions
-                                        </button>
                                         <button id="btn-modify" class="btn btn-outline-secondary">
-                                            <i class="bi bi-pencil"></i> Modify
+                                            <i class="bi bi-pencil"></i> Modify Config
                                         </button>
                                         <hr>
                                         <button id="btn-delete" class="btn btn-outline-danger">
@@ -357,14 +361,14 @@
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-pencil"></i> Modify Strategy</h5>
+                    <h5 class="modal-title"><i class="bi bi-pencil"></i> Modify Strategy Config</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label class="form-label">Change Request</label>
-                        <textarea class="form-control" id="modify-request" rows="3"
-                            placeholder="Describe what you want to change (e.g., 'Increase RSI period to 21')" required></textarea>
+                        <label class="form-label">Configuration (JSON)</label>
+                        <textarea class="form-control font-monospace" id="modify-config" rows="15"></textarea>
+                        <div class="form-text">Edit the JSON configuration directly. Invalid JSON will be rejected.</div>
                     </div>
                     <div class="form-check mb-3">
                         <input class="form-check-input" type="checkbox" id="save-as-version">
@@ -374,16 +378,12 @@
                     </div>
                     <div id="modify-result" class="d-none">
                         <hr>
-                        <h6>Modified Configuration</h6>
-                        <pre class="bg-light p-3 rounded"><code id="modify-config-display"></code></pre>
+                        <div class="alert alert-success">Configuration updated successfully!</div>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-info" id="btn-apply-modify">
-                        <i class="bi bi-robot"></i> AI Modify
-                    </button>
-                    <button type="button" class="btn btn-primary d-none" id="btn-save-modify">
+                    <button type="button" class="btn btn-primary" id="btn-save-modify">
                         <i class="bi bi-save"></i> Save Changes
                     </button>
                 </div>

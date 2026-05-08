@@ -6,6 +6,8 @@ This folder contains independent implementation packets for Phase 4: Strategy Ma
 
 Phase 4 focuses on creating a robust, decoupled management system for trading strategies. It introduces the concept of `ConfigurationSet` to separate algorithm logic from runtime parameters, and provides a rich dashboard for orchestration, monitoring, and backtesting.
 
+**Phase 3 Status:** ✅ COMPLETE - Strategy lifecycle management, API layer, and Dashboard GUI (Step 6) implemented. The dashboard now supports class-based and config-based strategies, market status widgets (balance, positions, orders), and activation/deactivation controls.
+
 ## Progress
 
 - 🔜 **Step 1** (`STEP_01_CONFIGSET_DOMAIN.md`): Not started - ConfigurationSet domain model, entity implementation, TDD tests
