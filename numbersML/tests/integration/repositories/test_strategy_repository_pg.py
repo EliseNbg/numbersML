@@ -20,7 +20,7 @@ async def _init_utc(conn: asyncpg.Connection) -> None:
 
 async def _ensure_phase3_schema(conn: asyncpg.Connection) -> None:
     migration_path = (
-        Path(__file__).resolve().parents[3] / "migrations" / "003_phase3_strategy_foundation.sql"
+        Path(__file__).resolve().parents[3] / "migrations" / "CLEAN_SCHEMA.sql"
     )
     await conn.execute(migration_path.read_text(encoding="utf-8"))
 

@@ -84,19 +84,17 @@ def setup_test_data():
             pytest.fail("Failed to connect to database after retries")
 
         try:
-            # Run each migration (except test_data.sql)
-            for filename in sorted(os.listdir(migrations_dir)):
-                if filename.endswith(".sql") and filename != "test_data.sql":
-                    filepath = os.path.join(migrations_dir, filename)
-                    with open(filepath) as f:
-                        sql = f.read()
-                    try:
-                        await conn.execute(sql)
-                    except Exception as e:
-                        # Ignore errors for migrations that were already applied
-                        if "already exists" not in str(e):
-                            print(f"Warning: Migration {filename} failed: {e}")
-
+            # Load CLEAN_SCHEMA.sql (merged migrations)
+            clean_schema_path = os.path.join(migrations_dir, "CLEAN_SCHEMA.sql")
+            if os.path.exists(clean_schema_path):
+                with open(clean_schema_path) as f:
+                    sql = f.read()
+                try:
+                    await conn.execute(sql)
+                except Exception as e:
+                    if "already exists" not in str(e):
+                        print(f"Warning: CLEAN_SCHEMA.sql loading issue: {e}")
+            
             # Run test_data.sql (idempotent - uses ON CONFLICT or IF NOT EXISTS)
             test_data_path = os.path.join(migrations_dir, "test_data.sql")
             if os.path.exists(test_data_path):

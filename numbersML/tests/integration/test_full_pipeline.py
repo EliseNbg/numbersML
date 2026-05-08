@@ -374,11 +374,11 @@ class TestDatabaseIntegration:
         # Create repository
         mock_conn = AsyncMock()
         mock_pool = MagicMock()
-        mock_pool.acquire = MagicMock()
-        
-        # Mock context manager
-        async with mock_pool.acquire() as conn:
-            pass
+        # Mock acquire to return an async context manager
+        acquire_ctx = AsyncMock()
+        acquire_ctx.__aenter__ = AsyncMock(return_value=mock_conn)
+        acquire_ctx.__aexit__ = AsyncMock(return_value=False)
+        mock_pool.acquire = MagicMock(return_value=acquire_ctx)
         
         # Setup mock
         mock_conn.fetchrow = AsyncMock(return_value={

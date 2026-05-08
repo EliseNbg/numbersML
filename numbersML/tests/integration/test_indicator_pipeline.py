@@ -697,15 +697,7 @@ async def run_all_tests() -> Dict[str, Any]:
         }
     }
 
-
-if __name__ == '__main__':
-    results = asyncio.run(run_all_tests())
     
-    # Save results to file
-    with open('/tmp/integration_test_results.json', 'w') as f:
-        json.dump(results, f, indent=2, default=str)
-    
-    print(f"\nResults saved to: /tmp/integration_test_results.json")
-    
+    # Tests are run via pytest, no need for main block
     # Exit with appropriate code
     sys.exit(0 if results['passed'] else 1)

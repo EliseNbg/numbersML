@@ -138,9 +138,8 @@ async def test_trigger():
         print(f"ERROR: {e}")
         import traceback
         traceback.print_exc()
-    
+        
     finally:
         await pool.close()
 
-if __name__ == '__main__':
-    asyncio.run(test_trigger())
+# Tests are run via pytest, no need for main block

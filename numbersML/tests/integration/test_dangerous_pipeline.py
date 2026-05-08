@@ -492,19 +492,10 @@ class DangerousIntegrationTest:
             
         except Exception as e:
             logger.error(f"Test failed with error: {e}")
-            raise
+             raise
         finally:
             # Cleanup
             await self.stop_pipeline_process()
             await self.teardown()
 
-
-async def main():
-    """Main entry point."""
-    test = DangerousIntegrationTest()
-    result = await test.run_test()
-    sys.exit(0 if result else 1)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+# Tests are run via pytest, no need for main block

@@ -58,6 +58,7 @@ class TestPipelineEndpoints:
     """Test pipeline API endpoints."""
     
     @pytest.mark.asyncio
+    @pytest.mark.timeout(60)
     async def test_get_status(self, client: AsyncClient) -> None:
         """Test getting pipeline status."""
         response = await client.get("/api/pipeline/status")
@@ -71,6 +72,7 @@ class TestPipelineEndpoints:
             assert 'is_running' in data or 'message' in data
     
     @pytest.mark.asyncio
+    @pytest.mark.timeout(60)
     async def test_start_pipeline(self, client: AsyncClient) -> None:
         """Test starting pipeline."""
         response = await client.post("/api/pipeline/start")
@@ -82,6 +84,7 @@ class TestPipelineEndpoints:
         assert 'message' in data or 'detail' in data
     
     @pytest.mark.asyncio
+    @pytest.mark.timeout(60)
     async def test_stop_pipeline(self, client: AsyncClient) -> None:
         """Test stopping pipeline."""
         response = await client.post("/api/pipeline/stop")
@@ -90,6 +93,7 @@ class TestPipelineEndpoints:
         assert response.status_code in [200, 400, 503]
     
     @pytest.mark.asyncio
+    @pytest.mark.timeout(60)
     async def test_get_symbols(self, client: AsyncClient) -> None:
         """Test getting active symbols."""
         response = await client.get("/api/pipeline/symbols")
@@ -103,6 +107,7 @@ class TestPipelineEndpoints:
             assert isinstance(data, list)
     
     @pytest.mark.asyncio
+    @pytest.mark.timeout(60)
     async def test_get_stats(self, client: AsyncClient) -> None:
         """Test getting detailed statistics."""
         response = await client.get("/api/pipeline/stats")

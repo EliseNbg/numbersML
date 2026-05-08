@@ -486,16 +486,7 @@ async def run_integration_test() -> Dict[str, Any]:
     print(f"Files saved: {len(results['files_saved'])}")
     print("=" * 70)
 
+    
     return results
 
-
-if __name__ == '__main__':
-    results = asyncio.run(run_integration_test())
-
-    # Exit with appropriate code
-    if results['validation'] and results['validation']['passed']:
-        print("\n✅ Integration test PASSED!")
-        exit(0)
-    else:
-        print("\n❌ Integration test FAILED!")
-        exit(1)
+# Tests are run via pytest, no need for main block

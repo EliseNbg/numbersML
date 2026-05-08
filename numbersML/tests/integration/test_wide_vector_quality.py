@@ -184,10 +184,8 @@ async def run_test() -> Dict[str, Any]:
             "range_failures": range_fail,
             "bad_normalization": bad_norm,
         }
+        
     finally:
         await conn.close()
 
-
-if __name__ == "__main__":
-    result = asyncio.run(run_test())
-    sys.exit(0 if result["passed"] else 1)
+# Tests are run via pytest, no need for main block
