@@ -261,6 +261,76 @@ class TestStrategyLifecycleServiceActivation:
             await lifecycle_service.activate_strategy(uuid4())
 
     @pytest.mark.asyncio
+    async def test_strategy_lifecycle_full_cycle(self, lifecycle_service, sample_strategy_def):
+        """Test full lifecycle: activate -> deactivate."""
+        strategy_id = sample_strategy_def.id
+
+        # Setup for activation
+        lifecycle_service._strategy_repo.get_by_id.return_value = sample_strategy_def
+        lifecycle_service._strategy_repo.list_versions.return_value = [
+            StrategyConfigVersion(
+                strategy_id=strategy_id,
+                version=1,
+                schema_version=1,
+                config={},
+            )
+        ]
+        mock_strategy = AsyncMock(spec=Strategy)
+        lifecycle_service._strategy_manager.add_strategy = MagicMock()
+        lifecycle_service._strategy_manager.get_strategy.return_value = mock_strategy
+        lifecycle_service._strategy_manager.remove_strategy = MagicMock(return_value=mock_strategy)
+        lifecycle_service._event_repo.save = AsyncMock()
+
+        # Activate
+        result = await lifecycle_service.activate_strategy(strategy_id)
+        assert result is True
+        assert lifecycle_service._strategy_manager.add_strategy.called
+
+        # Setup for deactivation
+        lifecycle_service._strategy_manager.get_strategy.reset_mock()
+        mock_strategy_activate = AsyncMock(spec=Strategy)
+        lifecycle_service._strategy_manager.get_strategy.return_value = mock_strategy_activate
+
+        # Deactivate
+        result = await lifecycle_service.deactivate_strategy(strategy_id)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_strategy_activate_with_real_strategy_manager(self):
+        """Test activation with real StrategyManager (not mocked)."""
+        from src.domain.strategies.base import StrategyManager
+
+        mock_repo = AsyncMock(spec=StrategyRepository)
+        mock_event_repo = AsyncMock(spec=StrategyRuntimeEventRepository)
+
+        manager = StrategyManager()
+        service = StrategyLifecycleService(
+            strategy_repository=mock_repo,
+            event_repository=mock_event_repo,
+            strategy_manager=manager,
+        )
+
+        strategy_def = StrategyDefinition(
+            name="Test Strategy",
+            description="Test",
+        )
+
+        mock_repo.get_by_id.return_value = strategy_def
+        mock_repo.list_versions.return_value = [
+            StrategyConfigVersion(
+                strategy_id=strategy_def.id,
+                version=1,
+                schema_version=1,
+                config={},
+            )
+        ]
+        mock_event_repo.save = AsyncMock()
+
+        # This should work without AttributeError
+        result = await service.activate_strategy(strategy_def.id)
+        assert result is True
+
+    @pytest.mark.asyncio
     async def test_deactivate_strategy(self, lifecycle_service, sample_strategy_def):
         """Can deactivate a strategy."""
         strategy_id = sample_strategy_def.id

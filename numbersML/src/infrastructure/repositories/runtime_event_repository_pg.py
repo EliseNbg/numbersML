@@ -8,7 +8,7 @@ from uuid import UUID
 import asyncpg
 
 from src.domain.repositories.runtime_event_repository import StrategyRuntimeEventRepository
-from src.domain.strategies.runtime import StrategyLifecycleEvent
+from src.domain.strategies.runtime import RuntimeState, StrategyLifecycleEvent
 from src.domain.strategies.strategy_config import StrategyDefinition
 
 
