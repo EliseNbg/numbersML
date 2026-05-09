@@ -17,9 +17,10 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Dict, Any
 from uuid import UUID, uuid4
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 
 from src.infrastructure.api.app import create_app
+from src.infrastructure.api.auth import API_KEY_STORE
 from src.application.services.strategy_lifecycle import StrategyLifecycleService
 from src.application.services.strategy_runner import StrategyRunner
 from src.domain.strategies.base import StrategyManager
@@ -40,10 +41,18 @@ async def client():
 
     # Initialize database
     pool = await init_db()
-    
+
+    # Ensure test keys are present
+    API_KEY_STORE.update({
+        "admin-test-key": {"roles": ["admin"], "name": "Test Admin Key"},
+        "trader-test-key": {"roles": ["trader", "read"], "name": "Test Trader Key"},
+        "read-test-key": {"roles": ["read"], "name": "Test Read Key"},
+    })
+
     # Create app with initialized pool
     app = create_app()
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test", headers={"X-API-Key": "trader-test-key"}) as ac:
         yield ac
     
     # Cleanup
@@ -252,7 +261,7 @@ class TestStrategyWorkflow:
         print("\n[Test] Invalid configuration rejection...")
         
         invalid_config = {
-            "name": "Invalid_Strategy",
+            "name": f"Invalid_Strategy_{uuid4().hex[:8]}",
             "description": "Test invalid config",
             "type": "rsi",
             "symbols": ["INVALID_SYMBOL"],  # Invalid symbol format

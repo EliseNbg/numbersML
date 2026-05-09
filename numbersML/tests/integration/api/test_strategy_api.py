@@ -12,6 +12,7 @@ Tests cover:
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 import os
 import sys
 
@@ -94,7 +95,7 @@ def read_headers():
 @pytest.fixture
 def strategy_payload():
     return {
-        "name": "Test Strategy",
+        "name": f"Test Strategy {uuid4()}",
         "description": "Test strategy for API tests",
         "mode": "paper",
         "config": {

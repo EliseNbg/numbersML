@@ -24,7 +24,7 @@ from src.application.services.llm_strategy_service import LLMStrategyService
 from src.domain.repositories.runtime_event_repository import StrategyRuntimeEventRepository
 from src.domain.repositories.strategy_repository import StrategyRepository
 from src.domain.strategies.strategy_config import StrategyConfigVersion, StrategyDefinition
-from src.infrastructure.api.auth import API_KEY_STORE
+from src.infrastructure.api.auth import API_KEY_STORE, require_trader, AuthContext
 from src.infrastructure.database import get_db_pool_async
 from src.infrastructure.repositories.runtime_event_repository_pg import (
     StrategyRuntimeEventRepositoryPG,
@@ -197,6 +197,7 @@ async def get_llm_service() -> LLMStrategyService:
 @router.post("", response_model=StrategyResponse, status_code=status.HTTP_201_CREATED)
 async def create_strategy(
     req: StrategyCreateRequest,
+    auth: AuthContext = Depends(require_trader),
 ) -> StrategyResponse:
     try:
 
@@ -360,6 +361,7 @@ async def activate_strategy(
     strategy_id: UUID,
     req: StrategyActivateRequest,
     svc=Depends(get_lifecycle_service),
+    auth: AuthContext = Depends(require_trader),
 ) -> dict[str, Any]:
     try:
         # Get strategy to check mode for policy
