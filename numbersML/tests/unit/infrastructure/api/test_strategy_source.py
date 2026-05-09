@@ -163,7 +163,7 @@ class TestStrategySourceAPI:
     def test_get_nonexistent_strategy(self, client):
         """Get non-existent strategy file."""
         response = client.get(
-            "/api/strategies/source/nonexistent.Strategy"
+            "/api/strategies/source/src.strategies.user.nonexistentfile.Dummy"
         )
         assert response.status_code == 404
 
@@ -197,7 +197,10 @@ class TestStrategySourceAPI:
         test_file = USER_STRATEGIES_DIR / "existing.py"
         test_file.write_text("original content")
 
-        content = "new content"
+        content = (
+            "from src.domain.strategies.base import Strategy\n"
+            "class NewStrategy(Strategy):\n    pass\n"
+        )
         response = client.put(
             "/api/strategies/source/src.strategies.user.existing.NewStrategy",
             headers={"Content-Type": "application/json"},
@@ -260,7 +263,7 @@ class TestStrategySourceAPI:
         init_file.write_text("")  # Create if not exists
 
         response = client.delete(
-            "/api/strategies/source/src.strategies.user.__init__"
+            "/api/strategies/source/src.strategies.user.__init__.Dummy"
         )
         assert response.status_code == 400
         assert "Cannot delete __init__.py" in response.json()["detail"]
@@ -268,7 +271,7 @@ class TestStrategySourceAPI:
     def test_delete_nonexistent(self, client):
         """Delete non-existent file."""
         response = client.delete(
-            "/api/strategies/source/nonexistent.Strategy"
+            "/api/strategies/source/src.strategies.user.nonexistentfile.Dummy"
         )
         assert response.status_code == 404
 

@@ -82,6 +82,22 @@ def read_headers():
 class TestUserStrategyClassesEndpoint:
     """Test GET /api/strategies/user-classes endpoint."""
 
+    @pytest.fixture
+    def app(self):
+        """Create test app with mocked strategy repository."""
+        from src.infrastructure.api.routes.strategies import get_strategy_repo
+        from unittest.mock import MagicMock
+
+        mock_repo = MagicMock()
+        async def override():
+            return mock_repo
+
+        app = FastAPI()
+        app.dependency_overrides[get_strategy_repo] = override
+        app.include_router(strategies_router)
+        app.include_router(market_router)
+        return app
+
     def test_list_user_strategy_classes_success(self, client, trader_headers):
         """Test listing available user strategy classes."""
         with patch(

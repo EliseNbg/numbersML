@@ -91,6 +91,18 @@ class LiveMarketService(MarketService):
             self._orders[refreshed.external_order_id] = refreshed
         return refreshed
 
+    async def get_orders(self, filters: dict | None = None) -> list[Order]:
+        """Return all orders, optionally filtered."""
+        orders = list(self._orders.values())
+        if filters is None:
+            return orders
+        # Apply simple filters if provided
+        if "symbol" in filters:
+            orders = [o for o in orders if o.symbol == filters["symbol"]]
+        if "status" in filters:
+            orders = [o for o in orders if o.status == filters["status"]]
+        return orders
+
     async def _retry_create_order(self, request: OrderRequest, client_order_id: str) -> dict:
         last_exception: Exception | None = None
         for attempt in range(self._max_retries + 1):

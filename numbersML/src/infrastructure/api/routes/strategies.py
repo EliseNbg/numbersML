@@ -236,6 +236,63 @@ async def list_strategies(
     return [StrategyResponse.from_domain(s) for s in strategies]
 
 
+def _discover_user_strategy_classes() -> list[dict[str, Any]]:
+    """Scan src/strategies/user/ for user-written strategy classes.
+
+    Returns:
+        List of dicts with class_path, class_name, module, docstring, has_on_tick
+    """
+    import importlib
+    import inspect
+    from pathlib import Path
+
+    results = []
+    user_dir = Path(__file__).parent.parent.parent.parent / "strategies" / "user"
+
+    if not user_dir.exists():
+        return results
+
+    # Scan all Python files in user directory
+    for py_file in user_dir.glob("*.py"):
+        if py_file.name.startswith("_"):
+            continue
+
+        module_path = f"src.strategies.user.{py_file.stem}"
+        try:
+            module = importlib.import_module(module_path)
+        except Exception as e:
+            logger.warning(f"Failed to import {module_path}: {e}")
+            continue
+
+        # Find all Strategy subclasses in the module
+        for name, obj in inspect.getmembers(module, inspect.isclass):
+            if obj.__module__ != module_path:
+                continue
+            from src.domain.strategies.base import Strategy
+
+            if issubclass(obj, Strategy) and obj is not Strategy:
+                results.append(
+                    {
+                        "class_path": f"{module_path}.{name}",
+                        "class_name": name,
+                        "module": module_path,
+                        "docstring": obj.__doc__,
+                        "has_on_tick": "on_tick" in obj.__dict__,
+                    }
+                )
+
+    return results
+
+
+@router.get("/user-classes", response_model=list[UserStrategyClassResponse])
+async def list_user_strategy_classes(
+    auth: AuthContext = Depends(require_trader),
+) -> list[UserStrategyClassResponse]:
+    """List available user-written strategy classes from src/strategies/user/."""
+    classes = _discover_user_strategy_classes()
+    return [UserStrategyClassResponse(**c) for c in classes]
+
+
 @router.get("/{strategy_id}", response_model=StrategyResponse)
 async def get_strategy(
     strategy_id: UUID,
@@ -245,6 +302,50 @@ async def get_strategy(
     if not s:
         raise HTTPException(status_code=404, detail=f"Strategy {strategy_id} not found")
     return StrategyResponse.from_domain(s)
+
+
+# ============================================================================
+# Validation Endpoints
+# ============================================================================
+
+
+@router.post("/{strategy_id}/validate", response_model=dict[str, Any])
+async def validate_strategy(
+    strategy_id: UUID,
+    repo: StrategyRepository = Depends(get_strategy_repo),
+) -> dict[str, Any]:
+    """Validate a strategy's current active configuration."""
+    try:
+        # Get strategy definition
+        strategy_def = await repo.get_by_id(strategy_id)
+        if not strategy_def:
+            raise HTTPException(status_code=404, detail=f"Strategy {strategy_id} not found")
+        
+        # Get active version
+        versions = await repo.list_versions(strategy_id)
+        if not versions:
+            raise HTTPException(status_code=400, detail="No configuration versions found")
+        
+        active_version = next((v for v in versions if v.is_active), versions[-1])
+        
+        # Validate the configuration
+        from src.domain.strategies.config_schema import validate_strategy_config
+        is_valid, issues = validate_strategy_config(active_version.config)
+        
+        return {
+            "strategy_id": str(strategy_id),
+            "version": active_version.version,
+            "is_valid": is_valid,
+            "errors": [issue.message for issue in issues],
+            "validation_issues": [
+                {"path": issue.path, "message": issue.message} for issue in issues
+            ]
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Validation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Validation failed: {e}")
 
 
 @router.put("/{strategy_id}", response_model=StrategyResponse)
@@ -448,59 +549,6 @@ async def resume_strategy(
 # ============================================================================
 
 
-def _discover_user_strategy_classes() -> list[dict[str, Any]]:
-    """Scan src/strategies/user/ for user-written strategy classes.
-
-    Returns:
-        List of dicts with class_path, class_name, module, docstring, has_on_tick
-    """
-    import importlib
-    import inspect
-    from pathlib import Path
-
-    results = []
-    user_dir = Path(__file__).parent.parent.parent.parent / "strategies" / "user"
-
-    if not user_dir.exists():
-        return results
-
-    # Scan all Python files in user directory
-    for py_file in user_dir.glob("*.py"):
-        if py_file.name.startswith("_"):
-            continue
-
-        module_path = f"src.strategies.user.{py_file.stem}"
-        try:
-            module = importlib.import_module(module_path)
-        except Exception as e:
-            logger.warning(f"Failed to import {module_path}: {e}")
-            continue
-
-        # Find all Strategy subclasses in the module
-        for name, obj in inspect.getmembers(module, inspect.isclass):
-            if obj.__module__ != module_path:
-                continue
-            from src.domain.strategies.base import Strategy
-
-            if issubclass(obj, Strategy) and obj is not Strategy:
-                results.append(
-                    {
-                        "class_path": f"{module_path}.{name}",
-                        "class_name": name,
-                        "module": module_path,
-                        "docstring": obj.__doc__,
-                        "has_on_tick": "on_tick" in obj.__dict__,
-                    }
-                )
-
-    return results
-
-
-@router.get("/user-classes", response_model=list[UserStrategyClassResponse])
-async def list_user_strategy_classes() -> list[UserStrategyClassResponse]:
-    """List available user-written strategy classes from src/strategies/user/."""
-    classes = _discover_user_strategy_classes()
-    return [UserStrategyClassResponse(**c) for c in classes]
 
 
 # ============================================================================

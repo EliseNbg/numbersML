@@ -8,9 +8,32 @@ Tests:
     - Error handling
 """
 
+import os
+import sys
+from unittest.mock import patch
+
 import pytest
 from fastapi import FastAPI, status
 from fastapi.testclient import TestClient
+
+# Set test API keys BEFORE importing app modules
+os.environ["API_KEY_ADMIN"] = "admin-test-key"
+os.environ["API_KEY_TRADER"] = "trader-test-key"
+os.environ["API_KEY_READ"] = "read-test-key"
+
+# Reload modules to pick up env keys
+for mod in list(sys.modules.keys()):
+    if "src.infrastructure.api" in mod:
+        del sys.modules[mod]
+
+from src.infrastructure.api.auth import API_KEY_STORE
+
+# Update API_KEY_STORE with test keys
+API_KEY_STORE.update({
+    "admin-test-key": {"roles": ["admin"], "name": "Test Admin Key"},
+    "trader-test-key": {"roles": ["trader", "read"], "name": "Test Trader Key"},
+    "read-test-key": {"roles": ["read"], "name": "Test Read Key"},
+})
 
 from src.infrastructure.api.routes.dashboard import router as dashboard_router
 from src.infrastructure.api.routes.symbols import router as symbols_router
@@ -520,6 +543,7 @@ class TestStrategyRoutes:
                 "name": "test"
                 # Missing config
             },
+            headers={"X-API-Key": "trader-test-key"},  # Provide auth
         )
         assert response.status_code in [
             status.HTTP_422_UNPROCESSABLE_ENTITY,
