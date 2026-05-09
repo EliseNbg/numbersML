@@ -34,6 +34,10 @@ class MarketService(ABC):
     async def get_order_status(self, order_id: str) -> Order | None:
         """Fetch order status by internal or external identifier."""
 
+    @abstractmethod
+    async def get_orders(self, filters: dict | None = None) -> list[Order]:
+        """Fetch orders with optional filtering."""
+
 
 class LiveExchangeClient(Protocol):
     """Minimal exchange client protocol needed by live market service."""

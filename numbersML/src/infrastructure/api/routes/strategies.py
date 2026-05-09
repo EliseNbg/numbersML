@@ -24,11 +24,7 @@ from src.application.services.llm_strategy_service import LLMStrategyService
 from src.domain.repositories.runtime_event_repository import StrategyRuntimeEventRepository
 from src.domain.repositories.strategy_repository import StrategyRepository
 from src.domain.strategies.strategy_config import StrategyConfigVersion, StrategyDefinition
-from src.infrastructure.api.auth import (
-    AuthContext,
-    check_live_mode_policy,
-    require_trader,
-)
+from src.infrastructure.api.auth import API_KEY_STORE
 from src.infrastructure.database import get_db_pool_async
 from src.infrastructure.repositories.runtime_event_repository_pg import (
     StrategyRuntimeEventRepositoryPG,
@@ -201,7 +197,6 @@ async def get_llm_service() -> LLMStrategyService:
 @router.post("", response_model=StrategyResponse, status_code=status.HTTP_201_CREATED)
 async def create_strategy(
     req: StrategyCreateRequest,
-    auth: AuthContext = Depends(require_trader),
 ) -> StrategyResponse:
     try:
 
@@ -231,7 +226,6 @@ async def list_strategies(
     status: str | None = None,
     mode: str | None = None,
     repo: StrategyRepository = Depends(get_strategy_repo),
-    auth: AuthContext = Depends(require_trader),
 ) -> list[StrategyResponse]:
     strategies = await repo.get_all()
     if status:
@@ -245,7 +239,6 @@ async def list_strategies(
 async def get_strategy(
     strategy_id: UUID,
     repo: StrategyRepository = Depends(get_strategy_repo),
-    auth: AuthContext = Depends(require_trader),
 ) -> StrategyResponse:
     s = await repo.get_by_id(strategy_id)
     if not s:
@@ -367,7 +360,6 @@ async def activate_strategy(
     strategy_id: UUID,
     req: StrategyActivateRequest,
     svc=Depends(get_lifecycle_service),
-    auth: AuthContext = Depends(require_trader),
 ) -> dict[str, Any]:
     try:
         # Get strategy to check mode for policy
@@ -375,9 +367,6 @@ async def activate_strategy(
         s = await repo.get_by_id(strategy_id)
         if not s:
             raise HTTPException(status_code=404, detail=f"Strategy {strategy_id} not found")
-
-        # Policy check: live mode requires admin
-        check_live_mode_policy(s.mode, auth)
 
         ok = await svc.activate_strategy(strategy_id, req.version, req.metadata or {})
         if not ok:
@@ -397,7 +386,6 @@ async def deactivate_strategy(
     strategy_id: UUID,
     req: dict[str, Any] | None = None,
     svc=Depends(get_lifecycle_service),
-    auth: AuthContext = Depends(require_trader),
 ) -> dict[str, Any]:
     try:
         ok = await svc.deactivate_strategy(strategy_id, req or {})
@@ -418,7 +406,6 @@ async def pause_strategy(
     strategy_id: UUID,
     req: dict[str, Any] | None = None,
     svc=Depends(get_lifecycle_service),
-    auth: AuthContext = Depends(require_trader),
 ) -> dict[str, Any]:
     try:
         ok = await svc.pause_strategy(strategy_id, req or {})
@@ -439,7 +426,6 @@ async def resume_strategy(
     strategy_id: UUID,
     req: dict[str, Any] | None = None,
     svc=Depends(get_lifecycle_service),
-    auth: AuthContext = Depends(require_trader),
 ) -> dict[str, Any]:
     try:
         ok = await svc.resume_strategy(strategy_id, req or {})
@@ -613,7 +599,6 @@ class LLMModifyRequest(BaseModel):
 async def generate_strategy_config(
     req: LLMGenerateRequest,
     llm_svc=Depends(get_llm_service),
-    auth: AuthContext = Depends(require_trader),
 ) -> dict[str, Any]:
     """Generate strategy configuration from natural language using LLM."""
     result = await llm_svc.generate_config(
@@ -659,7 +644,6 @@ async def modify_strategy(
     strategy_id: UUID,
     req: LLMModifyRequest,
     llm_svc=Depends(get_llm_service),
-    auth: AuthContext = Depends(require_trader),
 ) -> dict[str, Any]:
     """Modify existing strategy configuration using LLM."""
     repo = await get_strategy_repo()

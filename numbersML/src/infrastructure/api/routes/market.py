@@ -191,6 +191,12 @@ async def get_market_service(mode: str = "paper") -> MarketService:
 
 
 @router.get(
+    "/balance",
+    response_model=list[BalanceResponse],
+    summary="Get account balance (alias)",
+    description="Alias for /balances - Get all account balances.",
+)
+@router.get(
     "/balances",
     response_model=list[BalanceResponse],
     summary="Get account balances",
@@ -447,7 +453,7 @@ async def create_order(
 )
 async def list_orders(
     symbol: str | None = None,
-    status: str | None = None,
+    order_status: str | None = None,
     strategy_id: UUID | None = None,
     mode: str = "paper",
     market_service: MarketService = Depends(get_market_service),
@@ -457,7 +463,7 @@ async def list_orders(
 
     Args:
         symbol: Optional symbol filter
-        status: Optional status filter
+        order_status: Optional status filter
         strategy_id: Optional strategy filter
         mode: Market mode (paper/live)
         market_service: Market service instance
@@ -472,8 +478,8 @@ async def list_orders(
         filters = {}
         if symbol:
             filters["symbol"] = symbol
-        if status:
-            filters["status"] = status
+        if order_status:
+            filters["status"] = order_status
         if strategy_id:
             filters["strategy_id"] = strategy_id
 

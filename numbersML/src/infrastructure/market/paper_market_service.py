@@ -78,6 +78,29 @@ class PaperMarketService(MarketService):
     async def get_order_status(self, order_id: str) -> Order | None:
         return self._orders.get(order_id)
 
+    async def get_orders(self, filters: dict | None = None) -> list[Order]:
+        """Get orders with optional filtering.
+
+        Args:
+            filters: Optional dict with keys: symbol, status, strategy_id
+
+        Returns:
+            List of orders matching filters
+        """
+        orders = list(self._orders.values())
+
+        if not filters:
+            return orders
+
+        if filters.get("symbol"):
+            orders = [o for o in orders if o.symbol == filters["symbol"]]
+        if filters.get("status"):
+            orders = [o for o in orders if o.status.value == filters["status"]]
+        if filters.get("strategy_id"):
+            orders = [o for o in orders if o.strategy_id == filters["strategy_id"]]
+
+        return orders
+
     def _extract_market_price(self, request: OrderRequest) -> Decimal:
         if request.order_type.value == "LIMIT":
             if request.limit_price is None:
