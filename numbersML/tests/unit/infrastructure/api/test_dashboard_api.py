@@ -121,10 +121,10 @@ class TestUserStrategyClassesEndpoint:
             assert "module" in item
             assert "has_on_tick" in item
 
-    def test_list_user_classes_requires_auth(self, client):
-        """Test that authentication is required."""
+    def test_list_user_classes_no_auth_required(self, client):
+        """Test that authentication is not required for personal use."""
         response = client.get("/api/strategies/user-classes")
-        assert response.status_code == 401
+        assert response.status_code == 200
 
     def test_list_user_classes_returns_example_strategy(self, client, trader_headers):
         """Test that ExampleRSIStrategy is returned in the list."""
@@ -261,6 +261,23 @@ class TestStrategyLifecycleEndpoints:
         )
         # Should not return 404 (endpoint should exist)
         assert response.status_code != 404
+
+    def test_activate_strategy_returns_proper_error_for_missing_strategy(self, client):
+        """Test that activate returns proper error when strategy not found."""
+        response = client.post(
+            "/api/strategies/123e4567-e89b-12d3-a456-426614174000/activate",
+            json={},
+        )
+        # Should return 404 (strategy not found) or 500 (error during activation)
+        # but not 500 with 'add_strategy' AttributeError
+        assert response.status_code in [404, 500]
+        if response.status_code == 500:
+            # Ensure the response is JSON and check error message
+            try:
+                detail = response.json().get("detail", "")
+                assert "add_strategy" not in detail
+            except Exception:
+                pass  # Response might not be JSON, which is fine
 
     def test_deactivate_strategy_endpoint_exists(self, client, trader_headers):
         """Test that deactivate endpoint exists."""

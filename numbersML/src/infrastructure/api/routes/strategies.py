@@ -24,7 +24,6 @@ from src.application.services.llm_strategy_service import LLMStrategyService
 from src.domain.repositories.runtime_event_repository import StrategyRuntimeEventRepository
 from src.domain.repositories.strategy_repository import StrategyRepository
 from src.domain.strategies.strategy_config import StrategyConfigVersion, StrategyDefinition
-from src.infrastructure.api.auth import AuthContext, require_trader
 from src.infrastructure.database import get_db_pool_async
 from src.infrastructure.repositories.runtime_event_repository_pg import (
     StrategyRuntimeEventRepositoryPG,
@@ -197,7 +196,6 @@ async def get_llm_service() -> LLMStrategyService:
 @router.post("", response_model=StrategyResponse, status_code=status.HTTP_201_CREATED)
 async def create_strategy(
     req: StrategyCreateRequest,
-    auth: AuthContext = Depends(require_trader),
 ) -> StrategyResponse:
     try:
 
@@ -285,9 +283,7 @@ def _discover_user_strategy_classes() -> list[dict[str, Any]]:
 
 
 @router.get("/user-classes", response_model=list[UserStrategyClassResponse])
-async def list_user_strategy_classes(
-    auth: AuthContext = Depends(require_trader),
-) -> list[UserStrategyClassResponse]:
+async def list_user_strategy_classes() -> list[UserStrategyClassResponse]:
     """List available user-written strategy classes from src/strategies/user/."""
     classes = _discover_user_strategy_classes()
     return [UserStrategyClassResponse(**c) for c in classes]
@@ -443,16 +439,14 @@ async def activate_strategy_version(
 
 async def get_lifecycle_service():
     from src.application.services.strategy_lifecycle import StrategyLifecycleService
-    from src.application.services.strategy_runner import StrategyRunner
     from src.domain.strategies.base import StrategyManager
 
     repo = await get_strategy_repo()
     evt_repo = await get_event_repo()
-    runner = StrategyRunner(strategy_manager=StrategyManager())
     return StrategyLifecycleService(
         strategy_repository=repo,
         event_repository=evt_repo,
-        strategy_manager=runner,
+        strategy_manager=StrategyManager(),
         actor="api",
     )
 
@@ -462,7 +456,6 @@ async def activate_strategy(
     strategy_id: UUID,
     req: StrategyActivateRequest,
     svc=Depends(get_lifecycle_service),
-    auth: AuthContext = Depends(require_trader),
 ) -> dict[str, Any]:
     try:
         # Get strategy to check mode for policy

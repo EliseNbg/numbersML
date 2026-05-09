@@ -322,15 +322,15 @@ class ValidStrategy(Strategy):
         unsafe_path = Path("/etc/passwd")
         assert _is_safe_path(unsafe_path) is False
 
-    def test_unauthorized_access(self, client):
-        """Endpoints require authentication."""
-        # Remove the auth override to simulate unauthorized access
+    def test_access_without_auth(self, client):
+        """Endpoints are accessible without authentication for personal use."""
+        # Remove the auth override to simulate no API key provided
         from src.infrastructure.api.auth import require_trader
         client.app.dependency_overrides.pop(require_trader, None)
 
         response = client.get("/api/strategies/source")
-        # Should get 403 or 401 (depending on auth implementation)
-        assert response.status_code in [401, 403]
+        # Should return 200 since auth is disabled for personal use
+        assert response.status_code == 200
 
 
 class TestHelperFunctions:

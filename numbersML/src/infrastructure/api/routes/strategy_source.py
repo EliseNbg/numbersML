@@ -13,12 +13,9 @@ Dependencies: Domain models, file system access
 
 import logging
 from pathlib import Path
-from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
-
-from src.infrastructure.api.auth import AuthContext, require_trader
 
 router = APIRouter(prefix="/api/strategies/source", tags=["strategy-source"])
 logger = logging.getLogger(__name__)
@@ -187,9 +184,7 @@ def _validate_strategy_code(content: str, class_name: str | None = None) -> Stra
 
 
 @router.get("", response_model=list[StrategySourceResponse])
-async def list_strategy_sources(
-    auth: AuthContext = Depends(require_trader),
-) -> list[StrategySourceResponse]:
+async def list_strategy_sources() -> list[StrategySourceResponse]:
     """List all strategy source files in src/strategies/user/."""
     user_dir = _get_user_strategies_dir()
 
@@ -216,7 +211,6 @@ async def list_strategy_sources(
 @router.get("/{class_path:path}", response_model=StrategySourceContent)
 async def get_strategy_source(
     class_path: str,
-    auth: AuthContext = Depends(require_trader),
 ) -> StrategySourceContent:
     """Get strategy source code by class path."""
     file_path = _class_path_to_file_path(class_path)
@@ -247,7 +241,6 @@ async def get_strategy_source(
 async def save_strategy_source(
     class_path: str,
     req: StrategySourceUpdate,
-    auth: AuthContext = Depends(require_trader),
 ) -> StrategySourceContent:
     """Save/update strategy source code."""
     file_path = _class_path_to_file_path(class_path)
@@ -279,7 +272,7 @@ async def save_strategy_source(
         file_path.write_text(req.content, encoding="utf-8")
         stat = file_path.stat()
 
-        logger.info(f"Strategy source saved: {class_path} by {auth.name}")
+        logger.info(f"Strategy source saved: {class_path}")
 
         return StrategySourceContent(
             file_path=str(file_path.relative_to(Path(__file__).parent.parent.parent.parent)),
@@ -295,7 +288,6 @@ async def save_strategy_source(
 @router.delete("/{class_path:path}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_strategy_source(
     class_path: str,
-    auth: AuthContext = Depends(require_trader),
 ) -> None:
     """Delete strategy source file."""
     file_path = _class_path_to_file_path(class_path)
@@ -313,7 +305,7 @@ async def delete_strategy_source(
 
     try:
         file_path.unlink()
-        logger.info(f"Strategy source deleted: {class_path} by {auth.name}")
+        logger.info(f"Strategy source deleted: {class_path}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete file: {e}")
 
@@ -321,7 +313,6 @@ async def delete_strategy_source(
 @router.post("/validate", response_model=StrategyValidationResult)
 async def validate_strategy_source(
     req: StrategyValidationRequest,
-    auth: AuthContext = Depends(require_trader),
 ) -> StrategyValidationResult:
     """Validate strategy source code without saving."""
     return _validate_strategy_code(req.content, req.class_name)
