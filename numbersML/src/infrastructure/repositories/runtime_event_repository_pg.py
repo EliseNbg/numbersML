@@ -19,8 +19,8 @@ class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
     Events are append-only and never updated.
     """
 
-    def __init__(self, connection: asyncpg.Connection) -> None:
-        self.conn = connection
+    def __init__(self, pool: asyncpg.Pool) -> None:
+        self.pool = pool
 
     async def save(self, entity: StrategyLifecycleEvent) -> StrategyLifecycleEvent:
         """Persist a lifecycle event.
@@ -31,37 +31,39 @@ class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
         Returns:
             The persisted event (unchanged)
         """
-        await self.conn.fetchrow(
-            """
-            INSERT INTO strategy_events (
-                id, strategy_id, strategy_version_id, event_type,
-                event_payload, actor, created_at
-            ) VALUES (
-                $1, $2,
-                (SELECT id FROM strategy_versions 
-                 WHERE strategy_id = $2 AND version = $3),
-                $4, $5, $6, $7
+        async with self.pool.acquire() as conn:
+            await conn.fetchrow(
+                """
+                INSERT INTO strategy_events (
+                    id, strategy_id, strategy_version_id, event_type,
+                    event_payload, actor, created_at
+                ) VALUES (
+                    $1, $2,
+                    (SELECT id FROM strategy_versions 
+                     WHERE strategy_id = $2 AND version = $3),
+                    $4, $5, $6, $7
+                )
+                """,
+                entity.event_id,
+                entity.strategy_id,
+                entity.strategy_version,
+                entity.event_type,
+                json.dumps(entity.details),
+                entity.trigger if hasattr(entity, 'trigger') else 'system',
+                entity.occurred_at,
             )
-            """,
-            entity.event_id,
-            entity.strategy_id,
-            entity.strategy_version,
-            entity.event_type,
-            json.dumps(entity.details),
-            entity.trigger if hasattr(entity, 'trigger') else 'system',
-            entity.occurred_at,
-        )
-        return entity
+            return entity
 
     async def delete(self, entity_id: UUID) -> bool:
         """Delete an event (soft delete not supported - events are immutable).
         
         Note: This is generally discouraged as events form an audit trail.
         """
-        result = await self.conn.execute(
-            "DELETE FROM strategy_events WHERE id = $1", entity_id
-        )
-        return result == "DELETE 1"
+        async with self.pool.acquire() as conn:
+            result = await conn.execute(
+                "DELETE FROM strategy_events WHERE id = $1", entity_id
+            )
+            return result == "DELETE 1"
 
     async def get_events_for_strategy(
         self,
@@ -102,8 +104,9 @@ class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
         query += str(param_count)
         params.append(limit)
 
-        rows = await self.conn.fetch(query, *params)
-        return [self._map_event(row) for row in rows]
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(query, *params)
+            return [self._map_event(row) for row in rows]
 
     async def get_events_by_type(
         self,
@@ -133,12 +136,14 @@ class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
             query += "2"
             params.append(limit)
 
-        rows = await self.conn.fetch(query, *params)
-        return [self._map_event(row) for row in rows]
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(query, *params)
+            return [self._map_event(row) for row in rows]
 
     async def get_current_states(self) -> list[dict[str, Any]]:
         """Get the most recent state for each strategy."""
-        rows = await self.conn.fetch("""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
             SELECT DISTINCT ON (e.strategy_id)
                 e.strategy_id,
                 s.name as strategy_name,
@@ -152,7 +157,7 @@ class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
             WHERE e.event_type = 'StrategyLifecycleEvent'
             ORDER BY e.strategy_id, e.created_at DESC
         """)
-        return [dict(row) for row in rows]
+            return [dict(row) for row in rows]
 
     async def get_error_events(
         self,
@@ -185,32 +190,35 @@ class StrategyRuntimeEventRepositoryPG(StrategyRuntimeEventRepository):
             query += "1"
             params = [limit]
 
-        rows = await self.conn.fetch(query, *params) if since else await self.conn.fetch(query, limit)
-        return [self._map_event(row) for row in rows]
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(query, *params) if since else await conn.fetch(query, limit)
+            return [self._map_event(row) for row in rows]
 
     async def get_by_id(self, entity_id: UUID) -> StrategyLifecycleEvent | None:
         """Get a single event by ID."""
-        row = await self.conn.fetchrow("""
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow("""
             SELECT e.*, s.name as strategy_name, sv.version as strategy_version
             FROM strategy_events e
             JOIN strategies s ON e.strategy_id = s.id
             LEFT JOIN strategy_versions sv ON e.strategy_version_id = sv.id
             WHERE e.id = $1
         """, entity_id)
-        if row is None:
-            return None
-        return self._map_event(row)
+            if row is None:
+                return None
+            return self._map_event(row)
 
     async def get_all(self) -> list[StrategyLifecycleEvent]:
         """Get all events (most recent first)."""
-        rows = await self.conn.fetch("""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
             SELECT e.*, s.name as strategy_name, sv.version as strategy_version
             FROM strategy_events e
             JOIN strategies s ON e.strategy_id = s.id
             LEFT JOIN strategy_versions sv ON e.strategy_version_id = sv.id
             ORDER BY e.created_at DESC
-        """)
-        return [self._map_event(row) for row in rows]
+            """)
+            return [self._map_event(row) for row in rows]
 
     @staticmethod
     def _map_event(row: asyncpg.Record) -> StrategyLifecycleEvent:

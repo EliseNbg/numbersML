@@ -67,7 +67,7 @@ class StrategyCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
     mode: str = Field(default="paper", pattern="^(paper|live)$")
-    config: StrategyConfigSchema
+    config: StrategyConfigSchema = Field(default_factory=StrategyConfigSchema)
     created_by: str = Field(default="system", max_length=255)
 
 
@@ -176,24 +176,21 @@ class UserStrategyClassResponse(BaseModel):
 
 async def get_strategy_repo() -> StrategyRepository:
     db_pool = await get_db_pool_async()
-    async with db_pool.acquire() as conn:
-        return StrategyRepositoryPG(conn)
+    return StrategyRepositoryPG(db_pool)
 
 
 async def get_event_repo() -> StrategyRuntimeEventRepository:
     db_pool = await get_db_pool_async()
-    async with db_pool.acquire() as conn:
-        return StrategyRuntimeEventRepositoryPG(conn)
+    return StrategyRuntimeEventRepositoryPG(db_pool)
 
 
 async def get_llm_service() -> LLMStrategyService:
     """Get LLMStrategyService instance."""
     db_pool = await get_db_pool_async()
-    async with db_pool.acquire() as conn:
-        from src.infrastructure.repositories.strategy_repository_pg import StrategyRepositoryPG
+    from src.infrastructure.repositories.strategy_repository_pg import StrategyRepositoryPG
 
-        repo = StrategyRepositoryPG(conn)
-        return LLMStrategyService(strategy_repository=repo)
+    repo = StrategyRepositoryPG(db_pool)
+    return LLMStrategyService(strategy_repository=repo)
 
 
 # ============================================================================
@@ -204,6 +201,7 @@ async def get_llm_service() -> LLMStrategyService:
 @router.post("", response_model=StrategyResponse, status_code=status.HTTP_201_CREATED)
 async def create_strategy(
     req: StrategyCreateRequest,
+    auth: AuthContext = Depends(require_trader),
 ) -> StrategyResponse:
     try:
 
@@ -233,6 +231,7 @@ async def list_strategies(
     status: str | None = None,
     mode: str | None = None,
     repo: StrategyRepository = Depends(get_strategy_repo),
+    auth: AuthContext = Depends(require_trader),
 ) -> list[StrategyResponse]:
     strategies = await repo.get_all()
     if status:
@@ -246,6 +245,7 @@ async def list_strategies(
 async def get_strategy(
     strategy_id: UUID,
     repo: StrategyRepository = Depends(get_strategy_repo),
+    auth: AuthContext = Depends(require_trader),
 ) -> StrategyResponse:
     s = await repo.get_by_id(strategy_id)
     if not s:
@@ -471,7 +471,7 @@ def _discover_user_strategy_classes() -> list[dict[str, Any]]:
     from pathlib import Path
 
     results = []
-    user_dir = Path(__file__).parent.parent.parent / "strategies" / "user"
+    user_dir = Path(__file__).parent.parent.parent.parent / "strategies" / "user"
 
     if not user_dir.exists():
         return results
