@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api/strategies/source", tags=["strategy-source"])
 logger = logging.getLogger(__name__)
 
 # Base directory for user strategies
-USER_STRATEGIES_DIR = Path(__file__).parent.parent.parent / "strategies" / "user"
+USER_STRATEGIES_DIR = Path(__file__).parent.parent.parent.parent / "strategies" / "user"
 
 
 # ============================================================================
@@ -88,9 +88,10 @@ def _get_user_strategies_dir() -> Path:
 
 def _python_file_to_class_path(file_path: Path) -> str:
     """Convert file path to Python module class path."""
-    rel_path = file_path.relative_to(Path(__file__).parent.parent.parent)
+    rel_path = file_path.relative_to(Path(__file__).parent.parent.parent.parent)
     module_path = str(rel_path.with_suffix("")).replace("/", ".")
-    return module_path
+    # Add "src." prefix to make it a valid class path
+    return "src." + module_path
 
 
 def _class_path_to_file_path(class_path: str) -> Path:
@@ -99,8 +100,12 @@ def _class_path_to_file_path(class_path: str) -> Path:
     parts = class_path.rsplit(".", 1)
     module_path = parts[0] if len(parts) > 1 else class_path
 
+    # Strip "src." prefix if present, since we're joining from the src directory
+    if module_path.startswith("src."):
+        module_path = module_path[4:]
+
     # Convert to file path
-    file_path = Path(__file__).parent.parent.parent / (module_path.replace(".", "/") + ".py")
+    file_path = Path(__file__).parent.parent.parent.parent / (module_path.replace(".", "/") + ".py")
     return file_path
 
 
@@ -198,7 +203,7 @@ async def list_strategy_sources(
 
         results.append(
             StrategySourceResponse(
-                file_path=str(py_file.relative_to(Path(__file__).parent.parent.parent)),
+                file_path=str(py_file.relative_to(Path(__file__).parent.parent.parent.parent)),
                 class_path=class_path,
                 size=stat.st_size,
                 modified_at=stat.st_mtime,
@@ -228,7 +233,7 @@ async def get_strategy_source(
         stat = file_path.stat()
 
         return StrategySourceContent(
-            file_path=str(file_path.relative_to(Path(__file__).parent.parent.parent)),
+            file_path=str(file_path.relative_to(Path(__file__).parent.parent.parent.parent)),
             class_path=class_path,
             content=content,
             size=stat.st_size,
@@ -277,7 +282,7 @@ async def save_strategy_source(
         logger.info(f"Strategy source saved: {class_path} by {auth.name}")
 
         return StrategySourceContent(
-            file_path=str(file_path.relative_to(Path(__file__).parent.parent.parent)),
+            file_path=str(file_path.relative_to(Path(__file__).parent.parent.parent.parent)),
             class_path=class_path,
             content=req.content,
             size=stat.st_size,

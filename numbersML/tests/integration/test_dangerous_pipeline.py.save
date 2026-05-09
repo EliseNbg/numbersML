@@ -492,7 +492,7 @@ class DangerousIntegrationTest:
             
         except Exception as e:
             logger.error(f"Test failed with error: {e}")
-             raise
+            raise
         finally:
             # Cleanup
             await self.stop_pipeline_process()

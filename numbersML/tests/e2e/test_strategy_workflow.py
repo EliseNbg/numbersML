@@ -27,25 +27,37 @@ from src.domain.strategies.base import StrategyManager
 
 @pytest.fixture
 async def client():
-    """Create test client."""
+    """Create test client with initialized database pool."""
+    import asyncpg
+    from src.infrastructure.database.config import get_test_db_url
+    from src.infrastructure.database import set_db_pool
+
+    async def init_db():
+        db_url = get_test_db_url()
+        pool = await asyncpg.create_pool(db_url, min_size=2, max_size=5)
+        set_db_pool(pool)
+        return pool
+
+    # Initialize database
+    pool = await init_db()
+    
+    # Create app with initialized pool
     app = create_app()
     async with AsyncClient(app=app, base_url="http://test") as ac:
         yield ac
+    
+    # Cleanup
+    await pool.close()
 
 
 @pytest.fixture
 async def db_pool():
     """Database pool fixture."""
     import asyncpg
-    pool = await asyncpg.create_pool(
-        host="localhost",
-        port=5432,
-        user="test",
-        password="test",
-        database="test",
-        min_size=1,
-        max_size=5,
-    )
+    from src.infrastructure.database.config import get_test_db_url
+    
+    db_url = get_test_db_url()
+    pool = await asyncpg.create_pool(db_url, min_size=2, max_size=5)
     yield pool
     await pool.close()
 
@@ -107,7 +119,7 @@ class TestStrategyWorkflow:
             },
         }
         
-        response = await client.post("/api/v1/strategies", json=strategy_config)
+        response = await client.post("/api/strategies", json=strategy_config)
         assert response.status_code == 201, f"Failed to create strategy: {response.text}"
         
         strategy_data = response.json()
@@ -121,7 +133,7 @@ class TestStrategyWorkflow:
         print("\n[Step 2] Validating configuration...")
         
         response = await client.post(
-            f"/api/v1/strategies/{strategy_id}/validate",
+            f"/api/strategies/{strategy_id}/validate",
             json={}
         )
         assert response.status_code == 200, f"Validation failed: {response.text}"
@@ -138,7 +150,7 @@ class TestStrategyWorkflow:
         print("\n[Step 3] Activating in paper mode...")
         
         response = await client.post(
-            f"/api/v1/strategies/{strategy_id}/activate",
+            f"/api/strategies/{strategy_id}/activate",
             json={"mode": "paper", "initial_balance": 10000.0}
         )
         assert response.status_code == 200, f"Activation failed: {response.text}"
@@ -164,7 +176,7 @@ class TestStrategyWorkflow:
         }
         
         response = await client.post(
-            "/api/v1/strategies/backtest",
+            "/api/strategies/backtest",
             json=backtest_request
         )
         assert response.status_code == 202, f"Backtest submission failed: {response.text}"
@@ -179,7 +191,7 @@ class TestStrategyWorkflow:
         for i in range(max_polls):
             await asyncio.sleep(1)
             
-            response = await client.get(f"/api/v1/strategies/backtest/{job_id}/status")
+            response = await client.get(f"/api/strategies/backtest/{job_id}/status")
             status_data = response.json()
             
             if status_data["status"] in ["completed", "failed"]:
@@ -188,7 +200,7 @@ class TestStrategyWorkflow:
         assert status_data["status"] == "completed", f"Backtest failed: {status_data}"
         
         # Verify backtest results
-        response = await client.get(f"/api/v1/strategies/backtest/{job_id}/results")
+        response = await client.get(f"/api/strategies/backtest/{job_id}/results")
         results_data = response.json()
         
         assert "metrics" in results_data
@@ -203,7 +215,7 @@ class TestStrategyWorkflow:
         print("\n[Step 5] Deactivating strategy...")
         
         response = await client.post(
-            f"/api/v1/strategies/{strategy_id}/deactivate",
+            f"/api/strategies/{strategy_id}/deactivate",
             json={}
         )
         assert response.status_code == 200, f"Deactivation failed: {response.text}"
@@ -218,7 +230,7 @@ class TestStrategyWorkflow:
         # ============================================================================
         print("\n[Step 6] Verifying final state...")
         
-        response = await client.get(f"/api/v1/strategies/{strategy_id}")
+        response = await client.get(f"/api/strategies/{strategy_id}")
         assert response.status_code == 200
         
         final_state = response.json()
@@ -253,7 +265,7 @@ class TestStrategyWorkflow:
             },
         }
         
-        response = await client.post("/api/v1/strategies", json=invalid_config)
+        response = await client.post("/api/strategies", json=invalid_config)
         
         # Should either fail creation or fail validation
         if response.status_code == 201:
@@ -261,7 +273,7 @@ class TestStrategyWorkflow:
             
             # Try to validate
             response = await client.post(
-                f"/api/v1/strategies/{strategy_id}/validate",
+                f"/api/strategies/{strategy_id}/validate",
                 json={}
             )
             
@@ -296,14 +308,14 @@ class TestStrategyWorkflow:
             },
         }
         
-        response = await client.post("/api/v1/strategies", json=strategy_config)
+        response = await client.post("/api/strategies", json=strategy_config)
         assert response.status_code == 201
         
         strategy_id = response.json()["id"]
         
         # Activate
         response = await client.post(
-            f"/api/v1/strategies/{strategy_id}/activate",
+            f"/api/strategies/{strategy_id}/activate",
             json={"mode": "paper"}
         )
         assert response.status_code == 200
@@ -324,7 +336,7 @@ class TestStrategyWorkflow:
         print("  ✓ Emergency stop triggered")
         
         # Verify strategy is stopped
-        response = await client.get(f"/api/v1/strategies/{strategy_id}/status")
+        response = await client.get(f"/api/strategies/{strategy_id}/status")
         status_data = response.json()
         
         assert status_data.get("emergency_stopped") == True

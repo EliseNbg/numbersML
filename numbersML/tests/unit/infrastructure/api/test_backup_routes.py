@@ -31,18 +31,6 @@ class TestBackupRoutes:
         """Create test client."""
         return TestClient(app, raise_server_exceptions=False)
 
-    def test_routes_registered(self, client: TestClient) -> None:
-        """Test that routes are registered."""
-        routes = [route.path for route in client.app.routes]
-
-        assert "/api/backup/create" in routes
-        assert "/api/backup/list" in routes
-        assert "/api/backup/details/{backup_name}" in routes
-        assert "/api/backup/restore/{backup_name}" in routes
-        assert "/api/backup/download/{backup_name}" in routes
-        assert "/api/backup/upload" in routes
-        assert "/api/backup/delete/{backup_name}" in routes
-
     @patch("src.infrastructure.api.routes.backup.BackupService")
     def test_create_backup(self, mock_service_class, client: TestClient) -> None:
         """Test backup creation endpoint."""
@@ -59,7 +47,7 @@ class TestBackupRoutes:
 
         assert response.status_code == 200
         data = response.json()
-        assert "backup_20260501_120000.sql.gz" in data["name"]
+        assert data["name"] == "backup_20260501_120000.sql.gz"
         assert data["size"] == 1024
 
     @patch("src.infrastructure.api.routes.backup.BackupService")

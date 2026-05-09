@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import sys
+from unittest.mock import MagicMock
 
 import asyncpg
 import pytest
@@ -16,6 +17,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
 from src.infrastructure.database.config import get_test_db_url  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+
+@pytest.fixture
+def mock_db_pool() -> MagicMock:
+    """Create mock database pool."""
+    pool = MagicMock()
+    pool.acquire = MagicMock()
+    return pool
 
 
 def _parse_db_url(db_url: str) -> dict:
