@@ -110,15 +110,24 @@ class TestStrategySourceAPI:
 
     def test_list_strategies_empty(self, client):
         """List strategies when directory is empty."""
-        # Ensure directory exists but is empty
-        USER_STRATEGIES_DIR.mkdir(parents=True, exist_ok=True)
-        for f in USER_STRATEGIES_DIR.glob("*.py"):
-            if not f.name.startswith("_"):
-                f.unlink()
+        # Mock the _get_user_strategies_dir function to return a path with no .py files
+        from pathlib import Path
+        from unittest.mock import MagicMock
 
-        response = client.get("/api/strategies/source")
-        assert response.status_code == 200
-        assert response.json() == []
+        mock_dir = Path("/tmp/nonexistent_strategies")
+        mock_dir.mkdir(exist_ok=True)
+        # Ensure it's empty
+        for f in mock_dir.glob("*.py"):
+            f.unlink()
+
+        with patch("src.infrastructure.api.routes.strategy_source._get_user_strategies_dir", return_value=mock_dir):
+            response = client.get("/api/strategies/source")
+            assert response.status_code == 200
+            assert response.json() == []
+
+        # Cleanup temp dir
+        import shutil
+        shutil.rmtree(mock_dir, ignore_errors=True)
 
     def test_list_strategies_with_files(self, client):
         """List strategies with files present."""
@@ -194,7 +203,7 @@ class TestStrategySourceAPI:
     def test_save_existing_without_overwrite(self, client):
         """Save to existing file without overwrite flag."""
         USER_STRATEGIES_DIR.mkdir(parents=True, exist_ok=True)
-        test_file = USER_STRATEGIES_DIR / "existing.py"
+        test_file = USER_STRATEGIES_DIR / "test_existing_no_overwrite.py"
         test_file.write_text("original content")
 
         content = (
@@ -202,7 +211,7 @@ class TestStrategySourceAPI:
             "class NewStrategy(Strategy):\n    pass\n"
         )
         response = client.put(
-            "/api/strategies/source/src.strategies.user.existing.NewStrategy",
+            "/api/strategies/source/src.strategies.user.test_existing_no_overwrite.NewStrategy",
             headers={"Content-Type": "application/json"},
             json={"content": content, "overwrite": False},
         )

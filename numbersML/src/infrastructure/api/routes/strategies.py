@@ -24,7 +24,7 @@ from src.application.services.llm_strategy_service import LLMStrategyService
 from src.domain.repositories.runtime_event_repository import StrategyRuntimeEventRepository
 from src.domain.repositories.strategy_repository import StrategyRepository
 from src.domain.strategies.strategy_config import StrategyConfigVersion, StrategyDefinition
-from src.infrastructure.api.auth import API_KEY_STORE, require_trader, AuthContext
+from src.infrastructure.api.auth import AuthContext, require_trader
 from src.infrastructure.database import get_db_pool_async
 from src.infrastructure.repositories.runtime_event_repository_pg import (
     StrategyRuntimeEventRepositoryPG,
@@ -320,18 +320,18 @@ async def validate_strategy(
         strategy_def = await repo.get_by_id(strategy_id)
         if not strategy_def:
             raise HTTPException(status_code=404, detail=f"Strategy {strategy_id} not found")
-        
+
         # Get active version
         versions = await repo.list_versions(strategy_id)
         if not versions:
             raise HTTPException(status_code=400, detail="No configuration versions found")
-        
+
         active_version = next((v for v in versions if v.is_active), versions[-1])
-        
+
         # Validate the configuration
         from src.domain.strategies.config_schema import validate_strategy_config
         is_valid, issues = validate_strategy_config(active_version.config)
-        
+
         return {
             "strategy_id": str(strategy_id),
             "version": active_version.version,

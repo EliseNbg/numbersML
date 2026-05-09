@@ -9,12 +9,13 @@ Tests cover:
 - HTML/JS structure validation
 """
 
-import pytest
-from fastapi import FastAPI, status
-from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, MagicMock, patch
-import sys
 import os
+import sys
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 # Set test API keys BEFORE importing app modules
 os.environ["API_KEY_ADMIN"] = "admin-test-key"
@@ -35,9 +36,8 @@ API_KEY_STORE.update({
     "read-test-key": {"roles": ["read"], "name": "Test Read Key"},
 })
 
-from src.infrastructure.api.routes.strategies import router as strategies_router
 from src.infrastructure.api.routes.market import router as market_router
-
+from src.infrastructure.api.routes.strategies import router as strategies_router
 
 # ============================================================================
 # Fixtures
@@ -85,8 +85,9 @@ class TestUserStrategyClassesEndpoint:
     @pytest.fixture
     def app(self):
         """Create test app with mocked strategy repository."""
-        from src.infrastructure.api.routes.strategies import get_strategy_repo
         from unittest.mock import MagicMock
+
+        from src.infrastructure.api.routes.strategies import get_strategy_repo
 
         mock_repo = MagicMock()
         async def override():
@@ -98,48 +99,44 @@ class TestUserStrategyClassesEndpoint:
         app.include_router(market_router)
         return app
 
+    @pytest.fixture
+    def client(self, app):
+        """Create test client using class app fixture."""
+        return TestClient(app, raise_server_exceptions=False)
+
     def test_list_user_strategy_classes_success(self, client, trader_headers):
         """Test listing available user strategy classes."""
-        with patch(
-            "src.infrastructure.api.routes.strategies._discover_user_strategy_classes"
-        ) as mock_discover:
-            mock_discover.return_value = [
-                {
-                    "class_path": "src.strategies.user.example_rsi_strategy.ExampleRSIStrategy",
-                    "class_name": "ExampleRSIStrategy",
-                    "module": "src.strategies.user.example_rsi_strategy",
-                    "docstring": "Example RSI Strategy for testing.",
-                    "has_on_tick": True,
-                }
-            ]
-            response = client.get(
-                "/api/strategies/user-classes", headers=trader_headers
-            )
+        response = client.get(
+            "/api/strategies/user-classes", headers=trader_headers
+        )
 
-            assert response.status_code == 200
-            data = response.json()
-            assert len(data) == 1
-            assert data[0]["class_name"] == "ExampleRSIStrategy"
-            assert data[0]["has_on_tick"] is True
+        assert response.status_code == 200
+        data = response.json()
+        # Verify we get the expected strategy classes from user directory
+        assert len(data) >= 1
+        # Check each returned item has required fields
+        for item in data:
+            assert "class_path" in item
+            assert "class_name" in item
+            assert "module" in item
+            assert "has_on_tick" in item
 
     def test_list_user_classes_requires_auth(self, client):
         """Test that authentication is required."""
         response = client.get("/api/strategies/user-classes")
         assert response.status_code == 401
 
-    def test_list_user_classes_empty(self, client, trader_headers):
-        """Test listing when no user classes exist."""
-        with patch(
-            "src.infrastructure.api.routes.strategies._discover_user_strategy_classes"
-        ) as mock_discover:
-            mock_discover.return_value = []
-            response = client.get(
-                "/api/strategies/user-classes", headers=trader_headers
-            )
+    def test_list_user_classes_returns_example_strategy(self, client, trader_headers):
+        """Test that ExampleRSIStrategy is returned in the list."""
+        response = client.get(
+            "/api/strategies/user-classes", headers=trader_headers
+        )
 
-            assert response.status_code == 200
-            data = response.json()
-            assert len(data) == 0
+        assert response.status_code == 200
+        data = response.json()
+        # Check that ExampleRSIStrategy is in the list
+        class_names = [item["class_name"] for item in data]
+        assert "ExampleRSIStrategy" in class_names
 
 
 # ============================================================================

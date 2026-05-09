@@ -10,7 +10,6 @@ Tests:
 
 import os
 import sys
-from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI, status
@@ -35,17 +34,17 @@ API_KEY_STORE.update({
     "read-test-key": {"roles": ["read"], "name": "Test Read Key"},
 })
 
-from src.infrastructure.api.routes.dashboard import router as dashboard_router
-from src.infrastructure.api.routes.symbols import router as symbols_router
-from src.infrastructure.api.routes.indicators import router as indicators_router
+from src.infrastructure.api.routes.candles import router as candles_router
 from src.infrastructure.api.routes.config import router as config_router
+from src.infrastructure.api.routes.dashboard import router as dashboard_router
+from src.infrastructure.api.routes.indicators import router as indicators_router
+from src.infrastructure.api.routes.market import router as market_router
+from src.infrastructure.api.routes.ml import router as ml_router
 from src.infrastructure.api.routes.pipeline import router as pipeline_router
 from src.infrastructure.api.routes.strategies import router as strategies_router
-from src.infrastructure.api.routes.market import router as market_router
 from src.infrastructure.api.routes.strategy_backtest import router as strategy_backtest_router
-from src.infrastructure.api.routes.candles import router as candles_router
+from src.infrastructure.api.routes.symbols import router as symbols_router
 from src.infrastructure.api.routes.target_values import router as target_values_router
-from src.infrastructure.api.routes.ml import router as ml_router
 
 
 class TestDashboardRoutes:
@@ -426,10 +425,23 @@ class TestPipelineRoutes:
 class TestStrategyRoutes:
     """Test strategy API routes."""
 
+    @pytest.fixture(autouse=True)
+    def reset_db_pool(self):
+        """Reset database pool state before and after each test."""
+        import src.infrastructure.database as db_module
+        from src.infrastructure.database import set_db_pool
+
+        # Save original
+        original_pool = db_module._db_pool
+        yield
+        # Restore original after test
+        set_db_pool(original_pool)
+
     @pytest.fixture
     def app(self) -> FastAPI:
         """Create test app with strategy routes."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock
+
         import asyncpg
 
         app = FastAPI()
