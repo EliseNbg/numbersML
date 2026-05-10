@@ -174,20 +174,33 @@ class StrategyLifecycleService:
         """Deactivate a strategy (stop processing ticks).
 
         Transitions: RUNNING -> STOPPED
+        Idempotent: returns True if already STOPPED or no runtime state.
 
         Args:
             strategy_id: ID of strategy to deactivate
             metadata: Optional metadata for the deactivation event
 
         Returns:
-            True if deactivation succeeded
+            True if deactivation succeeded (or already stopped)
 
         Raises:
-            ValueError: If strategy not found or transition invalid
+            ValueError: If strategy not found
         """
+        # Check if strategy exists first
+        strategy_def = await self._strategy_repo.get_by_id(strategy_id)
+        if strategy_def is None:
+            raise ValueError(f"Strategy {strategy_id} not found")
+
         runtime_state = self._runtime_states.get(strategy_id)
         if runtime_state is None:
-            raise ValueError(f"No runtime state for strategy {strategy_id}")
+            # Strategy exists but never activated — treat as already stopped
+            logger.info(f"Strategy {strategy_id} has no runtime state (already stopped)")
+            return True
+
+        # Already stopped? Idempotent — treat as success
+        if runtime_state.state == RuntimeState.STOPPED:
+            logger.info(f"Strategy {strategy_id} already stopped")
+            return True
 
         if not runtime_state.can_transition_to(RuntimeState.STOPPED):
             raise ValueError(
@@ -195,7 +208,6 @@ class StrategyLifecycleService:
                 f"invalid transition from {runtime_state.state.value}"
             )
 
-        strategy_def = await self._strategy_repo.get_by_id(strategy_id)
         old_state = runtime_state.state
 
         # Remove from manager (stops tick processing)
@@ -208,15 +220,14 @@ class StrategyLifecycleService:
         self._runtime_states[strategy_id] = new_state
 
         # Persist event
-        if strategy_def:
-            await self._record_lifecycle_event(
-                strategy_def=strategy_def,
-                runtime_state=new_state,
-                from_state=old_state,
-                to_state=RuntimeState.STOPPED,
-                trigger="deactivate",
-                details=metadata or {},
-            )
+        await self._record_lifecycle_event(
+            strategy_def=strategy_def,
+            runtime_state=new_state,
+            from_state=old_state,
+            to_state=RuntimeState.STOPPED,
+            trigger="deactivate",
+            details=metadata or {},
+        )
 
         logger.info(f"Strategy {strategy_id} deactivated")
         return True
@@ -229,6 +240,7 @@ class StrategyLifecycleService:
         """Pause a running strategy.
 
         Transitions: RUNNING -> PAUSED
+        Idempotent: returns True if already PAUSED or STOPPED.
 
         Args:
             strategy_id: ID of strategy to pause
@@ -238,11 +250,23 @@ class StrategyLifecycleService:
             True if pause succeeded
 
         Raises:
-            ValueError: If strategy not found or transition invalid
+            ValueError: If strategy not found
         """
+        # Check if strategy exists first
+        strategy_def = await self._strategy_repo.get_by_id(strategy_id)
+        if strategy_def is None:
+            raise ValueError(f"Strategy {strategy_id} not found")
+
         runtime_state = self._runtime_states.get(strategy_id)
         if runtime_state is None:
-            raise ValueError(f"No runtime state for strategy {strategy_id}")
+            # Strategy exists but never activated — treat as already stopped
+            logger.info(f"Strategy {strategy_id} has no runtime state (cannot pause, already stopped)")
+            return True
+
+        # Already paused? Idempotent — treat as success
+        if runtime_state.state == RuntimeState.PAUSED:
+            logger.info(f"Strategy {strategy_id} already paused")
+            return True
 
         if not runtime_state.can_transition_to(RuntimeState.PAUSED):
             raise ValueError(
@@ -250,7 +274,6 @@ class StrategyLifecycleService:
                 f"invalid transition from {runtime_state.state.value}"
             )
 
-        strategy_def = await self._strategy_repo.get_by_id(strategy_id)
         old_state = runtime_state.state
 
         # Pause the strategy instance
@@ -263,15 +286,14 @@ class StrategyLifecycleService:
         self._runtime_states[strategy_id] = new_state
 
         # Persist event
-        if strategy_def:
-            await self._record_lifecycle_event(
-                strategy_def=strategy_def,
-                runtime_state=new_state,
-                from_state=old_state,
-                to_state=RuntimeState.PAUSED,
-                trigger="pause",
-                details=metadata or {},
-            )
+        await self._record_lifecycle_event(
+            strategy_def=strategy_def,
+            runtime_state=new_state,
+            from_state=old_state,
+            to_state=RuntimeState.PAUSED,
+            trigger="pause",
+            details=metadata or {},
+        )
 
         logger.info(f"Strategy {strategy_id} paused")
         return True
@@ -284,6 +306,7 @@ class StrategyLifecycleService:
         """Resume a paused strategy.
 
         Transitions: PAUSED -> RUNNING
+        Idempotent: returns True if already RUNNING.
 
         Args:
             strategy_id: ID of strategy to resume
@@ -293,11 +316,23 @@ class StrategyLifecycleService:
             True if resume succeeded
 
         Raises:
-            ValueError: If strategy not found or transition invalid
+            ValueError: If strategy not found
         """
+        # Check if strategy exists first
+        strategy_def = await self._strategy_repo.get_by_id(strategy_id)
+        if strategy_def is None:
+            raise ValueError(f"Strategy {strategy_id} not found")
+
         runtime_state = self._runtime_states.get(strategy_id)
         if runtime_state is None:
-            raise ValueError(f"No runtime state for strategy {strategy_id}")
+            # Strategy exists but never activated — treat as already stopped
+            logger.info(f"Strategy {strategy_id} has no runtime state (cannot resume, already stopped)")
+            return True
+
+        # If already running, treat as success (idempotent)
+        if runtime_state.state == RuntimeState.RUNNING:
+            logger.info(f"Strategy {strategy_id} already running")
+            return True
 
         if not runtime_state.can_transition_to(RuntimeState.RUNNING):
             raise ValueError(
@@ -305,7 +340,6 @@ class StrategyLifecycleService:
                 f"invalid transition from {runtime_state.state.value}"
             )
 
-        strategy_def = await self._strategy_repo.get_by_id(strategy_id)
         old_state = runtime_state.state
 
         # Resume the strategy instance
@@ -318,15 +352,14 @@ class StrategyLifecycleService:
         self._runtime_states[strategy_id] = new_state
 
         # Persist event
-        if strategy_def:
-            await self._record_lifecycle_event(
-                strategy_def=strategy_def,
-                runtime_state=new_state,
-                from_state=old_state,
-                to_state=RuntimeState.RUNNING,
-                trigger="resume",
-                details=metadata or {},
-            )
+        await self._record_lifecycle_event(
+            strategy_def=strategy_def,
+            runtime_state=new_state,
+            from_state=old_state,
+            to_state=RuntimeState.RUNNING,
+            trigger="resume",
+            details=metadata or {},
+        )
 
         logger.info(f"Strategy {strategy_id} resumed")
         return True
