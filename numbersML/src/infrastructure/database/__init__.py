@@ -5,10 +5,11 @@ Provides database pool access for dependency injection.
 All connections enforce UTC timezone for consistent datetime handling.
 """
 
-import asyncpg
 from typing import Optional
 
-__all__ = ['_init_utc', 'set_db_pool', 'get_db_pool', 'get_db_pool_async']
+import asyncpg
+
+__all__ = ["_init_utc", "set_db_pool", "get_db_pool", "get_db_pool_async"]
 
 
 async def _init_utc(conn: asyncpg.Connection) -> None:
@@ -29,10 +30,10 @@ def set_db_pool(pool: asyncpg.Pool) -> None:
 def get_db_pool() -> asyncpg.Pool:
     """
     Get database pool.
-    
+
     Returns:
         Database pool instance
-    
+
     Raises:
         RuntimeError: If pool is not initialized
     """
@@ -44,7 +45,7 @@ def get_db_pool() -> asyncpg.Pool:
 async def get_db_pool_async() -> asyncpg.Pool:
     """
     Async dependency for getting database pool.
-    
+
     Returns:
         Database pool instance
     """

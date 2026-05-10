@@ -11,7 +11,7 @@ Tests:
 
 import asyncio
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -23,7 +23,7 @@ from src.pipeline.websocket_manager import AggTrade
 
 def make_trade(trade_id: int, symbol: str = "BTCUSDC", price: float = 67000.0) -> AggTrade:
     """Create a mock AggTrade."""
-    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    now_ms = int(datetime.now(UTC).timestamp() * 1000)
     return AggTrade(
         event_type="aggTrade",
         event_time=now_ms,
@@ -61,7 +61,7 @@ class TestAggTrade:
         trade = make_trade(1)
         ts = trade.timestamp
         assert ts.tzinfo is not None
-        assert ts.tzinfo == timezone.utc
+        assert ts.tzinfo == UTC
 
     def test_quote_quantity(self):
         trade = make_trade(1, price=67000.0)
@@ -122,11 +122,11 @@ class TestRecoveryManager:
         """Gap in trade IDs should trigger recovery."""
         await recovery.process_trade(make_trade(100))
         # Next trade jumps to 105 - gap of 4 trades
-        with patch.object(recovery, '_recover_gap', new_callable=AsyncMock) as mock_recover:
+        with patch.object(recovery, "_recover_gap", new_callable=AsyncMock) as mock_recover:
             await recovery.process_trade(make_trade(105))
             # Give time for the task to be created
             await asyncio.sleep(0.1)
-            assert recovery._stats['gaps_detected'] == 1
+            assert recovery._stats["gaps_detected"] == 1
 
     @pytest.mark.asyncio
     async def test_process_trade_updates_timestamp(self, recovery):
@@ -134,7 +134,7 @@ class TestRecoveryManager:
         trade = make_trade(100)
         await recovery.process_trade(trade)
         assert recovery._last_timestamp == trade.timestamp
-        assert recovery._last_timestamp.tzinfo == timezone.utc
+        assert recovery._last_timestamp.tzinfo == UTC
 
     @pytest.mark.asyncio
     async def test_state_timestamp_aware(self, recovery):
@@ -163,6 +163,7 @@ class TestRecoveryGapHandling:
         """Recovery should call on_trade for each recovered trade."""
         pool, _ = make_mock_pool()
         recovered_trades = []
+
         async def on_trade(trade):
             recovered_trades.append(trade)
 
@@ -180,13 +181,14 @@ class TestRecoveryGapHandling:
         await recovery._recover_gap(from_id=100, to_id=104)
 
         assert len(recovered_trades) == 5
-        assert recovery._stats['trades_recovered'] == 5
+        assert recovery._stats["trades_recovered"] == 5
 
     @pytest.mark.asyncio
     async def test_recovery_respects_to_id(self):
         """Recovery should not process trades beyond to_id."""
         pool, _ = make_mock_pool()
         recovered_trades = []
+
         async def on_trade(trade):
             recovered_trades.append(trade)
 
@@ -211,6 +213,7 @@ class TestRecoveryGapHandling:
         """Recovery should loop for gaps larger than 1000 trades."""
         pool, _ = make_mock_pool()
         recovered_trades = []
+
         async def on_trade(trade):
             recovered_trades.append(trade)
 
@@ -238,6 +241,7 @@ class TestRecoveryGapHandling:
         """Recovery should call on_trade for each recovered trade."""
         pool, _ = make_mock_pool()
         recovered = []
+
         async def on_trade(trade):
             recovered.append(trade)
 
@@ -266,13 +270,15 @@ class TestRecoveryInitialization:
         """Initialize should load state from database."""
         pool, conn = make_mock_pool()
         conn.fetchval = AsyncMock(return_value=1)
-        conn.fetchrow = AsyncMock(return_value={
-            'last_trade_id': 12345,
-            'last_timestamp': datetime(2026, 4, 1, 5, 0, 0),
-            'is_recovering': False,
-            'gaps_detected': 5,
-            'trades_processed': 1000,
-        })
+        conn.fetchrow = AsyncMock(
+            return_value={
+                "last_trade_id": 12345,
+                "last_timestamp": datetime(2026, 4, 1, 5, 0, 0),
+                "is_recovering": False,
+                "gaps_detected": 5,
+                "trades_processed": 1000,
+            }
+        )
 
         recovery = RecoveryManager(
             symbol="BTC/USDC",
@@ -282,7 +288,7 @@ class TestRecoveryInitialization:
         await recovery.initialize()
 
         assert recovery._last_trade_id == 12345
-        assert recovery._stats['gaps_detected'] == 5
+        assert recovery._stats["gaps_detected"] == 5
 
     @pytest.mark.asyncio
     async def test_initialize_handles_missing_state(self):
@@ -306,7 +312,7 @@ class TestBinanceRESTClient:
 
     def test_trade_timestamp_aware(self):
         """Trades from REST should have aware timestamps."""
-        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        now_ms = int(datetime.now(UTC).timestamp() * 1000)
         trade = AggTrade(
             event_type="aggTrade",
             event_time=now_ms,
@@ -319,7 +325,7 @@ class TestBinanceRESTClient:
             trade_time=now_ms,
             is_buyer_maker=True,
         )
-        assert trade.timestamp.tzinfo == timezone.utc
+        assert trade.timestamp.tzinfo == UTC
 
 
 class TestGapFillingEndToEnd:
@@ -329,6 +335,7 @@ class TestGapFillingEndToEnd:
     async def test_full_gap_detection_and_recovery(self):
         """Simulate: trade 100 arrives, then trade 110 (gap of 9)."""
         processed_trades = []
+
         async def on_trade(trade):
             processed_trades.append(trade)
 
@@ -372,7 +379,7 @@ class TestGapFillingEndToEnd:
             await recovery.process_trade(make_trade(i))
 
         assert recovery._last_trade_id == 199
-        assert recovery._stats['gaps_detected'] == 0
+        assert recovery._stats["gaps_detected"] == 0
 
 
 class TestPipelineRestartRecovery:
@@ -389,19 +396,23 @@ class TestPipelineRestartRecovery:
         First WebSocket trade is ID 1050 -> gap of 49 trades to recover.
         """
         recovered_trades = []
+
         async def on_trade(trade):
             recovered_trades.append(trade)
 
         pool, conn = make_mock_pool()
         # Simulate DB has state from previous run
-        from datetime import datetime, timezone
-        conn.fetchrow = AsyncMock(return_value={
-            'last_trade_id': 1000,
-            'last_timestamp': datetime(2026, 4, 1, 4, 0, 0, tzinfo=timezone.utc),
-            'is_recovering': False,
-            'gaps_detected': 0,
-            'trades_processed': 1000,
-        })
+        from datetime import datetime
+
+        conn.fetchrow = AsyncMock(
+            return_value={
+                "last_trade_id": 1000,
+                "last_timestamp": datetime(2026, 4, 1, 4, 0, 0, tzinfo=UTC),
+                "is_recovering": False,
+                "gaps_detected": 0,
+                "trades_processed": 1000,
+            }
+        )
 
         recovery = RecoveryManager(
             symbol="BTC/USDC",
@@ -425,7 +436,7 @@ class TestPipelineRestartRecovery:
         # Recovery called on_trade for 1001-1049 (49 trades)
         assert len(recovered_trades) == 49
         assert recovery._last_trade_id == 1050
-        assert recovery._stats['gaps_detected'] == 1
+        assert recovery._stats["gaps_detected"] == 1
 
     @pytest.mark.asyncio
     async def test_restart_with_no_gap(self):
@@ -434,14 +445,17 @@ class TestPipelineRestartRecovery:
         No gap should be detected.
         """
         pool, conn = make_mock_pool()
-        from datetime import datetime, timezone
-        conn.fetchrow = AsyncMock(return_value={
-            'last_trade_id': 5000,
-            'last_timestamp': datetime(2026, 4, 1, 6, 0, 0, tzinfo=timezone.utc),
-            'is_recovering': False,
-            'gaps_detected': 0,
-            'trades_processed': 5000,
-        })
+        from datetime import datetime
+
+        conn.fetchrow = AsyncMock(
+            return_value={
+                "last_trade_id": 5000,
+                "last_timestamp": datetime(2026, 4, 1, 6, 0, 0, tzinfo=UTC),
+                "is_recovering": False,
+                "gaps_detected": 0,
+                "trades_processed": 5000,
+            }
+        )
 
         recovery = RecoveryManager(
             symbol="ETH/USDC",
@@ -457,7 +471,7 @@ class TestPipelineRestartRecovery:
         await recovery.process_trade(make_trade(5002))
 
         assert recovery._last_trade_id == 5002
-        assert recovery._stats['gaps_detected'] == 0
+        assert recovery._stats["gaps_detected"] == 0
 
     @pytest.mark.asyncio
     async def test_restart_large_gap_loops_recovery(self):
@@ -466,18 +480,22 @@ class TestPipelineRestartRecovery:
         Gap is 5000 trades (needs multiple REST batches).
         """
         recovered_trades = []
+
         async def on_trade(trade):
             recovered_trades.append(trade)
 
         pool, conn = make_mock_pool()
-        from datetime import datetime, timezone
-        conn.fetchrow = AsyncMock(return_value={
-            'last_trade_id': 100000,
-            'last_timestamp': datetime(2026, 4, 1, 0, 0, 0, tzinfo=timezone.utc),
-            'is_recovering': False,
-            'gaps_detected': 2,
-            'trades_processed': 100000,
-        })
+        from datetime import datetime
+
+        conn.fetchrow = AsyncMock(
+            return_value={
+                "last_trade_id": 100000,
+                "last_timestamp": datetime(2026, 4, 1, 0, 0, 0, tzinfo=UTC),
+                "is_recovering": False,
+                "gaps_detected": 2,
+                "trades_processed": 100000,
+            }
+        )
 
         recovery = RecoveryManager(
             symbol="BTC/USDC",
@@ -525,18 +543,22 @@ class TestInitialRecovery:
         Then WebSocket delivers 1501 with no gap.
         """
         recovered_trades = []
+
         async def on_trade(trade):
             recovered_trades.append(trade)
 
         pool, conn = make_mock_pool()
-        from datetime import datetime, timezone
-        conn.fetchrow = AsyncMock(return_value={
-            'last_trade_id': 1000,
-            'last_timestamp': datetime(2026, 4, 1, 4, 0, 0, tzinfo=timezone.utc),
-            'is_recovering': False,
-            'gaps_detected': 0,
-            'trades_processed': 1000,
-        })
+        from datetime import datetime
+
+        conn.fetchrow = AsyncMock(
+            return_value={
+                "last_trade_id": 1000,
+                "last_timestamp": datetime(2026, 4, 1, 4, 0, 0, tzinfo=UTC),
+                "is_recovering": False,
+                "gaps_detected": 0,
+                "trades_processed": 1000,
+            }
+        )
 
         recovery = RecoveryManager(
             symbol="BTC/USDC",
@@ -569,14 +591,17 @@ class TestInitialRecovery:
         After initial recovery, WebSocket should not trigger any gap recovery.
         """
         pool, conn = make_mock_pool()
-        from datetime import datetime, timezone
-        conn.fetchrow = AsyncMock(return_value={
-            'last_trade_id': 5000,
-            'last_timestamp': datetime(2026, 4, 1, 6, 30, 0, tzinfo=timezone.utc),
-            'is_recovering': False,
-            'gaps_detected': 0,
-            'trades_processed': 5000,
-        })
+        from datetime import datetime
+
+        conn.fetchrow = AsyncMock(
+            return_value={
+                "last_trade_id": 5000,
+                "last_timestamp": datetime(2026, 4, 1, 6, 30, 0, tzinfo=UTC),
+                "is_recovering": False,
+                "gaps_detected": 0,
+                "trades_processed": 5000,
+            }
+        )
 
         recovery = RecoveryManager(
             symbol="ETH/USDC",
@@ -590,4 +615,4 @@ class TestInitialRecovery:
             await recovery.process_trade(make_trade(i))
 
         assert recovery._last_trade_id == 5099
-        assert recovery._stats['gaps_detected'] == 0
+        assert recovery._stats["gaps_detected"] == 0

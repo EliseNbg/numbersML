@@ -80,7 +80,7 @@ function bindEventListeners() {
         openModifyModal();
     });
     document.getElementById('btn-backtest').addEventListener('click', () => {
-        window.location.href = `backtest_ml.html?strategy_id=${currentStrategyId}`;
+        window.location.href = `backtest_strategy.html?strategy_id=${currentStrategyId}`;
     });
 
     // Modify modal

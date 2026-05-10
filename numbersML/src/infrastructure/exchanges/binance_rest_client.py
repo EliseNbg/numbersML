@@ -5,12 +5,13 @@ Provides methods for fetching historical trades and klines/candles.
 """
 
 import asyncio
-import aiohttp
-import time
 import logging
-from datetime import datetime, timedelta, timezone
+import time
+from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Dict, List, Optional, Any
+from typing import Any, Optional
+
+import aiohttp
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ class BinanceRESTClient:
 
         logger.info("BinanceRESTClient initialized")
 
-    async def __aenter__(self) -> 'BinanceRESTClient':
+    async def __aenter__(self) -> "BinanceRESTClient":
         """Async context manager entry."""
         await self._get_session()
         return self
@@ -77,7 +78,7 @@ class BinanceRESTClient:
         if self._session is None or self._session.closed:
             headers = {}
             if self.api_key:
-                headers['X-MBX-APIKEY'] = self.api_key
+                headers["X-MBX-APIKEY"] = self.api_key
 
             self._session = aiohttp.ClientSession(
                 headers=headers,
@@ -97,7 +98,7 @@ class BinanceRESTClient:
         start_time: datetime,
         end_time: datetime,
         limit: int = 1000,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Get historical aggregate trades.
 
@@ -113,7 +114,7 @@ class BinanceRESTClient:
         Raises:
             BinanceAPIError: If API request fails
         """
-        all_trades: List[Dict[str, Any]] = []
+        all_trades: list[dict[str, Any]] = []
 
         from_id: Optional[int] = None
         start_ts = int(start_time.timestamp() * 1000)
@@ -122,17 +123,17 @@ class BinanceRESTClient:
         while True:
             # Build request params
             params = {
-                'symbol': symbol,
-                'startTime': start_ts,
-                'endTime': end_ts,
-                'limit': limit,
+                "symbol": symbol,
+                "startTime": start_ts,
+                "endTime": end_ts,
+                "limit": limit,
             }
 
             if from_id is not None:
-                params['fromId'] = from_id
+                params["fromId"] = from_id
 
             # Make request
-            trades = await self._request('GET', '/aggTrades', params)
+            trades = await self._request("GET", "/aggTrades", params)
 
             if not trades:
                 break
@@ -140,7 +141,7 @@ class BinanceRESTClient:
             all_trades.extend(trades)
 
             # Update for next iteration
-            from_id = trades[-1]['a']  # Last aggregate trade ID
+            from_id = trades[-1]["a"]  # Last aggregate trade ID
 
             # Check if we have more data
             if len(trades) < limit:
@@ -163,7 +164,7 @@ class BinanceRESTClient:
         start_time: datetime,
         end_time: datetime,
         limit: int = 1000,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Get kline/candlestick data.
 
@@ -180,7 +181,7 @@ class BinanceRESTClient:
         Raises:
             BinanceAPIError: If API request fails
         """
-        all_klines: List[Dict[str, Any]] = []
+        all_klines: list[dict[str, Any]] = []
 
         current_start = int(start_time.timestamp() * 1000)
         end_ts = int(end_time.timestamp() * 1000)
@@ -188,15 +189,15 @@ class BinanceRESTClient:
         while current_start < end_ts:
             # Build request params
             params = {
-                'symbol': symbol,
-                'interval': interval,
-                'startTime': current_start,
-                'endTime': end_ts,
-                'limit': limit,
+                "symbol": symbol,
+                "interval": interval,
+                "startTime": current_start,
+                "endTime": end_ts,
+                "limit": limit,
             }
 
             # Make request
-            klines = await self._request('GET', '/klines', params)
+            klines = await self._request("GET", "/klines", params)
 
             if not klines:
                 break
@@ -227,14 +228,14 @@ class BinanceRESTClient:
         Raises:
             BinanceAPIError: If API request fails
         """
-        data = await self._request('GET', '/time')
-        return datetime.fromtimestamp(data['serverTime'] / 1000, tz=timezone.utc)
+        data = await self._request("GET", "/time")
+        return datetime.fromtimestamp(data["serverTime"] / 1000, tz=UTC)
 
     async def _request(
         self,
         method: str,
         path: str,
-        params: Optional[Dict[str, Any]] = None,
+        params: Optional[dict[str, Any]] = None,
     ) -> Any:
         """
         Make API request.
@@ -260,9 +261,7 @@ class BinanceRESTClient:
         async with session.request(method, url, params=params) as response:
             if response.status != 200:
                 error_data = await response.json()
-                raise BinanceAPIError(
-                    f"API error {response.status}: {error_data}"
-                )
+                raise BinanceAPIError(f"API error {response.status}: {error_data}")
 
             return await response.json()
 
@@ -304,8 +303,7 @@ class RateLimiter:
 
         # Replenish tokens based on elapsed time
         self._tokens = min(
-            self.max_weight,
-            self._tokens + elapsed * (self.max_weight / self.window_seconds)
+            self.max_weight, self._tokens + elapsed * (self.max_weight / self.window_seconds)
         )
         self._last_update = now
 
@@ -339,7 +337,7 @@ class BinanceAPIError(Exception):
         super().__init__(self.message)
 
 
-def parse_trade_data(trade: Dict[str, Any]) -> Dict[str, Any]:
+def parse_trade_data(trade: dict[str, Any]) -> dict[str, Any]:
     """
     Parse aggregate trade data from Binance.
 
@@ -350,16 +348,16 @@ def parse_trade_data(trade: Dict[str, Any]) -> Dict[str, Any]:
         Parsed trade dictionary
     """
     return {
-        'trade_id': str(trade['a']),  # Aggregate trade ID
-        'price': Decimal(trade['p']),
-        'quantity': Decimal(trade['q']),
-        'time': datetime.fromtimestamp(trade['T'] / 1000, tz=timezone.utc),
-        'is_buyer_maker': trade['m'],
-        'side': 'SELL' if trade['m'] else 'BUY',
+        "trade_id": str(trade["a"]),  # Aggregate trade ID
+        "price": Decimal(trade["p"]),
+        "quantity": Decimal(trade["q"]),
+        "time": datetime.fromtimestamp(trade["T"] / 1000, tz=UTC),
+        "is_buyer_maker": trade["m"],
+        "side": "SELL" if trade["m"] else "BUY",
     }
 
 
-def parse_kline_data(kline: List[Any]) -> Dict[str, Any]:
+def parse_kline_data(kline: list[Any]) -> dict[str, Any]:
     """
     Parse kline data from Binance.
 
@@ -370,13 +368,13 @@ def parse_kline_data(kline: List[Any]) -> Dict[str, Any]:
         Parsed kline dictionary
     """
     return {
-        'open_time': datetime.fromtimestamp(kline[0] / 1000, tz=timezone.utc),
-        'close_time': datetime.fromtimestamp(kline[6] / 1000, tz=timezone.utc),
-        'open': Decimal(kline[1]),
-        'high': Decimal(kline[2]),
-        'low': Decimal(kline[3]),
-        'close': Decimal(kline[4]),
-        'volume': Decimal(kline[5]),
-        'quote_volume': Decimal(kline[7]),
-        'trades_count': kline[8],
+        "open_time": datetime.fromtimestamp(kline[0] / 1000, tz=UTC),
+        "close_time": datetime.fromtimestamp(kline[6] / 1000, tz=UTC),
+        "open": Decimal(kline[1]),
+        "high": Decimal(kline[2]),
+        "low": Decimal(kline[3]),
+        "close": Decimal(kline[4]),
+        "volume": Decimal(kline[5]),
+        "quote_volume": Decimal(kline[7]),
+        "trades_count": kline[8],
     }

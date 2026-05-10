@@ -2,6 +2,7 @@
 Pytest configuration for integration tests.
 Sets up test data in the database before tests run.
 """
+
 import asyncio
 import logging
 import os
@@ -12,7 +13,12 @@ import asyncpg
 import pytest
 
 # Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'src'))
+sys.path.insert(
+    0,
+    os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "src"
+    ),
+)
 
 from src.infrastructure.database.config import get_test_db_url  # noqa: E402
 
@@ -64,9 +70,7 @@ def setup_test_data():
 
     async def load_test_data():
         # Run migrations first
-        project_root = os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        )
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         migrations_dir = os.path.join(project_root, "migrations")
 
         # Connect to database with retry logic
@@ -103,7 +107,7 @@ def setup_test_data():
                 except Exception as e:
                     if "already exists" not in str(e):
                         print(f"Warning: CLEAN_SCHEMA.sql loading issue: {e}")
-            
+
             # Run test_data.sql (idempotent - uses ON CONFLICT or IF NOT EXISTS)
             test_data_path = os.path.join(migrations_dir, "test_data.sql")
             if os.path.exists(test_data_path):

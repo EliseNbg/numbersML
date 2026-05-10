@@ -1,6 +1,6 @@
 """Unit tests for paper market service."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -60,8 +60,8 @@ class TestPaperMarketService:
             quantity=Decimal("1"),
             status=OrderStatus.NEW,
             mode="paper",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         service.seed_order(pending_order)
 

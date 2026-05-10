@@ -10,11 +10,10 @@ Enhanced with:
 """
 
 import asyncio
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
-from typing import Optional, List, Dict, Any
 import logging
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +39,7 @@ class DataGap:
     gap_start: datetime
     gap_end: datetime
     gap_seconds: float
-    detected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    detected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     is_filled: bool = False
     filled_at: Optional[datetime] = None
 
@@ -89,12 +88,12 @@ class GapDetector:
         self.max_gap_seconds: int = max_gap_seconds
 
         # State per symbol
-        self._last_tick_time: Dict[int, datetime] = {}
-        self._gaps: List[DataGap] = []
+        self._last_tick_time: dict[int, datetime] = {}
+        self._gaps: list[DataGap] = []
 
     def start_monitoring(self, symbol_id: int, symbol: str) -> None:
         """Start monitoring a symbol for gaps."""
-        self._last_tick_time[symbol_id] = datetime.now(timezone.utc)
+        self._last_tick_time[symbol_id] = datetime.now(UTC)
         logger.info(f"Started monitoring {symbol} for gaps")
 
     def check_tick(
@@ -141,18 +140,18 @@ class GapDetector:
         self._last_tick_time[symbol_id] = tick_time
         return None
 
-    def get_unfilled_gaps(self) -> List[DataGap]:
+    def get_unfilled_gaps(self) -> list[DataGap]:
         """Get list of unfilled gaps."""
         return [gap for gap in self._gaps if not gap.is_filled]
 
-    def get_all_gaps(self) -> List[DataGap]:
+    def get_all_gaps(self) -> list[DataGap]:
         """Get all detected gaps."""
         return self._gaps.copy()
 
     def mark_gap_filled(self, gap: DataGap) -> None:
         """Mark a gap as filled."""
         gap.is_filled = True
-        gap.filled_at = datetime.now(timezone.utc)
+        gap.filled_at = datetime.now(UTC)
         logger.info(f"Gap filled: {gap.gap_seconds}s for symbol {gap.symbol_id}")
 
 
@@ -186,15 +185,16 @@ class GapFiller:
         self._rest_client: Optional[Any] = None
 
         # Statistics
-        self._stats: Dict[str, int] = {
-            'gaps_filled': 0,
-            'ticks_fetched': 0,
-            'errors': 0,
+        self._stats: dict[str, int] = {
+            "gaps_filled": 0,
+            "ticks_fetched": 0,
+            "errors": 0,
         }
 
-    async def __aenter__(self) -> 'GapFiller':
+    async def __aenter__(self) -> "GapFiller":
         """Async context manager entry."""
         from src.infrastructure.exchanges.binance_rest_client import BinanceRESTClient
+
         self._rest_client = BinanceRESTClient(api_key=self.binance_api_key)
         return self
 
@@ -217,6 +217,7 @@ class GapFiller:
             # Ensure we have a REST client
             if self._rest_client is None:
                 from src.infrastructure.exchanges.binance_rest_client import BinanceRESTClient
+
                 self._rest_client = BinanceRESTClient(api_key=self.binance_api_key)
 
             # Fetch historical data for gap period
@@ -239,10 +240,10 @@ class GapFiller:
             await self._store_ticks(gap.symbol_id, ticks)
 
             gap.is_filled = True
-            gap.filled_at = datetime.now(timezone.utc)
+            gap.filled_at = datetime.now(UTC)
 
-            self._stats['gaps_filled'] += 1
-            self._stats['ticks_fetched'] += len(ticks)
+            self._stats["gaps_filled"] += 1
+            self._stats["ticks_fetched"] += len(ticks)
 
             logger.info(
                 f"Filled gap for symbol {gap.symbol}: "
@@ -257,7 +258,7 @@ class GapFiller:
 
         except Exception as e:
             logger.error(f"Failed to fill gap: {e}")
-            self._stats['errors'] += 1
+            self._stats["errors"] += 1
             return GapFillResult(
                 gap=gap,
                 ticks_filled=0,
@@ -267,9 +268,9 @@ class GapFiller:
 
     async def fill_gaps_batch(
         self,
-        gaps: List[DataGap],
+        gaps: list[DataGap],
         max_concurrent: int = 3,
-    ) -> List[GapFillResult]:
+    ) -> list[GapFillResult]:
         """
         Fill multiple gaps in batch.
 
@@ -297,12 +298,14 @@ class GapFiller:
         fill_results = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                fill_results.append(GapFillResult(
-                    gap=gaps[i],
-                    ticks_filled=0,
-                    success=False,
-                    error=str(result),
-                ))
+                fill_results.append(
+                    GapFillResult(
+                        gap=gaps[i],
+                        ticks_filled=0,
+                        success=False,
+                        error=str(result),
+                    )
+                )
             else:
                 fill_results.append(result)
 
@@ -318,7 +321,7 @@ class GapFiller:
         symbol: str,
         start: datetime,
         end: datetime,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Fetch historical data from Binance API.
 
@@ -332,10 +335,11 @@ class GapFiller:
         """
         if self._rest_client is None:
             from src.infrastructure.exchanges.binance_rest_client import BinanceRESTClient
+
             self._rest_client = BinanceRESTClient(api_key=self.binance_api_key)
 
         # Convert symbol format (BTC/USDT -> BTCUSDT)
-        binance_symbol = symbol.replace('/', '')
+        binance_symbol = symbol.replace("/", "")
 
         # Fetch aggregate trades
         raw_trades = await self._rest_client.get_historical_trades(
@@ -347,6 +351,7 @@ class GapFiller:
 
         # Parse trades
         from src.infrastructure.exchanges.binance_rest_client import parse_trade_data
+
         parsed_trades = [parse_trade_data(trade) for trade in raw_trades]
 
         logger.debug(f"Fetched {len(parsed_trades)} trades for {symbol}")
@@ -355,7 +360,7 @@ class GapFiller:
     async def _store_ticks(
         self,
         symbol_id: int,
-        ticks: List[Dict[str, Any]],
+        ticks: list[dict[str, Any]],
     ) -> None:
         """
         Store fetched ticks in database.
@@ -376,18 +381,18 @@ class GapFiller:
                 """,
                 [
                     (
-                        t['time'],
+                        t["time"],
                         symbol_id,
-                        t['trade_id'],
-                        t['price'],
-                        t['quantity'],
-                        t['side'],
-                        t['is_buyer_maker'],
+                        t["trade_id"],
+                        t["price"],
+                        t["quantity"],
+                        t["side"],
+                        t["is_buyer_maker"],
                     )
                     for t in ticks
                 ],
             )
 
-    def get_stats(self) -> Dict[str, int]:
+    def get_stats(self) -> dict[str, int]:
         """Get gap filler statistics."""
         return self._stats.copy()

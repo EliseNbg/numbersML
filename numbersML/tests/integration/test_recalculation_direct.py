@@ -63,17 +63,11 @@ async def test_recalculation_direct_integration():
 
 async def cleanup_existing_data(conn: asyncpg.Connection):
     """Clean up any existing test data."""
-    symbol_id = await conn.fetchval(
-        "SELECT id FROM symbols WHERE symbol = $1", TEST_SYMBOL
-    )
+    symbol_id = await conn.fetchval("SELECT id FROM symbols WHERE symbol = $1", TEST_SYMBOL)
 
     if symbol_id:
-        await conn.execute(
-            "DELETE FROM candle_indicators WHERE symbol_id = $1", symbol_id
-        )
-        await conn.execute(
-            "DELETE FROM candles_1s WHERE symbol_id = $1", symbol_id
-        )
+        await conn.execute("DELETE FROM candle_indicators WHERE symbol_id = $1", symbol_id)
+        await conn.execute("DELETE FROM candles_1s WHERE symbol_id = $1", symbol_id)
 
 
 async def setup_test_symbol(conn: asyncpg.Connection) -> int:
@@ -87,9 +81,7 @@ async def setup_test_symbol(conn: asyncpg.Connection) -> int:
         TEST_SYMBOL,
     )
 
-    symbol_id = await conn.fetchval(
-        "SELECT id FROM symbols WHERE symbol = $1", TEST_SYMBOL
-    )
+    symbol_id = await conn.fetchval("SELECT id FROM symbols WHERE symbol = $1", TEST_SYMBOL)
 
     if not symbol_id:
         raise ValueError(f"Failed to create symbol {TEST_SYMBOL}")
@@ -119,17 +111,19 @@ def generate_deterministic_candles(symbol_id: int, start_time: datetime) -> list
     rows = []
     for i in range(TEST_CANDLE_COUNT):
         timestamp = start_time - timedelta(seconds=i)
-        rows.append((
-            symbol_id,
-            timestamp,
-            Decimal(str(round(opens[i], 5))),
-            Decimal(str(round(highs[i], 5))),
-            Decimal(str(round(lows[i], 5))),
-            Decimal(str(round(closes[i], 5))),
-            Decimal(str(round(volumes[i], 6))),
-            Decimal(str(round(volumes[i] * closes[i], 6))),
-            1,  # trade_count
-        ))
+        rows.append(
+            (
+                symbol_id,
+                timestamp,
+                Decimal(str(round(opens[i], 5))),
+                Decimal(str(round(highs[i], 5))),
+                Decimal(str(round(lows[i], 5))),
+                Decimal(str(round(closes[i], 5))),
+                Decimal(str(round(volumes[i], 6))),
+                Decimal(str(round(volumes[i] * closes[i], 6))),
+                1,  # trade_count
+            )
+        )
 
     return rows
 
@@ -142,7 +136,7 @@ async def insert_synthetic_candles(conn: asyncpg.Connection, symbol_id: int) -> 
     # Insert in batches
     batch_size = 1000
     for i in range(0, len(rows), batch_size):
-        batch = rows[i:i + batch_size]
+        batch = rows[i : i + batch_size]
         await conn.executemany(
             """
             INSERT INTO candles_1s (symbol_id, time, open, high, low, close, volume, quote_volume, trade_count)
@@ -153,9 +147,7 @@ async def insert_synthetic_candles(conn: asyncpg.Connection, symbol_id: int) -> 
         )
 
     # Verify count
-    count = await conn.fetchval(
-        "SELECT COUNT(*) FROM candles_1s WHERE symbol_id = $1", symbol_id
-    )
+    count = await conn.fetchval("SELECT COUNT(*) FROM candles_1s WHERE symbol_id = $1", symbol_id)
     assert count == TEST_CANDLE_COUNT, f"Expected {TEST_CANDLE_COUNT} candles, got {count}"
 
     # Get time range
@@ -167,8 +159,10 @@ async def insert_synthetic_candles(conn: asyncpg.Connection, symbol_id: int) -> 
         symbol_id,
     )
 
-    logger.info(f"Inserted {count} candles from {time_range['min_time']} to {time_range['max_time']}")
-    return time_range['min_time']
+    logger.info(
+        f"Inserted {count} candles from {time_range['min_time']} to {time_range['max_time']}"
+    )
+    return time_range["min_time"]
 
 
 async def run_recalculation_direct(pool, symbol_ids: list[int], from_time: datetime):
@@ -177,9 +171,7 @@ async def run_recalculation_direct(pool, symbol_ids: list[int], from_time: datet
     from src.cli.recalculate import recalculate_indicators
 
     # Run recalculation
-    count = await recalculate_indicators(
-        pool, symbol_ids, from_time, None, with_quality_guard=True
-    )
+    count = await recalculate_indicators(pool, symbol_ids, from_time, None, with_quality_guard=True)
 
     logger.info(f"Recalculated {count} indicators")
     assert count > 0, "No indicators were recalculated"
@@ -198,9 +190,9 @@ async def validate_results(conn: asyncpg.Connection, symbol_id: int):
     )
 
     # Should have 1:1 mapping
-    assert indicator_count == candle_count, (
-        f"Expected {candle_count} indicator rows, got {indicator_count}"
-    )
+    assert (
+        indicator_count == candle_count
+    ), f"Expected {candle_count} indicator rows, got {indicator_count}"
 
     # Check time alignment
     candle_times = await conn.fetch(
@@ -213,7 +205,7 @@ async def validate_results(conn: asyncpg.Connection, symbol_id: int):
     assert len(candle_times) == len(indicator_times), "Time count mismatch"
 
     for i, (candle, indicator) in enumerate(zip(candle_times, indicator_times, strict=True)):
-        assert candle['time'] == indicator['time'], f"Time mismatch at index {i}"
+        assert candle["time"] == indicator["time"], f"Time mismatch at index {i}"
 
     # Check indicator values exist
     sample_row = await conn.fetchrow(
@@ -221,10 +213,12 @@ async def validate_results(conn: asyncpg.Connection, symbol_id: int):
     )
 
     assert sample_row is not None, "No indicator data found"
-    values = sample_row['values']
+    values = sample_row["values"]
     assert len(values) > 0, "No indicator values found"
 
-    logger.info(f"Validation passed: {candle_count} candles, {indicator_count} indicators, {len(values)} values per candle")
+    logger.info(
+        f"Validation passed: {candle_count} candles, {indicator_count} indicators, {len(values)} values per candle"
+    )
 
 
 @pytest.mark.integration
@@ -245,6 +239,7 @@ async def test_recalculation_skips_existing_time_ranges():
             # Pre-calculate indicators for first 1000 candles (time range [min_time, min_time + 1000s))
             first_part_end = min_time + timedelta(seconds=1000)
             from src.cli.recalculate import recalculate_indicators
+
             count_first = await recalculate_indicators(
                 pool, [symbol_id], min_time, first_part_end, with_quality_guard=True
             )
@@ -253,9 +248,13 @@ async def test_recalculation_skips_existing_time_ranges():
             # Verify first part has indicators
             first_part_count = await conn.fetchval(
                 "SELECT COUNT(*) FROM candle_indicators WHERE symbol_id = $1 AND time >= $2 AND time < $3",
-                symbol_id, min_time, first_part_end
+                symbol_id,
+                min_time,
+                first_part_end,
             )
-            assert first_part_count == 1000, f"Expected 1000 indicators in first part, got {first_part_count}"
+            assert (
+                first_part_count == 1000
+            ), f"Expected 1000 indicators in first part, got {first_part_count}"
 
             # Now run recalculation on full range (min_time to end)
             count_full = await recalculate_indicators(
@@ -273,7 +272,9 @@ async def test_recalculation_skips_existing_time_ranges():
             total_candles = await conn.fetchval(
                 "SELECT COUNT(*) FROM candles_1s WHERE symbol_id = $1", symbol_id
             )
-            assert total_indicators == total_candles, f"Mismatch: {total_indicators} indicators vs {total_candles} candles"
+            assert (
+                total_indicators == total_candles
+            ), f"Mismatch: {total_indicators} indicators vs {total_candles} candles"
 
             logger.info("Skip existing time ranges test passed")
 

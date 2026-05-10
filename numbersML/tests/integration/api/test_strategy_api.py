@@ -9,12 +9,13 @@ Tests cover:
 - Invalid payload handling
 """
 
-import pytest
-from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
 import os
 import sys
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
+
+import pytest
+from fastapi.testclient import TestClient
 
 # Set test API keys BEFORE importing app
 os.environ["API_KEY_ADMIN"] = "admin-test-key"
@@ -29,15 +30,18 @@ for mod in list(sys.modules.keys()):
 from src.infrastructure.api.auth import API_KEY_STORE
 
 # Update API_KEY_STORE with test keys
-API_KEY_STORE.update({
-    "admin-test-key": {"roles": ["admin"], "name": "Test Admin Key"},
-    "trader-test-key": {"roles": ["trader", "read"], "name": "Test Trader Key"},
-    "read-test-key": {"roles": ["read"], "name": "Test Read Key"},
-})
+API_KEY_STORE.update(
+    {
+        "admin-test-key": {"roles": ["admin"], "name": "Test Admin Key"},
+        "trader-test-key": {"roles": ["trader", "read"], "name": "Test Trader Key"},
+        "read-test-key": {"roles": ["read"], "name": "Test Read Key"},
+    }
+)
+
+from datetime import UTC
 
 from src.infrastructure.api.app import create_app
 from src.infrastructure.database import set_db_pool
-
 
 # ============================================================================
 # Fixtures
@@ -48,6 +52,7 @@ from src.infrastructure.database import set_db_pool
 def client():
     """Create test client with initialized database pool."""
     import asyncpg
+
     from src.infrastructure.database.config import get_test_db_url
 
     async def init_db():
@@ -58,41 +63,40 @@ def client():
 
     # Run init in event loop
     import asyncio
+
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-    
+
     pool = loop.run_until_complete(init_db())
-    
+
     # Create app with initialized pool
     app = create_app()
     with TestClient(app) as test_client:
         yield test_client
-    
+
     # Cleanup: Delete all test strategies
     async def cleanup_and_close():
         try:
             async with pool.acquire() as conn:
                 # Delete draft test strategies (names starting with Test_, E2E_, Delete_Test_, etc.)
-                await conn.execute(
-                    """
-                    DELETE FROM strategies 
-                    WHERE (name LIKE 'Test_%' 
-                       OR name LIKE 'E2E_%' 
+                await conn.execute("""
+                    DELETE FROM strategies
+                    WHERE (name LIKE 'Test_%'
+                       OR name LIKE 'E2E_%'
                        OR name LIKE 'Delete_%'
                        OR name LIKE 'Invalid_%'
                        OR name LIKE 'Emergency_%'
                        OR name LIKE 'invalid_strategy_%')
                     created_by = 'system'
-                    """
-                )
+                    """)
         except Exception as e:
             print(f"Warning: Failed to cleanup test strategies: {e}")
         finally:
             await pool.close()
-    
+
     loop.run_until_complete(cleanup_and_close())
 
 
@@ -166,9 +170,7 @@ class TestAuthorization:
         with patch("src.infrastructure.api.routes.strategies.get_strategy_repo") as mock_repo:
             mock_repo.return_value.save = AsyncMock()
             mock_repo.return_value.create_version = AsyncMock()
-            response = client.post(
-                "/api/strategies", json=strategy_payload, headers=trader_headers
-            )
+            response = client.post("/api/strategies", json=strategy_payload, headers=trader_headers)
             # No auth restrictions for personal use
             assert response.status_code != 403
 
@@ -183,7 +185,7 @@ class TestStrategyCRUD:
 
     def test_create_strategy_success(self, client, trader_headers, strategy_payload):
         with patch("src.infrastructure.api.routes.strategies.get_strategy_repo") as mock_repo:
-            from datetime import datetime, timezone
+            from datetime import datetime
             from uuid import UUID
 
             # Create a mock StrategyDefinition-like object with all required fields
@@ -195,24 +197,20 @@ class TestStrategyCRUD:
             mock_strategy.status = "draft"
             mock_strategy.current_version = 1
             mock_strategy.created_by = strategy_payload.get("created_by", "system")
-            mock_strategy.created_at = datetime.now(timezone.utc)
-            mock_strategy.updated_at = datetime.now(timezone.utc)
+            mock_strategy.created_at = datetime.now(UTC)
+            mock_strategy.updated_at = datetime.now(UTC)
 
             mock_save = AsyncMock(return_value=mock_strategy)
             mock_repo.return_value.save = mock_save
             mock_repo.return_value.create_version = AsyncMock()
 
-            response = client.post(
-                "/api/strategies", json=strategy_payload, headers=trader_headers
-            )
+            response = client.post("/api/strategies", json=strategy_payload, headers=trader_headers)
             assert response.status_code == 201
             assert "id" in response.json()
 
     def test_create_strategy_invalid_payload(self, client, trader_headers):
         invalid_payload = {"name": ""}  # Empty name
-        response = client.post(
-            "/api/strategies", json=invalid_payload, headers=trader_headers
-        )
+        response = client.post("/api/strategies", json=invalid_payload, headers=trader_headers)
         assert response.status_code == 422  # Validation error
 
     def test_list_strategies(self, client, trader_headers):
@@ -254,19 +252,18 @@ class TestStrategyLifecycle:
         # Just verify that auth passes and we get a response (not 401/403)
         from unittest.mock import AsyncMock, MagicMock, patch
         from uuid import UUID
-        
+
         # Create mock strategy that looks like paper mode
         mock_strategy = MagicMock()
         mock_strategy.mode = "paper"
         mock_strategy.id = UUID("123e4567-e89b-12d3-a456-426614174000")
-        
+
         # Create mock repo
         mock_repo = MagicMock()
         mock_repo.get_by_id = AsyncMock(return_value=mock_strategy)
-        
+
         with patch(
-            "src.infrastructure.api.routes.strategies.get_strategy_repo",
-            return_value=mock_repo
+            "src.infrastructure.api.routes.strategies.get_strategy_repo", return_value=mock_repo
         ):
             response = client.post(
                 "/api/strategies/123e4567-e89b-12d3-a456-426614174000/activate",
@@ -283,12 +280,12 @@ class TestStrategyLifecycle:
         """Live mode activation - no auth restrictions for personal use."""
         with patch("src.infrastructure.api.routes.strategies.get_strategy_repo") as mock_repo:
             from uuid import UUID
-            
+
             # Create a proper mock with UUID id
             mock_strategy = MagicMock()
             mock_strategy.mode = "live"
             mock_strategy.id = UUID("123e4567-e89b-12d3-a456-426614174000")
-            
+
             mock_repo.return_value.get_by_id = AsyncMock(return_value=mock_strategy)
             response = client.post(
                 "/api/strategies/123e4567-e89b-12d3-a456-426614174000/activate",
@@ -319,7 +316,7 @@ class TestLLMEndpoints:
     @patch("src.infrastructure.api.routes.strategies.get_llm_service")
     def test_generate_strategy_success(self, mock_get_llm, client, trader_headers):
         from src.application.services.llm_strategy_service import LLMStrategyService
-        
+
         # Create mock LLM service
         mock_llm_service = MagicMock(spec=LLMStrategyService)
         mock_llm_service.generate_config = AsyncMock(

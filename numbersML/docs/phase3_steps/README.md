@@ -10,8 +10,8 @@ This folder contains independent implementation packets for Phase 3.
 - ✅ **Step 4** (`STEP_04_LLM_COPILOT.md`): COMPLETE - LLM strategy generation/modification, prompt templates, guardrails, validation pipeline
 - ✅ **Step 5** (`STEP_05_API_LAYER.md`): COMPLETE - FastAPI routes for strategies/market/backtesting, auth hooks, LLM endpoints, API tests
 - ✅ **Step 6** (`STEP_06_DASHBOARD_GUI.md`): COMPLETE - Dashboard GUI with class-based and config-based strategy support, market status widgets, removed LLM UI elements
-- 🔜 **Step 7** (`STEP_07_BACKTEST_ENGINE.md`): Not started
-- 🔜 **Step 8** (`STEP_08_DASHBOARD_GUI.md`): Not started
+- ✅ **Step 7** (`STEP_07_BACKTEST_ENGINE.md`): COMPLETE - Event-driven backtest engine with detailed statistics, paper execution simulation, comprehensive metrics
+- ✅ **Step 8** (`STEP_08_DASHBOARD_GUI.md`): COMPLETE - Strategy backtest dashboard with job submission, results visualization, trade blotter, debug logs, price charts with buy/sell markers
 - 🔜 **Step 9** (`STEP_09_OBSERVABILITY_AND_SAFETY.md`): Not started
 - 🔜 **Step 10** (`STEP_10_TESTING_AND_ROLLOUT.md`): Not started
 

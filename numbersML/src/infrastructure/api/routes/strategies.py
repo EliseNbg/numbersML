@@ -326,6 +326,7 @@ async def validate_strategy(
 
         # Validate the configuration
         from src.domain.strategies.config_schema import validate_strategy_config
+
         is_valid, issues = validate_strategy_config(active_version.config)
 
         return {
@@ -335,7 +336,7 @@ async def validate_strategy(
             "errors": [issue.message for issue in issues],
             "validation_issues": [
                 {"path": issue.path, "message": issue.message} for issue in issues
-            ]
+            ],
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -570,8 +571,6 @@ async def resume_strategy(
 # ============================================================================
 # User Strategy Classes
 # ============================================================================
-
-
 
 
 # ============================================================================

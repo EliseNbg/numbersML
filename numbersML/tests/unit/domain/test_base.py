@@ -1,8 +1,9 @@
 """Tests for domain base classes."""
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from src.domain.models.base import Entity, ValueObject, DomainEvent
+from datetime import datetime
+
+from src.domain.models.base import DomainEvent, Entity, ValueObject
 
 
 class TestEntity:
@@ -10,6 +11,7 @@ class TestEntity:
 
     def test_entity_timestamps_auto_initialized(self) -> None:
         """Test that Entity timestamps are auto-initialized."""
+
         @dataclass(eq=False)
         class TestEntity(Entity):
             name: str = "test"
@@ -22,6 +24,7 @@ class TestEntity:
 
     def test_entity_equality_by_id(self) -> None:
         """Test that entities are equal when IDs match."""
+
         @dataclass(eq=False)
         class TestEntity(Entity):
             name: str = "test"
@@ -39,6 +42,7 @@ class TestEntity:
 
     def test_entity_without_id_not_equal(self) -> None:
         """Test that entities without ID are never equal."""
+
         @dataclass(eq=False)
         class TestEntity(Entity):
             name: str = "test"
@@ -52,51 +56,55 @@ class TestEntity:
 
 class TestValueObject:
     """Test ValueObject base class."""
-    
+
     def test_value_object_equality_by_value(self) -> None:
         """Test that value objects are equal by value."""
+
         @dataclass(frozen=True)
         class TestValueObject(ValueObject):
             value: int = 0
-        
+
         vo1 = TestValueObject(value=42)
         vo2 = TestValueObject(value=42)
         vo3 = TestValueObject(value=43)
-        
+
         assert vo1 == vo2  # Same value
         assert vo1 != vo3  # Different value
 
 
 class TestDomainEvent:
     """Test DomainEvent base class."""
-    
+
     def test_domain_event_id_auto_generated(self) -> None:
         """Test that event ID is auto-generated."""
+
         @dataclass(frozen=True)
         class TestEvent(DomainEvent):
             message: str = "test"
-        
+
         event = TestEvent()
-        
+
         assert event.event_id is not None
-    
+
     def test_domain_event_timestamp_auto_set(self) -> None:
         """Test that event timestamp is auto-set."""
+
         @dataclass(frozen=True)
         class TestEvent(DomainEvent):
             message: str = "test"
-        
+
         event = TestEvent()
-        
+
         assert event.occurred_at is not None
         assert isinstance(event.occurred_at, datetime)
-    
+
     def test_domain_event_type_from_class_name(self) -> None:
         """Test that event type is derived from class name."""
+
         @dataclass(frozen=True)
         class TestEvent(DomainEvent):
             message: str = "test"
-        
+
         event = TestEvent()
-        
-        assert event.event_type == 'TestEvent'
+
+        assert event.event_type == "TestEvent"

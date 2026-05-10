@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strategy Backtest - Crypto Trading Dashboard</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link href="css/dashboard.css" rel="stylesheet">
+    <style>
+        .metric-card {
+            text-align: center;
+            padding: 1rem;
+        }
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        .metric-label {
+            font-size: 0.875rem;
+            color: #6c757d;
+        }
+        .positive { color: #198754; }
+        .negative { color: #dc3545; }
+        .job-status-pending { color: #6c757d; }
+        .job-status-running { color: #0d6efd; }
+        .job-status-completed { color: #198754; }
+        .job-status-failed { color: #dc3545; }
+        .progress-bar-striped {
+            background-image: linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent);
+            background-size: 1rem 1rem;
+            animation: progress-bar-stripes 1s linear infinite;
+        }
+        @keyframes progress-bar-stripes {
+            0% { background-position: 1rem 0; }
+            100% { background-position: 0 0; }
+        }
+        .trade-row-buy { background-color: rgba(25, 135, 84, 0.1); }
+        .trade-row-sell { background-color: rgba(220, 53, 69, 0.1); }
+        .debug-log {
+            font-family: 'Courier New', monospace;
+            font-size: 0.8rem;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .debug-log .timestamp { color: #6c757d; }
+        .debug-log .level-debug { color: #6c757d; }
+        .debug-log .level-info { color: #0d6efd; }
+        .debug-log .level-warning { color: #ffc107; }
+        .debug-log .level-error { color: #dc3545; }
+        .chart-container {
+            position: relative;
+            height: 400px;
+            width: 100%;
+        }
+        #backtest-history-table tbody tr:hover {
+            cursor: pointer;
+            background-color: rgba(0,0,0,.075);
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="index.html">
+                <i class="bi bi-speedometer2"></i> Crypto Dashboard
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="index.html">
+                            <i class="bi bi-house"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="symbols.html">
+                            <i class="bi bi-currency-bitcoin"></i> Symbols
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="strategies.html">
+                            <i class="bi bi-cpu"></i> Strategies
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="backtest_strategy.html">
+                            <i class="bi bi-graph-up-arrow"></i> Strategy Backtest
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="backtest_ml.html">
+                            <i class="bi bi-robot"></i> ML Backtest
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="market.html">
+                            <i class="bi bi-wallet2"></i> Market
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="config.html">
+                            <i class="bi bi-gear"></i> Config
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container-fluid mt-4">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h1><i class="bi bi-graph-up-arrow"></i> Strategy Backtest</h1>
+                <p class="text-muted">Test strategies against historical data with detailed analytics</p>
+            </div>
+        </div>
+
+        <!-- Backtest Configuration Panel -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-sliders"></i> Backtest Configuration
+                    </div>
+                    <div class="card-body">
+                        <form id="backtest-config-form">
+                            <div class="row">
+                                <div class="col-md-3 mb-3">
+                                    <label for="strategy-select" class="form-label">Strategy</label>
+                                    <select class="form-select" id="strategy-select" required>
+                                        <option value="">Select strategy...</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2 mb-3">
+                                    <label for="version-select" class="form-label">Version</label>
+                                    <select class="form-select" id="version-select">
+                                        <option value="">Active (default)</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2 mb-3">
+                                    <label for="symbol-select" class="form-label">Symbol</label>
+                                    <select class="form-select" id="symbol-select" required>
+                                        <option value="">Select...</option>
+                                        <option value="BTC/USDC">BTC/USDC</option>
+                                        <option value="ETH/USDC">ETH/USDC</option>
+                                        <option value="ADA/USDC">ADA/USDC</option>
+                                        <option value="DOGE/USDC">DOGE/USDC</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2 mb-3">
+                                    <label for="initial-balance" class="form-label">Initial Balance</label>
+                                    <input type="number" class="form-control" id="initial-balance" value="10000" min="100" step="100" required>
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <label class="form-label">Options</label>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="include-equity-curve" checked>
+                                        <label class="form-check-label" for="include-equity-curve">Include Equity Curve</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="include-trades" checked>
+                                        <label class="form-check-label" for="include-trades">Include Trades</label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label for="start-time" class="form-label">Start Time</label>
+                                    <input type="datetime-local" class="form-control" id="start-time" required>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="end-time" class="form-label">End Time</label>
+                                    <input type="datetime-local" class="form-control" id="end-time" required>
+                                </div>
+                                <div class="col-md-4 mb-3 d-flex align-items-end">
+                                    <button type="submit" class="btn btn-primary w-100" id="btn-run-backtest">
+                                        <i class="bi bi-play-fill"></i> Run Backtest
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Job Status Panel (hidden by default) -->
+        <div class="row mb-4" id="job-status-panel" style="display: none;">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-hourglass-split"></i> Job Status</span>
+                        <span id="job-status-badge" class="badge bg-secondary">Pending</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span id="job-id-display">Job ID: -</span>
+                            <span id="job-progress-text">0%</span>
+                        </div>
+                        <div class="progress mb-3">
+                            <div id="job-progress-bar" class="progress-bar progress-bar-striped" role="progressbar" style="width: 0%"></div>
+                        </div>
+                        <div id="job-error-message" class="alert alert-danger" style="display: none;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Panel (hidden by default) -->
+        <div id="results-panel" style="display: none;">
+            <!-- Metrics Cards -->
+            <div class="row mb-4">
+                <div class="col-md-2">
+                    <div class="card metric-card">
+                        <div class="metric-value" id="metric-return">--</div>
+                        <div class="metric-label">Total Return</div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card metric-card">
+                        <div class="metric-value" id="metric-drawdown">--</div>
+                        <div class="metric-label">Max Drawdown</div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card metric-card">
+                        <div class="metric-value" id="metric-sharpe">--</div>
+                        <div class="metric-label">Sharpe Ratio</div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card metric-card">
+                        <div class="metric-value" id="metric-winrate">--</div>
+                        <div class="metric-label">Win Rate</div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card metric-card">
+                        <div class="metric-value" id="metric-trades">--</div>
+                        <div class="metric-label">Total Trades</div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card metric-card">
+                        <div class="metric-value" id="metric-profit-factor">--</div>
+                        <div class="metric-label">Profit Factor</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row -->
+            <div class="row mb-4">
+                <div class="col-md-8">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="bi bi-graph-up"></i> Price Chart with Trades
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container">
+                                <canvas id="price-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="bi bi-cash-stack"></i> Equity Curve
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container">
+                                <canvas id="equity-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Trades and Debug Log -->
+            <div class="row mb-4">
+                <div class="col-md-7">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-list-ul"></i> Trade Blotter</span>
+                            <span class="badge bg-primary" id="trade-count">0 trades</span>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                                <table class="table table-sm table-hover mb-0" id="trades-table">
+                                    <thead class="table-light sticky-top">
+                                        <tr>
+                                            <th>Entry Time</th>
+                                            <th>Exit Time</th>
+                                            <th>Symbol</th>
+                                            <th>Entry</th>
+                                            <th>Exit</th>
+                                            <th>PnL</th>
+                                            <th>Reason</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="trades-tbody">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-5">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-terminal"></i> Debug Log</span>
+                            <div>
+                                <button class="btn btn-sm btn-outline-secondary" id="btn-pause-log">
+                                    <i class="bi bi-pause"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" id="btn-clear-log">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="debug-log p-2" id="debug-log-container">
+                                <!-- Debug messages will be inserted here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Additional Metrics -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="bi bi-calculator"></i> Detailed Metrics
+                        </div>
+                        <div class="card-body">
+                            <div class="row" id="detailed-metrics-container">
+                                <!-- Detailed metrics will be inserted here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Backtest History -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-clock-history"></i> Recent Backtests</span>
+                        <button class="btn btn-sm btn-outline-primary" id="btn-refresh-history">
+                            <i class="bi bi-arrow-clockwise"></i> Refresh
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover" id="backtest-history-table">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Strategy</th>
+                                        <th>Version</th>
+                                        <th>Symbol</th>
+                                        <th>Period</th>
+                                        <th>Return</th>
+                                        <th>Trades</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="backtest-history-tbody">
+                                    <tr>
+                                        <td colspan="8" class="text-center text-muted">No backtests found</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- Backtest Strategy JS -->
+    <script src="js/backtest_strategy.js?v=2026051001"></script>
+</body>
+</html>

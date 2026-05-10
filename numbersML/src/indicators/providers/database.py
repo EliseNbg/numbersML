@@ -8,7 +8,8 @@ from the database and instantiates them dynamically.
 
 import importlib
 import logging
-from typing import Dict, List, Optional, Type, Any
+from typing import Any, Optional
+
 from typing_extensions import override
 
 from ..base import Indicator
@@ -22,7 +23,7 @@ class DatabaseIndicatorProvider(IIndicatorProvider):
 
     def __init__(self, db_pool: Any) -> None:
         self.db_pool = db_pool
-        self._indicator_cache: Dict[str, Type[Indicator]] = {}
+        self._indicator_cache: dict[str, type[Indicator]] = {}
         logger.debug("DatabaseIndicatorProvider initialized")
 
     @override
@@ -41,8 +42,9 @@ class DatabaseIndicatorProvider(IIndicatorProvider):
             logger.error(f"Failed to instantiate indicator {name}: {e}", exc_info=True)
             return None
 
-    def _load_from_database(self, name: str) -> Optional[Type[Indicator]]:
+    def _load_from_database(self, name: str) -> Optional[type[Indicator]]:
         import asyncio
+
         try:
             return asyncio.run(self._load_indicator_class_async(name))
         except RuntimeError:
@@ -52,7 +54,7 @@ class DatabaseIndicatorProvider(IIndicatorProvider):
             logger.error(f"Error loading indicator {name}: {e}", exc_info=True)
             return None
 
-    async def _load_indicator_class_async(self, name: str) -> Optional[Type[Indicator]]:
+    async def _load_indicator_class_async(self, name: str) -> Optional[type[Indicator]]:
         try:
             async with self.db_pool.acquire() as conn:
                 row = await conn.fetchrow(
@@ -60,7 +62,7 @@ class DatabaseIndicatorProvider(IIndicatorProvider):
                     SELECT class_name, module_path, params, is_active
                     FROM indicator_definitions WHERE name = $1
                     """,
-                    name
+                    name,
                 )
                 if row is None or not row["is_active"]:
                     return None
@@ -71,29 +73,28 @@ class DatabaseIndicatorProvider(IIndicatorProvider):
             return None
 
     @override
-    def get_indicator_class(self, name: str) -> Optional[Type[Indicator]]:
+    def get_indicator_class(self, name: str) -> Optional[type[Indicator]]:
         return self._load_from_database(name)
 
     @override
-    def list_indicators(self) -> List[str]:
+    def list_indicators(self) -> list[str]:
         import asyncio
+
         try:
             return asyncio.run(self.list_indicators_async())
-        except RuntimeError as e:
-            logger.error(f"Cannot list indicators from async context")
+        except RuntimeError:
+            logger.error("Cannot list indicators from async context")
             return []
         except Exception as e:
             logger.error(f"Error listing indicators: {e}")
             return []
 
     @override
-    async def list_indicators_async(self) -> List[str]:
+    async def list_indicators_async(self) -> list[str]:
         try:
             async with self.db_pool.acquire() as conn:
-                rows = await conn.fetch(
-                    """SELECT name FROM indicator_definitions
-                       WHERE is_active = true ORDER BY name"""
-                )
+                rows = await conn.fetch("""SELECT name FROM indicator_definitions
+                       WHERE is_active = true ORDER BY name""")
                 return [row["name"] for row in rows]
         except Exception as e:
             logger.error(f"Error listing indicators: {e}")
@@ -102,6 +103,7 @@ class DatabaseIndicatorProvider(IIndicatorProvider):
     @override
     def is_available(self, name: str) -> bool:
         import asyncio
+
         try:
             return asyncio.run(self._is_available_async(name))
         except RuntimeError:
@@ -128,8 +130,7 @@ class DatabaseIndicatorProvider(IIndicatorProvider):
         try:
             async with self.db_pool.acquire() as conn:
                 result = await conn.fetchval(
-                    "SELECT is_active FROM indicator_definitions WHERE name = $1",
-                    name
+                    "SELECT is_active FROM indicator_definitions WHERE name = $1", name
                 )
                 return result is True
         except Exception as e:

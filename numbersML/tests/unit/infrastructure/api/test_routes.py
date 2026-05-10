@@ -28,11 +28,13 @@ for mod in list(sys.modules.keys()):
 from src.infrastructure.api.auth import API_KEY_STORE
 
 # Update API_KEY_STORE with test keys
-API_KEY_STORE.update({
-    "admin-test-key": {"roles": ["admin"], "name": "Test Admin Key"},
-    "trader-test-key": {"roles": ["trader", "read"], "name": "Test Trader Key"},
-    "read-test-key": {"roles": ["read"], "name": "Test Read Key"},
-})
+API_KEY_STORE.update(
+    {
+        "admin-test-key": {"roles": ["admin"], "name": "Test Admin Key"},
+        "trader-test-key": {"roles": ["trader", "read"], "name": "Test Trader Key"},
+        "read-test-key": {"roles": ["read"], "name": "Test Read Key"},
+    }
+)
 
 from src.infrastructure.api.routes.candles import router as candles_router
 from src.infrastructure.api.routes.config import router as config_router

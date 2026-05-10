@@ -11,8 +11,9 @@ Architecture: Infrastructure Layer (API)
 Dependencies: Application services
 """
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from typing import Any, Dict, List
 
 from src.application.services.config_manager import ConfigManager
 from src.infrastructure.database import get_db_pool_async
@@ -35,23 +36,23 @@ async def get_table_data(
     table_name: str,
     limit: int = 100,
     manager: ConfigManager = Depends(get_config_manager),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Get data from configuration table.
-    
+
     Allowed tables:
         - system_config
         - collection_config
         - symbols
         - indicator_definitions
-    
+
     Args:
         table_name: Table name
         limit: Maximum rows to return (default: 100)
-    
+
     Returns:
         List of row dictionaries
-    
+
     Raises:
         400: Invalid table name
         400: Invalid limit
@@ -62,7 +63,7 @@ async def get_table_data(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Limit must be between 1 and 1000",
         )
-    
+
     try:
         return await manager.get_table_data(table_name=table_name, limit=limit)
     except ValueError as e:
@@ -81,32 +82,32 @@ async def get_entry(
     table_name: str,
     entry_id: int,
     manager: ConfigManager = Depends(get_config_manager),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Get single configuration entry.
-    
+
     Args:
         table_name: Table name
         entry_id: Entry ID
-    
+
     Returns:
         Entry dictionary
-    
+
     Raises:
         400: Invalid table name
         404: Entry not found
     """
     try:
         entry = await manager.get_entry(table_name=table_name, entry_id=entry_id)
-        
+
         if not entry:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Entry not found (ID: {entry_id})",
             )
-        
+
         return entry
-        
+
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -122,20 +123,20 @@ async def get_entry(
 async def update_entry(
     table_name: str,
     entry_id: int,
-    data: Dict[str, Any],
+    data: dict[str, Any],
     manager: ConfigManager = Depends(get_config_manager),
 ) -> dict:
     """
     Update configuration entry.
-    
+
     Args:
         table_name: Table name
         entry_id: Entry ID
         data: Data to update
-    
+
     Returns:
         Success message
-    
+
     Raises:
         400: Invalid table name
         400: No fields to update
@@ -148,15 +149,15 @@ async def update_entry(
             entry_id=entry_id,
             data=data,
         )
-        
+
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to update entry",
             )
-        
+
         return {"message": f"Entry {entry_id} in {table_name} updated"}
-        
+
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -171,19 +172,19 @@ async def update_entry(
 )
 async def insert_entry(
     table_name: str,
-    data: Dict[str, Any],
+    data: dict[str, Any],
     manager: ConfigManager = Depends(get_config_manager),
 ) -> dict:
     """
     Insert new configuration entry.
-    
+
     Args:
         table_name: Table name
         data: Entry data
-    
+
     Returns:
         New entry ID
-    
+
     Raises:
         400: Invalid table name
         400: No fields to insert
@@ -194,15 +195,15 @@ async def insert_entry(
             table_name=table_name,
             data=data,
         )
-        
+
         if entry_id is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to insert entry",
             )
-        
+
         return {"id": entry_id, "message": f"Entry inserted in {table_name}"}
-        
+
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -222,14 +223,14 @@ async def delete_entry(
 ) -> dict:
     """
     Delete configuration entry.
-    
+
     Args:
         table_name: Table name
         entry_id: Entry ID
-    
+
     Returns:
         Success message
-    
+
     Raises:
         400: Invalid table name
         404: Entry not found
@@ -243,20 +244,20 @@ async def delete_entry(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Entry not found (ID: {entry_id})",
             )
-        
+
         success = await manager.delete_entry(
             table_name=table_name,
             entry_id=entry_id,
         )
-        
+
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to delete entry",
             )
-        
+
         return {"message": f"Entry {entry_id} in {table_name} deleted"}
-        
+
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -276,14 +277,14 @@ async def get_config_value(
 ) -> Any:
     """
     Get configuration value by key from system_config.
-    
+
     Args:
         key: Configuration key
         default: Default value if not found
-    
+
     Returns:
         Configuration value or default
-    
+
     Example:
         GET /api/config/system-config/collector.batch_size
         Returns: {"size": 500}
@@ -304,15 +305,15 @@ async def set_config_value(
 ) -> dict:
     """
     Set configuration value in system_config.
-    
+
     Args:
         key: Configuration key
         value: Configuration value
         description: Optional description
-    
+
     Returns:
         Success message
-    
+
     Raises:
         500: Failed to set value
     """
@@ -321,11 +322,11 @@ async def set_config_value(
         value=value,
         description=description,
     )
-    
+
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to set config value",
         )
-    
+
     return {"message": f"Config value {key} set"}

@@ -30,11 +30,13 @@ for mod in list(sys.modules.keys()):
 from src.infrastructure.api.auth import API_KEY_STORE
 
 # Update API_KEY_STORE with test keys
-API_KEY_STORE.update({
-    "admin-test-key": {"roles": ["admin"], "name": "Test Admin Key"},
-    "trader-test-key": {"roles": ["trader", "read"], "name": "Test Trader Key"},
-    "read-test-key": {"roles": ["read"], "name": "Test Read Key"},
-})
+API_KEY_STORE.update(
+    {
+        "admin-test-key": {"roles": ["admin"], "name": "Test Admin Key"},
+        "trader-test-key": {"roles": ["trader", "read"], "name": "Test Trader Key"},
+        "read-test-key": {"roles": ["read"], "name": "Test Read Key"},
+    }
+)
 
 from src.infrastructure.api.routes.market import router as market_router
 from src.infrastructure.api.routes.strategies import router as strategies_router
@@ -90,6 +92,7 @@ class TestUserStrategyClassesEndpoint:
         from src.infrastructure.api.routes.strategies import get_strategy_repo
 
         mock_repo = MagicMock()
+
         async def override():
             return mock_repo
 
@@ -106,9 +109,7 @@ class TestUserStrategyClassesEndpoint:
 
     def test_list_user_strategy_classes_success(self, client, trader_headers):
         """Test listing available user strategy classes."""
-        response = client.get(
-            "/api/strategies/user-classes", headers=trader_headers
-        )
+        response = client.get("/api/strategies/user-classes", headers=trader_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -128,9 +129,7 @@ class TestUserStrategyClassesEndpoint:
 
     def test_list_user_classes_returns_example_strategy(self, client, trader_headers):
         """Test that ExampleRSIStrategy is returned in the list."""
-        response = client.get(
-            "/api/strategies/user-classes", headers=trader_headers
-        )
+        response = client.get("/api/strategies/user-classes", headers=trader_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -149,11 +148,10 @@ class TestStrategyTypeField:
 
     def test_create_class_based_strategy(self, client, trader_headers):
         """Test creating a class-based strategy."""
-        with patch(
-            "src.infrastructure.api.routes.strategies.get_strategy_repo"
-        ) as mock_repo, patch(
-            "src.infrastructure.api.routes.strategies.get_lifecycle_service"
-        ) as mock_svc:
+        with (
+            patch("src.infrastructure.api.routes.strategies.get_strategy_repo") as mock_repo,
+            patch("src.infrastructure.api.routes.strategies.get_lifecycle_service") as mock_svc,
+        ):
             mock_repo.return_value.save = AsyncMock()
             mock_repo.return_value.create_version = AsyncMock()
             mock_svc.return_value.create_draft = AsyncMock()
@@ -185,11 +183,10 @@ class TestStrategyTypeField:
 
     def test_create_config_based_strategy(self, client, trader_headers):
         """Test creating a config-based strategy."""
-        with patch(
-            "src.infrastructure.api.routes.strategies.get_strategy_repo"
-        ) as mock_repo, patch(
-            "src.infrastructure.api.routes.strategies.get_lifecycle_service"
-        ) as mock_svc:
+        with (
+            patch("src.infrastructure.api.routes.strategies.get_strategy_repo") as mock_repo,
+            patch("src.infrastructure.api.routes.strategies.get_lifecycle_service") as mock_svc,
+        ):
             mock_repo.return_value.save = AsyncMock()
             mock_repo.return_value.create_version = AsyncMock()
             mock_svc.return_value.create_draft = AsyncMock()

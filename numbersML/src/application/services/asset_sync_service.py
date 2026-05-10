@@ -6,13 +6,13 @@ including trading pairs, tick sizes, step sizes, and
 regional compliance filtering.
 """
 
-import asyncio
-import aiohttp
 import logging
-from datetime import datetime
 from decimal import Decimal
-from typing import Dict, List, Optional, Set
+from typing import Optional
+
+import aiohttp
 import asyncpg
+
 from src.domain.models.symbol import Symbol
 
 logger = logging.getLogger(__name__)
@@ -51,10 +51,10 @@ class AssetSyncService:
     BINANCE_EXCHANGE_INFO_URL = "https://api.binance.com/api/v3/exchangeInfo"
 
     # EU allowed quote assets
-    EU_ALLOWED_QUOTES: Set[str] = {'USDC', 'BTC', 'ETH', 'EUR', 'GBP'}
+    EU_ALLOWED_QUOTES: set[str] = {"USDC", "BTC", "ETH", "EUR", "GBP"}
 
     # Quote assets to exclude in EU
-    EU_EXCLUDED_QUOTES: Set[str] = {'USDT', 'BUSD', 'TUSD'}
+    EU_EXCLUDED_QUOTES: set[str] = {"USDT", "BUSD", "TUSD"}
 
     def __init__(
         self,
@@ -84,15 +84,15 @@ class AssetSyncService:
         self.eu_compliance: bool = eu_compliance
 
         # Statistics
-        self._stats: Dict[str, int] = {
-            'fetched': 0,
-            'added': 0,
-            'updated': 0,
-            'deactivated': 0,
-            'errors': 0,
+        self._stats: dict[str, int] = {
+            "fetched": 0,
+            "added": 0,
+            "updated": 0,
+            "deactivated": 0,
+            "errors": 0,
         }
 
-    async def sync(self) -> Dict[str, int]:
+    async def sync(self) -> dict[str, int]:
         """
         Synchronize symbol metadata from Binance.
 
@@ -119,19 +119,19 @@ class AssetSyncService:
             AssetSyncError: If sync fails completely
         """
         logger.info("Starting asset synchronization...")
-        self._stats = {'fetched': 0, 'added': 0, 'updated': 0, 'deactivated': 0, 'errors': 0}
+        self._stats = {"fetched": 0, "added": 0, "updated": 0, "deactivated": 0, "errors": 0}
 
         try:
             # Fetch from Binance API
             symbols_data = await self._fetch_exchange_info()
-            self._stats['fetched'] = len(symbols_data)
+            self._stats["fetched"] = len(symbols_data)
             logger.info(f"Fetched {len(symbols_data)} symbols from Binance")
 
             # Get existing symbols from database
             existing_symbols = await self._get_existing_symbols()
 
             # Process each symbol
-            binance_symbols: Set[str] = set()
+            binance_symbols: set[str] = set()
 
             for symbol_data in symbols_data:
                 try:
@@ -148,13 +148,15 @@ class AssetSyncService:
                         await self._add_symbol(symbol)
 
                 except Exception as e:
-                    self._stats['errors'] += 1
-                    logger.error(f"Error processing symbol {symbol_data.get('symbol', 'UNKNOWN')}: {e}")
+                    self._stats["errors"] += 1
+                    logger.error(
+                        f"Error processing symbol {symbol_data.get('symbol', 'UNKNOWN')}: {e}"
+                    )
 
             # Deactivate delisted symbols
             if self.auto_deactivate_delisted:
                 deactivated = await self._deactivate_delisted_symbols(binance_symbols)
-                self._stats['deactivated'] = deactivated
+                self._stats["deactivated"] = deactivated
 
             logger.info(
                 f"Asset sync complete: "
@@ -170,7 +172,7 @@ class AssetSyncService:
             logger.error(f"Asset sync failed: {e}")
             raise AssetSyncError(f"Asset synchronization failed: {e}") from e
 
-    async def _fetch_exchange_info(self) -> List[Dict]:
+    async def _fetch_exchange_info(self) -> list[dict]:
         """
         Fetch exchange info from Binance API.
 
@@ -183,24 +185,19 @@ class AssetSyncService:
         async with aiohttp.ClientSession() as session:
             async with session.get(self.BINANCE_EXCHANGE_INFO_URL) as response:
                 if response.status != 200:
-                    raise AssetSyncError(
-                        f"Binance API returned status {response.status}"
-                    )
+                    raise AssetSyncError(f"Binance API returned status {response.status}")
 
                 data = await response.json()
 
-                if 'symbols' not in data:
+                if "symbols" not in data:
                     raise AssetSyncError("Invalid response from Binance API")
 
                 # Filter only TRADING pairs
-                symbols = [
-                    s for s in data['symbols']
-                    if s.get('status') == 'TRADING'
-                ]
+                symbols = [s for s in data["symbols"] if s.get("status") == "TRADING"]
 
                 return symbols
 
-    def _parse_symbol(self, data: Dict) -> Optional[Symbol]:
+    def _parse_symbol(self, data: dict) -> Optional[Symbol]:
         """
         Parse symbol data from Binance format.
 
@@ -220,11 +217,11 @@ class AssetSyncService:
         """
         try:
             # Skip invalid symbols
-            if data.get('status') != 'TRADING':
+            if data.get("status") != "TRADING":
                 return None
 
-            base_asset = data.get('baseAsset', '')
-            quote_asset = data.get('quoteAsset', '')
+            base_asset = data.get("baseAsset", "")
+            quote_asset = data.get("quoteAsset", "")
 
             # Skip if missing assets
             if not base_asset or not quote_asset:
@@ -245,7 +242,7 @@ class AssetSyncService:
                 symbol=symbol_str,
                 base_asset=base_asset,
                 quote_asset=quote_asset,
-                exchange='binance',
+                exchange="binance",
                 tick_size=tick_size,
                 step_size=step_size,
                 min_notional=min_notional,
@@ -272,10 +269,7 @@ class AssetSyncService:
 
         return True
 
-    def _extract_filters(
-        self,
-        data: Dict
-    ) -> tuple[Decimal, Decimal, Decimal]:
+    def _extract_filters(self, data: dict) -> tuple[Decimal, Decimal, Decimal]:
         """
         Extract trading parameters from Binance filters.
 
@@ -289,26 +283,26 @@ class AssetSyncService:
         step_size = Decimal("0.00000001")
         min_notional = Decimal("10")
 
-        filters = data.get('filters', [])
+        filters = data.get("filters", [])
 
         for f in filters:
-            filter_type = f.get('filterType')
+            filter_type = f.get("filterType")
 
             # PRICE_FILTER: tick_size
-            if filter_type == 'PRICE_FILTER':
-                tick_size = Decimal(f.get('tickSize', tick_size))
+            if filter_type == "PRICE_FILTER":
+                tick_size = Decimal(f.get("tickSize", tick_size))
 
             # LOT_SIZE: step_size
-            elif filter_type == 'LOT_SIZE':
-                step_size = Decimal(f.get('stepSize', step_size))
+            elif filter_type == "LOT_SIZE":
+                step_size = Decimal(f.get("stepSize", step_size))
 
             # NOTIONAL: min_notional
-            elif filter_type == 'NOTIONAL':
-                min_notional = Decimal(f.get('minNotional', min_notional))
+            elif filter_type == "NOTIONAL":
+                min_notional = Decimal(f.get("minNotional", min_notional))
 
         return tick_size, step_size, min_notional
 
-    async def _get_existing_symbols(self) -> Set[str]:
+    async def _get_existing_symbols(self) -> set[str]:
         """
         Get existing symbols from database.
 
@@ -317,7 +311,7 @@ class AssetSyncService:
         """
         async with self.db_pool.acquire() as conn:
             rows = await conn.fetch("SELECT symbol FROM symbols")
-            return {row['symbol'] for row in rows}
+            return {row["symbol"] for row in rows}
 
     async def _add_symbol(self, symbol: Symbol) -> None:
         """
@@ -345,7 +339,7 @@ class AssetSyncService:
                 symbol.is_active,
             )
 
-        self._stats['added'] += 1
+        self._stats["added"] += 1
         logger.info(f"Added new symbol: {symbol.symbol}")
 
     async def _update_symbol(self, symbol: Symbol) -> None:
@@ -389,10 +383,10 @@ class AssetSyncService:
             )
 
             if result == "UPDATE 1":
-                self._stats['updated'] += 1
+                self._stats["updated"] += 1
                 logger.debug(f"Updated symbol: {symbol.symbol}")
 
-    async def _deactivate_delisted_symbols(self, binance_symbols: Set[str]) -> int:
+    async def _deactivate_delisted_symbols(self, binance_symbols: set[str]) -> int:
         """
         Deactivate symbols no longer on Binance.
 
@@ -424,14 +418,14 @@ class AssetSyncService:
                         updated_at = NOW()
                     WHERE symbol = $1
                     """,
-                    row['symbol'],
+                    row["symbol"],
                 )
 
                 logger.info(f"Deactivated delisted symbol: {row['symbol']}")
 
             return deactivated
 
-    def get_stats(self) -> Dict[str, int]:
+    def get_stats(self) -> dict[str, int]:
         """
         Get sync statistics.
 

@@ -1,7 +1,7 @@
 """Domain models for market order execution."""
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Any
@@ -59,8 +59,8 @@ class Order:
     average_fill_price: Decimal | None = None
     status: OrderStatus = OrderStatus.NEW
     mode: str = "paper"
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     client_order_id: str | None = None
     external_order_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)

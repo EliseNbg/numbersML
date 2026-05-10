@@ -11,8 +11,9 @@ Architecture: Infrastructure Layer (API)
 Dependencies: Application services
 """
 
+from typing import Any, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from typing import Any, Dict, List, Optional
 
 from src.application.services.indicator_manager import IndicatorManager
 from src.domain.models.config import IndicatorConfig
@@ -29,7 +30,7 @@ async def get_indicator_manager() -> IndicatorManager:
 
 @router.get(
     "",
-    response_model=List[IndicatorConfig],
+    response_model=list[IndicatorConfig],
     summary="List indicators",
     description="List indicators with optional filters",
 )
@@ -37,17 +38,17 @@ async def list_indicators(
     active_only: bool = False,
     category: Optional[str] = None,
     manager: IndicatorManager = Depends(get_indicator_manager),
-) -> List[IndicatorConfig]:
+) -> list[IndicatorConfig]:
     """
     List indicators with optional filters.
-    
+
     Args:
         active_only: If True, return only active indicators
         category: Filter by category (momentum, trend, volatility, volume)
-    
+
     Returns:
         List of indicator configurations
-    
+
     Example:
         [
             {
@@ -73,13 +74,13 @@ async def list_indicators(
 )
 async def get_categories(
     manager: IndicatorManager = Depends(get_indicator_manager),
-) -> List[str]:
+) -> list[str]:
     """
     Get all indicator categories.
-    
+
     Returns:
         List of category names
-    
+
     Example:
         ["momentum", "trend", "volatility", "volume"]
     """
@@ -98,24 +99,24 @@ async def get_indicator(
 ) -> IndicatorConfig:
     """
     Get indicator by name.
-    
+
     Args:
         name: Indicator name (e.g., 'rsi_14')
-    
+
     Returns:
         Indicator configuration
-    
+
     Raises:
         404: Indicator not found
     """
     indicator = await manager.get_by_name(name)
-    
+
     if not indicator:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Indicator not found: {name}",
         )
-    
+
     return indicator
 
 
@@ -130,13 +131,13 @@ async def register_indicator(
 ) -> dict:
     """
     Register a new indicator.
-    
+
     Args:
         indicator: Indicator configuration
-    
+
     Returns:
         Success message
-    
+
     Raises:
         400: Invalid indicator data
         409: Indicator already exists
@@ -149,7 +150,7 @@ async def register_indicator(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Indicator already exists: {indicator.name}",
         )
-    
+
     success = await manager.register_indicator(
         name=indicator.name,
         class_name=indicator.class_name,
@@ -158,13 +159,13 @@ async def register_indicator(
         params=indicator.params,
         is_active=indicator.is_active,
     )
-    
+
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to register indicator",
         )
-    
+
     return {"message": f"Indicator {indicator.name} registered"}
 
 
@@ -179,13 +180,13 @@ async def activate_indicator(
 ) -> dict:
     """
     Activate an indicator.
-    
+
     Args:
         name: Indicator name
-    
+
     Returns:
         Success message
-    
+
     Raises:
         404: Indicator not found
         500: Failed to activate
@@ -197,15 +198,15 @@ async def activate_indicator(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Indicator not found: {name}",
         )
-    
+
     success = await manager.activate_indicator(name)
-    
+
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to activate indicator",
         )
-    
+
     return {"message": f"Indicator {name} activated"}
 
 
@@ -220,13 +221,13 @@ async def deactivate_indicator(
 ) -> dict:
     """
     Deactivate an indicator.
-    
+
     Args:
         name: Indicator name
-    
+
     Returns:
         Success message
-    
+
     Raises:
         404: Indicator not found
         500: Failed to deactivate
@@ -238,15 +239,15 @@ async def deactivate_indicator(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Indicator not found: {name}",
         )
-    
+
     success = await manager.deactivate_indicator(name)
-    
+
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to deactivate indicator",
         )
-    
+
     return {"message": f"Indicator {name} deactivated"}
 
 
@@ -257,21 +258,21 @@ async def deactivate_indicator(
 )
 async def update_indicator(
     name: str,
-    params: Optional[Dict[str, Any]] = None,
+    params: Optional[dict[str, Any]] = None,
     is_active: Optional[bool] = None,
     manager: IndicatorManager = Depends(get_indicator_manager),
 ) -> dict:
     """
     Update indicator configuration.
-    
+
     Args:
         name: Indicator name
         params: New parameters (optional)
         is_active: New active status (optional)
-    
+
     Returns:
         Success message
-    
+
     Raises:
         404: Indicator not found
         400: No fields to update
@@ -284,26 +285,26 @@ async def update_indicator(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Indicator not found: {name}",
         )
-    
+
     # Verify at least one field to update
     if params is None and is_active is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="At least one field (params or is_active) must be provided",
         )
-    
+
     success = await manager.update_indicator(
         name=name,
         params=params,
         is_active=is_active,
     )
-    
+
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update indicator",
         )
-    
+
     return {"message": f"Indicator {name} updated"}
 
 
@@ -318,13 +319,13 @@ async def unregister_indicator(
 ) -> dict:
     """
     Unregister an indicator (soft delete - sets is_active=false).
-    
+
     Args:
         name: Indicator name
-    
+
     Returns:
         Success message
-    
+
     Raises:
         404: Indicator not found
         500: Failed to unregister
@@ -336,13 +337,13 @@ async def unregister_indicator(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Indicator not found: {name}",
         )
-    
+
     success = await manager.unregister_indicator(name)
-    
+
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to unregister indicator",
         )
-    
+
     return {"message": f"Indicator {name} unregistered"}

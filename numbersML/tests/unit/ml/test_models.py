@@ -10,12 +10,11 @@ Tests:
 - Target value calculation
 """
 
-import numpy as np
 import pytest
 import torch
 import torch.nn as nn
 
-from ml.config import ModelConfig, PipelineConfig, get_default_config
+from ml.config import ModelConfig, get_default_config
 from ml.model import (
     CNNFeatureExtractor,
     CryptoTargetModel,

@@ -1,9 +1,8 @@
 """Unit tests for user-written (class-based) strategies."""
 
-from typing import Any
-
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 from src.domain.strategies.base import (
@@ -17,7 +16,7 @@ from src.domain.strategies.base import (
 
 class MockRSIStrategy(Strategy):
     """Test strategy that simulates RSI-based signals with persistent state."""
-    
+
     def __init__(self, strategy_id: str, symbols: list[str], **kwargs: Any):
         super().__init__(strategy_id, symbols, **kwargs)
         self.rsi_values_seen: list[float] = []
@@ -30,10 +29,10 @@ class MockRSIStrategy(Strategy):
         self.tick_count += 1
         rsi = tick.get_indicator("rsi", 50.0)
         self.rsi_values_seen.append(rsi)
-        
+
         threshold_oversold = self.get_config("oversold_threshold", 30)
         threshold_overbought = self.get_config("overbought_threshold", 70)
-        
+
         if rsi < threshold_oversold:
             signal = Signal(
                 strategy_id=self.id,
@@ -45,7 +44,7 @@ class MockRSIStrategy(Strategy):
             )
             self.last_signal_type = SignalType.BUY
             return signal
-        
+
         if rsi > threshold_overbought:
             signal = Signal(
                 strategy_id=self.id,
@@ -57,19 +56,21 @@ class MockRSIStrategy(Strategy):
             )
             self.last_signal_type = SignalType.SELL
             return signal
-        
+
         return None
 
     def get_stats(self) -> dict[str, Any]:
         """Override to include custom state in stats."""
         stats = super().get_stats()
-        stats.update({
-            "tick_count": self.tick_count,
-            "rsi_values_seen": self.rsi_values_seen,
-            "last_signal_type": self.last_signal_type,
-            "last_rsi": self.last_rsi,
-            "position_open": self.position_open,
-        })
+        stats.update(
+            {
+                "tick_count": self.tick_count,
+                "rsi_values_seen": self.rsi_values_seen,
+                "last_signal_type": self.last_signal_type,
+                "last_rsi": self.last_rsi,
+                "position_open": self.position_open,
+            }
+        )
         return stats
 
 

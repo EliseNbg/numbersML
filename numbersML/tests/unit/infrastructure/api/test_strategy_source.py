@@ -1,22 +1,19 @@
 """Unit tests for Strategy Source Code Management API."""
 
-import pytest
-import asyncio
 from pathlib import Path
-from typing import Any, Generator
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
-from fastapi import Depends, FastAPI
+import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 # Import the router for testing
 from src.infrastructure.api.routes.strategy_source import (
     USER_STRATEGIES_DIR,
-    _validate_strategy_code,
-    StrategyValidationResult,
-    _python_file_to_class_path,
     _class_path_to_file_path,
     _is_safe_path,
+    _python_file_to_class_path,
+    _validate_strategy_code,
 )
 
 
@@ -25,13 +22,13 @@ class TestValidateStrategyCode:
 
     def test_valid_strategy_code(self):
         """Valid Python code with Strategy inheritance."""
-        content = '''
+        content = """
 from src.domain.strategies.base import Strategy, Signal, SignalType, EnrichedTick
 
 class MyStrategy(Strategy):
     def on_tick(self, tick: EnrichedTick) -> Signal | None:
         return None
-'''
+"""
         result = _validate_strategy_code(content)
         assert result.valid is True
         assert len(result.errors) == 0
@@ -55,11 +52,11 @@ class MyStrategy(Strategy):
 
     def test_class_not_inheriting_strategy(self):
         """Class that doesn't inherit from Strategy."""
-        content = '''
+        content = """
 class MyStrategy:
     def on_tick(self, tick):
         return None
-'''
+"""
         result = _validate_strategy_code(content, class_name="MyStrategy")
         assert result.class_found is True
         # Note: AST check may not catch this in all cases
@@ -67,10 +64,10 @@ class MyStrategy:
 
     def test_specific_class_name(self):
         """Validate specific class name."""
-        content = '''
+        content = """
 class OtherStrategy(Strategy):
     pass
-'''
+"""
         result = _validate_strategy_code(content, class_name="MyStrategy")
         assert result.class_found is False
         assert result.valid is False
@@ -88,17 +85,15 @@ class TestStrategySourceAPI:
 
         # Mock the auth dependency
         async def mock_auth() -> AuthContext:
-            return AuthContext(
-                api_key="test-key",
-                roles=["trader"],
-                name="test-user"
-            )
+            return AuthContext(api_key="test-key", roles=["trader"], name="test-user")
 
         from src.infrastructure.api.routes.strategy_source import router
+
         app.include_router(router)
 
         # Override the auth dependency
         from src.infrastructure.api.auth import require_trader
+
         app.dependency_overrides[require_trader] = mock_auth
 
         return app
@@ -112,7 +107,6 @@ class TestStrategySourceAPI:
         """List strategies when directory is empty."""
         # Mock the _get_user_strategies_dir function to return a path with no .py files
         from pathlib import Path
-        from unittest.mock import MagicMock
 
         mock_dir = Path("/tmp/nonexistent_strategies")
         mock_dir.mkdir(exist_ok=True)
@@ -120,13 +114,17 @@ class TestStrategySourceAPI:
         for f in mock_dir.glob("*.py"):
             f.unlink()
 
-        with patch("src.infrastructure.api.routes.strategy_source._get_user_strategies_dir", return_value=mock_dir):
+        with patch(
+            "src.infrastructure.api.routes.strategy_source._get_user_strategies_dir",
+            return_value=mock_dir,
+        ):
             response = client.get("/api/strategies/source")
             assert response.status_code == 200
             assert response.json() == []
 
         # Cleanup temp dir
         import shutil
+
         shutil.rmtree(mock_dir, ignore_errors=True)
 
     def test_list_strategies_with_files(self, client):
@@ -158,9 +156,7 @@ class TestStrategySourceAPI:
         )
         test_file.write_text(test_content)
 
-        response = client.get(
-            "/api/strategies/source/src.strategies.user.test_get.TestGet"
-        )
+        response = client.get("/api/strategies/source/src.strategies.user.test_get.TestGet")
         assert response.status_code == 200
         data = response.json()
         assert data["content"] == test_content
@@ -171,9 +167,7 @@ class TestStrategySourceAPI:
 
     def test_get_nonexistent_strategy(self, client):
         """Get non-existent strategy file."""
-        response = client.get(
-            "/api/strategies/source/src.strategies.user.nonexistentfile.Dummy"
-        )
+        response = client.get("/api/strategies/source/src.strategies.user.nonexistentfile.Dummy")
         assert response.status_code == 404
 
     def test_save_strategy_source(self, client):
@@ -259,9 +253,7 @@ class TestStrategySourceAPI:
         test_file = USER_STRATEGIES_DIR / "to_delete.py"
         test_file.write_text("content")
 
-        response = client.delete(
-            "/api/strategies/source/src.strategies.user.to_delete.ToDelete"
-        )
+        response = client.delete("/api/strategies/source/src.strategies.user.to_delete.ToDelete")
         assert response.status_code == 204
         assert not test_file.exists()
 
@@ -271,28 +263,24 @@ class TestStrategySourceAPI:
         init_file = USER_STRATEGIES_DIR / "__init__.py"
         init_file.write_text("")  # Create if not exists
 
-        response = client.delete(
-            "/api/strategies/source/src.strategies.user.__init__.Dummy"
-        )
+        response = client.delete("/api/strategies/source/src.strategies.user.__init__.Dummy")
         assert response.status_code == 400
         assert "Cannot delete __init__.py" in response.json()["detail"]
 
     def test_delete_nonexistent(self, client):
         """Delete non-existent file."""
-        response = client.delete(
-            "/api/strategies/source/src.strategies.user.nonexistentfile.Dummy"
-        )
+        response = client.delete("/api/strategies/source/src.strategies.user.nonexistentfile.Dummy")
         assert response.status_code == 404
 
     def test_validate_endpoint(self, client):
         """Validate strategy code via API."""
-        content = '''
+        content = """
 from src.domain.strategies.base import Strategy, Signal, EnrichedTick
 
 class ValidStrategy(Strategy):
     def on_tick(self, tick: EnrichedTick) -> Signal | None:
         return None
-'''
+"""
         response = client.post(
             "/api/strategies/source/validate",
             headers={"Content-Type": "application/json"},
@@ -319,6 +307,7 @@ class ValidStrategy(Strategy):
         # Try to access file outside user directory
         # Note: FastAPI may not match the route, so we test the safety function directly
         from pathlib import Path
+
         unsafe_path = Path("/etc/passwd")
         assert _is_safe_path(unsafe_path) is False
 
@@ -326,6 +315,7 @@ class ValidStrategy(Strategy):
         """Endpoints are accessible without authentication for personal use."""
         # Remove the auth override to simulate no API key provided
         from src.infrastructure.api.auth import require_trader
+
         client.app.dependency_overrides.pop(require_trader, None)
 
         response = client.get("/api/strategies/source")

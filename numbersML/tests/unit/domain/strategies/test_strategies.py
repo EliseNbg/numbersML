@@ -4,23 +4,21 @@ Tests for Sample Trading Strategies.
 Tests RSI, MACD, SMA Crossover, Bollinger Bands, and Multi-Indicator strategies.
 """
 
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Dict, Any
+
+import pytest
 
 from src.domain.strategies.base import (
     EnrichedTick,
-    Signal,
     SignalType,
-    StrategyState,
 )
 from src.domain.strategies.strategies import (
-    RSIStrategy,
-    MACDStrategy,
-    SMACrossoverStrategy,
     BollingerBandsStrategy,
+    MACDStrategy,
     MultiIndicatorStrategy,
+    RSIStrategy,
+    SMACrossoverStrategy,
 )
 
 
@@ -31,8 +29,8 @@ class TestRSIStrategy:
     def rsi_strategy(self) -> RSIStrategy:
         """Create RSI strategy instance."""
         return RSIStrategy(
-            strategy_id='test_rsi',
-            symbols=['BTC/USDT'],
+            strategy_id="test_rsi",
+            symbols=["BTC/USDT"],
             rsi_period=14,
             oversold_threshold=30.0,
             overbought_threshold=70.0,
@@ -42,20 +40,22 @@ class TestRSIStrategy:
     @pytest.fixture
     def create_tick(self) -> callable:
         """Factory for creating enriched ticks."""
+
         def _create(rsi_value: float, price: float = 50000.0) -> EnrichedTick:
             return EnrichedTick(
-                symbol='BTC/USDT',
+                symbol="BTC/USDT",
                 price=Decimal(str(price)),
-                volume=Decimal('1.0'),
-                time=datetime.now(timezone.utc),
-                indicators={'rsiindicator_period14_rsi': rsi_value},
+                volume=Decimal("1.0"),
+                time=datetime.now(UTC),
+                indicators={"rsiindicator_period14_rsi": rsi_value},
             )
+
         return _create
 
     def test_rsi_strategy_initialization(self, rsi_strategy: RSIStrategy) -> None:
         """Test RSI strategy initializes correctly."""
-        assert rsi_strategy.id == 'test_rsi'
-        assert rsi_strategy.symbols == ['BTC/USDT']
+        assert rsi_strategy.id == "test_rsi"
+        assert rsi_strategy.symbols == ["BTC/USDT"]
         assert rsi_strategy.rsi_period == 14
         assert rsi_strategy.oversold_threshold == 30.0
         assert rsi_strategy.overbought_threshold == 70.0
@@ -77,8 +77,8 @@ class TestRSIStrategy:
         assert signal is not None
         assert signal.signal_type == SignalType.BUY
         assert signal.confidence == 0.75
-        assert signal.metadata['rsi'] == 25.0
-        assert signal.metadata['condition'] == 'oversold'
+        assert signal.metadata["rsi"] == 25.0
+        assert signal.metadata["condition"] == "oversold"
 
     @pytest.mark.asyncio
     async def test_rsi_overbought_signal(
@@ -96,8 +96,8 @@ class TestRSIStrategy:
         assert signal is not None
         assert signal.signal_type == SignalType.SELL
         assert signal.confidence == 0.75
-        assert signal.metadata['rsi'] == 75.0
-        assert signal.metadata['condition'] == 'overbought'
+        assert signal.metadata["rsi"] == 75.0
+        assert signal.metadata["condition"] == "overbought"
 
     @pytest.mark.asyncio
     async def test_rsi_no_signal_neutral(
@@ -153,8 +153,8 @@ class TestMACDStrategy:
     def macd_strategy(self) -> MACDStrategy:
         """Create MACD strategy instance."""
         return MACDStrategy(
-            strategy_id='test_macd',
-            symbols=['BTC/USDT'],
+            strategy_id="test_macd",
+            symbols=["BTC/USDT"],
             fast_period=12,
             slow_period=26,
             signal_period=9,
@@ -164,17 +164,19 @@ class TestMACDStrategy:
     @pytest.fixture
     def create_tick(self) -> callable:
         """Factory for creating enriched ticks."""
+
         def _create(macd: float, signal: float, price: float = 50000.0) -> EnrichedTick:
             return EnrichedTick(
-                symbol='BTC/USDT',
+                symbol="BTC/USDT",
                 price=Decimal(str(price)),
-                volume=Decimal('1.0'),
-                time=datetime.now(timezone.utc),
+                volume=Decimal("1.0"),
+                time=datetime.now(UTC),
                 indicators={
-                    'macdindicator_fast_period12_slow_period26_signal_period9_macd': macd,
-                    'macdindicator_fast_period12_slow_period26_signal_period9_signal': signal,
+                    "macdindicator_fast_period12_slow_period26_signal_period9_macd": macd,
+                    "macdindicator_fast_period12_slow_period26_signal_period9_signal": signal,
                 },
             )
+
         return _create
 
     def test_macd_strategy_initialization(self, macd_strategy: MACDStrategy) -> None:
@@ -202,7 +204,7 @@ class TestMACDStrategy:
 
         assert signal is not None
         assert signal.signal_type == SignalType.BUY
-        assert signal.metadata['condition'] == 'bullish_crossover'
+        assert signal.metadata["condition"] == "bullish_crossover"
 
     @pytest.mark.asyncio
     async def test_macd_bearish_crossover(
@@ -223,7 +225,7 @@ class TestMACDStrategy:
 
         assert signal is not None
         assert signal.signal_type == SignalType.SELL
-        assert signal.metadata['condition'] == 'bearish_crossover'
+        assert signal.metadata["condition"] == "bearish_crossover"
 
     @pytest.mark.asyncio
     async def test_macd_no_crossover(
@@ -252,8 +254,8 @@ class TestSMACrossoverStrategy:
     def sma_strategy(self) -> SMACrossoverStrategy:
         """Create SMA crossover strategy instance."""
         return SMACrossoverStrategy(
-            strategy_id='test_sma_cross',
-            symbols=['BTC/USDT'],
+            strategy_id="test_sma_cross",
+            symbols=["BTC/USDT"],
             fast_period=20,
             slow_period=50,
             confidence=0.65,
@@ -262,17 +264,19 @@ class TestSMACrossoverStrategy:
     @pytest.fixture
     def create_tick(self) -> callable:
         """Factory for creating enriched ticks."""
+
         def _create(fast_sma: float, slow_sma: float, price: float = 50000.0) -> EnrichedTick:
             return EnrichedTick(
-                symbol='BTC/USDT',
+                symbol="BTC/USDT",
                 price=Decimal(str(price)),
-                volume=Decimal('1.0'),
-                time=datetime.now(timezone.utc),
+                volume=Decimal("1.0"),
+                time=datetime.now(UTC),
                 indicators={
-                    'smaindicator_period20_sma': fast_sma,
-                    'smaindicator_period50_sma': slow_sma,
+                    "smaindicator_period20_sma": fast_sma,
+                    "smaindicator_period50_sma": slow_sma,
                 },
             )
+
         return _create
 
     def test_sma_strategy_initialization(self, sma_strategy: SMACrossoverStrategy) -> None:
@@ -299,7 +303,7 @@ class TestSMACrossoverStrategy:
 
         assert signal is not None
         assert signal.signal_type == SignalType.BUY
-        assert signal.metadata['condition'] == 'golden_cross'
+        assert signal.metadata["condition"] == "golden_cross"
 
     @pytest.mark.asyncio
     async def test_death_cross(
@@ -320,7 +324,7 @@ class TestSMACrossoverStrategy:
 
         assert signal is not None
         assert signal.signal_type == SignalType.SELL
-        assert signal.metadata['condition'] == 'death_cross'
+        assert signal.metadata["condition"] == "death_cross"
 
 
 class TestBollingerBandsStrategy:
@@ -330,8 +334,8 @@ class TestBollingerBandsStrategy:
     def bb_strategy(self) -> BollingerBandsStrategy:
         """Create Bollinger Bands strategy instance."""
         return BollingerBandsStrategy(
-            strategy_id='test_bb',
-            symbols=['BTC/USDT'],
+            strategy_id="test_bb",
+            symbols=["BTC/USDT"],
             period=20,
             std_dev=2.0,
             confidence=0.6,
@@ -340,6 +344,7 @@ class TestBollingerBandsStrategy:
     @pytest.fixture
     def create_tick(self) -> callable:
         """Factory for creating enriched ticks."""
+
         def _create(
             price: float,
             upper: float = 51000.0,
@@ -347,16 +352,17 @@ class TestBollingerBandsStrategy:
             lower: float = 49000.0,
         ) -> EnrichedTick:
             return EnrichedTick(
-                symbol='BTC/USDT',
+                symbol="BTC/USDT",
                 price=Decimal(str(price)),
-                volume=Decimal('1.0'),
-                time=datetime.now(timezone.utc),
+                volume=Decimal("1.0"),
+                time=datetime.now(UTC),
                 indicators={
-                    'bbindicator_period20_std_dev2.0_upper': upper,
-                    'bbindicator_period20_std_dev2.0_middle': middle,
-                    'bbindicator_period20_std_dev2.0_lower': lower,
+                    "bbindicator_period20_std_dev2.0_upper": upper,
+                    "bbindicator_period20_std_dev2.0_middle": middle,
+                    "bbindicator_period20_std_dev2.0_lower": lower,
                 },
             )
+
         return _create
 
     def test_bb_strategy_initialization(self, bb_strategy: BollingerBandsStrategy) -> None:
@@ -379,7 +385,7 @@ class TestBollingerBandsStrategy:
 
         assert signal is not None
         assert signal.signal_type == SignalType.BUY
-        assert signal.metadata['condition'] == 'touching_lower_band'
+        assert signal.metadata["condition"] == "touching_lower_band"
 
     @pytest.mark.asyncio
     async def test_bb_upper_band_sell(
@@ -396,7 +402,7 @@ class TestBollingerBandsStrategy:
 
         assert signal is not None
         assert signal.signal_type == SignalType.SELL
-        assert signal.metadata['condition'] == 'touching_upper_band'
+        assert signal.metadata["condition"] == "touching_upper_band"
 
     @pytest.mark.asyncio
     async def test_bb_no_signal_middle(
@@ -421,8 +427,8 @@ class TestMultiIndicatorStrategy:
     def multi_strategy(self) -> MultiIndicatorStrategy:
         """Create multi-indicator strategy instance."""
         return MultiIndicatorStrategy(
-            strategy_id='test_multi',
-            symbols=['BTC/USDT'],
+            strategy_id="test_multi",
+            symbols=["BTC/USDT"],
             rsi_period=14,
             rsi_oversold=30.0,
             rsi_overbought=70.0,
@@ -437,6 +443,7 @@ class TestMultiIndicatorStrategy:
     @pytest.fixture
     def create_tick(self) -> callable:
         """Factory for creating enriched ticks."""
+
         def _create(
             rsi: float,
             macd: float,
@@ -447,18 +454,19 @@ class TestMultiIndicatorStrategy:
             prev_macd_signal: float = None,
         ) -> EnrichedTick:
             indicators = {
-                'rsiindicator_period14_rsi': rsi,
-                'macdindicator_fast_period12_slow_period26_signal_period9_macd': macd,
-                'macdindicator_fast_period12_slow_period26_signal_period9_signal': macd_signal,
-                'smaindicator_period200_sma': sma,
+                "rsiindicator_period14_rsi": rsi,
+                "macdindicator_fast_period12_slow_period26_signal_period9_macd": macd,
+                "macdindicator_fast_period12_slow_period26_signal_period9_signal": macd_signal,
+                "smaindicator_period200_sma": sma,
             }
             return EnrichedTick(
-                symbol='BTC/USDT',
+                symbol="BTC/USDT",
                 price=Decimal(str(price)),
-                volume=Decimal('1.0'),
-                time=datetime.now(timezone.utc),
+                volume=Decimal("1.0"),
+                time=datetime.now(UTC),
                 indicators=indicators,
             )
+
         return _create
 
     def test_multi_strategy_initialization(self, multi_strategy: MultiIndicatorStrategy) -> None:
@@ -541,8 +549,8 @@ class TestMultiIndicatorStrategy:
     ) -> None:
         """Test multi-indicator strategy with require_all_signals=True."""
         strategy = MultiIndicatorStrategy(
-            strategy_id='test_multi_strict',
-            symbols=['BTC/USDT'],
+            strategy_id="test_multi_strict",
+            symbols=["BTC/USDT"],
             require_all_signals=True,
         )
         await strategy.initialize()
@@ -580,9 +588,9 @@ class TestStrategyIntegration:
         from src.domain.strategies.base import StrategyManager
 
         # Create strategies
-        rsi_strategy = RSIStrategy('rsi', ['BTC/USDT'])
-        macd_strategy = MACDStrategy('macd', ['BTC/USDT'])
-        sma_strategy = SMACrossoverStrategy('sma', ['BTC/USDT'])
+        rsi_strategy = RSIStrategy("rsi", ["BTC/USDT"])
+        macd_strategy = MACDStrategy("macd", ["BTC/USDT"])
+        sma_strategy = SMACrossoverStrategy("sma", ["BTC/USDT"])
 
         # Create manager
         manager = StrategyManager()
@@ -595,16 +603,16 @@ class TestStrategyIntegration:
 
         # Create tick with all indicators
         tick = EnrichedTick(
-            symbol='BTC/USDT',
-            price=Decimal('50000.00'),
-            volume=Decimal('1.0'),
-            time=datetime.now(timezone.utc),
+            symbol="BTC/USDT",
+            price=Decimal("50000.00"),
+            volume=Decimal("1.0"),
+            time=datetime.now(UTC),
             indicators={
-                'rsiindicator_period14_rsi': 25.0,  # Oversold
-                'macdindicator_fast_period12_slow_period26_signal_period9_macd': 100.0,
-                'macdindicator_fast_period12_slow_period26_signal_period9_signal': 90.0,
-                'smaindicator_period20_sma': 49000.0,
-                'smaindicator_period50_sma': 48000.0,
+                "rsiindicator_period14_rsi": 25.0,  # Oversold
+                "macdindicator_fast_period12_slow_period26_signal_period9_macd": 100.0,
+                "macdindicator_fast_period12_slow_period26_signal_period9_signal": 90.0,
+                "smaindicator_period20_sma": 49000.0,
+                "smaindicator_period50_sma": 48000.0,
             },
         )
 
@@ -616,4 +624,4 @@ class TestStrategyIntegration:
 
         # Get stats
         stats = manager.get_stats()
-        assert stats['strategy_count'] == 3
+        assert stats["strategy_count"] == 3

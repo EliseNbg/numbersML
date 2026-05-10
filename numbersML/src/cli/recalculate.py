@@ -59,14 +59,12 @@ async def load_indicator_schema(db_pool: asyncpg.Pool) -> list[str]:
     redundant indicator_keys array and ensures schema consistency.
     """
     async with db_pool.acquire() as conn:
-        rows = await conn.fetch(
-            """
+        rows = await conn.fetch("""
             SELECT DISTINCT jsonb_object_keys(values) AS k
             FROM candle_indicators
             WHERE values IS NOT NULL
             ORDER BY k
-            """
-        )
+            """)
         schema = [r["k"] for r in rows if r["k"]]
     logger.info(f"Loaded fixed indicator schema: {len(schema)} keys")
     return schema

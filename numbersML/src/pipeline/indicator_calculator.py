@@ -8,7 +8,7 @@ fetches recent candles, calculates indicators, and writes results to latest_indi
 import importlib
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -53,14 +53,12 @@ class IndicatorCalculator:
     async def load_definitions(self) -> None:
         """Load active indicator definitions from DB."""
         async with self.db_pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
+            rows = await conn.fetch("""
                 SELECT name, class_name, module_path, params
                 FROM indicator_definitions
                 WHERE is_active = true
                 ORDER BY name
-                """
-            )
+                """)
             self._definitions = []
             for r in rows:
                 params = r["params"]
@@ -168,7 +166,7 @@ class IndicatorCalculator:
 
         buffer = self._ensure_buffer(symbol)
         await self._init_buffer_for_candle(
-            buffer, datetime.now(timezone.utc), {"close": 0, "volume": 0, "high": 0, "low": 0}
+            buffer, datetime.now(UTC), {"close": 0, "volume": 0, "high": 0, "low": 0}
         )
 
         if len(buffer.closes_buff) < 2:
@@ -180,7 +178,7 @@ class IndicatorCalculator:
         highs = np.array(buffer.highs_buff)
         lows = np.array(buffer.lows_buff)
         opens = np.array([0.0] * len(prices))  # open not stored in IndicatorsBuffer
-        latest_time = datetime.now(timezone.utc)
+        latest_time = datetime.now(UTC)
         latest_price = float(prices[-1])
         latest_volume = float(volumes[-1])
 

@@ -4,8 +4,8 @@ from abc import abstractmethod
 from typing import Any
 from uuid import UUID
 
-from .base import Repository
 from ..strategies.strategy_config import StrategyConfigVersion, StrategyDefinition
+from .base import Repository
 
 
 class StrategyRepository(Repository[StrategyDefinition, UUID]):

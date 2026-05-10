@@ -115,7 +115,9 @@ def _is_safe_path(file_path: Path) -> bool:
         return False
 
 
-def _validate_strategy_code(content: str, class_name: str | None = None) -> StrategyValidationResult:
+def _validate_strategy_code(
+    content: str, class_name: str | None = None
+) -> StrategyValidationResult:
     """Validate strategy source code.
 
     Checks:

@@ -3,6 +3,7 @@ Pytest fixtures for test suite.
 
 Provides TEST/USDT setup and cleanup for database tests.
 """
+
 import asyncio
 import os
 import sys
@@ -12,7 +13,7 @@ import pytest
 
 # Add src to path for imports
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-src_path = os.path.join(project_root, 'src')
+src_path = os.path.join(project_root, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
@@ -45,7 +46,9 @@ async def db_pool():
             print(f"DB connection attempt {attempt + 1}/30 failed: {e}")
             await asyncio.sleep(1)
 
-    raise last_error or Exception(f"Failed to connect to database after 30 attempts. DB_URL: {DB_URL}")
+    raise last_error or Exception(
+        f"Failed to connect to database after 30 attempts. DB_URL: {DB_URL}"
+    )
 
 
 @pytest.fixture
@@ -59,21 +62,18 @@ async def allow_test_usdt(db_pool):
         int: The symbol ID for TEST/USDT
     """
     async with db_pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT id FROM symbols WHERE symbol = 'TEST/USDT'"
-        )
+        row = await conn.fetchrow("SELECT id FROM symbols WHERE symbol = 'TEST/USDT'")
 
         if not row:
             row = await conn.fetchrow(
                 "INSERT INTO symbols (symbol, is_active, is_allowed) "
                 "VALUES ('TEST/USDT', true, true) RETURNING id"
             )
-            symbol_id = row['id']
+            symbol_id = row["id"]
         else:
-            symbol_id = row['id']
+            symbol_id = row["id"]
             await conn.execute(
-                "UPDATE symbols SET is_active = true, is_allowed = true WHERE id = $1",
-                symbol_id
+                "UPDATE symbols SET is_active = true, is_allowed = true WHERE id = $1", symbol_id
             )
 
     yield symbol_id

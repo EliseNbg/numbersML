@@ -64,13 +64,11 @@ class WideVectorService:
     async def load_symbols(self) -> None:
         """Load active symbols from DB."""
         async with self.db_pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
+            rows = await conn.fetch("""
                 SELECT id, symbol FROM symbols
                 WHERE is_active = true AND is_allowed = true
                 ORDER BY symbol
-                """
-            )
+                """)
             self._active_symbols = [(r["id"], r["symbol"]) for r in rows]
 
         logger.info(f"Loaded {len(self._active_symbols)} active symbols")
@@ -85,14 +83,12 @@ class WideVectorService:
         if self._indicator_keys:
             return
         async with self.db_pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
+            rows = await conn.fetch("""
                 SELECT name, class_name, params
                 FROM indicator_definitions
                 WHERE is_active = true
                 ORDER BY name
-                """
-            )
+                """)
             indicator_keys: list[str] = []
             for r in rows:
                 name = r["name"]

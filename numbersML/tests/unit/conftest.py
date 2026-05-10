@@ -1,17 +1,19 @@
 """
 Pytest fixtures for unit test suite.
 """
+
 import asyncio
 import os
 import sys
 
 # Add src to path for imports
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-src_path = os.path.join(project_root, 'src')
+src_path = os.path.join(project_root, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
 import pytest
+
 from src.infrastructure.database.config import get_test_db_url
 
 # Use the same test database as the main test suite
@@ -30,7 +32,7 @@ def event_loop():
 async def db_pool():
     """Create a database connection pool for the test session."""
     import asyncpg
-    
+
     # For unit tests that actually hit the database, we need a pool
     # But many tests mock the repository, so we'll make this optional
     try:
@@ -48,6 +50,7 @@ async def db_connection(db_pool):
     if db_pool is None:
         # Return a mock connection if pool is not available
         from unittest.mock import AsyncMock
+
         conn = AsyncMock()
         # Mock common connection methods
         conn.fetchrow = AsyncMock()

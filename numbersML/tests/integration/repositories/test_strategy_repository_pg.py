@@ -1,9 +1,9 @@
 """Integration tests for StrategyRepositoryPG against real PostgreSQL."""
 
-from datetime import datetime, timezone
-from pathlib import Path
 import os
 import uuid
+from datetime import UTC, datetime
+from pathlib import Path
 
 import asyncpg
 import pytest
@@ -19,9 +19,7 @@ async def _init_utc(conn: asyncpg.Connection) -> None:
 
 
 async def _ensure_phase3_schema(conn: asyncpg.Connection) -> None:
-    migration_path = (
-        Path(__file__).resolve().parents[3] / "migrations" / "CLEAN_SCHEMA.sql"
-    )
+    migration_path = Path(__file__).resolve().parents[3] / "migrations" / "CLEAN_SCHEMA.sql"
     await conn.execute(migration_path.read_text(encoding="utf-8"))
 
 
@@ -44,7 +42,7 @@ class TestStrategyRepositoryPGIntegration:
     async def test_save_create_version_and_activate(self, db_conn: asyncpg.Connection) -> None:
         repo = StrategyRepositoryPG(db_conn)
         unique_name = f"it_strategy_{uuid.uuid4().hex[:8]}"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         strategy = StrategyDefinition(
             name=unique_name,
             description="integration test strategy",

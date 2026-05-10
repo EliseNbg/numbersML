@@ -7,14 +7,14 @@ Tests:
     - Error handling
 """
 
-from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.infrastructure.api.routes.backup import router as backup_router, get_backup_service
+from src.infrastructure.api.routes.backup import get_backup_service
+from src.infrastructure.api.routes.backup import router as backup_router
 
 
 class TestBackupRoutes:
@@ -41,6 +41,7 @@ class TestBackupRoutes:
     @pytest.fixture
     def app_with_mocked_service(self, mock_backup_service: AsyncMock) -> FastAPI:
         """Create test app with backup service dependency overridden."""
+
         async def override_dependency():
             return mock_backup_service
 
@@ -54,7 +55,9 @@ class TestBackupRoutes:
         """Create test client with mocked service."""
         return TestClient(app_with_mocked_service, raise_server_exceptions=False)
 
-    def test_create_backup(self, client_with_mock: TestClient, mock_backup_service: AsyncMock) -> None:
+    def test_create_backup(
+        self, client_with_mock: TestClient, mock_backup_service: AsyncMock
+    ) -> None:
         """Test backup creation endpoint."""
         mock_backup_service.create_backup.return_value = {
             "name": "backup_20260501_120000.sql.gz",
@@ -71,7 +74,9 @@ class TestBackupRoutes:
         assert data["size"] == 1024
         mock_backup_service.create_backup.assert_called_once_with(compress=True)
 
-    def test_create_backup_with_compress(self, client_with_mock: TestClient, mock_backup_service: AsyncMock) -> None:
+    def test_create_backup_with_compress(
+        self, client_with_mock: TestClient, mock_backup_service: AsyncMock
+    ) -> None:
         """Test backup creation with compress parameter."""
         mock_backup_service.create_backup.return_value = {
             "name": "backup_20260501_120000.sql.gz",
@@ -85,7 +90,9 @@ class TestBackupRoutes:
         assert response.status_code == 200
         mock_backup_service.create_backup.assert_called_once_with(compress=False)
 
-    def test_list_backups(self, client_with_mock: TestClient, mock_backup_service: AsyncMock) -> None:
+    def test_list_backups(
+        self, client_with_mock: TestClient, mock_backup_service: AsyncMock
+    ) -> None:
         """Test list backups endpoint."""
         mock_backup_service.list_backups.return_value = [
             {
@@ -109,7 +116,9 @@ class TestBackupRoutes:
         assert len(data) == 2
         assert data[0]["name"] == "backup_20260501_120000.sql.gz"
 
-    def test_get_backup_details(self, client_with_mock: TestClient, mock_backup_service: AsyncMock) -> None:
+    def test_get_backup_details(
+        self, client_with_mock: TestClient, mock_backup_service: AsyncMock
+    ) -> None:
         """Test get backup details endpoint."""
         mock_backup_service.get_backup_details.return_value = {
             "name": "backup_20260501_120000.sql.gz",
@@ -124,7 +133,9 @@ class TestBackupRoutes:
         data = response.json()
         assert data["name"] == "backup_20260501_120000.sql.gz"
 
-    def test_get_backup_details_not_found(self, client_with_mock: TestClient, mock_backup_service: AsyncMock) -> None:
+    def test_get_backup_details_not_found(
+        self, client_with_mock: TestClient, mock_backup_service: AsyncMock
+    ) -> None:
         """Test get backup details with non-existent backup."""
         mock_backup_service.get_backup_details.side_effect = FileNotFoundError("Backup not found")
 
@@ -132,7 +143,9 @@ class TestBackupRoutes:
 
         assert response.status_code == 404
 
-    def test_restore_backup(self, client_with_mock: TestClient, mock_backup_service: AsyncMock) -> None:
+    def test_restore_backup(
+        self, client_with_mock: TestClient, mock_backup_service: AsyncMock
+    ) -> None:
         """Test restore backup endpoint."""
         mock_backup_service.restore_backup.return_value = {
             "status": "success",
@@ -145,7 +158,9 @@ class TestBackupRoutes:
         data = response.json()
         assert data["status"] == "success"
 
-    def test_restore_backup_not_found(self, client_with_mock: TestClient, mock_backup_service: AsyncMock) -> None:
+    def test_restore_backup_not_found(
+        self, client_with_mock: TestClient, mock_backup_service: AsyncMock
+    ) -> None:
         """Test restore with non-existent backup."""
         mock_backup_service.restore_backup.side_effect = FileNotFoundError("Backup not found")
 
@@ -156,8 +171,10 @@ class TestBackupRoutes:
     def test_delete_backup(self, client_with_mock: TestClient) -> None:
         """Test delete backup endpoint."""
         # For delete, we need to patch the filesystem operations
-        with patch("pathlib.Path.exists", return_value=True), \
-             patch("pathlib.Path.unlink") as mock_unlink:
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.unlink") as mock_unlink,
+        ):
             response = client_with_mock.delete("/api/backup/delete/backup_20260501_120000.sql.gz")
 
             assert response.status_code == 200
@@ -187,6 +204,7 @@ class TestBackupRoutesIntegration:
     def app(self) -> FastAPI:
         """Create test app with all routes."""
         from src.infrastructure.api.app import create_app
+
         return create_app()
 
     @pytest.fixture

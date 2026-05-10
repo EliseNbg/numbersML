@@ -4,15 +4,15 @@ Data quality metrics tracking service.
 Tracks and reports on data quality over time.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from decimal import Decimal
-from typing import Dict, Optional
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import Enum
+from typing import Optional
 
 
 class QualityScore(Enum):
     """Quality score ranges."""
+
     EXCELLENT = "excellent"  # 95-100
     GOOD = "good"  # 80-94
     FAIR = "fair"  # 60-79
@@ -23,7 +23,7 @@ class QualityScore(Enum):
 class QualityMetrics:
     """
     Data quality metrics for a time period.
-    
+
     Attributes:
         symbol_id: Symbol ID
         period_start: Start of measurement period
@@ -37,7 +37,7 @@ class QualityMetrics:
         avg_latency_ms: Average processing latency
         quality_score: Overall quality score (0-100)
     """
-    
+
     symbol_id: int
     period_start: datetime
     period_end: datetime
@@ -49,14 +49,14 @@ class QualityMetrics:
     gaps_filled: int = 0
     avg_latency_ms: float = 0.0
     quality_score: float = 0.0
-    
+
     @property
     def validation_rate(self) -> float:
         """Get validation success rate."""
         if self.ticks_received == 0:
             return 0.0
         return self.ticks_validated / self.ticks_received * 100
-    
+
     @property
     def quality_level(self) -> QualityScore:
         """Get quality level based on score."""
@@ -73,23 +73,23 @@ class QualityMetrics:
 class QualityMetricsTracker:
     """
     Tracks data quality metrics over time.
-    
+
     Attributes:
         db_pool: Database connection pool
     """
-    
+
     def __init__(self, db_pool) -> None:  # type: ignore
         """
         Initialize metrics tracker.
-        
+
         Args:
             db_pool: Database connection pool
         """
         self.db_pool = db_pool
-        
+
         # In-memory metrics (flushed to DB periodically)
-        self._metrics: Dict[int, QualityMetrics] = {}
-    
+        self._metrics: dict[int, QualityMetrics] = {}
+
     def record_tick(
         self,
         symbol_id: int,
@@ -98,7 +98,7 @@ class QualityMetricsTracker:
     ) -> None:
         """
         Record tick processing metrics.
-        
+
         Args:
             symbol_id: Symbol ID
             is_valid: Whether tick passed validation
@@ -107,29 +107,27 @@ class QualityMetricsTracker:
         if symbol_id not in self._metrics:
             self._metrics[symbol_id] = QualityMetrics(
                 symbol_id=symbol_id,
-                period_start=datetime.now(timezone.utc),
-                period_end=datetime.now(timezone.utc),
+                period_start=datetime.now(UTC),
+                period_end=datetime.now(UTC),
             )
-        
+
         metrics = self._metrics[symbol_id]
         metrics.ticks_received += 1
-        
+
         if is_valid:
             metrics.ticks_validated += 1
         else:
             metrics.ticks_rejected += 1
-        
+
         # Update rolling average latency
         n = metrics.ticks_received
-        metrics.avg_latency_ms = (
-            (metrics.avg_latency_ms * (n - 1) + latency_ms) / n
-        )
-    
+        metrics.avg_latency_ms = (metrics.avg_latency_ms * (n - 1) + latency_ms) / n
+
     def record_anomaly(self, symbol_id: int) -> None:
         """Record anomaly detection."""
         if symbol_id in self._metrics:
             self._metrics[symbol_id].anomalies_detected += 1
-    
+
     def record_gap(self, symbol_id: int, is_filled: bool = False) -> None:
         """Record gap detection."""
         if symbol_id in self._metrics:
@@ -137,54 +135,54 @@ class QualityMetricsTracker:
             metrics.gaps_detected += 1
             if is_filled:
                 metrics.gaps_filled += 1
-    
+
     def calculate_quality_score(self, symbol_id: int) -> float:
         """
         Calculate quality score for symbol.
-        
+
         Score based on:
         - Validation rate (50%)
         - Gap rate (30%)
         - Anomaly rate (20%)
-        
+
         Args:
             symbol_id: Symbol ID
-        
+
         Returns:
             Quality score (0-100)
         """
         if symbol_id not in self._metrics:
             return 0.0
-        
+
         metrics = self._metrics[symbol_id]
-        
+
         # Validation rate component (50%)
         validation_component = metrics.validation_rate * 0.5
-        
+
         # Gap rate component (30%)
         gap_rate = 0.0
         if metrics.ticks_received > 0:
             gap_rate = metrics.gaps_detected / metrics.ticks_received * 100
         gap_component = max(0, (100 - gap_rate * 10)) * 0.3
-        
+
         # Anomaly rate component (20%)
         anomaly_rate = 0.0
         if metrics.ticks_received > 0:
             anomaly_rate = metrics.anomalies_detected / metrics.ticks_received * 100
         anomaly_component = max(0, (100 - anomaly_rate * 5)) * 0.2
-        
+
         score = validation_component + gap_component + anomaly_component
         metrics.quality_score = score
-        
+
         return score
-    
+
     async def flush_to_database(self, symbol_id: int) -> None:
         """Flush metrics to database."""
         if symbol_id not in self._metrics:
             return
-        
+
         metrics = self._metrics[symbol_id]
-        
+
         async with self.db_pool.acquire() as conn:
             await conn.execute(
                 """
@@ -215,14 +213,14 @@ class QualityMetricsTracker:
                 metrics.avg_latency_ms,
                 metrics.quality_score,
             )
-        
+
         # Reset metrics for next period
         self._metrics[symbol_id] = QualityMetrics(
             symbol_id=symbol_id,
-            period_start=datetime.now(timezone.utc),
-            period_end=datetime.now(timezone.utc),
+            period_start=datetime.now(UTC),
+            period_end=datetime.now(UTC),
         )
-    
+
     def get_metrics(self, symbol_id: int) -> Optional[QualityMetrics]:
         """Get current metrics for symbol."""
         return self._metrics.get(symbol_id)

@@ -18,7 +18,7 @@ Step dependencies (order matters):
 
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import FrozenSet, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from src.pipeline.aggregator import TradeAggregation
@@ -27,16 +27,16 @@ if TYPE_CHECKING:
 class PipelineStep(IntEnum):
     """Pipeline execution steps, ordered by dependency."""
 
-    CANDLE      = 1  # Write 1s OHLCV candle to database
-    INDICATOR   = 2  # Calculate and store technical indicators
+    CANDLE = 1  # Write 1s OHLCV candle to database
+    INDICATOR = 2  # Calculate and store technical indicators
     WIDE_VECTOR = 3  # Build and store ML-ready vector (all symbols)
-    ML_PREDICT  = 4  # Run ML model inference (future)
-    TRADE_EXEC  = 5  # Execute trading signal via Binance (future)
+    ML_PREDICT = 4  # Run ML model inference (future)
+    TRADE_EXEC = 5  # Execute trading signal via Binance (future)
     PAPER_TRADE = 6  # Paper trading for backtesting (future)
 
 
 # Preset step combinations for common scenarios
-LIVE_STEPS     = frozenset({PipelineStep.CANDLE, PipelineStep.INDICATOR, PipelineStep.WIDE_VECTOR})
+LIVE_STEPS = frozenset({PipelineStep.CANDLE, PipelineStep.INDICATOR, PipelineStep.WIDE_VECTOR})
 BACKFILL_STEPS = frozenset({PipelineStep.CANDLE, PipelineStep.INDICATOR, PipelineStep.WIDE_VECTOR})
 BACKTEST_STEPS = frozenset({PipelineStep.ML_PREDICT, PipelineStep.PAPER_TRADE})
 
@@ -53,7 +53,7 @@ class PipelineTicket:
         candle: The candle data (None for cross-symbol steps)
     """
 
-    steps: FrozenSet[int]
+    steps: frozenset[int]
     symbol: str
     candle_time: object  # datetime, avoids import
     candle: Optional["TradeAggregation"] = None

@@ -5,16 +5,16 @@ Tests gap detection, gap filling with Binance API integration,
 and rate limiting.
 """
 
-import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
-from typing import List, Dict, Any
+
+import pytest
 
 from src.domain.services.gap_detector import (
+    DataGap,
     GapDetector,
     GapFiller,
-    DataGap,
     GapFillResult,
 )
 
@@ -33,17 +33,17 @@ class TestGapDetector:
     def test_start_monitoring(self) -> None:
         """Test starting to monitor a symbol."""
         detector = GapDetector()
-        detector.start_monitoring(1, 'BTC/USDT')
+        detector.start_monitoring(1, "BTC/USDT")
 
         assert 1 in detector._last_tick_time
 
     def test_check_tick_no_gap(self) -> None:
         """Test check_tick with no gap."""
         detector = GapDetector(max_gap_seconds=5)
-        detector.start_monitoring(1, 'BTC/USDT')
+        detector.start_monitoring(1, "BTC/USDT")
 
         # Next tick within threshold
-        tick_time = datetime.now(timezone.utc)
+        tick_time = datetime.now(UTC)
         gap = detector.check_tick(1, tick_time)
 
         assert gap is None
@@ -53,11 +53,11 @@ class TestGapDetector:
         detector = GapDetector(max_gap_seconds=5)
 
         # First tick
-        time1 = datetime.now(timezone.utc) - timedelta(seconds=10)
+        time1 = datetime.now(UTC) - timedelta(seconds=10)
         detector.check_tick(1, time1)
 
         # Second tick with gap
-        time2 = datetime.now(timezone.utc)
+        time2 = datetime.now(UTC)
         gap = detector.check_tick(1, time2)
 
         assert gap is not None
@@ -69,11 +69,11 @@ class TestGapDetector:
         detector = GapDetector(max_gap_seconds=5)
 
         # First tick
-        time1 = datetime.now(timezone.utc) - timedelta(seconds=70)
+        time1 = datetime.now(UTC) - timedelta(seconds=70)
         detector.check_tick(1, time1)
 
         # Second tick
-        time2 = datetime.now(timezone.utc)
+        time2 = datetime.now(UTC)
         gap = detector.check_tick(1, time2)
 
         assert gap is not None
@@ -84,9 +84,9 @@ class TestGapDetector:
         detector = GapDetector(max_gap_seconds=5)
 
         # Create gap
-        time1 = datetime.now(timezone.utc) - timedelta(seconds=10)
+        time1 = datetime.now(UTC) - timedelta(seconds=10)
         detector.check_tick(1, time1)
-        time2 = datetime.now(timezone.utc)
+        time2 = datetime.now(UTC)
         detector.check_tick(1, time2)
 
         unfilled = detector.get_unfilled_gaps()
@@ -98,9 +98,9 @@ class TestGapDetector:
         detector = GapDetector(max_gap_seconds=5)
 
         # Create gap
-        time1 = datetime.now(timezone.utc) - timedelta(seconds=10)
+        time1 = datetime.now(UTC) - timedelta(seconds=10)
         detector.check_tick(1, time1)
-        time2 = datetime.now(timezone.utc)
+        time2 = datetime.now(UTC)
         gap = detector.check_tick(1, time2)
 
         assert gap is not None
@@ -134,19 +134,19 @@ class TestGapFiller:
         assert filler.binance_api_key is None
         assert filler._rest_client is None
         assert filler._stats == {
-            'gaps_filled': 0,
-            'ticks_fetched': 0,
-            'errors': 0,
+            "gaps_filled": 0,
+            "ticks_fetched": 0,
+            "errors": 0,
         }
 
     def test_gap_filler_with_api_key(self, mock_db_pool: MagicMock) -> None:
         """Test gap filler with API key."""
         filler = GapFiller(
             db_pool=mock_db_pool,
-            binance_api_key='test_api_key',
+            binance_api_key="test_api_key",
         )
 
-        assert filler.binance_api_key == 'test_api_key'
+        assert filler.binance_api_key == "test_api_key"
 
     @pytest.mark.asyncio
     async def test_fill_gap_success(self, mock_db_pool: MagicMock) -> None:
@@ -156,21 +156,21 @@ class TestGapFiller:
         # Create test gap
         gap = DataGap(
             symbol_id=1,
-            symbol='BTC/USDT',
-            gap_start=datetime.now(timezone.utc) - timedelta(seconds=10),
-            gap_end=datetime.now(timezone.utc),
+            symbol="BTC/USDT",
+            gap_start=datetime.now(UTC) - timedelta(seconds=10),
+            gap_end=datetime.now(UTC),
             gap_seconds=10,
         )
 
         # Mock REST client
         mock_trades = [
             {
-                'trade_id': '123',
-                'price': Decimal('50000.00'),
-                'quantity': Decimal('0.001'),
-                'time': datetime.now(timezone.utc),
-                'is_buyer_maker': False,
-                'side': 'BUY',
+                "trade_id": "123",
+                "price": Decimal("50000.00"),
+                "quantity": Decimal("0.001"),
+                "time": datetime.now(UTC),
+                "is_buyer_maker": False,
+                "side": "BUY",
             }
         ]
 
@@ -184,13 +184,13 @@ class TestGapFiller:
         mock_db_pool.acquire = MagicMock(return_value=acquire_ctx)
 
         # Mock _fetch_historical_data
-        with patch.object(filler, '_fetch_historical_data', return_value=mock_trades):
+        with patch.object(filler, "_fetch_historical_data", return_value=mock_trades):
             result = await filler.fill_gap(gap)
 
         assert result.success is True
         assert result.ticks_filled == 1
         assert gap.is_filled is True
-        assert filler._stats['gaps_filled'] == 1
+        assert filler._stats["gaps_filled"] == 1
 
     @pytest.mark.asyncio
     async def test_fill_gap_no_data(self, mock_db_pool: MagicMock) -> None:
@@ -199,14 +199,14 @@ class TestGapFiller:
 
         gap = DataGap(
             symbol_id=1,
-            symbol='BTC/USDT',
-            gap_start=datetime.now(timezone.utc) - timedelta(seconds=10),
-            gap_end=datetime.now(timezone.utc),
+            symbol="BTC/USDT",
+            gap_start=datetime.now(UTC) - timedelta(seconds=10),
+            gap_end=datetime.now(UTC),
             gap_seconds=10,
         )
 
         # Mock _fetch_historical_data to return empty
-        with patch.object(filler, '_fetch_historical_data', return_value=[]):
+        with patch.object(filler, "_fetch_historical_data", return_value=[]):
             result = await filler.fill_gap(gap)
 
         assert result.success is False
@@ -220,23 +220,20 @@ class TestGapFiller:
 
         gap = DataGap(
             symbol_id=1,
-            symbol='BTC/USDT',
-            gap_start=datetime.now(timezone.utc) - timedelta(seconds=10),
-            gap_end=datetime.now(timezone.utc),
+            symbol="BTC/USDT",
+            gap_start=datetime.now(UTC) - timedelta(seconds=10),
+            gap_end=datetime.now(UTC),
             gap_seconds=10,
         )
 
         # Mock _fetch_historical_data to raise error
-        with patch.object(
-            filler, '_fetch_historical_data',
-            side_effect=Exception("API error")
-        ):
+        with patch.object(filler, "_fetch_historical_data", side_effect=Exception("API error")):
             result = await filler.fill_gap(gap)
 
         assert result.success is False
         assert result.ticks_filled == 0
         assert "API error" in result.error
-        assert filler._stats['errors'] == 1
+        assert filler._stats["errors"] == 1
 
     @pytest.mark.asyncio
     async def test_fill_gaps_batch(self, mock_db_pool: MagicMock) -> None:
@@ -247,16 +244,16 @@ class TestGapFiller:
         gaps = [
             DataGap(
                 symbol_id=1,
-                symbol='BTC/USDT',
-                gap_start=datetime.now(timezone.utc) - timedelta(seconds=10),
-                gap_end=datetime.now(timezone.utc),
+                symbol="BTC/USDT",
+                gap_start=datetime.now(UTC) - timedelta(seconds=10),
+                gap_end=datetime.now(UTC),
                 gap_seconds=10,
             ),
             DataGap(
                 symbol_id=2,
-                symbol='ETH/USDT',
-                gap_start=datetime.now(timezone.utc) - timedelta(seconds=15),
-                gap_end=datetime.now(timezone.utc),
+                symbol="ETH/USDT",
+                gap_start=datetime.now(UTC) - timedelta(seconds=15),
+                gap_end=datetime.now(UTC),
                 gap_seconds=15,
             ),
         ]
@@ -274,36 +271,36 @@ class TestGapFiller:
         async def mock_fetch(symbol, start, end):
             return [
                 {
-                    'trade_id': '123',
-                    'price': Decimal('50000.00'),
-                    'quantity': Decimal('0.001'),
-                    'time': datetime.now(timezone.utc),
-                    'is_buyer_maker': False,
-                    'side': 'BUY',
+                    "trade_id": "123",
+                    "price": Decimal("50000.00"),
+                    "quantity": Decimal("0.001"),
+                    "time": datetime.now(UTC),
+                    "is_buyer_maker": False,
+                    "side": "BUY",
                 }
             ]
 
-        with patch.object(filler, '_fetch_historical_data', mock_fetch):
+        with patch.object(filler, "_fetch_historical_data", mock_fetch):
             results = await filler.fill_gaps_batch(gaps, max_concurrent=2)
 
         assert len(results) == 2
         assert all(r.success for r in results)
-        assert filler._stats['gaps_filled'] == 2
+        assert filler._stats["gaps_filled"] == 2
 
     def test_get_stats(self, mock_db_pool: MagicMock) -> None:
         """Test getting statistics."""
         filler = GapFiller(db_pool=mock_db_pool)
         filler._stats = {
-            'gaps_filled': 5,
-            'ticks_fetched': 1000,
-            'errors': 1,
+            "gaps_filled": 5,
+            "ticks_fetched": 1000,
+            "errors": 1,
         }
 
         stats = filler.get_stats()
 
-        assert stats['gaps_filled'] == 5
-        assert stats['ticks_fetched'] == 1000
-        assert stats['errors'] == 1
+        assert stats["gaps_filled"] == 5
+        assert stats["ticks_fetched"] == 1000
+        assert stats["errors"] == 1
 
 
 class TestDataGap:
@@ -313,14 +310,14 @@ class TestDataGap:
         """Test creating data gap."""
         gap = DataGap(
             symbol_id=1,
-            symbol='BTC/USDT',
-            gap_start=datetime.now(timezone.utc) - timedelta(seconds=10),
-            gap_end=datetime.now(timezone.utc),
+            symbol="BTC/USDT",
+            gap_start=datetime.now(UTC) - timedelta(seconds=10),
+            gap_end=datetime.now(UTC),
             gap_seconds=10,
         )
 
         assert gap.symbol_id == 1
-        assert gap.symbol == 'BTC/USDT'
+        assert gap.symbol == "BTC/USDT"
         assert gap.gap_seconds == 10
         assert gap.is_filled is False
         assert gap.is_critical is False  # < 60 seconds
@@ -329,9 +326,9 @@ class TestDataGap:
         """Test critical gap detection."""
         gap = DataGap(
             symbol_id=1,
-            symbol='BTC/USDT',
-            gap_start=datetime.now(timezone.utc) - timedelta(seconds=70),
-            gap_end=datetime.now(timezone.utc),
+            symbol="BTC/USDT",
+            gap_start=datetime.now(UTC) - timedelta(seconds=70),
+            gap_end=datetime.now(UTC),
             gap_seconds=70,
         )
 
@@ -341,9 +338,9 @@ class TestDataGap:
         """Test non-critical gap."""
         gap = DataGap(
             symbol_id=1,
-            symbol='BTC/USDT',
-            gap_start=datetime.now(timezone.utc) - timedelta(seconds=30),
-            gap_end=datetime.now(timezone.utc),
+            symbol="BTC/USDT",
+            gap_start=datetime.now(UTC) - timedelta(seconds=30),
+            gap_end=datetime.now(UTC),
             gap_seconds=30,
         )
 
@@ -357,9 +354,9 @@ class TestGapFillResult:
         """Test successful gap fill result."""
         gap = DataGap(
             symbol_id=1,
-            symbol='BTC/USDT',
-            gap_start=datetime.now(timezone.utc) - timedelta(seconds=10),
-            gap_end=datetime.now(timezone.utc),
+            symbol="BTC/USDT",
+            gap_start=datetime.now(UTC) - timedelta(seconds=10),
+            gap_end=datetime.now(UTC),
             gap_seconds=10,
         )
 
@@ -377,9 +374,9 @@ class TestGapFillResult:
         """Test failed gap fill result."""
         gap = DataGap(
             symbol_id=1,
-            symbol='BTC/USDT',
-            gap_start=datetime.now(timezone.utc) - timedelta(seconds=10),
-            gap_end=datetime.now(timezone.utc),
+            symbol="BTC/USDT",
+            gap_start=datetime.now(UTC) - timedelta(seconds=10),
+            gap_end=datetime.now(UTC),
             gap_seconds=10,
         )
 
@@ -414,9 +411,9 @@ class TestBinanceRESTClientIntegration:
         """Test creating client with API key."""
         from src.infrastructure.exchanges.binance_rest_client import BinanceRESTClient
 
-        client = BinanceRESTClient(api_key='test_key')
+        client = BinanceRESTClient(api_key="test_key")
 
-        assert client.api_key == 'test_key'
+        assert client.api_key == "test_key"
 
     @pytest.mark.asyncio
     async def test_binance_rest_client_context_manager(self) -> None:
@@ -435,20 +432,20 @@ class TestBinanceRESTClientIntegration:
         from src.infrastructure.exchanges.binance_rest_client import parse_trade_data
 
         raw_trade = {
-            'a': 123456,
-            'p': '50000.00',
-            'q': '0.001',
-            'T': 1711036800000,  # timestamp in ms
-            'm': True,
+            "a": 123456,
+            "p": "50000.00",
+            "q": "0.001",
+            "T": 1711036800000,  # timestamp in ms
+            "m": True,
         }
 
         parsed = parse_trade_data(raw_trade)
 
-        assert parsed['trade_id'] == '123456'
-        assert parsed['price'] == Decimal('50000.00')
-        assert parsed['quantity'] == Decimal('0.001')
-        assert parsed['is_buyer_maker'] is True
-        assert parsed['side'] == 'SELL'
+        assert parsed["trade_id"] == "123456"
+        assert parsed["price"] == Decimal("50000.00")
+        assert parsed["quantity"] == Decimal("0.001")
+        assert parsed["is_buyer_maker"] is True
+        assert parsed["side"] == "SELL"
 
     def test_parse_kline_data(self) -> None:
         """Test parsing kline data from Binance."""
@@ -456,24 +453,24 @@ class TestBinanceRESTClientIntegration:
 
         raw_kline = [
             1711036800000,  # open time
-            '50000.00',  # open
-            '50100.00',  # high
-            '49900.00',  # low
-            '50050.00',  # close
-            '1000.5',  # volume
+            "50000.00",  # open
+            "50100.00",  # high
+            "49900.00",  # low
+            "50050.00",  # close
+            "1000.5",  # volume
             1711036860000,  # close time
-            '50050000.00',  # quote volume
+            "50050000.00",  # quote volume
             12345,  # trades count
         ]
 
         parsed = parse_kline_data(raw_kline)
 
-        assert parsed['open'] == Decimal('50000.00')
-        assert parsed['high'] == Decimal('50100.00')
-        assert parsed['low'] == Decimal('49900.00')
-        assert parsed['close'] == Decimal('50050.00')
-        assert parsed['volume'] == Decimal('1000.5')
-        assert parsed['trades_count'] == 12345
+        assert parsed["open"] == Decimal("50000.00")
+        assert parsed["high"] == Decimal("50100.00")
+        assert parsed["low"] == Decimal("49900.00")
+        assert parsed["close"] == Decimal("50050.00")
+        assert parsed["volume"] == Decimal("1000.5")
+        assert parsed["trades_count"] == 12345
 
 
 class TestRateLimiter:
@@ -506,6 +503,7 @@ class TestRateLimiter:
 
         # Next request should wait
         import time
+
         start = time.time()
         await limiter.wait(weight=5)
         elapsed = time.time() - start

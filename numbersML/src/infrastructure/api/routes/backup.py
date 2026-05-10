@@ -25,6 +25,7 @@ router = APIRouter(prefix="/api/backup", tags=["backup"])
 
 class BackupInfo(BaseModel):
     """Backup file information."""
+
     name: str
     path: str
     size: int
@@ -33,6 +34,7 @@ class BackupInfo(BaseModel):
 
 class BackupCreateResponse(BaseModel):
     """Response for backup creation."""
+
     name: str
     path: str
     size: int
@@ -41,6 +43,7 @@ class BackupCreateResponse(BaseModel):
 
 class RestoreResponse(BaseModel):
     """Response for restore operation."""
+
     status: str
     message: str
 
@@ -241,6 +244,7 @@ async def upload_backup(
         logger.info(f"Backup uploaded: {file_path}")
 
         from src.infrastructure.database.backup import get_backup_info
+
         info = get_backup_info(file_path)
         return BackupInfo(**info)
 

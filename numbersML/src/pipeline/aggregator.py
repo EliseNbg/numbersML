@@ -15,10 +15,10 @@ Pull model: tick() and drain_pending() return candles. No callbacks.
 import asyncio
 import logging
 from collections import deque
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
-from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
+from datetime import datetime, timedelta
+from decimal import Decimal
+from typing import Any, Optional
 
 from src.pipeline.websocket_manager import AggTrade
 
@@ -43,14 +43,15 @@ class TradeAggregation:
         first_trade_id: First aggregate trade ID
         last_trade_id: Last aggregate trade ID
     """
+
     time: datetime
     symbol: str
-    open: Decimal = Decimal('0')
-    high: Decimal = Decimal('0')
-    low: Decimal = Decimal('0')
-    close: Decimal = Decimal('0')
-    volume: Decimal = Decimal('0')
-    quote_volume: Decimal = Decimal('0')
+    open: Decimal = Decimal("0")
+    high: Decimal = Decimal("0")
+    low: Decimal = Decimal("0")
+    close: Decimal = Decimal("0")
+    volume: Decimal = Decimal("0")
+    quote_volume: Decimal = Decimal("0")
     trade_count: int = 0
     first_trade_id: int = 0
     last_trade_id: int = 0
@@ -74,20 +75,20 @@ class TradeAggregation:
         self.quote_volume += trade.quote_quantity
         self.trade_count += 1
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for database insertion."""
         return {
-            'time': self.time,
-            'symbol': self.symbol,
-            'open': str(self.open),
-            'high': str(self.high),
-            'low': str(self.low),
-            'close': str(self.close),
-            'volume': str(self.volume),
-            'quote_volume': str(self.quote_volume),
-            'trade_count': self.trade_count,
-            'first_trade_id': self.first_trade_id,
-            'last_trade_id': self.last_trade_id,
+            "time": self.time,
+            "symbol": self.symbol,
+            "open": str(self.open),
+            "high": str(self.high),
+            "low": str(self.low),
+            "close": str(self.close),
+            "volume": str(self.volume),
+            "quote_volume": str(self.quote_volume),
+            "trade_count": self.trade_count,
+            "first_trade_id": self.first_trade_id,
+            "last_trade_id": self.last_trade_id,
         }
 
 
@@ -121,17 +122,17 @@ class TradeAggregator:
 
         # Statistics
         self._stats = {
-            'trades_aggregated': 0,
-            'candles_emitted': 0,
-            'last_candle_time': None,
+            "trades_aggregated": 0,
+            "candles_emitted": 0,
+            "last_candle_time": None,
         }
 
     def _emit(self, candle: TradeAggregation) -> None:
         """Mark candle as emitted and update state."""
         self._last_close = candle.close
         self._last_emitted_time = candle.time
-        self._stats['candles_emitted'] += 1
-        self._stats['last_candle_time'] = candle.time
+        self._stats["candles_emitted"] += 1
+        self._stats["last_candle_time"] = candle.time
 
     async def add_trade(self, trade: AggTrade) -> None:
         """
@@ -156,7 +157,7 @@ class TradeAggregator:
 
             # Add trade to current window
             self._current.update(trade)
-            self._stats['trades_aggregated'] += 1
+            self._stats["trades_aggregated"] += 1
 
     async def tick(self, now: datetime) -> Optional[TradeAggregation]:
         """
@@ -193,8 +194,8 @@ class TradeAggregator:
                     high=self._last_close,
                     low=self._last_close,
                     close=self._last_close,
-                    volume=Decimal('0'),
-                    quote_volume=Decimal('0'),
+                    volume=Decimal("0"),
+                    quote_volume=Decimal("0"),
                     trade_count=0,
                 )
 
@@ -213,7 +214,7 @@ class TradeAggregator:
                 return candle
             return None
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         return self._stats.copy()
 
 
@@ -225,7 +226,7 @@ class MultiSymbolAggregator:
     """
 
     def __init__(self) -> None:
-        self._aggregators: Dict[str, TradeAggregator] = {}
+        self._aggregators: dict[str, TradeAggregator] = {}
         self._lock = asyncio.Lock()
 
     def _get_aggregator(self, symbol: str) -> TradeAggregator:
@@ -240,11 +241,11 @@ class MultiSymbolAggregator:
             aggregator = self._get_aggregator(symbol)
         await aggregator.add_trade(trade)
 
-    async def tick_all(self, now: datetime) -> Dict[str, TradeAggregation]:
+    async def tick_all(self, now: datetime) -> dict[str, TradeAggregation]:
         """
         Tick all aggregators. Returns emitted candles as {symbol: candle}.
         """
-        emitted: Dict[str, TradeAggregation] = {}
+        emitted: dict[str, TradeAggregation] = {}
 
         for symbol, aggregator in self._aggregators.items():
             candle = await aggregator.tick(now)
@@ -253,7 +254,7 @@ class MultiSymbolAggregator:
 
         return emitted
 
-    async def flush_all(self) -> List[TradeAggregation]:
+    async def flush_all(self) -> list[TradeAggregation]:
         """Flush all aggregators. Returns emitted candles."""
         candles = []
         for aggregator in self._aggregators.values():
@@ -262,8 +263,8 @@ class MultiSymbolAggregator:
                 candles.append(candle)
         return candles
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         return {
-            'symbols': len(self._aggregators),
-            'aggregators': {s: a.get_stats() for s, a in self._aggregators.items()},
+            "symbols": len(self._aggregators),
+            "aggregators": {s: a.get_stats() for s, a in self._aggregators.items()},
         }

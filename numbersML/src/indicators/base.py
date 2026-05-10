@@ -6,12 +6,13 @@ Provides common functionality for parameter validation,
 code hashing, and result formatting.
 """
 
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Dict, List, Any, Optional
-import numpy as np
 import hashlib
 import inspect
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Any, Optional
+
+import numpy as np
 
 
 @dataclass
@@ -26,8 +27,8 @@ class IndicatorResult:
     """
 
     name: str
-    values: Dict[str, np.ndarray]
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    values: dict[str, np.ndarray]
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class Indicator(ABC):
@@ -52,7 +53,7 @@ class Indicator(ABC):
         Args:
             **params: Indicator parameters (e.g., period=14)
         """
-        self.params: Dict[str, Any] = params
+        self.params: dict[str, Any] = params
         self._validate_params()
 
     @abstractmethod
@@ -117,7 +118,7 @@ class Indicator(ABC):
 
     @classmethod
     @abstractmethod
-    def params_schema(cls) -> Dict[str, Any]:
+    def params_schema(cls) -> dict[str, Any]:
         """
         Return JSON Schema for parameter validation.
 
@@ -131,7 +132,7 @@ class Indicator(ABC):
         source = inspect.getsource(self.__class__)
         return hashlib.sha256(source.encode()).hexdigest()
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize indicator definition to dictionary."""
         return {
             "name": self.name,
@@ -151,7 +152,7 @@ class Indicator(ABC):
         highs: Optional[np.ndarray] = None,
         lows: Optional[np.ndarray] = None,
         opens: Optional[np.ndarray] = None,
-    ) -> Dict[str, Optional[float]]:
+    ) -> dict[str, Optional[float]]:
         """
         Calculate only the latest (last) indicator value.
 
@@ -177,7 +178,7 @@ class Indicator(ABC):
             opens=opens,
         )
 
-        latest: Dict[str, Optional[float]] = {}
+        latest: dict[str, Optional[float]] = {}
         for key, values in result.values.items():
             if len(values) > 0:
                 val = float(values[-1])

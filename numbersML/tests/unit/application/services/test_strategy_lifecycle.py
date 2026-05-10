@@ -5,32 +5,28 @@ Tests runtime state management, lifecycle transitions, error isolation,
 and integration with StrategyRunner.
 """
 
-import pytest
-import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
-from uuid import UUID, uuid4
-from typing import Dict, Any
+from uuid import uuid4
 
+import pytest
+
+from src.application.services.strategy_lifecycle import StrategyLifecycleService
+from src.domain.repositories.runtime_event_repository import StrategyRuntimeEventRepository
+from src.domain.repositories.strategy_repository import StrategyRepository
 from src.domain.strategies.base import (
+    EnrichedTick,
     Strategy,
     StrategyManager,
-    EnrichedTick,
-    Signal,
-    SignalType,
-    TimeFrame,
 )
 from src.domain.strategies.runtime import (
-    StrategyRuntimeState,
-    StrategyLifecycleEvent,
-    RuntimeState,
     VALID_TRANSITIONS,
+    RuntimeState,
+    StrategyLifecycleEvent,
+    StrategyRuntimeState,
 )
-from src.domain.strategies.strategy_config import StrategyDefinition, StrategyConfigVersion
-from src.domain.repositories.strategy_repository import StrategyRepository
-from src.domain.repositories.runtime_event_repository import StrategyRuntimeEventRepository
-from src.application.services.strategy_lifecycle import StrategyLifecycleService
+from src.domain.strategies.strategy_config import StrategyConfigVersion, StrategyDefinition
 
 # ============================================================================
 # Fixtures
@@ -91,7 +87,7 @@ def sample_enriched_tick() -> EnrichedTick:
         symbol="BTC/USDC",
         price=Decimal("50000.00"),
         volume=Decimal("1.0"),
-        time=datetime.now(timezone.utc),
+        time=datetime.now(UTC),
         indicators={"rsi": 55.0},
     )
 
@@ -616,9 +612,7 @@ class TestClassBasedStrategyLoading:
 
         import asyncio
 
-        strategy = asyncio.run(
-            lifecycle_service._load_strategy_instance(strategy_def, 1)
-        )
+        strategy = asyncio.run(lifecycle_service._load_strategy_instance(strategy_def, 1))
 
         # Should be a Strategy subclass (DynamicStrategy)
         assert isinstance(strategy, Strategy)
@@ -626,7 +620,6 @@ class TestClassBasedStrategyLoading:
 
     def test_class_based_strategy_with_state(self, lifecycle_service):
         """Test that class-based strategy maintains state."""
-        from src.strategies.user.example_rsi_strategy import ExampleRSIStrategy
 
         strategy_def = StrategyDefinition(
             name="Stateful Strategy",
@@ -649,9 +642,7 @@ class TestClassBasedStrategyLoading:
 
         import asyncio
 
-        strategy = asyncio.run(
-            lifecycle_service._load_strategy_instance(strategy_def, 1)
-        )
+        strategy = asyncio.run(lifecycle_service._load_strategy_instance(strategy_def, 1))
 
         # Verify state attributes exist
         assert hasattr(strategy, "tick_count")
@@ -659,10 +650,10 @@ class TestClassBasedStrategyLoading:
         assert hasattr(strategy, "position_open")
 
         # Process a tick and verify state updates
-        from src.domain.strategies.base import StrategyState
-        from src.domain.strategies.base import EnrichedTick
-        from datetime import datetime, UTC
+        from datetime import UTC, datetime
         from decimal import Decimal
+
+        from src.domain.strategies.base import EnrichedTick, StrategyState
 
         tick = EnrichedTick(
             symbol="BTC/USDC",
