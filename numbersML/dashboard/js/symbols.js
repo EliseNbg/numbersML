@@ -13,6 +13,9 @@ const API_BASE = '/api';
 // Current symbols data
 let symbolsData = [];
 
+// Expose globally for other modules
+window.symbolsData = symbolsData;
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Symbols page initialized');

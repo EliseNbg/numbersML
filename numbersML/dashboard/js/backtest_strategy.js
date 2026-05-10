@@ -9,7 +9,7 @@
  */
 
 // API Configuration
-const API_BASE_URL = '/api';
+const API_BASE = '/api';
 const POLL_INTERVAL = 1000; // 1 second
 
 // State
@@ -28,6 +28,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Load strategies
     loadStrategies();
+    
+    // Load symbols
+    loadSymbols();
     
     // Load backtest history
     loadBacktestHistory();
@@ -82,7 +85,7 @@ function bindEventListeners() {
  */
 async function loadStrategies() {
     try {
-        const response = await fetch(`${API_BASE_URL}/strategies`);
+        const response = await fetch(`${API_BASE}/strategies`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         const strategies = await response.json();
@@ -110,6 +113,29 @@ async function loadStrategies() {
 }
 
 /**
+ * Load symbols for dropdown
+ */
+async function loadSymbols() {
+    try {
+        const response = await fetch(`${API_BASE}/symbols`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const symbols = await response.json();
+        const allowedSymbols = symbols.filter(s => s.is_allowed && s.is_active);
+        
+        const select = document.getElementById('symbol-select');
+        select.innerHTML = '<option value="">Select...</option>' +
+            allowedSymbols.map(s => `<option value="${s.symbol}">${s.symbol}</option>`).join('');
+        
+        console.log(`Loaded ${allowedSymbols.length} allowed and active symbols`);
+        
+    } catch (error) {
+        console.error('Failed to load symbols:', error);
+        showToast('Failed to load symbols', 'error');
+    }
+}
+
+/**
  * Handle strategy selection change
  */
 async function onStrategyChange() {
@@ -122,7 +148,7 @@ async function onStrategyChange() {
     if (!strategyId) return;
     
     try {
-        const response = await fetch(`${API_BASE_URL}/strategies/${strategyId}/versions`);
+        const response = await fetch(`${API_BASE}/strategies/${strategyId}/versions`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         const versions = await response.json();
@@ -169,7 +195,7 @@ async function runBacktest() {
     submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Submitting...';
     
     try {
-        const response = await fetch(`${API_BASE_URL}/strategy-backtests/jobs`, {
+        const response = await fetch(`${API_BASE}/strategy-backtests/jobs`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -237,7 +263,7 @@ async function pollJobStatus() {
     if (!currentJobId) return;
     
     try {
-        const response = await fetch(`${API_BASE_URL}/strategy-backtests/jobs/${currentJobId}`);
+        const response = await fetch(`${API_BASE}/strategy-backtests/jobs/${currentJobId}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         const job = await response.json();
@@ -639,7 +665,7 @@ function renderDetailedMetrics(metrics, parameters) {
  */
 async function loadBacktestHistory() {
     try {
-        const response = await fetch(`${API_BASE_URL}/strategy-backtests/results?limit=20`);
+        const response = await fetch(`${API_BASE}/strategy-backtests/results?limit=20`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         const results = await response.json();
