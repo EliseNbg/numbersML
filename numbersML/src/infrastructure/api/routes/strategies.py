@@ -62,7 +62,9 @@ class StrategyCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
     mode: str = Field(default="paper", pattern="^(paper|live)$")
-    config: StrategyConfigSchema = Field(default_factory=StrategyConfigSchema)
+    strategy_type: str = Field(default="config", pattern="^(config|class)$")
+    class_path: str | None = Field(default=None, description="Fully qualified class path for class-based strategies (e.g., src.strategies.user.grid1.Grid1Strategy)")
+    config: StrategyConfigSchema | None = None
     created_by: str = Field(default="system", max_length=255)
 
 
@@ -91,6 +93,8 @@ class StrategyResponse(BaseModel):
     description: str | None
     mode: str
     status: str
+    strategy_type: str
+    class_path: str | None
     current_version: int
     created_by: str
     created_at: datetime
@@ -104,6 +108,8 @@ class StrategyResponse(BaseModel):
             description=s.description,
             mode=s.mode,
             status=s.status,
+            strategy_type=s.strategy_type,
+            class_path=s.class_path,
             current_version=s.current_version,
             created_by=s.created_by,
             created_at=s.created_at,
