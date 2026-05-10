@@ -762,7 +762,8 @@ async function deactivateStrategy() {
     try {
         const response = await fetch(`${API_BASE_URL}/strategies/${currentStrategyId}/deactivate`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
         });
 
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -781,7 +782,9 @@ async function deactivateStrategy() {
 async function quickDeactivate(strategyId) {
     try {
         const response = await fetch(`${API_BASE_URL}/strategies/${strategyId}/deactivate`, {
-            method: 'POST'
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
         });
 
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -801,7 +804,9 @@ async function pauseStrategy() {
 
     try {
         const response = await fetch(`${API_BASE_URL}/strategies/${currentStrategyId}/pause`, {
-            method: 'POST'
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
         });
 
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -822,7 +827,9 @@ async function resumeStrategy() {
 
     try {
         const response = await fetch(`${API_BASE_URL}/strategies/${currentStrategyId}/resume`, {
-            method: 'POST'
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
         });
 
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
