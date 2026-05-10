@@ -153,6 +153,10 @@ class StrategyLifecycleService:
         new_state = runtime_state.transition_to(RuntimeState.RUNNING)
         self._runtime_states[strategy_id] = new_state
 
+        # Persist status change
+        strategy_def.status = "active"
+        await self._strategy_repo.save(strategy_def)
+
         # Persist event
         await self._record_lifecycle_event(
             strategy_def=strategy_def,
@@ -218,6 +222,10 @@ class StrategyLifecycleService:
         # Update state
         new_state = runtime_state.transition_to(RuntimeState.STOPPED)
         self._runtime_states[strategy_id] = new_state
+
+        # Persist status change
+        strategy_def.status = "validated"
+        await self._strategy_repo.save(strategy_def)
 
         # Persist event
         await self._record_lifecycle_event(
@@ -285,6 +293,10 @@ class StrategyLifecycleService:
         new_state = runtime_state.transition_to(RuntimeState.PAUSED)
         self._runtime_states[strategy_id] = new_state
 
+        # Persist status change
+        strategy_def.status = "paused"
+        await self._strategy_repo.save(strategy_def)
+
         # Persist event
         await self._record_lifecycle_event(
             strategy_def=strategy_def,
@@ -350,6 +362,10 @@ class StrategyLifecycleService:
         # Update state
         new_state = runtime_state.transition_to(RuntimeState.RUNNING)
         self._runtime_states[strategy_id] = new_state
+
+        # Persist status change
+        strategy_def.status = "active"
+        await self._strategy_repo.save(strategy_def)
 
         # Persist event
         await self._record_lifecycle_event(

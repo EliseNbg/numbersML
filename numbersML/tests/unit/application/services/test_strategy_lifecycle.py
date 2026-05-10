@@ -671,3 +671,126 @@ class TestClassBasedStrategyLoading:
         assert signal.signal_type.value == "BUY"
         assert signal is not None
         assert signal.signal_type.value == "BUY"
+
+
+# ============================================================================
+# Strategy Lifecycle Status Persistence Tests
+# ============================================================================
+
+
+class TestStrategyLifecycleStatusPersistence:
+    """Test that lifecycle transitions persist status changes to StrategyDefinition."""
+
+    @pytest.mark.asyncio
+    async def test_activate_strategy_persists_active_status(
+        self, lifecycle_service, sample_strategy_def
+    ) -> None:
+        """Activating a strategy sets its status to 'active' and saves."""
+        strategy_id = sample_strategy_def.id
+        sample_strategy_def.status = "draft"
+
+        # Setup mocks
+        lifecycle_service._strategy_repo.get_by_id.return_value = sample_strategy_def
+        lifecycle_service._strategy_repo.list_versions.return_value = [
+            StrategyConfigVersion(
+                strategy_id=strategy_id,
+                version=1,
+                schema_version=1,
+                config={},
+            )
+        ]
+        mock_strategy = AsyncMock(spec=Strategy)
+        lifecycle_service._strategy_manager.add_strategy = MagicMock()
+        lifecycle_service._strategy_manager.get_strategy.return_value = mock_strategy
+        lifecycle_service._event_repo.save = AsyncMock()
+
+        # Act
+        result = await lifecycle_service.activate_strategy(strategy_id)
+
+        # Assert
+        assert result is True
+        assert sample_strategy_def.status == "active"
+        lifecycle_service._strategy_repo.save.assert_called_once_with(sample_strategy_def)
+
+    @pytest.mark.asyncio
+    async def test_deactivate_strategy_persists_validated_status(
+        self, lifecycle_service, sample_strategy_def
+    ) -> None:
+        """Deactivating a running strategy sets its status to 'validated' and saves."""
+        strategy_id = sample_strategy_def.id
+        sample_strategy_def.status = "active"
+
+        # Setup: strategy exists and is running
+        runtime_state = StrategyRuntimeState(
+            strategy_id=strategy_id,
+            strategy_name="test",
+            state=RuntimeState.RUNNING,
+        )
+        lifecycle_service._runtime_states[strategy_id] = runtime_state
+        lifecycle_service._strategy_repo.get_by_id.return_value = sample_strategy_def
+        lifecycle_service._strategy_manager.remove_strategy = MagicMock(return_value=None)
+        lifecycle_service._event_repo.save = AsyncMock()
+
+        # Act
+        result = await lifecycle_service.deactivate_strategy(strategy_id)
+
+        # Assert
+        assert result is True
+        assert sample_strategy_def.status == "validated"
+        lifecycle_service._strategy_repo.save.assert_called_once_with(sample_strategy_def)
+
+    @pytest.mark.asyncio
+    async def test_pause_strategy_persists_paused_status(
+        self, lifecycle_service, sample_strategy_def
+    ) -> None:
+        """Pausing a running strategy sets its status to 'paused' and saves."""
+        strategy_id = sample_strategy_def.id
+        sample_strategy_def.status = "active"
+
+        # Setup: strategy exists and is running
+        runtime_state = StrategyRuntimeState(
+            strategy_id=strategy_id,
+            strategy_name="test",
+            state=RuntimeState.RUNNING,
+        )
+        lifecycle_service._runtime_states[strategy_id] = runtime_state
+        lifecycle_service._strategy_repo.get_by_id.return_value = sample_strategy_def
+        mock_strategy = AsyncMock(spec=Strategy)
+        lifecycle_service._strategy_manager.get_strategy.return_value = mock_strategy
+        lifecycle_service._event_repo.save = AsyncMock()
+
+        # Act
+        result = await lifecycle_service.pause_strategy(strategy_id)
+
+        # Assert
+        assert result is True
+        assert sample_strategy_def.status == "paused"
+        lifecycle_service._strategy_repo.save.assert_called_once_with(sample_strategy_def)
+
+    @pytest.mark.asyncio
+    async def test_resume_strategy_persists_active_status(
+        self, lifecycle_service, sample_strategy_def
+    ) -> None:
+        """Resuming a paused strategy sets its status to 'active' and saves."""
+        strategy_id = sample_strategy_def.id
+        sample_strategy_def.status = "paused"
+
+        # Setup: strategy exists and is paused
+        runtime_state = StrategyRuntimeState(
+            strategy_id=strategy_id,
+            strategy_name="test",
+            state=RuntimeState.PAUSED,
+        )
+        lifecycle_service._runtime_states[strategy_id] = runtime_state
+        lifecycle_service._strategy_repo.get_by_id.return_value = sample_strategy_def
+        mock_strategy = AsyncMock(spec=Strategy)
+        lifecycle_service._strategy_manager.get_strategy.return_value = mock_strategy
+        lifecycle_service._event_repo.save = AsyncMock()
+
+        # Act
+        result = await lifecycle_service.resume_strategy(strategy_id)
+
+        # Assert
+        assert result is True
+        assert sample_strategy_def.status == "active"
+        lifecycle_service._strategy_repo.save.assert_called_once_with(sample_strategy_def)
