@@ -171,7 +171,7 @@ class StrategyRepositoryPG(StrategyRepository):
             is_active=row["is_active"],
             created_by=row["created_by"],
             created_at=_coerce_datetime(row["created_at"]),
-            id=row["id"],
+            id=row.get("id"),
         )
 
 
