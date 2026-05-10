@@ -37,6 +37,9 @@ class StrategyRepositoryPG(StrategyRepository):
             return [self._map_strategy(row) for row in rows]
 
     async def save(self, entity: StrategyDefinition) -> StrategyDefinition:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"[REPO SAVE] Saving strategy {entity.id} with status='{entity.status}'")
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
@@ -61,6 +64,7 @@ class StrategyRepositoryPG(StrategyRepository):
                 entity.created_by,
                 entity.created_at,
             )
+            logger.warning(f"[REPO SAVE] Saved strategy {entity.id}, returned status='{row['status']}'")
         return self._map_strategy(row)
 
     async def delete(self, entity_id: UUID) -> bool:

@@ -224,8 +224,11 @@ class StrategyLifecycleService:
         self._runtime_states[strategy_id] = new_state
 
         # Persist status change
+        logger.warning(f"[LIFECYCLE] About to save strategy {strategy_id}, current status='{strategy_def.status}'")
         strategy_def.status = "validated"
-        await self._strategy_repo.save(strategy_def)
+        logger.warning(f"[LIFECYCLE] Set status to 'validated', now calling save()")
+        saved = await self._strategy_repo.save(strategy_def)
+        logger.warning(f"[LIFECYCLE] Save completed, returned status='{saved.status}'")
 
         # Persist event
         await self._record_lifecycle_event(
