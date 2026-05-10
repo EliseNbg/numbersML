@@ -768,3 +768,72 @@ async def modify_strategy(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to save modified strategy: {str(e)}",
         )
+
+
+@router.get("/{strategy_id}/debug-status", response_model=dict[str, Any])
+async def debug_strategy_status(
+    strategy_id: UUID,
+    repo=Depends(get_strategy_repo),
+) -> dict[str, Any]:
+    """Debug endpoint to check raw database status vs runtime state.
+
+    Returns detailed diagnostics about strategy status from both
+    database and runtime state to help diagnose sync issues.
+    """
+    try:
+        # Get from database directly
+        strategy = await repo.get_by_id(strategy_id)
+        if not strategy:
+            raise HTTPException(status_code=404, detail="Strategy not found")
+
+        # Get runtime state if available
+        from src.application.services.strategy_lifecycle import StrategyLifecycleService
+        from src.domain.strategies.base import StrategyManager
+
+        result = {
+            "strategy_id": str(strategy_id),
+            "database": {
+                "status": strategy.status,
+                "mode": strategy.mode,
+                "current_version": strategy.current_version,
+                "name": strategy.name,
+            },
+            "runtime": None,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+
+        # Check if there's runtime state
+        try:
+            # Get or create lifecycle service directly
+            strategy_manager = StrategyManager()
+            from src.infrastructure.database import get_db_pool_async
+            pool = await get_db_pool_async()
+            from src.infrastructure.repositories.strategy_repository_pg import StrategyRepositoryPG
+            from src.infrastructure.repositories.runtime_event_repository_pg import StrategyRuntimeEventRepositoryPG
+            from src.application.services.strategy_lifecycle import StrategyLifecycleService
+
+            repo = StrategyRepositoryPG(pool)
+            evt_repo = StrategyRuntimeEventRepositoryPG(pool)
+            svc = StrategyLifecycleService(
+                strategy_repository=repo,
+                event_repository=evt_repo,
+                strategy_manager=strategy_manager,
+                actor="debug",
+            )
+            runtime = await svc.get_runtime_state(strategy_id)
+            if runtime:
+                result["runtime"] = {
+                    "state": runtime.state.value,
+                    "version": runtime.version,
+                    "error_count": runtime.error_count,
+                    "last_error": runtime.last_error,
+                }
+        except Exception as e:
+            result["runtime_error"] = str(e)
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Debug status failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Debug failed: {str(e)}")
