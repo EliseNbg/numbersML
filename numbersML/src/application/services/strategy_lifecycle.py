@@ -13,14 +13,12 @@ and infrastructure services.
 
 import logging
 from typing import Any, cast
-
 from uuid import UUID
 
+from src.application.services.strategy_loader import load_strategy_instance
 from src.domain.repositories.runtime_event_repository import StrategyRuntimeEventRepository
 from src.domain.repositories.strategy_repository import StrategyRepository
 from src.domain.strategies.base import (
-    EnrichedTick,
-    Signal,
     Strategy,
     StrategyManager,
 )
@@ -431,59 +429,13 @@ class StrategyLifecycleService:
             NotImplementedError: If signal type not supported
             ValueError: If class not found or invalid config
         """
-        from src.domain.strategies.base import TimeFrame
-
         # Fetch versioned config
         versions = await self._strategy_repo.list_versions(strategy_def.id)
         config_version = next((v for v in versions if v.version == version), None)
 
         if config_version is None:
             raise ValueError(f"Version {version} not found for strategy {strategy_def.id}")
-
-        strategy_type = strategy_def.strategy_type
-        symbols = strategy_def.config.get("symbols", ["BTC/USDC"])
-
-        if strategy_type == "class":
-            # Load user-written Python class
-            class_path = strategy_def.class_path
-            if not class_path:
-                raise ValueError("Strategy type is 'class' but no class_path provided")
-
-            try:
-                module_path, class_name = class_path.rsplit(".", 1)
-                module = __import__(module_path, fromlist=[class_name])
-                strategy_class = getattr(module, class_name)
-            except (ValueError, ImportError, AttributeError) as e:
-                raise ValueError(f"Failed to load strategy class {class_path}: {e}") from e
-
-            # Instantiate strategy
-            strategy = strategy_class(
-                strategy_id=str(strategy_def.id),
-                symbols=symbols,
-            )
-        else:
-            # Legacy config-based strategy
-            class DynamicStrategy(Strategy):
-                """Dynamically created strategy from config."""
-
-                def on_tick(self, tick: EnrichedTick) -> Signal | None:
-                    # Placeholder: real implementation would use signal config
-                    return None
-
-            strategy = DynamicStrategy(
-                strategy_id=str(strategy_def.id),
-                symbols=symbols,
-                time_frame=TimeFrame.TICK,
-            )
-
-        # Load config into strategy instance
-        strategy._config = config_version.config.copy()
-        
-        logger.info(
-            f"Loaded strategy {strategy_def.id} (type={strategy_type}, "
-            f"version={version}, class={strategy.__class__.__name__})"
-        )
-        return cast(Strategy, strategy)
+        return cast(Strategy, load_strategy_instance(strategy_def, config_version))
 
     async def _record_lifecycle_event(
         self,

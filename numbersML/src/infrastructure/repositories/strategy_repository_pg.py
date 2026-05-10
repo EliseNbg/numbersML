@@ -1,7 +1,7 @@
 """PostgreSQL implementation of strategy lifecycle repository."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -52,15 +52,15 @@ class StrategyRepositoryPG(StrategyRepository):
                     updated_at = NOW()
                 RETURNING *
                 """,
-            entity.id,
-            entity.name,
-            entity.description,
-            entity.mode,
-            entity.status,
-            entity.current_version,
-            entity.created_by,
-            entity.created_at,
-        )
+                entity.id,
+                entity.name,
+                entity.description,
+                entity.mode,
+                entity.status,
+                entity.current_version,
+                entity.created_by,
+                entity.created_at,
+            )
         return self._map_strategy(row)
 
     async def delete(self, entity_id: UUID) -> bool:
@@ -141,7 +141,7 @@ class StrategyRepositoryPG(StrategyRepository):
                 """,
                 strategy_id,
                 version,
-        )
+            )
         return True
 
     @staticmethod
@@ -171,11 +171,12 @@ class StrategyRepositoryPG(StrategyRepository):
             is_active=row["is_active"],
             created_by=row["created_by"],
             created_at=_coerce_datetime(row["created_at"]),
+            id=row["id"],
         )
 
 
 def _coerce_datetime(value: datetime) -> datetime:
     """Normalize datetime values from asyncpg records."""
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
+        return value.replace(tzinfo=UTC)
     return value

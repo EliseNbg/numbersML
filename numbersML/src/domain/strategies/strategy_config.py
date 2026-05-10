@@ -17,6 +17,7 @@ class StrategyConfigVersion:
     is_active: bool = False
     created_by: str = "system"
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    id: UUID | None = None
 
 
 @dataclass

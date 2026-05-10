@@ -1,7 +1,8 @@
 """PostgreSQL implementation of strategy backtest repository."""
 
 import json
-from datetime import datetime, timezone
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -11,13 +12,22 @@ import asyncpg
 class StrategyBacktestRepositoryPG:
     """Repository for strategy backtest results."""
 
-    def __init__(self, connection: asyncpg.Connection) -> None:
-        self.conn = connection
+    def __init__(self, db: asyncpg.Connection | asyncpg.Pool) -> None:
+        self._db = db
+
+    @asynccontextmanager
+    async def _connection(self):
+        """Yield a live connection from a connection or pool."""
+        if isinstance(self._db, asyncpg.Pool):
+            async with self._db.acquire() as conn:
+                yield conn
+            return
+        yield self._db
 
     async def save(
         self,
         strategy_id: UUID,
-        strategy_version_id: UUID | None,
+        strategy_version_id: UUID,
         time_range_start: datetime,
         time_range_end: datetime,
         initial_balance: float,
@@ -46,50 +56,50 @@ class StrategyBacktestRepositoryPG:
         Returns:
             Saved backtest record as dictionary
         """
+
         def _json_serializable(v):
             if isinstance(v, datetime):
                 return v.isoformat()
             if isinstance(v, (int, float, str, bool, type(None))):
                 return v
             return str(v)
-        
-        trades_json = json.dumps([
-            {k: _json_serializable(v) for k, v in t.items()}
-            for t in (trades or [])
-        ])
-        equity_json = json.dumps([
-            {k: _json_serializable(v) for k, v in p.items()}
-            for p in (equity_curve or [])
-        ])
+
+        trades_json = json.dumps(
+            [{k: _json_serializable(v) for k, v in t.items()} for t in (trades or [])]
+        )
+        equity_json = json.dumps(
+            [{k: _json_serializable(v) for k, v in p.items()} for p in (equity_curve or [])]
+        )
         metrics_json = json.dumps(metrics)
-        
-        row = await self.conn.fetchrow(
-            """
-            INSERT INTO strategy_backtests (
+
+        async with self._connection() as conn:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO strategy_backtests (
+                    strategy_id,
+                    strategy_version_id,
+                    time_range_start,
+                    time_range_end,
+                    initial_balance,
+                    final_balance,
+                    metrics,
+                    trades,
+                    equity_curve,
+                    created_by
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                RETURNING *
+                """,
                 strategy_id,
                 strategy_version_id,
                 time_range_start,
                 time_range_end,
                 initial_balance,
                 final_balance,
-                metrics,
-                trades,
-                equity_curve,
-                created_by
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            RETURNING *
-            """,
-            strategy_id,
-            strategy_version_id,
-            time_range_start,
-            time_range_end,
-            initial_balance,
-            final_balance,
-            metrics_json,
-            trades_json,
-            equity_json,
-            created_by,
-        )
+                metrics_json,
+                trades_json,
+                equity_json,
+                created_by,
+            )
         return self._map_backtest(row)
 
     async def get(self, backtest_id: UUID) -> dict[str, Any] | None:
@@ -101,10 +111,11 @@ class StrategyBacktestRepositoryPG:
         Returns:
             Backtest result or None if not found
         """
-        row = await self.conn.fetchrow(
-            "SELECT * FROM strategy_backtests WHERE id = $1",
-            backtest_id,
-        )
+        async with self._connection() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM strategy_backtests WHERE id = $1",
+                backtest_id,
+            )
         if row is None:
             return None
         return self._map_backtest(row)
@@ -123,16 +134,30 @@ class StrategyBacktestRepositoryPG:
         Returns:
             List of backtest results
         """
-        rows = await self.conn.fetch(
-            """
-            SELECT * FROM strategy_backtests
-            WHERE strategy_id = $1
-            ORDER BY created_at DESC
-            LIMIT $2
-            """,
-            strategy_id,
-            limit,
-        )
+        async with self._connection() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT * FROM strategy_backtests
+                WHERE strategy_id = $1
+                ORDER BY created_at DESC
+                LIMIT $2
+                """,
+                strategy_id,
+                limit,
+            )
+        return [self._map_backtest(row) for row in rows]
+
+    async def list_recent(self, limit: int = 50) -> list[dict[str, Any]]:
+        """List recent backtests across all strategies."""
+        async with self._connection() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT * FROM strategy_backtests
+                ORDER BY created_at DESC
+                LIMIT $1
+                """,
+                limit,
+            )
         return [self._map_backtest(row) for row in rows]
 
     @staticmethod
@@ -176,5 +201,5 @@ class StrategyBacktestRepositoryPG:
 def _coerce_datetime(value: datetime) -> datetime:
     """Normalize datetime values from asyncpg records."""
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
+        return value.replace(tzinfo=UTC)
     return value

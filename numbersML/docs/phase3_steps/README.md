@@ -11,8 +11,9 @@ This folder contains independent implementation packets for Phase 3.
 - ✅ **Step 5** (`STEP_05_API_LAYER.md`): COMPLETE - FastAPI routes for strategies/market/backtesting, auth hooks, LLM endpoints, API tests
 - ✅ **Step 6** (`STEP_06_DASHBOARD_GUI.md`): COMPLETE - Dashboard GUI with class-based and config-based strategy support, market status widgets, removed LLM UI elements
 - 🔜 **Step 7** (`STEP_07_BACKTEST_ENGINE.md`): Not started
-- 🔜 **Step 8** (`STEP_08_OBSERVABILITY_AND_SAFETY.md`): Not started
-- 🔜 **Step 9** (`STEP_09_TESTING_AND_ROLLOUT.md`): Not started
+- 🔜 **Step 8** (`STEP_08_DASHBOARD_GUI.md`): Not started
+- 🔜 **Step 9** (`STEP_09_OBSERVABILITY_AND_SAFETY.md`): Not started
+- 🔜 **Step 10** (`STEP_10_TESTING_AND_ROLLOUT.md`): Not started
 
 Each step file is designed for a separate LLM session and includes:
 - Scope and objective
@@ -30,5 +31,6 @@ Suggested execution order:
 5. `STEP_05_API_LAYER.md` ✅ (completed)
 6. `STEP_06_DASHBOARD_GUI.md`
 7. `STEP_07_BACKTEST_ENGINE.md`
-8. `STEP_08_OBSERVABILITY_AND_SAFETY.md`
-9. `STEP_09_TESTING_AND_ROLLOUT.md`
+8. `STEP_08_DASHBOARD_GUI.md`
+9. `STEP_09_OBSERVABILITY_AND_SAFETY.md`
+10. `STEP_10_TESTING_AND_ROLLOUT.md`

@@ -10,31 +10,37 @@ Architecture: Infrastructure Layer (API)
 Dependencies: Application services, Domain models
 """
 
-import logging
 import asyncio
+import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
 
-from typing import Union
-
-from src.domain.strategies.strategy_config import StrategyDefinition, StrategyConfigVersion
+from src.application.services.backtest_engine import (
+    BacktestEngine,
+    serialize_debug_message,
+    serialize_equity_point,
+    serialize_metrics,
+    serialize_price_point,
+    serialize_trade_record,
+)
+from src.application.services.strategy_backtest_service import StrategyBacktestService
 from src.domain.repositories.strategy_repository import StrategyRepository
 from src.infrastructure.database import get_db_pool_async
-from src.infrastructure.repositories.strategy_repository_pg import StrategyRepositoryPG
 from src.infrastructure.repositories.strategy_backtest_repository_pg import (
     StrategyBacktestRepositoryPG,
 )
+from src.infrastructure.repositories.strategy_repository_pg import StrategyRepositoryPG
 
 router = APIRouter(prefix="/api/strategy-backtests", tags=["strategy-backtests"])
 
 logger = logging.getLogger(__name__)
 
 # In-memory job store (in production, use Redis or DB)
-_backtest_jobs: Dict[str, Dict[str, Any]] = {}
+_backtest_jobs: dict[str, dict[str, Any]] = {}
 
 
 # ============================================================================
@@ -46,19 +52,19 @@ class StrategyBacktestRequest(BaseModel):
     """Request model for strategy backtest."""
 
     strategy_id: UUID
-    strategy_version: Optional[int] = Field(
+    strategy_version: int | None = Field(
         None, ge=1, description="Specific version (defaults to active)"
     )
     time_range_start: datetime = Field(..., description="Start time for backtest")
     time_range_end: datetime = Field(..., description="End time for backtest")
     initial_balance: float = Field(default=10000.0, gt=0, description="Initial capital")
-    symbol: Optional[str] = Field(None, description="Optional symbol filter")
+    symbol: str | None = Field(None, description="Optional symbol filter")
     include_equity_curve: bool = Field(default=True, description="Include equity curve in results")
     include_trades: bool = Field(default=True, description="Include individual trades")
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
     @field_validator("time_range_end")
-    def validate_time_range(cls, v, info):
+    def validate_time_range(cls, v, info):  # noqa: N805
         if "time_range_start" in info.data and v <= info.data["time_range_start"]:
             raise ValueError("time_range_end must be after time_range_start")
         return v
@@ -78,12 +84,12 @@ class BacktestJobStatusResponse(BaseModel):
     job_id: str
     status: str  # pending, running, completed, failed
     progress: float  # 0.0 to 1.0
-    strategy_id: Optional[UUID] = None
-    strategy_name: Optional[str] = None
+    strategy_id: UUID | None = None
+    strategy_name: str | None = None
     created_at: datetime
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    error: Optional[str] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    error: str | None = None
 
 
 class BacktestResultResponse(BaseModel):
@@ -98,9 +104,13 @@ class BacktestResultResponse(BaseModel):
     time_range_end: datetime
     initial_balance: float
     final_balance: float
-    metrics: Dict[str, Any]
-    trades: Optional[List[Dict[str, Any]]] = None
-    equity_curve: Optional[List[Dict[str, Any]]] = None
+    metrics: dict[str, Any]
+    config_snapshot: dict[str, Any]
+    parameters: dict[str, Any]
+    trades: list[dict[str, Any]] | None = None
+    equity_curve: list[dict[str, Any]] | None = None
+    price_series: list[dict[str, Any]] | None = None
+    debug_messages: list[dict[str, Any]] | None = None
     created_at: datetime
 
 
@@ -112,15 +122,28 @@ class BacktestResultResponse(BaseModel):
 async def get_strategy_repository() -> StrategyRepository:
     """Get StrategyRepository instance."""
     db_pool = await get_db_pool_async()
-    async with db_pool.acquire() as conn:
-        return StrategyRepositoryPG(conn)
+    return StrategyRepositoryPG(db_pool)
 
 
-async def get_backtest_repository():
+async def get_backtest_repository() -> StrategyBacktestRepositoryPG:
     """Get StrategyBacktestRepository instance."""
     db_pool = await get_db_pool_async()
-    async with db_pool.acquire() as conn:
-        return StrategyBacktestRepositoryPG(conn)
+    return StrategyBacktestRepositoryPG(db_pool)
+
+
+async def get_backtest_service(
+    repository: StrategyRepository = Depends(get_strategy_repository),
+    backtest_repository: StrategyBacktestRepositoryPG = Depends(get_backtest_repository),
+) -> StrategyBacktestService:
+    """Build the application service used by the async job executor."""
+    db_pool = await get_db_pool_async()
+    engine = BacktestEngine(db_pool)
+    return StrategyBacktestService(
+        strategy_repository=repository,
+        backtest_repository=backtest_repository,
+        backtest_engine=engine,
+        actor="api",
+    )
 
 
 # ============================================================================
@@ -138,6 +161,7 @@ async def get_backtest_repository():
 async def submit_backtest_job(
     request: StrategyBacktestRequest,
     repository: StrategyRepository = Depends(get_strategy_repository),
+    service: StrategyBacktestService = Depends(get_backtest_service),
 ) -> BacktestJobSubmitResponse:
     """
     Submit a strategy backtest job.
@@ -194,7 +218,7 @@ async def submit_backtest_job(
         }
 
         # Start async execution (non-blocking)
-        asyncio.create_task(_execute_backtest_job(job_id))
+        asyncio.create_task(_execute_backtest_job(job_id, service))
 
         logger.info(f"Backtest job {job_id} submitted for strategy {request.strategy_id}")
 
@@ -211,19 +235,15 @@ async def submit_backtest_job(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to submit backtest job: {str(e)}",
-        )
+        ) from e
 
 
-async def _execute_backtest_job(job_id: str) -> None:
+async def _execute_backtest_job(
+    job_id: str,
+    service: StrategyBacktestService,
+) -> None:
     """
     Execute a backtest job asynchronously.
-
-    This function simulates backtest execution. In production, this would:
-    1. Fetch historical candle data
-    2. Apply strategy signals
-    3. Simulate trades
-    4. Calculate performance metrics
-    5. Persist results to database
 
     Args:
         job_id: Job identifier
@@ -235,120 +255,46 @@ async def _execute_backtest_job(job_id: str) -> None:
         job["progress"] = 0.1
 
         logger.info(f"Starting backtest job {job_id}")
-
-        # Simulate backtest steps
-        steps = [
-            ("fetching_data", 0.3),
-            ("processing_signals", 0.5),
-            ("simulating_trades", 0.7),
-            ("calculating_metrics", 0.9),
-            ("persisting_results", 1.0),
-        ]
-
-        for step_name, progress in steps:
-            # Simulate work
-            await asyncio.sleep(0.5)
-            job["progress"] = progress
-            logger.debug(f"Job {job_id}: {step_name} complete")
-
-        # Generate simulated results (in production, use real data)
-        import random
-
-        random.seed(job_id)
-
-        initial_balance = job["initial_balance"]
-        total_return = random.uniform(-0.2, 0.5)  # -20% to +50%
-        final_balance = initial_balance * (1 + total_return)
-
-        num_trades = random.randint(10, 100)
-        wins = int(num_trades * random.uniform(0.4, 0.7))
-
-        # Simulate trades
-        trades = []
-        equity_curve = [{"time": job["time_range_start"].isoformat(), "balance": initial_balance}]
-
-        running_balance = initial_balance
-        for i in range(num_trades):
-            pnl = random.uniform(-0.05, 0.08)
-            running_balance *= 1 + pnl
-
-            trades.append(
-                {
-                    "entry_time": (job["time_range_start"].timestamp() + i * 3600) / 1000,
-                    "exit_time": (job["time_range_start"].timestamp() + (i + 1) * 3600) / 1000,
-                    "pnl": pnl,
-                    "pnl_percent": pnl * 100,
-                }
-            )
-
-            equity_curve.append(
-                {
-                    "time": (job["time_range_start"].timestamp() + (i + 1) * 3600) / 1000,
-                    "balance": running_balance,
-                }
-            )
-
-        equity_curve.append(
-            {
-                "time": job["time_range_end"].isoformat(),
-                "balance": final_balance,
-            }
+        result = await service.run_backtest(
+            strategy_id=job["strategy_id"],
+            strategy_version=job["strategy_version"],
+            start_time=job["time_range_start"],
+            end_time=job["time_range_end"],
+            initial_balance=job["initial_balance"],
+            symbol=job["symbol"],
+            progress_callback=lambda progress: job.__setitem__("progress", progress),
         )
-
-        # Calculate metrics
-        win_rate = wins / num_trades if num_trades > 0 else 0
-        gross_profit = sum(t["pnl"] for t in trades if t["pnl"] > 0)
-        gross_loss = abs(sum(t["pnl"] for t in trades if t["pnl"] < 0))
-        profit_factor = gross_profit / gross_loss if gross_loss > 0 else float("inf")
-
-        max_drawdown = random.uniform(0, 0.15)
-        sharpe_ratio = random.uniform(0.5, 2.5)
-
-        metrics = {
-            "total_trades": num_trades,
-            "win_rate": win_rate,
-            "total_return": total_return,
-            "final_balance": final_balance,
-            "profit_factor": profit_factor,
-            "max_drawdown": max_drawdown,
-            "sharpe_ratio": sharpe_ratio,
-            "avg_trade_return": total_return / num_trades if num_trades > 0 else 0,
-            "gross_profit": gross_profit,
-            "gross_loss": gross_loss,
-        }
-
-        # Persist to database (if repository available)
-        try:
-            db_pool = await get_db_pool_async()
-            async with db_pool.acquire() as conn:
-                backtest_repo = StrategyBacktestRepositoryPG(conn)
-                await backtest_repo.save(
-                    strategy_id=job["strategy_id"],
-                    strategy_version_id=None,  # Would need to fetch
-                    time_range_start=job["time_range_start"],
-                    time_range_end=job["time_range_end"],
-                    initial_balance=job["initial_balance"],
-                    final_balance=final_balance,
-                    metrics=metrics,
-                    trades=trades if job["include_trades"] else [],
-                    equity_curve=equity_curve if job["include_equity_curve"] else [],
-                    metadata=job["metadata"],
-                    created_by="api",
-                )
-        except Exception as db_error:
-            logger.warning(f"Failed to persist backtest results to DB: {db_error}")
 
         # Store results
         job["status"] = "completed"
         job["progress"] = 1.0
         job["completed_at"] = datetime.now()
         job["result"] = {
-            "metrics": metrics,
-            "trades": trades if job["include_trades"] else None,
-            "equity_curve": equity_curve if job["include_equity_curve"] else None,
+            "final_balance": result.final_balance,
+            "metrics": serialize_metrics(result.metrics),
+            "config_snapshot": result.config_snapshot,
+            "parameters": result.parameters,
+            "trades": (
+                [serialize_trade_record(trade) for trade in result.trades]
+                if job["include_trades"]
+                else None
+            ),
+            "equity_curve": (
+                [serialize_equity_point(point) for point in result.equity_curve]
+                if job["include_equity_curve"]
+                else None
+            ),
+            "price_series": [serialize_price_point(point) for point in result.price_series],
+            "debug_messages": [
+                serialize_debug_message(message) for message in result.debug_messages
+            ],
         }
 
-        logger.info(f"Backtest job {job_id} completed. Return: {total_return:.2%}")
+        logger.info(
+            "Backtest job %s completed. Return: %.2f%%",
+            job_id,
+            job["result"]["metrics"]["total_return_pct"],
+        )
 
     except Exception as e:
         logger.error(f"Backtest job {job_id} failed: {e}", exc_info=True)
@@ -359,13 +305,13 @@ async def _execute_backtest_job(job_id: str) -> None:
 
 @router.get(
     "/jobs/{job_id}",
-    response_model=Union[BacktestJobStatusResponse, BacktestResultResponse],
+    response_model=BacktestJobStatusResponse | BacktestResultResponse,
     summary="Get job status or results",
     description="Get backtest job status. Returns results if completed.",
 )
 async def get_job_status(
     job_id: str,
-) -> Union[BacktestJobStatusResponse, BacktestResultResponse]:
+) -> BacktestJobStatusResponse | BacktestResultResponse:
     """
     Get backtest job status or results.
 
@@ -398,12 +344,14 @@ async def get_job_status(
                 time_range_start=job["time_range_start"],
                 time_range_end=job["time_range_end"],
                 initial_balance=job["initial_balance"],
-                final_balance=result.get("metrics", {}).get(
-                    "final_balance", job["initial_balance"]
-                ),
+                final_balance=result.get("final_balance", job["initial_balance"]),
                 metrics=result.get("metrics", {}),
+                config_snapshot=result.get("config_snapshot", {}),
+                parameters=result.get("parameters", {}),
                 trades=result.get("trades"),
                 equity_curve=result.get("equity_curve"),
+                price_series=result.get("price_series"),
+                debug_messages=result.get("debug_messages"),
                 created_at=job["created_at"],
             )
         else:
@@ -426,16 +374,16 @@ async def get_job_status(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get job status: {str(e)}",
-        )
+        ) from e
 
 
 @router.get(
     "/jobs",
-    response_model=List[BacktestJobStatusResponse],
+    response_model=list[BacktestJobStatusResponse],
     summary="List all jobs",
     description="List all backtest jobs with their current status.",
 )
-async def list_backtest_jobs() -> List[BacktestJobStatusResponse]:
+async def list_backtest_jobs() -> list[BacktestJobStatusResponse]:
     """
     List all backtest jobs.
 
@@ -465,15 +413,15 @@ async def list_backtest_jobs() -> List[BacktestJobStatusResponse]:
 
 @router.get(
     "/results",
-    response_model=List[Dict[str, Any]],
+    response_model=list[dict[str, Any]],
     summary="List saved backtest results",
     description="List all saved backtest results from the database.",
 )
 async def list_saved_backtests(
-    strategy_id: Optional[UUID] = None,
+    strategy_id: UUID | None = None,
     limit: int = 50,
-    backtest_repo=Depends(get_backtest_repository),
-) -> List[Dict[str, Any]]:
+    backtest_repo: StrategyBacktestRepositoryPG = Depends(get_backtest_repository),
+) -> list[dict[str, Any]]:
     """
     List saved backtest results from the database.
 
@@ -489,13 +437,13 @@ async def list_saved_backtests(
         500: Failed to fetch results
     """
     try:
-        # Note: The repository's get method would need to be implemented
-        # For now, returning empty list
-        return []
+        if strategy_id is not None:
+            return await backtest_repo.list_for_strategy(strategy_id, limit=limit)
+        return await backtest_repo.list_recent(limit=limit)
 
     except Exception as e:
         logger.error(f"Failed to list saved backtests: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch backtest results: {str(e)}",
-        )
+        ) from e
