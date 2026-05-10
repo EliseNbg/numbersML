@@ -197,8 +197,12 @@ class StrategyLifecycleService:
 
         runtime_state = self._runtime_states.get(strategy_id)
         if runtime_state is None:
-            # Strategy exists but never activated — treat as already stopped
+            # Strategy exists but never activated — update status and treat as already stopped
             logger.info(f"Strategy {strategy_id} has no runtime state (already stopped)")
+            if strategy_def.status == "active":
+                strategy_def.status = "validated"
+                await self._strategy_repo.save(strategy_def)
+                logger.info(f"Strategy {strategy_id} status updated to 'validated'")
             return True
 
         # Already stopped? Idempotent — treat as success

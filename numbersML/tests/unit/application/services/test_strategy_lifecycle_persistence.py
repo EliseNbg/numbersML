@@ -191,6 +191,42 @@ class TestDeactivatePersistsToDatabase:
             assert saved.id == sample_strategy.id
             print(f"✓ Status correctly persisted as '{saved.status}' in database")
 
+    @pytest.mark.asyncio
+    async def test_deactivate_no_runtime_state_updates_status(
+        self,
+        mock_strategy_repo,
+        mock_event_repo,
+        mock_strategy_manager,
+        sample_strategy,
+    ):
+        """BUG FIX: Deactivating a strategy with no runtime state should still update DB status."""
+        # Setup - strategy is 'active' but never activated (no runtime state)
+        sample_strategy.status = "active"
+        mock_strategy_repo.get_by_id.return_value = sample_strategy
+        # No runtime state in _runtime_states
+
+        service = StrategyLifecycleService(
+            strategy_repository=mock_strategy_repo,
+            event_repository=mock_event_repo,
+            strategy_manager=mock_strategy_manager,
+            actor="test",
+        )
+        # Ensure no runtime state exists
+        assert service._runtime_states.get(sample_strategy.id) is None
+
+        # Execute deactivate
+        result = await service.deactivate_strategy(sample_strategy.id)
+
+        # Verify success
+        assert result is True
+
+        # Verify save WAS called to update status (BUG FIX)
+        assert len(mock_strategy_repo.saved_strategies) == 1
+        saved = mock_strategy_repo.saved_strategies[0]
+        assert saved.status == "validated"
+        assert saved.id == sample_strategy.id
+        print(f"✓ BUG FIX: Deactivate with no runtime state correctly updates status to '{saved.status}'")
+
 
 class TestStatusTransitions:
     """Test status transitions are correct."""
