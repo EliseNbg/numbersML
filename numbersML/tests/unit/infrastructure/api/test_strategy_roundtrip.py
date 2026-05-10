@@ -109,6 +109,8 @@ class TestStrategyRoundTrip:
             description="A class-based strategy",
             mode="paper",
             status="draft",
+            strategy_type="class",
+            class_path="src.strategies.user.my_strategy.MyStrategy",
             current_version=2,
             config=original_config,
             created_by="tester",

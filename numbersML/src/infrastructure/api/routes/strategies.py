@@ -211,13 +211,15 @@ async def create_strategy(
             description=req.description,
             mode=req.mode,
             status="draft",
+            strategy_type=req.strategy_type,
+            class_path=req.class_path,
             created_by=req.created_by,
         )
         saved = await repo.save(s)
         await repo.create_version(
             strategy_id=saved.id,
-            config=req.config.dict(),
-            schema_version=req.config.dict().get("meta", {}).get("schema_version", 1),
+            config=req.config.dict() if req.config else {},
+            schema_version=req.config.dict().get("meta", {}).get("schema_version", 1) if req.config else 1,
             created_by=req.created_by,
         )
         return StrategyResponse.from_domain(saved)

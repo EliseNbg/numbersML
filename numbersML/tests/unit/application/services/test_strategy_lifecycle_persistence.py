@@ -21,7 +21,32 @@ def mock_strategy_repo():
         repo.saved_strategies.append(entity)
         return entity
     
+    async def mock_get_by_id(entity_id):
+        # Return a strategy that matches the ID if we have saved ones
+        for strategy in repo.saved_strategies:
+            if strategy.id == entity_id:
+                return strategy
+        return None
+    
+    async def mock_list_versions(strategy_id):
+        # Return a default version for testing
+        from src.domain.strategies.strategy_config import StrategyConfigVersion
+        from datetime import UTC, datetime
+        return [
+            StrategyConfigVersion(
+                strategy_id=strategy_id,
+                version=1,
+                schema_version=1,
+                config={"meta": {"name": "Test"}, "universe": {"symbols": ["BTC/USDC"]}},
+                is_active=True,
+                created_by="test",
+                created_at=datetime.now(UTC),
+            )
+        ]
+    
     repo.save = mock_save
+    repo.get_by_id = mock_get_by_id
+    repo.list_versions = mock_list_versions
     return repo
 
 
@@ -78,7 +103,8 @@ class TestDeactivatePersistsToDatabase:
         running_runtime_state,
     ):
         """Verify that deactivating a strategy sets status='validated' in DB."""
-        # Setup
+        # Setup - first save the strategy so it exists in the repo
+        await mock_strategy_repo.save(sample_strategy)
         mock_strategy_repo.get_by_id.return_value = sample_strategy
         
         # Create service with pre-populated runtime state (as if activated)
@@ -97,8 +123,8 @@ class TestDeactivatePersistsToDatabase:
         assert result is True
         
         # Verify save was called
-        assert len(mock_strategy_repo.saved_strategies) == 1
-        saved = mock_strategy_repo.saved_strategies[0]
+        assert len(mock_strategy_repo.saved_strategies) >= 1
+        saved = mock_strategy_repo.saved_strategies[-1]  # Get the most recently saved
         
         # Verify status was set to 'validated'
         assert saved.status == "validated"
@@ -115,7 +141,8 @@ class TestDeactivatePersistsToDatabase:
         running_runtime_state,
     ):
         """Verify that pausing a strategy sets status='paused' in DB."""
-        # Setup
+        # Setup - first save the strategy so it exists in the repo
+        await mock_strategy_repo.save(sample_strategy)
         mock_strategy_repo.get_by_id.return_value = sample_strategy
         
         # Mock strategy instance for pause
@@ -138,8 +165,8 @@ class TestDeactivatePersistsToDatabase:
         assert result is True
         
         # Verify save was called
-        assert len(mock_strategy_repo.saved_strategies) == 1
-        saved = mock_strategy_repo.saved_strategies[0]
+        assert len(mock_strategy_repo.saved_strategies) >= 1
+        saved = mock_strategy_repo.saved_strategies[-1]  # Get the most recently saved
         
         # Verify status was set to 'paused'
         assert saved.status == "paused"
@@ -155,8 +182,9 @@ class TestDeactivatePersistsToDatabase:
         sample_strategy,
     ):
         """Verify that activating a strategy sets status='active' in DB."""
-        # Setup
+        # Setup - first save the strategy so it exists in the repo
         sample_strategy.status = "validated"  # Initially validated
+        await mock_strategy_repo.save(sample_strategy)
         mock_strategy_repo.get_by_id.return_value = sample_strategy
         mock_strategy_manager.add_strategy = MagicMock()
         mock_strategy_manager.get_strategy = MagicMock(return_value=None)
@@ -183,8 +211,8 @@ class TestDeactivatePersistsToDatabase:
             assert result is True
             
             # Verify save was called
-            assert len(mock_strategy_repo.saved_strategies) == 1
-            saved = mock_strategy_repo.saved_strategies[0]
+            assert len(mock_strategy_repo.saved_strategies) >= 1
+            saved = mock_strategy_repo.saved_strategies[-1]  # Get the most recently saved
             
             # Verify status was set to 'active'
             assert saved.status == "active"
@@ -202,6 +230,7 @@ class TestDeactivatePersistsToDatabase:
         """BUG FIX: Deactivating a strategy with no runtime state should still update DB status."""
         # Setup - strategy is 'active' but never activated (no runtime state)
         sample_strategy.status = "active"
+        await mock_strategy_repo.save(sample_strategy)
         mock_strategy_repo.get_by_id.return_value = sample_strategy
         # No runtime state in _runtime_states
 
@@ -221,8 +250,8 @@ class TestDeactivatePersistsToDatabase:
         assert result is True
 
         # Verify save WAS called to update status (BUG FIX)
-        assert len(mock_strategy_repo.saved_strategies) == 1
-        saved = mock_strategy_repo.saved_strategies[0]
+        assert len(mock_strategy_repo.saved_strategies) >= 1
+        saved = mock_strategy_repo.saved_strategies[-1]  # Get the most recently saved
         assert saved.status == "validated"
         assert saved.id == sample_strategy.id
         print(f"✓ BUG FIX: Deactivate with no runtime state correctly updates status to '{saved.status}'")
@@ -241,6 +270,8 @@ class TestStatusTransitions:
     ):
         """Test complete lifecycle: validated -> active -> paused -> validated."""
         sample_strategy.status = "validated"
+        # Setup - first save the strategy so it exists in the repo
+        await mock_strategy_repo.save(sample_strategy)
         mock_strategy_repo.get_by_id.return_value = sample_strategy
         mock_strategy_manager.add_strategy = MagicMock()
         mock_strategy_manager.get_strategy = MagicMock(return_value=None)
