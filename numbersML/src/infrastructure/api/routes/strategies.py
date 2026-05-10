@@ -369,6 +369,25 @@ async def update_strategy(
     return StrategyResponse.from_domain(saved)
 
 
+@router.delete("/{strategy_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_strategy(
+    strategy_id: UUID,
+    repo: StrategyRepository = Depends(get_strategy_repo),
+) -> None:
+    """Delete a strategy and all its associated data."""
+    # Check if strategy exists
+    s = await repo.get_by_id(strategy_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"Strategy {strategy_id} not found")
+
+    # Delete the strategy (cascade will handle versions, events, etc.)
+    deleted = await repo.delete(strategy_id)
+    if not deleted:
+        raise HTTPException(status_code=500, detail=f"Failed to delete strategy {strategy_id}")
+
+    return None
+
+
 # ============================================================================
 # Version Endpoints
 # ============================================================================

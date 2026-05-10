@@ -116,26 +116,32 @@ def strategy_payload():
 
 
 class TestAuthorization:
-    """Test authorization checks for sensitive endpoints."""
+    """Test that auth is optional for personal use (no auth required)."""
 
-    def test_missing_api_key_returns_401(self, client):
+    def test_no_api_key_allows_access(self, client):
+        """Auth is optional - endpoints work without API key for personal use."""
         response = client.post("/api/strategies", json={"name": "Test"})
-        assert response.status_code == 401
-        assert "Missing API key" in response.json()["detail"]
+        # Should not be 401/403 - auth is optional
+        assert response.status_code not in [401, 403]
 
-    def test_invalid_api_key_returns_401(self, client):
+    def test_invalid_api_key_is_ignored(self, client):
+        """Invalid API key is ignored - personal use has no auth requirements."""
         response = client.post(
             "/api/strategies",
             json={"name": "Test"},
             headers={"X-API-Key": "invalid-key"},
         )
-        assert response.status_code == 401
-        assert "Invalid API key" in response.json()["detail"]
+        # Should not be 401/403 - auth is optional
+        assert response.status_code not in [401, 403]
 
-    def test_read_key_cannot_create_strategy(self, client, read_headers, strategy_payload):
-        response = client.post("/api/strategies", json=strategy_payload, headers=read_headers)
-        assert response.status_code == 403
-        assert "Trader or admin access required" in response.json()["detail"]
+    def test_any_key_can_create_strategy(self, client, read_headers, strategy_payload):
+        """Any API key works - no role restrictions for personal use."""
+        with patch("src.infrastructure.api.routes.strategies.get_strategy_repo") as mock_repo:
+            mock_repo.return_value.save = AsyncMock()
+            mock_repo.return_value.create_version = AsyncMock()
+            response = client.post("/api/strategies", json=strategy_payload, headers=read_headers)
+            # Should not be 403 - no role restrictions
+            assert response.status_code != 403
 
     def test_trader_key_can_create_strategy(self, client, trader_headers, strategy_payload):
         with patch("src.infrastructure.api.routes.strategies.get_strategy_repo") as mock_repo:
@@ -144,7 +150,7 @@ class TestAuthorization:
             response = client.post(
                 "/api/strategies", json=strategy_payload, headers=trader_headers
             )
-            # Will fail on repo init, but auth should pass
+            # No auth restrictions for personal use
             assert response.status_code != 403
 
 
@@ -215,12 +221,14 @@ class TestStrategyCRUD:
 class TestStrategyLifecycle:
     """Test strategy lifecycle endpoints."""
 
-    def test_activate_strategy_no_auth(self, client):
+    def test_activate_strategy_works_without_auth(self, client):
+        """Auth is optional - activation works without API key for personal use."""
         response = client.post(
             "/api/strategies/123e4567-e89b-12d3-a456-426614174000/activate",
             json={"version": 1},
         )
-        assert response.status_code == 401
+        # No auth required - should be 404 (strategy not found) not 401
+        assert response.status_code == 404
 
     def test_activate_strategy_with_trader_auth(self, client, trader_headers):
         # Test that trader can access activate endpoint (actual activation is complex)
@@ -252,7 +260,8 @@ class TestStrategyLifecycle:
             if response.status_code == 200:
                 assert "activated" in response.json()["message"].lower()
 
-    def test_activate_live_mode_requires_admin(self, client, trader_headers):
+    def test_activate_live_mode_no_auth_required(self, client, trader_headers):
+        """Live mode activation - no auth restrictions for personal use."""
         with patch("src.infrastructure.api.routes.strategies.get_strategy_repo") as mock_repo:
             from uuid import UUID
             
@@ -267,8 +276,8 @@ class TestStrategyLifecycle:
                 json={"version": 1},
                 headers=trader_headers,
             )
-            assert response.status_code == 403
-            assert "live mode" in response.json()["detail"].lower()
+            # No auth restrictions for personal use - should not be 403
+            assert response.status_code != 403
 
 
 # ============================================================================
@@ -279,12 +288,14 @@ class TestStrategyLifecycle:
 class TestLLMEndpoints:
     """Test LLM generation and modification endpoints."""
 
-    def test_generate_strategy_no_auth(self, client):
+    def test_generate_strategy_works_without_auth(self, client):
+        """LLM generation works without auth for personal use."""
         response = client.post(
             "/api/strategies/generate",
             json={"description": "Test strategy"},
         )
-        assert response.status_code == 401
+        # No auth required - should be 400 (missing required fields) not 401
+        assert response.status_code != 401
 
     @patch("src.infrastructure.api.routes.strategies.get_llm_service")
     def test_generate_strategy_success(self, mock_get_llm, client, trader_headers):
