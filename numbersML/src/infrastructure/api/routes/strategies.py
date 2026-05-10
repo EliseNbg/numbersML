@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from src.application.services.llm_strategy_service import LLMStrategyService
@@ -456,18 +456,29 @@ async def activate_strategy_version(
 # ============================================================================
 
 
-async def get_lifecycle_service():
+async def get_lifecycle_service(request: Request):
     from src.application.services.strategy_lifecycle import StrategyLifecycleService
     from src.domain.strategies.base import StrategyManager
 
+    svc = getattr(request.app.state, "strategy_lifecycle_service", None)
+    if svc is not None:
+        return svc
+
+    strategy_manager = getattr(request.app.state, "strategy_manager", None)
+    if strategy_manager is None:
+        strategy_manager = StrategyManager()
+        request.app.state.strategy_manager = strategy_manager
+
     repo = await get_strategy_repo()
     evt_repo = await get_event_repo()
-    return StrategyLifecycleService(
+    svc = StrategyLifecycleService(
         strategy_repository=repo,
         event_repository=evt_repo,
-        strategy_manager=StrategyManager(),
+        strategy_manager=strategy_manager,
         actor="api",
     )
+    request.app.state.strategy_lifecycle_service = svc
+    return svc
 
 
 @router.post("/{strategy_id}/activate", response_model=dict[str, Any])
