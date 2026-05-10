@@ -39,18 +39,21 @@ class StrategyRepositoryPG(StrategyRepository):
     async def save(self, entity: StrategyDefinition) -> StrategyDefinition:
         import logging
         logger = logging.getLogger(__name__)
-        logger.warning(f"[REPO SAVE] Saving strategy {entity.id} with status='{entity.status}'")
+        logger.warning(f"[REPO SAVE] Saving strategy {entity.id} with status='{entity.status}', type='{entity.strategy_type}'")
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
                 INSERT INTO strategies (
-                    id, name, description, mode, status, current_version, created_by, created_at, updated_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                    id, name, description, mode, status, strategy_type, class_path,
+                    current_version, created_by, created_at, updated_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
                 ON CONFLICT (id) DO UPDATE SET
                     name = EXCLUDED.name,
                     description = EXCLUDED.description,
                     mode = EXCLUDED.mode,
                     status = EXCLUDED.status,
+                    strategy_type = EXCLUDED.strategy_type,
+                    class_path = EXCLUDED.class_path,
                     current_version = EXCLUDED.current_version,
                     updated_at = NOW()
                 RETURNING *
@@ -60,11 +63,13 @@ class StrategyRepositoryPG(StrategyRepository):
                 entity.description,
                 entity.mode,
                 entity.status,
+                entity.strategy_type,
+                entity.class_path,
                 entity.current_version,
                 entity.created_by,
                 entity.created_at,
             )
-            logger.warning(f"[REPO SAVE] Saved strategy {entity.id}, returned status='{row['status']}'")
+            logger.warning(f"[REPO SAVE] Saved strategy {entity.id}, returned status='{row['status']}', type='{row.get('strategy_type', 'config')}'")
         return self._map_strategy(row)
 
     async def delete(self, entity_id: UUID) -> bool:
@@ -156,6 +161,8 @@ class StrategyRepositoryPG(StrategyRepository):
             description=row["description"],
             mode=row["mode"],
             status=row["status"],
+            strategy_type=row.get("strategy_type", "config"),
+            class_path=row.get("class_path"),
             current_version=row["current_version"],
             created_by=row["created_by"],
             created_at=_coerce_datetime(row["created_at"]),

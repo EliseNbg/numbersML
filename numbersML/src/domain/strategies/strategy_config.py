@@ -28,6 +28,8 @@ class StrategyDefinition:
     description: str | None
     mode: str = "paper"
     status: str = "draft"
+    strategy_type: str = "config"  # 'config' or 'class'
+    class_path: str | None = None  # e.g., "src.strategies.user.grid1.Grid1Strategy"
     current_version: int = 1
     config: dict[str, Any] = field(default_factory=dict)
     created_by: str = "system"
@@ -35,13 +37,10 @@ class StrategyDefinition:
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
-    @property
-    def strategy_type(self) -> str:
-        """Get strategy type: 'class' for user-written or 'config' for config-based."""
-        result = self.config.get("strategy_type")
-        return result if result is not None else "config"
+    def is_class_based(self) -> bool:
+        """Check if this is a class-based strategy."""
+        return self.strategy_type == "class"
 
-    @property
-    def class_path(self) -> str | None:
-        """Get fully qualified class path for class-based strategies."""
-        return self.config.get("class_path")
+    def is_config_based(self) -> bool:
+        """Check if this is a config-based strategy."""
+        return self.strategy_type == "config"
