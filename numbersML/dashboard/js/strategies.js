@@ -770,6 +770,8 @@ async function deactivateStrategy() {
 
         showAlert('success', 'Strategy deactivated');
         detailModal.hide();
+        // Small delay to ensure DB transaction commits before refresh
+        await new Promise(r => setTimeout(r, 300));
         loadStrategies();
     } catch (error) {
         showAlert('danger', `Deactivation failed: ${error.message}`);
@@ -790,6 +792,8 @@ async function quickDeactivate(strategyId) {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         showAlert('success', 'Strategy deactivated');
+        // Small delay to ensure DB transaction commits before refresh
+        await new Promise(r => setTimeout(r, 300));
         loadStrategies();
     } catch (error) {
         showAlert('danger', `Deactivation failed: ${error.message}`);
@@ -812,6 +816,8 @@ async function pauseStrategy() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         showAlert('success', 'Strategy paused');
+        // Small delay to ensure DB transaction commits before refresh
+        await new Promise(r => setTimeout(r, 300));
         loadStrategies();
         viewStrategy(currentStrategyId);
     } catch (error) {
@@ -835,6 +841,8 @@ async function resumeStrategy() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         showAlert('success', 'Strategy resumed');
+        // Small delay to ensure DB transaction commits before refresh
+        await new Promise(r => setTimeout(r, 300));
         loadStrategies();
         viewStrategy(currentStrategyId);
     } catch (error) {
