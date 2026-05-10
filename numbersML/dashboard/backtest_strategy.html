@@ -178,11 +178,32 @@
                                     <label for="end-time" class="form-label">End Time</label>
                                     <input type="datetime-local" class="form-control" id="end-time" required>
                                 </div>
-                                <div class="col-md-4 mb-3 d-flex align-items-end">
-                                    <button type="submit" class="btn btn-primary w-100" id="btn-run-backtest">
-                                        <i class="bi bi-play-fill"></i> Run Backtest
-                                    </button>
-                                </div>
+                                 <div class="col-md-4 mb-3 d-flex align-items-end">
+                                     <button type="submit" class="btn btn-primary w-100" id="btn-run-backtest">
+                                         <i class="bi bi-play-fill"></i> Run Backtest
+                                     </button>
+                                 </div>
+                                 <div class="col-12 mb-3">
+                                     <button type="button" class="btn btn-outline-secondary w-100" id="btn-show-cli-command">
+                                         <i class="bi bi-terminal"></i> Show CLI Command
+                                     </button>
+                                 </div>
+                                 <div class="col-12" id="cli-command-container" style="display: none;">
+                                     <div class="card">
+                                         <div class="card-header">
+                                             <i class="bi bi-terminal"></i> CLI Command
+                                         </div>
+                                         <div class="card-body">
+                                             <div class="mb-3">
+                                                 <label for="cli-command" class="form-label">Command</label>
+                                                 <input type="text" class="form-control" id="cli-command" readonly>
+                                             </div>
+                                             <button class="btn btn-sm btn-outline-primary" id="btn-copy-cli-command">
+                                                 <i class="bi bi-clipboard"></i> Copy Command
+                                             </button>
+                                         </div>
+                                     </div>
+                                 </div>
                             </div>
                         </form>
                     </div>

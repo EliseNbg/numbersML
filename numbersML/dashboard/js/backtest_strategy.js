@@ -20,23 +20,33 @@ let priceChart = null;
 let equityChart = null;
 
 // Initialize on page load
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     console.log('Strategy backtest module initialized');
     
     // Set default date range (last 7 days)
     setDefaultDateRange();
     
     // Load strategies
-    loadStrategies();
+    await loadStrategies();
     
     // Load symbols
-    loadSymbols();
+    await loadSymbols();
     
     // Load backtest history
-    loadBacktestHistory();
+    await loadBacktestHistory();
     
     // Bind event listeners
     bindEventListeners();
+    
+    // Handle strategy_id parameter in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const strategyId = urlParams.get('strategy_id');
+    if (strategyId) {
+        const strategySelect = document.getElementById('strategy-select');
+        strategySelect.value = strategyId;
+        // Trigger change event to load versions
+        strategySelect.dispatchEvent(new Event('change'));
+    }
 });
 
 /**
@@ -78,6 +88,10 @@ function bindEventListeners() {
     
     // History refresh
     document.getElementById('btn-refresh-history').addEventListener('click', loadBacktestHistory);
+    
+    // CLI command button
+    document.getElementById('btn-show-cli-command').addEventListener('click', toggleCliCommand);
+    document.getElementById('btn-copy-cli-command').addEventListener('click', copyCliCommand);
 }
 
 /**
@@ -99,7 +113,7 @@ async function loadStrategies() {
         strategies.forEach(strategy => {
             const option = document.createElement('option');
             option.value = strategy.id;
-            option.textContent = `${strategy.name} (${strategy.type || 'unknown'})`;
+            option.textContent = `${strategy.name} (${strategy.strategy_type || 'unknown'})`;
             option.dataset.strategy = JSON.stringify(strategy);
             select.appendChild(option);
         });
@@ -750,6 +764,91 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+/**
+ * Toggle CLI command visibility
+ */
+function toggleCliCommand() {
+    const container = document.getElementById('cli-command-container');
+    const isHidden = container.style.display === 'none' || container.style.display === '';
+    container.style.display = isHidden ? 'block' : 'none';
+    
+    // If showing, generate the command
+    if (isHidden) {
+        generateCliCommand();
+    }
+}
+
+/**
+ * Generate CLI command based on current form values
+ */
+function generateCliCommand() {
+    const strategyId = document.getElementById('strategy-select').value;
+    const version = document.getElementById('version-select').value;
+    const symbol = document.getElementById('symbol-select').value;
+    const initialBalance = document.getElementById('initial-balance').value;
+    const startTime = document.getElementById('start-time').value;
+    const endTime = document.getElementById('end-time').value;
+    const includeEquityCurve = document.getElementById('include-equity-curve').checked;
+    const includeTrades = document.getElementById('include-trades').checked;
+    
+    if (!strategyId) {
+        document.getElementById('cli-command').value = '# Please select a strategy first';
+        return;
+    }
+    
+    let cmd = 'python -m src.cli.run_backtest --strategy-id ' + strategyId;
+    
+    if (version) {
+        cmd += ' --version ' + version;
+    }
+    
+    if (symbol) {
+        cmd += ' --symbol "' + symbol + '"';
+    }
+    
+    if (initialBalance && initialBalance !== '10000') {
+        cmd += ' --initial-balance ' + initialBalance;
+    }
+    
+    if (startTime) {
+        cmd += ' --start-time "' + startTime + '"';
+    }
+    
+    if (endTime) {
+        cmd += ' --end-time "' + endTime + '"';
+    }
+    
+    if (!includeEquityCurve) {
+        cmd += ' --no-equity-curve';
+    }
+    
+    if (!includeTrades) {
+        cmd += ' --no-trades';
+    }
+    
+    document.getElementById('cli-command').value = cmd;
+}
+
+/**
+ * Copy CLI command to clipboard
+ */
+function copyCliCommand() {
+    const cmdInput = document.getElementById('cli-command');
+    cmdInput.select();
+    document.execCommand('copy');
+    
+    // Show tooltip
+    const btn = document.getElementById('btn-copy-cli-command');
+    const originalTitle = btn.title;
+    btn.title = 'Copied!';
+    
+    setTimeout(() => {
+        btn.title = originalTitle;
+    }, 2000);
+    
+    showToast('Command copied to clipboard', 'success');
 }
 
 /**
