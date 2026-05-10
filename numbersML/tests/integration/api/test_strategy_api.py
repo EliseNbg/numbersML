@@ -85,7 +85,7 @@ def client():
                        OR name LIKE 'Invalid_%'
                        OR name LIKE 'Emergency_%'
                        OR name LIKE 'invalid_strategy_%')
-                      AND status = 'draft'
+                    created_by = 'system'
                     """
                 )
         except Exception as e:
