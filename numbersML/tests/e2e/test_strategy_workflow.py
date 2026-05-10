@@ -55,8 +55,27 @@ async def client():
     async with AsyncClient(transport=transport, base_url="http://test", headers={"X-API-Key": "trader-test-key"}) as ac:
         yield ac
     
-    # Cleanup
-    await pool.close()
+    # Cleanup: Delete all test strategies
+    async def cleanup_test_strategies():
+        try:
+            async with pool.acquire() as conn:
+                # Delete strategies created by tests (names starting with Test_, E2E_, Delete_Test_, etc.)
+                await conn.execute(
+                    """
+                    DELETE FROM strategies 
+                    WHERE name LIKE 'Test_%' 
+                       OR name LIKE 'E2E_%' 
+                       OR name LIKE 'Delete_%'
+                       OR name LIKE 'Invalid_%'
+                       OR name LIKE 'Emergency_%'
+                    """
+                )
+        except Exception as e:
+            print(f"Warning: Failed to cleanup test strategies: {e}")
+        finally:
+            await pool.close()
+    
+    await cleanup_test_strategies()
 
 
 @pytest.fixture
