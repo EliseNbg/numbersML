@@ -59,7 +59,7 @@ async def client():
     async def cleanup_test_strategies():
         try:
             async with pool.acquire() as conn:
-                # Delete inactive test strategies (names starting with Test_, E2E_, Delete_Test_, etc.)
+                # Delete draft test strategies (names starting with Test_, E2E_, Delete_Test_, etc.)
                 await conn.execute(
                     """
                     DELETE FROM strategies 
@@ -67,8 +67,9 @@ async def client():
                        OR name LIKE 'E2E_%' 
                        OR name LIKE 'Delete_%'
                        OR name LIKE 'Invalid_%'
-                       OR name LIKE 'Emergency_%')
-                      AND status = 'inactive'
+                       OR name LIKE 'Emergency_%'
+                       OR name LIKE 'invalid_strategy_%')
+                      AND status = 'draft'
                     """
                 )
         except Exception as e:
