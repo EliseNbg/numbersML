@@ -47,12 +47,36 @@ import argparse
 import logging
 import sys
 
+from src.application.services.backtest_engine import BacktestEngine
 from src.application.services.strategy_backtest_service import StrategyBacktestService
-from src.infrastructure.database import get_db_pool_async
+from src.infrastructure.database import get_db_pool_async, set_db_pool
 from src.infrastructure.repositories.strategy_repository_pg import StrategyRepositoryPG
 from src.infrastructure.repositories.strategy_backtest_repository_pg import (
     StrategyBacktestRepositoryPG,
 )
+
+# Database initialization
+async def init_db_pool():
+    """Initialize database pool from environment or defaults."""
+    import asyncpg
+
+    host = os.getenv("DB_HOST", "localhost")
+    port = int(os.getenv("DB_PORT", "5432"))
+    database = os.getenv("DB_NAME", "crypto_trading")
+    user = os.getenv("DB_USER", "crypto")
+    password = os.getenv("DB_PASS", "crypto_secret")
+
+    pool = await asyncpg.create_pool(
+        host=host,
+        port=port,
+        database=database,
+        user=user,
+        password=password,
+        min_size=1,
+        max_size=10,
+    )
+    set_db_pool(pool)
+    return pool
 
 
 # Configure logging
@@ -75,10 +99,10 @@ def parse_args() -> argparse.Namespace:
         epilog="""
 Examples:
   # Run backtest with defaults (last 7 days)
-  python -m src.cli.run_backtest --strategy-id 123e4567-e89b-12d3-a456-426614174000
+  python3 -m src.cli.run_backtest --strategy-id 123e4567-e89b-12d3-a456-426614174000
 
   # Run backtest with specific parameters
-  python -m src.cli.run_backtest \\
+  python3 -m src.cli.run_backtest \\
     --strategy-id 123e4567-e89b-12d3-a456-426614174000 \\
     --symbol BTC/USDC \\
     --start-time "2026-05-01T00:00:00" \\
@@ -87,7 +111,7 @@ Examples:
     --wait
 
   # Run backtest and save results to file
-  python -m src.cli.run_backtest \\
+  python3 -m src.cli.run_backtest \\
     --strategy-id 123e4567-e89b-12d3-a456-426614174000 \\
     --output backtest_results.json
         """,
@@ -223,10 +247,11 @@ async def run_backtest_async(args: argparse.Namespace) -> dict:
         db_pool = await get_db_pool_async()
         strategy_repo = StrategyRepositoryPG(db_pool)
         backtest_repo = StrategyBacktestRepositoryPG(db_pool)
+        backtest_engine = BacktestEngine(db_pool=db_pool)
         backtest_service = StrategyBacktestService(
             strategy_repository=strategy_repo,
             backtest_repository=backtest_repo,
-            backtest_engine=None,  # Will be created internally
+            backtest_engine=backtest_engine,
             actor="cli",
         )
 
@@ -345,9 +370,9 @@ def print_results(result: dict):
     print("=" * 60)
 
 
-def main() -> int:
+async def main_async() -> int:
     """
-    Main entry point.
+    Async main entry point with DB initialization.
 
     Returns:
         Exit code (0 for success, 1 for error)
@@ -355,8 +380,12 @@ def main() -> int:
     args = parse_args()
 
     try:
+        # Initialize database pool
+        logger.info("Initializing database connection...")
+        await init_db_pool()
+
         # Run backtest
-        result = asyncio.run(run_backtest_async(args))
+        result = await run_backtest_async(args)
 
         # Output results
         if args.output:
@@ -372,6 +401,16 @@ def main() -> int:
     except Exception as e:
         logger.error(f"Failed to run backtest: {e}")
         return 1
+
+
+def main() -> int:
+    """
+    Main entry point.
+
+    Returns:
+        Exit code (0 for success, 1 for error)
+    """
+    return asyncio.run(main_async())
 
 
 if __name__ == "__main__":
