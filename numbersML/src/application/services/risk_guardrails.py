@@ -12,7 +12,7 @@ Provides:
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any, Optional
 from uuid import UUID
@@ -208,8 +208,8 @@ class RiskGuardrailService:
             return False, f"STRATEGY_KILL_SWITCH_ACTIVE: {state.kill_switch_reason}"
 
         # Check cooldown period
-        if state.paused_until and datetime.utcnow() < state.paused_until:
-            remaining = (state.paused_until - datetime.utcnow()).total_seconds()
+        if state.paused_until and datetime.now(UTC) < state.paused_until:
+            remaining = (state.paused_until - datetime.now(UTC)).total_seconds()
             return False, f"STRATEGY_PAUSED: {remaining:.0f}s remaining"
 
         # Daily loss limit
@@ -268,7 +268,7 @@ class RiskGuardrailService:
         stale_config = self.configs.get(GuardrailType.STALE_DATA)
         threshold = max_staleness_seconds or stale_config.threshold
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         staleness = (now - data_timestamp).total_seconds()
 
         state.last_data_timestamp = data_timestamp
@@ -345,11 +345,11 @@ class RiskGuardrailService:
         """Trigger global emergency kill switch."""
         self._global_kill_switch = True
         self._global_kill_reason = f"{reason} (by {triggered_by})"
-        self._global_kill_time = datetime.utcnow()
+        self._global_kill_time = datetime.now(UTC)
 
         # Record breach without triggering recursive action
         breach = GuardrailBreach(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             guardrail_type=GuardrailType.GLOBAL_KILL,
             strategy_id=None,
             details={"reason": reason, "triggered_by": triggered_by},
@@ -380,7 +380,7 @@ class RiskGuardrailService:
 
         # Record breach without triggering recursive action
         breach = GuardrailBreach(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             guardrail_type=GuardrailType.GLOBAL_KILL,
             strategy_id=strategy_id,
             details={"reason": reason},
@@ -421,7 +421,7 @@ class RiskGuardrailService:
                 [
                     b
                     for b in self._breach_history
-                    if b.timestamp > datetime.utcnow() - timedelta(hours=24)
+                    if b.timestamp > datetime.now(UTC) - timedelta(hours=24)
                 ]
             ),
         }
@@ -451,7 +451,7 @@ class RiskGuardrailService:
     ) -> None:
         """Record and handle a guardrail breach."""
         breach = GuardrailBreach(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             guardrail_type=guardrail_type,
             strategy_id=strategy_id,
             details=details,
@@ -470,7 +470,7 @@ class RiskGuardrailService:
             if state:
                 config = self.configs.get(guardrail_type)
                 cooldown = config.cooldown_minutes if config else 5
-                state.paused_until = datetime.utcnow() + timedelta(minutes=cooldown)
+                state.paused_until = datetime.now(UTC) + timedelta(minutes=cooldown)
                 logger.warning(
                     f"Strategy {strategy_id} paused for {cooldown}m due to {guardrail_type.value}"
                 )
@@ -506,7 +506,7 @@ class RiskGuardrailService:
 
     def _check_daily_reset(self) -> None:
         """Reset daily PnL tracking at midnight UTC."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         today = now.date()
 
         if self._last_reset_date != today:

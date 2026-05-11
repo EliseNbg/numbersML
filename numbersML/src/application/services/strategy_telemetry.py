@@ -14,7 +14,7 @@ import asyncio
 import logging
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any, Deque, Optional
 from uuid import UUID
@@ -177,7 +177,7 @@ class DriftIndicator:
             drift_pct=drift_pct,
             drift_threshold_pct=threshold_pct,
             is_significant=drift_pct > threshold_pct,
-            calculated_at=datetime.utcnow(),
+            calculated_at=datetime.now(UTC),
         )
 
 
@@ -216,7 +216,7 @@ class StrategyTelemetryService:
         }
 
         # Start time for uptime tracking
-        self._start_time = datetime.utcnow()
+        self._start_time = datetime.now(UTC)
 
         # Background cleanup task
         self._cleanup_task: Optional[asyncio.Task] = None
@@ -240,7 +240,7 @@ class StrategyTelemetryService:
 
     def register_strategy(self, strategy_id: UUID) -> StrategyHealth:
         """Register a strategy for telemetry collection."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         if strategy_id not in self._orders:
             self._orders[strategy_id] = deque(maxlen=self.max_history)
@@ -290,7 +290,7 @@ class StrategyTelemetryService:
             quantity=quantity,
             price=price,
             status=OrderStatus.PENDING,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
         )
 
         self._orders[strategy_id].append(order)
@@ -307,7 +307,7 @@ class StrategyTelemetryService:
         """Record order submission to exchange."""
         order = self._find_order(strategy_id, order_id)
         if order:
-            order.submitted_at = datetime.utcnow()
+            order.submitted_at = datetime.now(UTC)
             order.status = OrderStatus.SUBMITTED
             if latency_ms:
                 order.latency_ms = latency_ms
@@ -323,7 +323,7 @@ class StrategyTelemetryService:
         """Record order fill."""
         order = self._find_order(strategy_id, order_id)
         if order:
-            order.filled_at = datetime.utcnow()
+            order.filled_at = datetime.now(UTC)
             order.status = OrderStatus.FILLED
             if latency_ms:
                 order.latency_ms = latency_ms
@@ -339,7 +339,7 @@ class StrategyTelemetryService:
         """Record order rejection."""
         order = self._find_order(strategy_id, order_id)
         if order:
-            order.rejected_at = datetime.utcnow()
+            order.rejected_at = datetime.now(UTC)
             order.status = OrderStatus.REJECTED
             order.error_message = reason
 
@@ -395,7 +395,7 @@ class StrategyTelemetryService:
             symbol=symbol,
             signal_type=signal_type,
             confidence=confidence,
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(UTC),
             indicators_used=indicators_used or [],
             metadata=metadata or {},
         )
@@ -421,7 +421,7 @@ class StrategyTelemetryService:
         self._ensure_strategy(strategy_id)
 
         error = ErrorEvent(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             strategy_id=strategy_id,
             error_type=error_type,
             error_message=error_message,
@@ -585,7 +585,7 @@ class StrategyTelemetryService:
         """Get current health summary for a strategy."""
         health = self._ensure_strategy(strategy_id)
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         window_start = now - timedelta(minutes=self.window_minutes)
 
         # Calculate rates
@@ -654,7 +654,7 @@ class StrategyTelemetryService:
     def get_global_metrics(self) -> dict[str, Any]:
         """Get global telemetry summary."""
         return {
-            "uptime_seconds": (datetime.utcnow() - self._start_time).total_seconds(),
+            "uptime_seconds": (datetime.now(UTC) - self._start_time).total_seconds(),
             "monitored_strategies": len(self._health),
             "total_signals_issued": self._global_counters["total_signals"],
             "total_orders_submitted": self._global_counters["total_orders"],
@@ -691,7 +691,7 @@ class StrategyTelemetryService:
     ) -> list[OrderMetrics]:
         """Get orders within time window."""
         minutes = window_minutes or self.window_minutes
-        cutoff = datetime.utcnow() - timedelta(minutes=minutes)
+        cutoff = datetime.now(UTC) - timedelta(minutes=minutes)
 
         orders = self._orders.get(strategy_id, deque())
         return [o for o in orders if o.created_at > cutoff]
@@ -703,7 +703,7 @@ class StrategyTelemetryService:
     ) -> list[SignalMetrics]:
         """Get signals within time window."""
         minutes = window_minutes or self.window_minutes
-        cutoff = datetime.utcnow() - timedelta(minutes=minutes)
+        cutoff = datetime.now(UTC) - timedelta(minutes=minutes)
 
         signals = self._signals.get(strategy_id, deque())
         return [s for s in signals if s.generated_at > cutoff]
@@ -715,7 +715,7 @@ class StrategyTelemetryService:
     ) -> list[ErrorEvent]:
         """Get errors within time window."""
         minutes = window_minutes or self.window_minutes
-        cutoff = datetime.utcnow() - timedelta(minutes=minutes)
+        cutoff = datetime.now(UTC) - timedelta(minutes=minutes)
 
         errors = self._errors.get(strategy_id, deque())
         return [e for e in errors if e.timestamp > cutoff]
@@ -727,7 +727,7 @@ class StrategyTelemetryService:
                 await asyncio.sleep(60)  # Run every minute
 
                 # Cleanup is handled by deque maxlen, but we can do additional pruning
-                now = datetime.utcnow()
+                now = datetime.now(UTC)
                 cutoff = now - timedelta(minutes=self.window_minutes * 2)
 
                 for strategy_id in list(self._health.keys()):

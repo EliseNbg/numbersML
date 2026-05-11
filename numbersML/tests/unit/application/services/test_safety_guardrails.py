@@ -10,7 +10,7 @@ Tests:
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -210,7 +210,7 @@ class TestRiskGuardrailService:
         risk_service.register_strategy(strategy_id)
 
         # Data from 5 minutes ago
-        stale_time = datetime.utcnow() - timedelta(minutes=5)
+        stale_time = datetime.now(UTC) - timedelta(minutes=5)
 
         fresh, reason = await risk_service.check_data_freshness(
             strategy_id=strategy_id,

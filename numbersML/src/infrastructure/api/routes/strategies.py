@@ -13,7 +13,7 @@ Dependencies: Application services, Domain models
 """
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -52,7 +52,7 @@ class StrategyConfigSchema(BaseModel):
     status: str = Field(default="draft", pattern="^(draft|validated|active|paused|archived)$")
 
     def dict(self, *args, **kwargs):
-        d = super().dict(*args, **kwargs)
+        d = super().model_dump(*args, **kwargs)
         if "meta" in d and "schema_version" not in d["meta"]:
             d["meta"]["schema_version"] = 1
         return d

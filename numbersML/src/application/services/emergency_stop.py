@@ -12,7 +12,7 @@ Provides:
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any, Optional
 from uuid import UUID
@@ -120,7 +120,7 @@ class EmergencyStopService:
         Returns:
             EmergencyStopRecord
         """
-        stop_id = f"stop_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{level.value}"
+        stop_id = f"stop_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}_{level.value}"
 
         logger.critical(f"EMERGENCY STOP TRIGGERED: {level.value} by {triggered_by}: {reason}")
 
@@ -156,7 +156,7 @@ class EmergencyStopService:
         record = EmergencyStopRecord(
             stop_id=stop_id,
             level=level,
-            triggered_at=datetime.utcnow(),
+            triggered_at=datetime.now(UTC),
             triggered_by=triggered_by,
             reason=reason,
             affected_strategies=affected,
@@ -220,7 +220,7 @@ class EmergencyStopService:
 
         # Release the stop
         record.status = StopStatus.RELEASING
-        record.released_at = datetime.utcnow()
+        record.released_at = datetime.now(UTC)
         record.released_by = released_by
         record.release_reason = reason
 
@@ -339,7 +339,7 @@ class EmergencyStopService:
                 [
                     h
                     for h in self._stop_history
-                    if h.triggered_at > datetime.utcnow() - timedelta(hours=24)
+                    if h.triggered_at > datetime.now(UTC) - timedelta(hours=24)
                 ]
             ),
         }

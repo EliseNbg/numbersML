@@ -14,7 +14,7 @@ import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Optional
 from uuid import UUID
@@ -236,7 +236,7 @@ class AuditLogger:
         import uuid
 
         event_id = str(uuid.uuid4())
-        timestamp = datetime.utcnow()
+        timestamp = datetime.now(UTC)
 
         # Create event
         event = AuditEvent(
