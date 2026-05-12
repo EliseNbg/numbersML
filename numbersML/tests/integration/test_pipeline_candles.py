@@ -1,7 +1,7 @@
 """
 Integration test: Pipeline produces candles and indicators for all active symbols.
 
-Verifies after 10 minutes of pipeline runtime:
+Verifies after 30 sec of pipeline runtime:
 1. All 4 active symbols have candles in candles_1s table
 2. All 4 active symbols have indicators in candle_indicators table
 3. Candles and indicators are valid (non-zero prices, correct schema)
@@ -23,7 +23,7 @@ from src.pipeline.service import PipelineManager
 
 logger = logging.getLogger(__name__)
 
-ACTIVE_SYMBOLS = ["BTC/USDC", "ETH/USDC", "DOGE/USDC", "ADA/USDC"]
+ACTIVE_SYMBOLS = ["BTC/USDT", "ETH/USDT", "DOGE/USDT", "ADA/USDT"]
 RUN_SECONDS = 30  # 30 seconds (reduced from 10 minutes for faster testing)
 
 
@@ -42,7 +42,7 @@ async def db_pool():
 
 @pytest.fixture(autouse=True)
 async def cleanup():
-    """Clean state before test."""
+    """Clean state before and after test."""
     pool = await asyncpg.create_pool(
         "postgresql://crypto:crypto_secret@localhost:5432/crypto_trading",
         min_size=1,
@@ -50,11 +50,41 @@ async def cleanup():
         init=_init_utc,
     )
     async with pool.acquire() as conn:
-        await conn.execute("DELETE FROM candles_1s")
-        await conn.execute("DELETE FROM candle_indicators")
+        # Activate test symbols before test
+        await conn.execute(
+            """
+            UPDATE symbols
+            SET is_active = true, is_allowed = true
+            WHERE symbol = ANY($1)
+            """,
+            ACTIVE_SYMBOLS,
+        )
+        # Clear candle/indicator data for test symbols only
+        await conn.execute("""
+            DELETE FROM candles_1s
+            WHERE symbol_id IN (
+                SELECT id FROM symbols WHERE symbol = ANY($1)
+            )
+        """, ACTIVE_SYMBOLS)
+        await conn.execute("""
+            DELETE FROM candle_indicators
+            WHERE symbol_id IN (
+                SELECT id FROM symbols WHERE symbol = ANY($1)
+            )
+        """, ACTIVE_SYMBOLS)
         await conn.execute("DELETE FROM pipeline_state")
+    yield pool
+    # After test: deactivate test symbols
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE symbols
+            SET is_active = false, is_allowed = false
+            WHERE symbol = ANY($1)
+            """,
+            ACTIVE_SYMBOLS,
+        )
     await pool.close()
-    yield
 
 
 class TestPipelineFullRun:
@@ -63,19 +93,19 @@ class TestPipelineFullRun:
     @pytest.mark.asyncio
     async def test_all_symbols_have_candles(self, db_pool: asyncpg.Pool) -> None:
         """
-        Run pipeline 10 minutes, verify all 4 symbols have candles.
+        Run pipeline 30 sec, verify all 4 symbols have candles.
 
-        Each active symbol (BTC/USDC, ETH/USDC, DOGE/USDC, ADA/USDC)
-        must produce at least 5 candles.
+        Each active symbol IN ('BTC/USDT', 'ETH/USDT', 'DOGE/USDT', 'ADA/USDT')
+        must produce at least 1 candle.
         """
         manager = PipelineManager(db_pool)
 
         # Start pipeline
-        started = await manager.start_pipeline(symbols=[])
+        started = await manager.start_pipeline(symbols=ACTIVE_SYMBOLS)
         assert started, "Pipeline failed to start"
 
         # Wait for first trade (up to 10s)
-        for i in range(20):
+        for i in range(10):
             await asyncio.sleep(0.5)
             status = manager.get_pipeline_status("default")
             if status and status["trades_processed"] > 0:
@@ -114,7 +144,7 @@ class TestPipelineFullRun:
     @pytest.mark.asyncio
     async def test_all_symbols_have_indicators(self, db_pool: asyncpg.Pool) -> None:
         """
-        Run pipeline 10 minutes, verify all 4 symbols have indicators.
+        Run pipeline 30 sec, verify all 4 symbols have indicators.
 
         IndicatorCalculator must run on each completed candle and write
         results to candle_indicators table.
@@ -122,11 +152,11 @@ class TestPipelineFullRun:
         manager = PipelineManager(db_pool)
 
         # Start pipeline
-        started = await manager.start_pipeline(symbols=[])
+        started = await manager.start_pipeline(symbols=ACTIVE_SYMBOLS)
         assert started, "Pipeline failed to start"
 
         # Wait for first trade
-        for i in range(20):
+        for i in range(10):
             await asyncio.sleep(0.5)
             status = manager.get_pipeline_status("default")
             if status and status["trades_processed"] > 0:

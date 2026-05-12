@@ -173,10 +173,10 @@ class IndicatorCalculator:
             logger.warning(f"Only {len(buffer.closes_buff)} candles for {symbol}, need >= 2")
             return 0
 
-        prices = np.array(buffer.closes_buff)
-        volumes = np.array(buffer.volumes_buff)
-        highs = np.array(buffer.highs_buff)
-        lows = np.array(buffer.lows_buff)
+        prices = np.array(list(buffer.closes_buff))
+        volumes = np.array(list(buffer.volumes_buff))
+        highs = np.array(list(buffer.highs_buff))
+        lows = np.array(list(buffer.lows_buff))
         opens = np.array([0.0] * len(prices))  # open not stored in IndicatorsBuffer
         latest_time = datetime.now(UTC)
         latest_price = float(prices[-1])
@@ -223,13 +223,13 @@ class IndicatorCalculator:
         await self._init_buffer_for_candle(buffer, time, candle_dict)
 
         # Add current candle to buffer (O(1) ring buffer append)
-        buffer.add_candle(candle_dict)
+        await buffer.add_candle(candle_dict)
 
         # Get data from buffer for indicator calculation
-        prices = np.array(buffer.closes_buff)
-        volumes = np.array(buffer.volumes_buff)
-        highs = np.array(buffer.highs_buff)
-        lows = np.array(buffer.lows_buff)
+        prices = np.array(list(buffer.closes_buff))
+        volumes = np.array(list(buffer.volumes_buff))
+        highs = np.array(list(buffer.highs_buff))
+        lows = np.array(list(buffer.lows_buff))
         opens = np.array([0.0] * len(prices))  # open not stored in IndicatorsBuffer
         latest_time = time
         latest_price = float(close)

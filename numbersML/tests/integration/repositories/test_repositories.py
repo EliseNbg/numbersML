@@ -96,16 +96,16 @@ class TestSymbolRepository:
                 ON CONFLICT (symbol) DO UPDATE SET is_active = true
                 RETURNING id
                 """,
-                "TEST/USDC",
-                "TEST",
-                "USDC",
+                "TTTT/USDT",
+                "TTTT",
+                "USDT",
             )
 
         yield row["id"] if row else None
 
         # Cleanup
         async with db_pool.acquire() as conn:
-            await conn.execute("DELETE FROM symbols WHERE symbol = 'TEST/USDC'")
+            await conn.execute("DELETE FROM symbols WHERE symbol = 'TTTT/USDT'")
 
     @pytest.mark.asyncio
     async def test_init(self, db_pool: asyncpg.Pool) -> None:
@@ -143,17 +143,17 @@ class TestSymbolRepository:
         symbol = await repo.get_by_id(test_symbol)
 
         assert symbol is not None
-        assert symbol.symbol == "TEST/USDC"
+        assert symbol.symbol == "TTT/USDT"
 
     @pytest.mark.asyncio
     async def test_get_by_name(self, db_pool: asyncpg.Pool, test_symbol: int) -> None:
         """Test getting symbol by name."""
         repo = SymbolRepository(db_pool)
 
-        symbol = await repo.get_by_name("TEST/USDC")
+        symbol = await repo.get_by_name("TTT/USDT")
 
         assert symbol is not None
-        assert symbol.symbol == "TEST/USDC"
+        assert symbol.symbol == "TTT/USDT"
 
     @pytest.mark.asyncio
     async def test_update_active(self, db_pool: asyncpg.Pool, test_symbol: int) -> None:

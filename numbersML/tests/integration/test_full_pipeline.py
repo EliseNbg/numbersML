@@ -435,9 +435,9 @@ class TestDatabaseIntegration:
 
         # Create test symbol
         symbol = Symbol(
-            symbol="TEST/USDC",
+            symbol="TEST/USDT",
             base_asset="TEST",
-            quote_asset="USDC",
+            quote_asset="USDT",
             exchange="binance",
             tick_size=Decimal("0.01"),
             step_size=Decimal("0.00001"),
