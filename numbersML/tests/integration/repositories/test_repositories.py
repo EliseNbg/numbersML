@@ -143,17 +143,17 @@ class TestSymbolRepository:
         symbol = await repo.get_by_id(test_symbol)
 
         assert symbol is not None
-        assert symbol.symbol == "TTT/USDT"
+        assert symbol.symbol == "TTTT/USDT"
 
     @pytest.mark.asyncio
     async def test_get_by_name(self, db_pool: asyncpg.Pool, test_symbol: int) -> None:
         """Test getting symbol by name."""
         repo = SymbolRepository(db_pool)
 
-        symbol = await repo.get_by_name("TTT/USDT")
+        symbol = await repo.get_by_name("TTTT/USDT")
 
         assert symbol is not None
-        assert symbol.symbol == "TTT/USDT"
+        assert symbol.symbol == "TTTT/USDT"
 
     @pytest.mark.asyncio
     async def test_update_active(self, db_pool: asyncpg.Pool, test_symbol: int) -> None:
