@@ -517,6 +517,11 @@ class BacktestEngine:
         """
         run_id = uuid4()
         logger.info(f"Starting backtest {run_id}: {strategy_id} v{strategy_version}")
+        # Ensure start_time and end_time are timezone-aware (assume UTC if naive)
+        if start_time.tzinfo is None:
+            start_time = start_time.replace(tzinfo=UTC)
+        if end_time.tzinfo is None:
+            end_time = end_time.replace(tzinfo=UTC)
 
         execution_config = config.get("execution", {})
         fee_bps = float(execution_config.get("fee_bps", self.default_fee_bps))

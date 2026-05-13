@@ -82,8 +82,6 @@ Available markers: `unit`, `integration`, `e2e`, `slow`, `pipeline`, `indicators
 > **Note**: Some integration tests in `tests/integration/` require a live database and
 > are excluded by default. See `BROKEN_TESTS.md` for details.
 
----
-
 ## Project Structure
 
 ```
