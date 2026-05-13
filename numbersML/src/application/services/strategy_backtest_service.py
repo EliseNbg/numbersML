@@ -81,6 +81,7 @@ class StrategyBacktestService:
                 metadata={
                     "strategy_version": config_version.version,
                     "parameters": result.parameters,
+                    "symbol": symbol,
                 },
                 created_by=self._actor,
             )

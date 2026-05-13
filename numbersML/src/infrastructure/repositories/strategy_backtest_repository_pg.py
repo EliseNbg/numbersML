@@ -85,8 +85,9 @@ class StrategyBacktestRepositoryPG:
                     metrics,
                     trades,
                     equity_curve,
-                    created_by
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                    created_by,
+                    symbol
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                 RETURNING *
                 """,
                 strategy_id,
@@ -99,6 +100,7 @@ class StrategyBacktestRepositoryPG:
                 trades_json,
                 equity_json,
                 created_by,
+                metadata.get("symbol") if metadata else None,
             )
         return self._map_backtest(row)
 
@@ -113,7 +115,13 @@ class StrategyBacktestRepositoryPG:
         """
         async with self._connection() as conn:
             row = await conn.fetchrow(
-                "SELECT * FROM strategy_backtests WHERE id = $1",
+                """
+                SELECT sb.*, s.name as strategy_name, sv.version as strategy_version
+                FROM strategy_backtests sb
+                JOIN strategies s ON sb.strategy_id = s.id
+                JOIN strategy_versions sv ON sb.strategy_version_id = sv.id
+                WHERE sb.id = $1
+                """,
                 backtest_id,
             )
         if row is None:
@@ -137,9 +145,12 @@ class StrategyBacktestRepositoryPG:
         async with self._connection() as conn:
             rows = await conn.fetch(
                 """
-                SELECT * FROM strategy_backtests
-                WHERE strategy_id = $1
-                ORDER BY created_at DESC
+                SELECT sb.*, s.name as strategy_name, sv.version as strategy_version
+                FROM strategy_backtests sb
+                JOIN strategies s ON sb.strategy_id = s.id
+                JOIN strategy_versions sv ON sb.strategy_version_id = sv.id
+                WHERE sb.strategy_id = $1
+                ORDER BY sb.created_at DESC
                 LIMIT $2
                 """,
                 strategy_id,
@@ -152,8 +163,11 @@ class StrategyBacktestRepositoryPG:
         async with self._connection() as conn:
             rows = await conn.fetch(
                 """
-                SELECT * FROM strategy_backtests
-                ORDER BY created_at DESC
+                SELECT sb.*, s.name as strategy_name, sv.version as strategy_version
+                FROM strategy_backtests sb
+                JOIN strategies s ON sb.strategy_id = s.id
+                JOIN strategy_versions sv ON sb.strategy_version_id = sv.id
+                ORDER BY sb.created_at DESC
                 LIMIT $1
                 """,
                 limit,
@@ -186,6 +200,9 @@ class StrategyBacktestRepositoryPG:
             "id": row["id"],
             "strategy_id": row["strategy_id"],
             "strategy_version_id": row["strategy_version_id"],
+            "strategy_name": row.get("strategy_name"),
+            "strategy_version": row.get("strategy_version"),
+            "symbol": row.get("symbol"),
             "time_range_start": _coerce_datetime(row["time_range_start"]),
             "time_range_end": _coerce_datetime(row["time_range_end"]),
             "initial_balance": float(row["initial_balance"]),
