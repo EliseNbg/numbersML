@@ -644,7 +644,7 @@ async function openModifyModal() {
 }
 
 /**
- * Save modified strategy
+ * Save modified strategy (always creates new version and activates it)
  */
 async function saveModifiedStrategy() {
     if (!currentStrategyId) return;
@@ -658,31 +658,42 @@ async function saveModifiedStrategy() {
         return;
     }
 
-    const saveAsVersion = document.getElementById('save-as-version').checked;
-
     try {
-        if (saveAsVersion) {
-            const response = await fetch(`${API_BASE_URL}/strategies/${currentStrategyId}/versions`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    config: config,
-                    schema_version: 1,
-                    created_by: 'dashboard'
-                })
-            });
+        // Create new version
+        const response = await fetch(`${API_BASE_URL}/strategies/${currentStrategyId}/versions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                config: config,
+                schema_version: 1,
+                created_by: 'dashboard'
+            })
+        });
 
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-            showAlert('success', 'New version created successfully');
-        } else {
-            showAlert('info', 'Direct config update not supported. Use "Save as new version".');
-            return;
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || `HTTP ${response.status}`);
         }
 
+        const newVersion = await response.json();
+        
+        // Auto-activate the new version
+        const activateResponse = await fetch(`${API_BASE_URL}/strategies/${currentStrategyId}/versions/${newVersion.version}/activate`, {
+            method: 'POST'
+        });
+
+        if (!activateResponse.ok) {
+            throw new Error(`Failed to activate version: ${activateResponse.status}`);
+        }
+
+        showAlert('success', 'Configuration saved and activated (version ' + newVersion.version + ')');
         modifyModal.hide();
         document.getElementById('modify-result').classList.add('d-none');
-        loadStrategies();
+        
+        // Reload strategies to update the global state
+        await loadStrategies();
+        
+        // Refresh the detail view with updated data
         if (currentStrategyId) {
             viewStrategy(currentStrategyId);
         }

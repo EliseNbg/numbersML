@@ -1,15 +1,16 @@
 """Grid Trading Strategy.
 
 This strategy implements a grid trading approach:
-- Places buy orders at regular price intervals below current price
-- Places sell orders at regular intervals above current price
-- Generates BUY signals when price hits grid levels from above
-- Generates SELL signals when price hits grid levels from below
+- Places buy orders at regular price intervals below reference price
+- Takes profit at price levels above reference price
+- Generates BUY signals when price drops TO a grid level from above
+- Generates SELL signals when price rises TO a grid level from below
 
 The strategy maintains:
 - Grid levels (calculated from reference price)
 - Last price seen (for detecting grid level crosses)
-- Current position size
+- Current position status
+- Last traded grid index (to prevent immediate reversal)
 """
 
 import logging
@@ -25,11 +26,13 @@ class GridTradingStrategy(Strategy):
 
     State:
         - reference_price: Center price for grid
-        - grid_levels: List of price levels
+        - grid_levels: List of price levels (sorted ascending)
         - last_price: Last tick price
         - grid_size: Number of grid levels above/below
-        - grid_spacing: Price spacing between levels
+        - grid_spacing_pct: Spacing between levels as percentage
         - current_grid_index: Current position in grid
+        - in_position: Whether currently holding a position
+        - last_trade_grid_index: Index of last traded grid level (prevents reversal)
 
     Configuration (accessed via self.get_config):
         - grid_size: Number of grid levels each side (default: 5)
@@ -54,6 +57,10 @@ class GridTradingStrategy(Strategy):
         self.grid_spacing_pct: float = 1.0
         self.current_grid_index: int = 0
         self.in_position: bool = False
+        # Track the grid level where we bought (to prevent immediate sell at same level)
+        self.last_trade_grid_index: int = -1
+        # Track tick count for periodic logging
+        self._tick_count: int = 0
 
         logger.info(f"GridTradingStrategy {strategy_id} initialized")
 
@@ -75,8 +82,23 @@ class GridTradingStrategy(Strategy):
             self.grid_spacing_pct = self.get_config("grid_spacing_pct", 1.0)
             self._calculate_grid_levels()
             logger.info(
-                f"[{self._strategy_id}] Grid initialized: "
-                f"ref_price={self.reference_price}, levels={self.grid_levels}"
+                f"[{self._strategy_id}] Grid initialized BEFORE config apply: "
+                f"ref_price={self.reference_price}, grid_size={self.grid_size}, "
+                f"spacing_pct={self.grid_spacing_pct}"
+            )
+            logger.info(
+                f"[{self._strategy_id}] Grid levels AFTER config apply: {self.grid_levels}"
+            )
+            self.last_price = price
+            return None
+
+        self._tick_count += 1
+
+        # Debug logging for price values (every 500 ticks)
+        if self._tick_count % 500 == 0:
+            logger.info(
+                f"[{self._strategy_id}] Tick {self._tick_count}: price={price:.6f}, "
+                f"in_position={self.in_position}, last_trade_grid_index={self.last_trade_grid_index}"
             )
 
         # Detect grid level crosses
@@ -85,45 +107,67 @@ class GridTradingStrategy(Strategy):
         if self.last_price > 0:
             # Check if price crossed any grid level
             for i, level in enumerate(self.grid_levels):
-                # Price crossed level from above (sell signal)
-                if self.last_price > level >= price and self.in_position:
-                    signal = Signal(
-                        strategy_id=self._strategy_id,
-                        symbol=tick.symbol,
-                        signal_type=SignalType.SELL,
-                        price=tick.price,
-                        confidence=0.8,
-                        metadata={
-                            "grid_level": level,
-                            "grid_index": i,
-                            "reference_price": self.reference_price,
-                            "price_crossed_from": "above",
-                        },
-                    )
-                    self.in_position = False
-                    self.current_grid_index = i
-                    logger.info(f"[{self._strategy_id}] SELL signal at grid level {level}")
-                    break
+                # Skip the grid level where we last traded (prevent immediate reversal)
+                if i == self.last_trade_grid_index:
+                    continue
 
-                # Price crossed level from below (buy signal)
-                elif self.last_price < level <= price and not self.in_position:
-                    signal = Signal(
-                        strategy_id=self._strategy_id,
-                        symbol=tick.symbol,
-                        signal_type=SignalType.BUY,
-                        price=tick.price,
-                        confidence=0.8,
-                        metadata={
-                            "grid_level": level,
-                            "grid_index": i,
-                            "reference_price": self.reference_price,
-                            "price_crossed_from": "below",
-                        },
-                    )
-                    self.in_position = True
-                    self.current_grid_index = i
-                    logger.info(f"[{self._strategy_id}] BUY signal at grid level {level}")
-                    break
+                # Levels below reference: BUY when price drops TO them from above
+                if level < self.reference_price:
+                    cross_condition = self.last_price > level and price <= level
+                    if cross_condition:
+                        logger.info(
+                            f"[{self._strategy_id}] BUY check at level {level:.6f}: "
+                            f"last_price={self.last_price:.6f}, price={price:.6f}, "
+                            f"cross_cond={cross_condition}, in_pos={self.in_position}"
+                        )
+                    if cross_condition and not self.in_position:
+                        signal = Signal(
+                            strategy_id=self._strategy_id,
+                            symbol=tick.symbol,
+                            signal_type=SignalType.BUY,
+                            price=tick.price,
+                            confidence=0.8,
+                            metadata={
+                                "grid_level": level,
+                                "grid_index": i,
+                                "reference_price": self.reference_price,
+                                "price_crossed_from": "above",
+                            },
+                        )
+                        self.in_position = True
+                        self.current_grid_index = i
+                        self.last_trade_grid_index = i
+                        logger.info(f"[{self._strategy_id}] BUY signal at grid level {level}")
+                        break
+
+                # Levels above reference: SELL when price rises TO them from below
+                elif level > self.reference_price:
+                    cross_condition = self.last_price < level and price >= level
+                    if cross_condition:
+                        logger.info(
+                            f"[{self._strategy_id}] SELL check at level {level:.6f}: "
+                            f"last_price={self.last_price:.6f}, price={price:.6f}, "
+                            f"cross_cond={cross_condition}, in_pos={self.in_position}"
+                        )
+                    if cross_condition and self.in_position:
+                        signal = Signal(
+                            strategy_id=self._strategy_id,
+                            symbol=tick.symbol,
+                            signal_type=SignalType.SELL,
+                            price=tick.price,
+                            confidence=0.8,
+                            metadata={
+                                "grid_level": level,
+                                "grid_index": i,
+                                "reference_price": self.reference_price,
+                                "price_crossed_from": "below",
+                            },
+                        )
+                        self.in_position = False
+                        self.current_grid_index = i
+                        self.last_trade_grid_index = i
+                        logger.info(f"[{self._strategy_id}] SELL signal at grid level {level}")
+                        break
 
         self.last_price = price
         return signal
@@ -136,16 +180,17 @@ class GridTradingStrategy(Strategy):
         spacing = self.reference_price * (self.grid_spacing_pct / 100.0)
 
         levels = []
-        # Grid levels below reference
+        # Grid levels below reference (for buying)
         for i in range(1, self.grid_size + 1):
             levels.append(self.reference_price - (spacing * i))
 
-        # Grid levels above reference
+        # Grid levels above reference (for taking profit)
         for i in range(1, self.grid_size + 1):
             levels.append(self.reference_price + (spacing * i))
 
         self.grid_levels = sorted(levels)
         logger.info(f"[{self._strategy_id}] Calculated {len(self.grid_levels)} grid levels")
+        logger.debug(f"[{self._strategy_id}] Grid spacing: {spacing}, levels: {self.grid_levels}")
 
     def get_stats(self) -> dict[str, Any]:
         """Override to include custom state in stats."""
@@ -157,6 +202,7 @@ class GridTradingStrategy(Strategy):
                 "current_grid_index": self.current_grid_index,
                 "in_position": self.in_position,
                 "last_price": self.last_price,
+                "last_trade_grid_index": self.last_trade_grid_index,
             }
         )
         return stats
