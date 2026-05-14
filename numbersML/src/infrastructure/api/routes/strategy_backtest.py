@@ -455,6 +455,86 @@ async def list_saved_backtests(
     summary="Get single backtest result",
     description="Get detailed results for a specific saved backtest by ID.",
 )
+@router.delete(
+    "/results/{backtest_id}",
+    summary="Delete a backtest result",
+    description="Delete a specific saved backtest result by ID.",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_saved_backtest(
+    backtest_id: UUID,
+    backtest_repo: StrategyBacktestRepositoryPG = Depends(get_backtest_repository),
+) -> None:
+    """
+    Delete a specific saved backtest result by ID.
+
+    Args:
+        backtest_id: The UUID of the backtest result to delete
+        backtest_repo: Backtest repository instance
+
+    Raises:
+        404: Backtest not found
+        500: Failed to delete
+    """
+    try:
+        deleted = await backtest_repo.delete(backtest_id)
+        if not deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Backtest {backtest_id} not found",
+            )
+        logger.info(f"Deleted backtest {backtest_id}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete backtest {backtest_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete backtest result: {str(e)}",
+        ) from e
+
+
+@router.post(
+    "/results/bulk-delete",
+    summary="Bulk delete backtest results",
+    description="Delete multiple backtest results by IDs.",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def bulk_delete_backtests(
+    request: dict[str, list[UUID]],
+    backtest_repo: StrategyBacktestRepositoryPG = Depends(get_backtest_repository),
+) -> None:
+    """
+    Delete multiple backtest results by IDs.
+
+    Args:
+        request: Dict with 'backtest_ids' key containing list of UUIDs
+        backtest_repo: Backtest repository instance
+
+    Raises:
+        400: Invalid request
+        500: Failed to delete
+    """
+    try:
+        backtest_ids = request.get("backtest_ids", [])
+        if not isinstance(backtest_ids, list) or not backtest_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="backtest_ids must be a non-empty list",
+            )
+
+        deleted_count = await backtest_repo.delete_multiple(backtest_ids)
+        logger.info(f"Bulk deleted {deleted_count} backtests")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to bulk delete backtests: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete backtest results: {str(e)}",
+        ) from e
+
+
 async def get_saved_backtest(
     backtest_id: UUID,
     backtest_repo: StrategyBacktestRepositoryPG = Depends(get_backtest_repository),

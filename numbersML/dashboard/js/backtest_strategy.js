@@ -78,17 +78,20 @@ function bindEventListeners() {
         e.preventDefault();
         runBacktest();
     });
-    
+
     // Strategy selection change - load versions
     document.getElementById('strategy-select').addEventListener('change', onStrategyChange);
-    
+
     // Log controls
     document.getElementById('btn-pause-log').addEventListener('click', toggleLogPause);
     document.getElementById('btn-clear-log').addEventListener('click', clearLog);
-    
+
     // History refresh
     document.getElementById('btn-refresh-history').addEventListener('click', loadBacktestHistory);
-    
+
+    // Delete selected backtests
+    document.getElementById('btn-delete-selected').addEventListener('click', deleteSelectedBacktests);
+
     // CLI command button
     document.getElementById('btn-show-cli-command').addEventListener('click', toggleCliCommand);
     document.getElementById('btn-copy-cli-command').addEventListener('click', copyCliCommand);
@@ -686,7 +689,7 @@ async function loadBacktestHistory() {
         const tbody = document.getElementById('backtest-history-tbody');
 
         if (!results || results.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No backtests found</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No backtests found</td></tr>';
             return;
         }
 
@@ -697,6 +700,9 @@ async function loadBacktestHistory() {
 
             return `
                 <tr data-backtest-id="${result.id}" class="history-row" style="cursor: pointer;">
+                    <td class="align-middle">
+                        <input type="checkbox" class="form-check-input backtest-checkbox" data-backtest-id="${result.id}">
+                    </td>
                     <td>${formatDateShort(result.created_at)}</td>
                     <td>${result.strategy_name || 'Unknown'}</td>
                     <td>${result.strategy_version || '-'}</td>
@@ -709,9 +715,14 @@ async function loadBacktestHistory() {
             `;
         }).join('');
 
-        // Add click handlers to history rows
+        // Add click handlers to history rows (excluding checkbox clicks)
         document.querySelectorAll('.history-row').forEach(row => {
-            row.addEventListener('click', () => {
+            row.addEventListener('click', (e) => {
+                // Ignore if clicking on checkbox
+                if (e.target.type === 'checkbox') {
+                    toggleDeleteButton();
+                    return;
+                }
                 const backtestId = row.getAttribute('data-backtest-id');
                 if (backtestId) {
                     window.location.href = `backtest_details.html?backtest_id=${backtestId}`;
@@ -719,11 +730,55 @@ async function loadBacktestHistory() {
             });
         });
 
+        // Add change handlers for checkboxes
+        document.querySelectorAll('.backtest-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', () => {
+                toggleDeleteButton();
+                updateSelectAllState();
+            });
+        });
+
+        // Add change handler for select-all checkbox
+        const selectAllCheckbox = document.getElementById('select-all');
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', (e) => {
+                const checked = e.target.checked;
+                document.querySelectorAll('.backtest-checkbox').forEach(cb => {
+                    cb.checked = checked;
+                });
+                toggleDeleteButton();
+            });
+        }
+
     } catch (error) {
         console.error('Failed to load backtest history:', error);
         document.getElementById('backtest-history-tbody').innerHTML =
-            '<tr><td colspan="8" class="text-center text-danger">Failed to load history</td></tr>';
+            '<tr><td colspan="9" class="text-center text-danger">Failed to load history</td></tr>';
     }
+}
+
+/**
+ * Toggle delete button visibility based on checkbox selection
+ */
+function toggleDeleteButton() {
+    const anyChecked = document.querySelectorAll('.backtest-checkbox:checked').length > 0;
+    const deleteBtn = document.getElementById('btn-delete-selected');
+    if (deleteBtn) {
+        deleteBtn.style.display = anyChecked ? 'inline-block' : 'none';
+    }
+}
+
+/**
+ * Update select-all checkbox state based on individual checkboxes
+ */
+function updateSelectAllState() {
+    const selectAll = document.getElementById('select-all');
+    const checkboxes = document.querySelectorAll('.backtest-checkbox');
+    if (!selectAll || checkboxes.length === 0) return;
+
+    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+    selectAll.checked = allChecked;
+    selectAll.indeterminate = !allChecked && Array.from(checkboxes).some(cb => cb.checked);
 }
 
 /**
@@ -741,6 +796,56 @@ function toggleLogPause() {
  */
 function clearLog() {
     document.getElementById('debug-log-container').innerHTML = '';
+}
+
+/**
+ * Delete selected backtests
+ */
+async function deleteSelectedBacktests() {
+    const checkedBoxes = document.querySelectorAll('.backtest-checkbox:checked');
+    if (checkedBoxes.length === 0) {
+        showToast('No backtests selected', 'warning');
+        return;
+    }
+
+    const backtestIds = Array.from(checkedBoxes).map(cb => cb.getAttribute('data-backtest-id'));
+
+    // Confirm deletion
+    if (!confirm(`Are you sure you want to delete ${backtestIds.length} backtest(s)? This action cannot be undone.`)) {
+        return;
+    }
+
+    const deleteBtn = document.getElementById('btn-delete-selected');
+    deleteBtn.disabled = true;
+    deleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Deleting...';
+
+    try {
+        // Delete each backtest individually (could also use bulk endpoint)
+        const promises = backtestIds.map(id =>
+            fetch(`${API_BASE}/strategy-backtests/results/${id}`, {
+                method: 'DELETE',
+            })
+        );
+
+        const results = await Promise.all(promises);
+        const allSuccess = results.every(r => r.ok || r.status === 404);
+
+        if (!allSuccess) {
+            throw new Error('Some deletions failed');
+        }
+
+        showToast(`Successfully deleted ${backtestIds.length} backtest(s)`, 'success');
+
+        // Reload the history to reflect changes
+        await loadBacktestHistory();
+
+    } catch (error) {
+        console.error('Failed to delete backtests:', error);
+        showToast(`Failed to delete: ${error.message}`, 'error');
+    } finally {
+        deleteBtn.disabled = false;
+        deleteBtn.innerHTML = '<i class="bi bi-trash"></i> Delete Selected';
+    }
 }
 
 /**

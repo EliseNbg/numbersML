@@ -377,15 +377,23 @@
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <span><i class="bi bi-clock-history"></i> Recent Backtests</span>
-                        <button class="btn btn-sm btn-outline-primary" id="btn-refresh-history">
-                            <i class="bi bi-arrow-clockwise"></i> Refresh
-                        </button>
+                        <div>
+                            <button class="btn btn-sm btn-outline-danger" id="btn-delete-selected" style="display: none;">
+                                <i class="bi bi-trash"></i> Delete Selected
+                            </button>
+                            <button class="btn btn-sm btn-outline-primary" id="btn-refresh-history">
+                                <i class="bi bi-arrow-clockwise"></i> Refresh
+                            </button>
+                        </div>
                     </div>
                     <div class="card-body">
                         <div class="table-responsive">
                             <table class="table table-hover" id="backtest-history-table">
                                 <thead>
                                     <tr>
+                                        <th style="width: 40px;">
+                                            <input type="checkbox" id="select-all" class="form-check-input">
+                                        </th>
                                         <th>Time</th>
                                         <th>Strategy</th>
                                         <th>Version</th>
@@ -398,7 +406,7 @@
                                 </thead>
                                 <tbody id="backtest-history-tbody">
                                     <tr>
-                                        <td colspan="8" class="text-center text-muted">No backtests found</td>
+                                        <td colspan="9" class="text-center text-muted">No backtests found</td>
                                     </tr>
                                 </tbody>
                             </table>

@@ -232,6 +232,43 @@ class StrategyBacktestRepositoryPG:
             )
         return [self._map_backtest(row) for row in rows]
 
+    async def delete(self, backtest_id: UUID) -> bool:
+        """Delete a backtest result by ID.
+
+        Args:
+            backtest_id: The UUID of the backtest result to delete
+
+        Returns:
+            True if deleted, False if not found
+        """
+        async with self._connection() as conn:
+            result = await conn.execute(
+                "DELETE FROM strategy_backtests WHERE id = $1",
+                backtest_id,
+            )
+            # result is like "DELETE 1" or "DELETE 0"
+            return result == "DELETE 1"
+
+    async def delete_multiple(self, backtest_ids: list[UUID]) -> int:
+        """Delete multiple backtest results by IDs.
+
+        Args:
+            backtest_ids: List of UUIDs to delete
+
+        Returns:
+            Number of rows deleted
+        """
+        if not backtest_ids:
+            return 0
+        async with self._connection() as conn:
+            await conn.executemany(
+                "DELETE FROM strategy_backtests WHERE id = $1",
+                [(bid,) for bid in backtest_ids],
+            )
+            # executemany returns command tag but we need count
+            # row_count may not be available on pool, so use len as fallback
+            return getattr(conn, "row_count", len(backtest_ids))
+
     @staticmethod
     def _map_backtest(row: asyncpg.Record) -> dict[str, Any]:
         """Map a database row to a backtest result dictionary.
