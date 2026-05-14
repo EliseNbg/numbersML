@@ -60,18 +60,24 @@ async def cleanup():
             ACTIVE_SYMBOLS,
         )
         # Clear candle/indicator data for test symbols only
-        await conn.execute("""
+        await conn.execute(
+            """
             DELETE FROM candles_1s
             WHERE symbol_id IN (
                 SELECT id FROM symbols WHERE symbol = ANY($1)
             )
-        """, ACTIVE_SYMBOLS)
-        await conn.execute("""
+        """,
+            ACTIVE_SYMBOLS,
+        )
+        await conn.execute(
+            """
             DELETE FROM candle_indicators
             WHERE symbol_id IN (
                 SELECT id FROM symbols WHERE symbol = ANY($1)
             )
-        """, ACTIVE_SYMBOLS)
+        """,
+            ACTIVE_SYMBOLS,
+        )
         await conn.execute("DELETE FROM pipeline_state")
     yield pool
     # After test: deactivate test symbols

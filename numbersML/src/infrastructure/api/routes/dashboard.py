@@ -10,7 +10,6 @@ Architecture: Infrastructure Layer (API)
 Dependencies: Application services
 """
 
-
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from src.application.services.pipeline_monitor import PipelineMonitor

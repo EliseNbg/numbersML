@@ -39,6 +39,11 @@ def create_mock_pool(connection: AsyncMock) -> MagicMock:
 def mock_connection() -> AsyncMock:
     """Build a mocked asyncpg connection."""
     conn = AsyncMock()
+    # Set up the transaction method to return an async context manager
+    mock_transaction_context = AsyncMock()
+    mock_transaction_context.__aenter__ = AsyncMock(return_value=None)
+    mock_transaction_context.__aexit__ = AsyncMock(return_value=None)
+    conn.transaction = MagicMock(return_value=mock_transaction_context)
     return conn
 
 
@@ -207,8 +212,13 @@ class TestStrategyRoundTrip:
             "created_at": now,
         }
 
-        # Mock fetchrow for save, create_version, and get_by_id
-        mock_connection.fetchrow.side_effect = [strategy_row, strategy_row, version_row]
+        # Mock fetchrow for save, create_version (2 get_by_id calls), and INSERT
+        mock_connection.fetchrow.side_effect = [
+            strategy_row,
+            strategy_row,
+            strategy_row,
+            version_row,
+        ]
         mock_connection.fetch.return_value = [version_row]
 
         repo = StrategyRepositoryPG(mock_pool)

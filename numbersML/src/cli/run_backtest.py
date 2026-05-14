@@ -20,6 +20,7 @@ Options:
     --wait                  Wait for completion and show results
     --timeout SECONDS       Timeout for waiting (default: 300)
 """
+
 import argparse
 import asyncio
 import json
@@ -54,6 +55,7 @@ from src.infrastructure.repositories.strategy_repository_pg import StrategyRepos
 from src.infrastructure.repositories.strategy_backtest_repository_pg import (
     StrategyBacktestRepositoryPG,
 )
+
 
 # Database initialization
 async def init_db_pool():
@@ -225,7 +227,7 @@ async def run_backtest_async(args: argparse.Namespace) -> dict:
         # Parse timestamps
         if args.start_time:
             try:
-                start_time = datetime.fromisoformat(args.start_time.replace('Z', '+00:00'))
+                start_time = datetime.fromisoformat(args.start_time.replace("Z", "+00:00"))
             except ValueError:
                 raise ValueError(f"Invalid start-time format: {args.start_time}")
         else:
@@ -233,7 +235,7 @@ async def run_backtest_async(args: argparse.Namespace) -> dict:
 
         if args.end_time:
             try:
-                end_time = datetime.fromisoformat(args.end_time.replace('Z', '+00:00'))
+                end_time = datetime.fromisoformat(args.end_time.replace("Z", "+00:00"))
             except ValueError:
                 raise ValueError(f"Invalid end-time format: {args.end_time}")
         else:
@@ -268,9 +270,9 @@ async def run_backtest_async(args: argparse.Namespace) -> dict:
             end_time=end_time,
             initial_balance=args.initial_balance,
             symbol=args.symbol,
-            progress_callback=lambda p: logger.info(f"Backtest progress: {p*100:.1f}%")
-            if args.wait
-            else None,
+            progress_callback=lambda p: (
+                logger.info(f"Backtest progress: {p*100:.1f}%") if args.wait else None
+            ),
         )
 
         # Serialize result

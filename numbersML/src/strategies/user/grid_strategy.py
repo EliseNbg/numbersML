@@ -86,9 +86,7 @@ class GridTradingStrategy(Strategy):
                 f"ref_price={self.reference_price}, grid_size={self.grid_size}, "
                 f"spacing_pct={self.grid_spacing_pct}"
             )
-            logger.info(
-                f"[{self._strategy_id}] Grid levels AFTER config apply: {self.grid_levels}"
-            )
+            logger.info(f"[{self._strategy_id}] Grid levels AFTER config apply: {self.grid_levels}")
             self.last_price = price
             return None
 

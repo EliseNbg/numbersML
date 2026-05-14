@@ -228,7 +228,9 @@ class StrategyLifecycleService:
         self._runtime_states[strategy_id] = new_state
 
         # Persist status change
-        logger.warning(f"[LIFECYCLE] About to save strategy {strategy_id}, current status='{strategy_def.status}'")
+        logger.warning(
+            f"[LIFECYCLE] About to save strategy {strategy_id}, current status='{strategy_def.status}'"
+        )
         strategy_def.status = "validated"
         logger.warning(f"[LIFECYCLE] Set status to 'validated', now calling save()")
         saved = await self._strategy_repo.save(strategy_def)
@@ -275,7 +277,9 @@ class StrategyLifecycleService:
         runtime_state = self._runtime_states.get(strategy_id)
         if runtime_state is None:
             # Strategy exists but never activated — treat as already stopped
-            logger.info(f"Strategy {strategy_id} has no runtime state (cannot pause, already stopped)")
+            logger.info(
+                f"Strategy {strategy_id} has no runtime state (cannot pause, already stopped)"
+            )
             return True
 
         # Already paused? Idempotent — treat as success
@@ -345,7 +349,9 @@ class StrategyLifecycleService:
         runtime_state = self._runtime_states.get(strategy_id)
         if runtime_state is None:
             # Strategy exists but never activated — treat as already stopped
-            logger.info(f"Strategy {strategy_id} has no runtime state (cannot resume, already stopped)")
+            logger.info(
+                f"Strategy {strategy_id} has no runtime state (cannot resume, already stopped)"
+            )
             return True
 
         # If already running, treat as success (idempotent)

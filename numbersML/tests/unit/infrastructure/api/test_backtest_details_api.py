@@ -78,8 +78,6 @@ class TestBacktestDetailsEndpoint:
         from fastapi import HTTPException
 
         with pytest.raises(HTTPException) as exc_info:
-            await backtest_routes.get_saved_backtest(
-                backtest_id=uuid4(), backtest_repo=mock_repo
-            )
+            await backtest_routes.get_saved_backtest(backtest_id=uuid4(), backtest_repo=mock_repo)
 
         assert exc_info.value.status_code == 404

@@ -230,7 +230,6 @@ class TestIndicatorCalculator:
         # Mock IndicatorsBuffer to return a mock with filled buffer
         from unittest.mock import patch
 
-
         mock_buffer = MagicMock()
         mock_buffer.closes_buff = list(range(5))
         mock_buffer.volumes_buff = [10] * 5

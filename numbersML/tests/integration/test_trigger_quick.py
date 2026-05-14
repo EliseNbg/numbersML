@@ -3,7 +3,6 @@
 Quick test to verify DB trigger calculates indicators on insert.
 """
 
-
 import asyncpg
 
 DB_URL = "postgresql://crypto:crypto_secret@localhost:5432/crypto_trading"

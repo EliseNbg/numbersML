@@ -12,7 +12,6 @@ Usage:
     pytest tests/integration/test_dynamic_activation.py -v
 """
 
-
 import asyncpg
 import pytest
 

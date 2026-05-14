@@ -26,55 +26,114 @@ class TestParseArgs:
 
     def test_strategy_id_parsing(self):
         """Test strategy ID is parsed correctly."""
-        with patch("sys.argv", ["run_backtest", "--strategy-id", "dcb32c52-cc78-4e2f-91e6-76287cc345ee"]):
+        with patch(
+            "sys.argv", ["run_backtest", "--strategy-id", "dcb32c52-cc78-4e2f-91e6-76287cc345ee"]
+        ):
             args = parse_args()
             assert args.strategy_id == "dcb32c52-cc78-4e2f-91e6-76287cc345ee"
 
     def test_version_parsing(self):
         """Test version parsing."""
-        with patch("sys.argv", ["run_backtest", "--strategy-id", "dcb32c52-cc78-4e2f-91e6-76287cc345ee", "--version", "2"]):
+        with patch(
+            "sys.argv",
+            [
+                "run_backtest",
+                "--strategy-id",
+                "dcb32c52-cc78-4e2f-91e6-76287cc345ee",
+                "--version",
+                "2",
+            ],
+        ):
             args = parse_args()
             assert args.version == 2
 
     def test_symbol_parsing(self):
         """Test symbol parsing."""
-        with patch("sys.argv", ["run_backtest", "--strategy-id", "dcb32c52-cc78-4e2f-91e6-76287cc345ee", "--symbol", "DOGE/USDC"]):
+        with patch(
+            "sys.argv",
+            [
+                "run_backtest",
+                "--strategy-id",
+                "dcb32c52-cc78-4e2f-91e6-76287cc345ee",
+                "--symbol",
+                "DOGE/USDC",
+            ],
+        ):
             args = parse_args()
             assert args.symbol == "DOGE/USDC"
 
     def test_initial_balance_default(self):
         """Test default initial balance."""
-        with patch("sys.argv", ["run_backtest", "--strategy-id", "dcb32c52-cc78-4e2f-91e6-76287cc345ee"]):
+        with patch(
+            "sys.argv", ["run_backtest", "--strategy-id", "dcb32c52-cc78-4e2f-91e6-76287cc345ee"]
+        ):
             args = parse_args()
             assert args.initial_balance == 10000.0
 
     def test_initial_balance_custom(self):
         """Test custom initial balance."""
-        with patch("sys.argv", ["run_backtest", "--strategy-id", "dcb32c52-cc78-4e2f-91e6-76287cc345ee", "--initial-balance", "5000.50"]):
+        with patch(
+            "sys.argv",
+            [
+                "run_backtest",
+                "--strategy-id",
+                "dcb32c52-cc78-4e2f-91e6-76287cc345ee",
+                "--initial-balance",
+                "5000.50",
+            ],
+        ):
             args = parse_args()
             assert args.initial_balance == 5000.50
 
     def test_wait_flag(self):
         """Test wait flag."""
-        with patch("sys.argv", ["run_backtest", "--strategy-id", "dcb32c52-cc78-4e2f-91e6-76287cc345ee", "--wait"]):
+        with patch(
+            "sys.argv",
+            ["run_backtest", "--strategy-id", "dcb32c52-cc78-4e2f-91e6-76287cc345ee", "--wait"],
+        ):
             args = parse_args()
             assert args.wait is True
 
     def test_output_flag(self):
         """Test output flag."""
-        with patch("sys.argv", ["run_backtest", "--strategy-id", "dcb32c52-cc78-4e2f-91e6-76287cc345ee", "--output", "results.json"]):
+        with patch(
+            "sys.argv",
+            [
+                "run_backtest",
+                "--strategy-id",
+                "dcb32c52-cc78-4e2f-91e6-76287cc345ee",
+                "--output",
+                "results.json",
+            ],
+        ):
             args = parse_args()
             assert args.output == "results.json"
 
     def test_no_equity_curve_flag(self):
         """Test --no-equity-curve flag."""
-        with patch("sys.argv", ["run_backtest", "--strategy-id", "dcb32c52-cc78-4e2f-91e6-76287cc345ee", "--no-equity-curve"]):
+        with patch(
+            "sys.argv",
+            [
+                "run_backtest",
+                "--strategy-id",
+                "dcb32c52-cc78-4e2f-91e6-76287cc345ee",
+                "--no-equity-curve",
+            ],
+        ):
             args = parse_args()
             assert args.include_equity_curve is False
 
     def test_no_trades_flag(self):
         """Test --no-trades flag."""
-        with patch("sys.argv", ["run_backtest", "--strategy-id", "dcb32c52-cc78-4e2f-91e6-76287cc345ee", "--no-trades"]):
+        with patch(
+            "sys.argv",
+            [
+                "run_backtest",
+                "--strategy-id",
+                "dcb32c52-cc78-4e2f-91e6-76287cc345ee",
+                "--no-trades",
+            ],
+        ):
             args = parse_args()
             assert args.include_trades is False
 
@@ -93,7 +152,16 @@ class TestRunBacktestAsync:
     @pytest.mark.asyncio
     async def test_invalid_start_time(self):
         """Test invalid start time raises error."""
-        with patch("sys.argv", ["run_backtest", "--strategy-id", "dcb32c52-cc78-4e2f-91e6-76287cc345ee", "--start-time", "invalid-date"]):
+        with patch(
+            "sys.argv",
+            [
+                "run_backtest",
+                "--strategy-id",
+                "dcb32c52-cc78-4e2f-91e6-76287cc345ee",
+                "--start-time",
+                "invalid-date",
+            ],
+        ):
             args = parse_args()
             with pytest.raises(ValueError, match="Invalid start-time"):
                 await run_backtest_async(args)
@@ -101,7 +169,16 @@ class TestRunBacktestAsync:
     @pytest.mark.asyncio
     async def test_invalid_end_time(self):
         """Test invalid end time raises error."""
-        with patch("sys.argv", ["run_backtest", "--strategy-id", "dcb32c52-cc78-4e2f-91e6-76287cc345ee", "--end-time", "invalid-date"]):
+        with patch(
+            "sys.argv",
+            [
+                "run_backtest",
+                "--strategy-id",
+                "dcb32c52-cc78-4e2f-91e6-76287cc345ee",
+                "--end-time",
+                "invalid-date",
+            ],
+        ):
             args = parse_args()
             with pytest.raises(ValueError, match="Invalid end-time"):
                 await run_backtest_async(args)
@@ -109,7 +186,18 @@ class TestRunBacktestAsync:
     @pytest.mark.asyncio
     async def test_end_time_before_start_time(self):
         """Test end time before start time raises error."""
-        with patch("sys.argv", ["run_backtest", "--strategy-id", "dcb32c52-cc78-4e2f-91e6-76287cc345ee", "--start-time", "2026-05-05T00:00:00", "--end-time", "2026-05-01T00:00:00"]):
+        with patch(
+            "sys.argv",
+            [
+                "run_backtest",
+                "--strategy-id",
+                "dcb32c52-cc78-4e2f-91e6-76287cc345ee",
+                "--start-time",
+                "2026-05-05T00:00:00",
+                "--end-time",
+                "2026-05-01T00:00:00",
+            ],
+        ):
             args = parse_args()
             with pytest.raises(ValueError, match="End time must be after start time"):
                 await run_backtest_async(args)
@@ -117,7 +205,9 @@ class TestRunBacktestAsync:
     @pytest.mark.asyncio
     async def test_database_not_initialized(self):
         """Test database not initialized raises error."""
-        with patch("sys.argv", ["run_backtest", "--strategy-id", "dcb32c52-cc78-4e2f-91e6-76287cc345ee"]):
+        with patch(
+            "sys.argv", ["run_backtest", "--strategy-id", "dcb32c52-cc78-4e2f-91e6-76287cc345ee"]
+        ):
             args = parse_args()
             # No mock for db_pool, should raise RuntimeError
             with pytest.raises(RuntimeError, match="Database pool not initialized"):

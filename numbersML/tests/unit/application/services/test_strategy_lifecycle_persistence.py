@@ -16,22 +16,23 @@ def mock_strategy_repo():
     """Mock strategy repository that tracks saved status."""
     repo = AsyncMock()
     repo.saved_strategies = []
-    
+
     async def mock_save(entity):
         repo.saved_strategies.append(entity)
         return entity
-    
+
     async def mock_get_by_id(entity_id):
         # Return a strategy that matches the ID if we have saved ones
         for strategy in repo.saved_strategies:
             if strategy.id == entity_id:
                 return strategy
         return None
-    
+
     async def mock_list_versions(strategy_id):
         # Return a default version for testing
         from src.domain.strategies.strategy_config import StrategyConfigVersion
         from datetime import UTC, datetime
+
         return [
             StrategyConfigVersion(
                 strategy_id=strategy_id,
@@ -43,7 +44,7 @@ def mock_strategy_repo():
                 created_at=datetime.now(UTC),
             )
         ]
-    
+
     repo.save = mock_save
     repo.get_by_id = mock_get_by_id
     repo.list_versions = mock_list_versions
@@ -106,7 +107,7 @@ class TestDeactivatePersistsToDatabase:
         # Setup - first save the strategy so it exists in the repo
         await mock_strategy_repo.save(sample_strategy)
         mock_strategy_repo.get_by_id.return_value = sample_strategy
-        
+
         # Create service with pre-populated runtime state (as if activated)
         service = StrategyLifecycleService(
             strategy_repository=mock_strategy_repo,
@@ -115,17 +116,17 @@ class TestDeactivatePersistsToDatabase:
             actor="test",
         )
         service._runtime_states[sample_strategy.id] = running_runtime_state
-        
+
         # Execute deactivate
         result = await service.deactivate_strategy(sample_strategy.id)
-        
+
         # Verify success
         assert result is True
-        
+
         # Verify save was called
         assert len(mock_strategy_repo.saved_strategies) >= 1
         saved = mock_strategy_repo.saved_strategies[-1]  # Get the most recently saved
-        
+
         # Verify status was set to 'validated'
         assert saved.status == "validated"
         assert saved.id == sample_strategy.id
@@ -144,11 +145,11 @@ class TestDeactivatePersistsToDatabase:
         # Setup - first save the strategy so it exists in the repo
         await mock_strategy_repo.save(sample_strategy)
         mock_strategy_repo.get_by_id.return_value = sample_strategy
-        
+
         # Mock strategy instance for pause
         mock_instance = AsyncMock()
         mock_strategy_manager.get_strategy.return_value = mock_instance
-        
+
         # Create service with pre-populated runtime state
         service = StrategyLifecycleService(
             strategy_repository=mock_strategy_repo,
@@ -157,17 +158,17 @@ class TestDeactivatePersistsToDatabase:
             actor="test",
         )
         service._runtime_states[sample_strategy.id] = running_runtime_state
-        
+
         # Execute pause
         result = await service.pause_strategy(sample_strategy.id)
-        
+
         # Verify success
         assert result is True
-        
+
         # Verify save was called
         assert len(mock_strategy_repo.saved_strategies) >= 1
         saved = mock_strategy_repo.saved_strategies[-1]  # Get the most recently saved
-        
+
         # Verify status was set to 'paused'
         assert saved.status == "paused"
         assert saved.id == sample_strategy.id
@@ -188,11 +189,11 @@ class TestDeactivatePersistsToDatabase:
         mock_strategy_repo.get_by_id.return_value = sample_strategy
         mock_strategy_manager.add_strategy = MagicMock()
         mock_strategy_manager.get_strategy = MagicMock(return_value=None)
-        
+
         # Mock strategy instance
         mock_instance = AsyncMock()
         mock_instance.id = sample_strategy.id
-        
+
         with patch(
             "src.application.services.strategy_lifecycle.load_strategy_instance",
             return_value=mock_instance,
@@ -203,17 +204,17 @@ class TestDeactivatePersistsToDatabase:
                 strategy_manager=mock_strategy_manager,
                 actor="test",
             )
-            
+
             # Execute activate
             result = await service.activate_strategy(sample_strategy.id)
-            
+
             # Verify success
             assert result is True
-            
+
             # Verify save was called
             assert len(mock_strategy_repo.saved_strategies) >= 1
             saved = mock_strategy_repo.saved_strategies[-1]  # Get the most recently saved
-            
+
             # Verify status was set to 'active'
             assert saved.status == "active"
             assert saved.id == sample_strategy.id
@@ -254,7 +255,9 @@ class TestDeactivatePersistsToDatabase:
         saved = mock_strategy_repo.saved_strategies[-1]  # Get the most recently saved
         assert saved.status == "validated"
         assert saved.id == sample_strategy.id
-        print(f"✓ BUG FIX: Deactivate with no runtime state correctly updates status to '{saved.status}'")
+        print(
+            f"✓ BUG FIX: Deactivate with no runtime state correctly updates status to '{saved.status}'"
+        )
 
 
 class TestStatusTransitions:
@@ -275,10 +278,10 @@ class TestStatusTransitions:
         mock_strategy_repo.get_by_id.return_value = sample_strategy
         mock_strategy_manager.add_strategy = MagicMock()
         mock_strategy_manager.get_strategy = MagicMock(return_value=None)
-        
+
         mock_instance = AsyncMock()
         mock_instance.id = sample_strategy.id
-        
+
         with patch(
             "src.application.services.strategy_lifecycle.load_strategy_instance",
             return_value=mock_instance,
@@ -289,25 +292,25 @@ class TestStatusTransitions:
                 strategy_manager=mock_strategy_manager,
                 actor="test",
             )
-            
+
             statuses = []
-            
+
             # 1. Activate
             await service.activate_strategy(sample_strategy.id)
             statuses.append(mock_strategy_repo.saved_strategies[-1].status)
-            
+
             # 2. Pause
             await service.pause_strategy(sample_strategy.id)
             statuses.append(mock_strategy_repo.saved_strategies[-1].status)
-            
+
             # 3. Resume (back to active)
             await service.resume_strategy(sample_strategy.id)
             statuses.append(mock_strategy_repo.saved_strategies[-1].status)
-            
+
             # 4. Deactivate
             await service.deactivate_strategy(sample_strategy.id)
             statuses.append(mock_strategy_repo.saved_strategies[-1].status)
-            
+
             # Verify sequence
             assert statuses == ["active", "paused", "active", "validated"]
             print(f"✓ Full lifecycle status sequence: {' -> '.join(statuses)}")

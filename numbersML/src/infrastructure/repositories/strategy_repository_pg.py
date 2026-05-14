@@ -38,8 +38,11 @@ class StrategyRepositoryPG(StrategyRepository):
 
     async def save(self, entity: StrategyDefinition) -> StrategyDefinition:
         import logging
+
         logger = logging.getLogger(__name__)
-        logger.warning(f"[REPO SAVE] Saving strategy {entity.id} with status='{entity.status}', type='{entity.strategy_type}'")
+        logger.warning(
+            f"[REPO SAVE] Saving strategy {entity.id} with status='{entity.status}', type='{entity.strategy_type}'"
+        )
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
@@ -69,7 +72,9 @@ class StrategyRepositoryPG(StrategyRepository):
                 entity.created_by,
                 entity.created_at,
             )
-            logger.warning(f"[REPO SAVE] Saved strategy {entity.id}, returned status='{row['status']}', type='{row.get('strategy_type', 'config')}'")
+            logger.warning(
+                f"[REPO SAVE] Saved strategy {entity.id}, returned status='{row['status']}', type='{row.get('strategy_type', 'config')}'"
+            )
         return self._map_strategy(row)
 
     async def delete(self, entity_id: UUID) -> bool:
@@ -96,30 +101,62 @@ class StrategyRepositoryPG(StrategyRepository):
         schema_version: int,
         created_by: str = "system",
     ) -> StrategyConfigVersion:
+        import logging
+        from asyncpg import UniqueViolationError
+
+        logger = logging.getLogger(__name__)
         strategy = await self.get_by_id(strategy_id)
         if strategy is None:
             raise ValueError(f"Strategy {strategy_id} does not exist.")
 
-        next_version = strategy.current_version + 1
-        async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                """
-                INSERT INTO strategy_versions (strategy_id, version, schema_version, config, created_by)
-                VALUES ($1, $2, $3, $4, $5)
-                RETURNING *
-                """,
-                strategy_id,
-                next_version,
-                schema_version,
-                json.dumps(config),
-                created_by,
+        max_retries = 5
+        for attempt in range(max_retries):
+            # Refresh the strategy to get the latest current_version
+            strategy = await self.get_by_id(strategy_id)
+            next_version = strategy.current_version + 1
+            logger.debug(
+                f"Attempt {attempt}: strategy {strategy_id} current_version={strategy.current_version}, "
+                f"next_version to insert={next_version}"
             )
-            await conn.execute(
-                "UPDATE strategies SET current_version = $2, updated_at = NOW() WHERE id = $1",
-                strategy_id,
-                next_version,
-            )
-            return self._map_version(row)
+            async with self.pool.acquire() as conn:
+                try:
+                    async with conn.transaction():
+                        row = await conn.fetchrow(
+                            """
+                            INSERT INTO strategy_versions (strategy_id, version, schema_version, config, created_by)
+                            VALUES ($1, $2, $3, $4, $5)
+                            RETURNING *
+                            """,
+                            strategy_id,
+                            next_version,
+                            schema_version,
+                            json.dumps(config),
+                            created_by,
+                        )
+                        # Update the strategy's current_version
+                        await conn.execute(
+                            """
+                            UPDATE strategies
+                            SET current_version = $2, updated_at = NOW()
+                            WHERE id = $1
+                            """,
+                            strategy_id,
+                            next_version,
+                        )
+                        return self._map_version(row)
+                except UniqueViolationError:
+                    logger.warning(
+                        f"Duplicate key for version {next_version} on strategy {strategy_id}, retrying... "
+                        f"(attempt {attempt + 1}/{max_retries})"
+                    )
+                    continue
+                except Exception as e:
+                    logger.error(f"Failed to create version: {e}", exc_info=True)
+                    raise
+        # If we exhausted retries, raise an error.
+        raise RuntimeError(
+            f"Failed to create version for strategy {strategy_id} after {max_retries} attempts"
+        )
 
     async def set_active_version(self, strategy_id: UUID, version: int) -> bool:
         async with self.pool.acquire() as conn:
@@ -171,6 +208,10 @@ class StrategyRepositoryPG(StrategyRepository):
 
     @staticmethod
     def _map_version(row: asyncpg.Record) -> StrategyConfigVersion:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.debug(f"_map_version called with row: {row}")
         config_payload = row["config"]
         if isinstance(config_payload, str):
             config_payload = json.loads(config_payload)

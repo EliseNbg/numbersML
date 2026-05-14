@@ -21,13 +21,13 @@ def create_mock_pool():
     """Create a properly configured mock asyncpg pool."""
     pool = AsyncMock()
     mock_conn = AsyncMock()
-    
+
     # Setup async context manager properly
     mock_context_manager = AsyncMock()
     mock_context_manager.__aenter__ = AsyncMock(return_value=mock_conn)
     mock_context_manager.__aexit__ = AsyncMock(return_value=False)
     pool.acquire = MagicMock(return_value=mock_context_manager)
-    
+
     return pool, mock_conn
 
 
@@ -76,7 +76,9 @@ class TestStrategyTypeFields:
         assert sample_config_based_strategy.class_path is None
         assert sample_config_based_strategy.is_config_based() is True
         assert sample_config_based_strategy.is_class_based() is False
-        print(f"✓ Config strategy: type={sample_config_based_strategy.strategy_type}, class_path={sample_config_based_strategy.class_path}")
+        print(
+            f"✓ Config strategy: type={sample_config_based_strategy.strategy_type}, class_path={sample_config_based_strategy.class_path}"
+        )
 
     def test_class_based_strategy_has_correct_type(self, sample_class_based_strategy):
         """Class-based strategy should have type='class' and class_path set."""
@@ -84,7 +86,9 @@ class TestStrategyTypeFields:
         assert sample_class_based_strategy.class_path == "src.strategies.user.grid1.Grid1Strategy"
         assert sample_class_based_strategy.is_class_based() is True
         assert sample_class_based_strategy.is_config_based() is False
-        print(f"✓ Class strategy: type={sample_class_based_strategy.strategy_type}, class_path={sample_class_based_strategy.class_path}")
+        print(
+            f"✓ Class strategy: type={sample_class_based_strategy.strategy_type}, class_path={sample_class_based_strategy.class_path}"
+        )
 
     def test_default_strategy_type_is_config(self):
         """Strategy without explicit type should default to 'config'."""
@@ -131,7 +135,9 @@ class TestStrategyRepositoryStoresType:
         call_args = mock_conn.fetchrow.call_args
         assert call_args[0][6] == "config"  # strategy_type parameter ($6 in SQL)
         assert call_args[0][7] is None  # class_path parameter ($7 in SQL)
-        print(f"✓ Saved config strategy: type='{result.strategy_type}', class_path={result.class_path}")
+        print(
+            f"✓ Saved config strategy: type='{result.strategy_type}', class_path={result.class_path}"
+        )
 
     @pytest.mark.asyncio
     async def test_save_class_based_stores_type_and_path(self, sample_class_based_strategy):
@@ -162,8 +168,12 @@ class TestStrategyRepositoryStoresType:
         # Verify SQL was called with correct parameters
         call_args = mock_conn.fetchrow.call_args
         assert call_args[0][6] == "class"  # strategy_type parameter ($6 in SQL)
-        assert call_args[0][7] == "src.strategies.user.grid1.Grid1Strategy"  # class_path parameter ($7 in SQL)
-        print(f"✓ Saved class strategy: type='{result.strategy_type}', class_path='{result.class_path}'")
+        assert (
+            call_args[0][7] == "src.strategies.user.grid1.Grid1Strategy"
+        )  # class_path parameter ($7 in SQL)
+        print(
+            f"✓ Saved class strategy: type='{result.strategy_type}', class_path='{result.class_path}'"
+        )
 
     @pytest.mark.asyncio
     async def test_load_config_based_reads_type_correctly(self):
@@ -193,7 +203,9 @@ class TestStrategyRepositoryStoresType:
         assert result.strategy_type == "config"
         assert result.class_path is None
         assert result.is_config_based() is True
-        print(f"✓ Loaded config strategy: type='{result.strategy_type}', class_path={result.class_path}")
+        print(
+            f"✓ Loaded config strategy: type='{result.strategy_type}', class_path={result.class_path}"
+        )
 
     @pytest.mark.asyncio
     async def test_load_class_based_reads_type_and_path(self):
@@ -223,7 +235,9 @@ class TestStrategyRepositoryStoresType:
         assert result.strategy_type == "class"
         assert result.class_path == "src.strategies.user.grid1.Grid1Strategy"
         assert result.is_class_based() is True
-        print(f"✓ Loaded class strategy: type='{result.strategy_type}', class_path='{result.class_path}'")
+        print(
+            f"✓ Loaded class strategy: type='{result.strategy_type}', class_path='{result.class_path}'"
+        )
 
     @pytest.mark.asyncio
     async def test_load_all_reads_type_correctly(self):
@@ -268,7 +282,9 @@ class TestStrategyRepositoryStoresType:
         assert results[0].class_path is None
         assert results[1].strategy_type == "class"
         assert results[1].class_path == "src.strategies.user.grid1.Grid1Strategy"
-        print(f"✓ Loaded {len(results)} strategies: config={sum(1 for s in results if s.strategy_type == 'config')}, class={sum(1 for s in results if s.strategy_type == 'class')}")
+        print(
+            f"✓ Loaded {len(results)} strategies: config={sum(1 for s in results if s.strategy_type == 'config')}, class={sum(1 for s in results if s.strategy_type == 'class')}"
+        )
 
     @pytest.mark.asyncio
     async def test_backward_compatibility_missing_type_defaults_to_config(self):
@@ -305,7 +321,7 @@ class TestStrategyTypeValidation:
         """Verify that only 'config' or 'class' are valid strategy types."""
         # This test documents expected behavior - actual validation happens at DB level
         # via the check constraint: strategies_strategy_type_check
-        
+
         # Valid types should work
         config_strat = StrategyDefinition(
             id=uuid4(),
@@ -314,7 +330,7 @@ class TestStrategyTypeValidation:
             strategy_type="config",
         )
         assert config_strat.strategy_type == "config"
-        
+
         class_strat = StrategyDefinition(
             id=uuid4(),
             name="Class",
@@ -322,5 +338,7 @@ class TestStrategyTypeValidation:
             strategy_type="class",
         )
         assert class_strat.strategy_type == "class"
-        
-        print(f"✓ Valid strategy types accepted: config={config_strat.strategy_type}, class={class_strat.strategy_type}")
+
+        print(
+            f"✓ Valid strategy types accepted: config={config_strat.strategy_type}, class={class_strat.strategy_type}"
+        )

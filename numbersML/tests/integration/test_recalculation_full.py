@@ -286,9 +286,7 @@ async def validate_time_alignment(conn: asyncpg.Connection, symbol_id: int):
 
         # Verify UTC timezone
         assert candle["time"].tzinfo == UTC, f"Candle time {candle['time']} not in UTC"
-        assert (
-            indicator["time"].tzinfo == UTC
-        ), f"Indicator time {indicator['time']} not in UTC"
+        assert indicator["time"].tzinfo == UTC, f"Indicator time {indicator['time']} not in UTC"
 
     logger.info(
         f"Perfect time alignment validated: {len(candle_times)} timestamps, 1:1 mapping, UTC"

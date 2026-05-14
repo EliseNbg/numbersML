@@ -220,9 +220,7 @@ class RecoveryManager:
             if row:
                 self._last_trade_id = row["last_trade_id"] or 0
                 ts = row["last_timestamp"]
-                self._last_timestamp = (
-                    ts.replace(tzinfo=UTC) if ts else datetime.now(UTC)
-                )
+                self._last_timestamp = ts.replace(tzinfo=UTC) if ts else datetime.now(UTC)
                 self._is_recovering = row["is_recovering"] or False
                 self._stats["gaps_detected"] = row["gaps_detected"] or 0
 

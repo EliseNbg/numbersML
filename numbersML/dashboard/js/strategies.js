@@ -644,49 +644,57 @@ async function openModifyModal() {
 }
 
 /**
- * Save modified strategy (always creates new version and activates it)
+ * Save modified strategy by updating active configuration (creates new version and activates it in one operation)
  */
 async function saveModifiedStrategy() {
-    if (!currentStrategyId) return;
+    console.log('saveModifiedStrategy called');
+    if (!currentStrategyId) {
+        console.log('No currentStrategyId, returning');
+        return;
+    }
 
     const configText = document.getElementById('modify-config').value;
+    console.log('Config text from textarea:', configText.substring(0, 100) + '...'); // Log first 100 chars
     let config;
     try {
         config = JSON.parse(configText);
+        console.log('Parsed config:', config);
     } catch (e) {
+        console.error('Invalid JSON in configuration:', e);
         showAlert('danger', 'Invalid JSON in configuration');
         return;
     }
 
     try {
-        // Create new version
-        const response = await fetch(`${API_BASE_URL}/strategies/${currentStrategyId}/versions`, {
+        // Update active configuration using new endpoint that creates version and activates it
+        console.log('Sending request to:', `${API_BASE_URL}/strategies/${currentStrategyId}/active-version`);
+        console.log('Request body:', JSON.stringify({
+            config: config,
+            created_by: 'dashboard'
+        }, null, 2));
+        
+        const response = await fetch(`${API_BASE_URL}/strategies/${currentStrategyId}/active-version`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 config: config,
-                schema_version: 1,
                 created_by: 'dashboard'
             })
         });
 
+        console.log('Response status:', response.status);
+        console.log('Response ok:', response.ok);
+        
         if (!response.ok) {
             const error = await response.json();
+            console.error('Error response:', error);
             throw new Error(error.detail || `HTTP ${response.status}`);
         }
 
-        const newVersion = await response.json();
-        
-        // Auto-activate the new version
-        const activateResponse = await fetch(`${API_BASE_URL}/strategies/${currentStrategyId}/versions/${newVersion.version}/activate`, {
-            method: 'POST'
-        });
-
-        if (!activateResponse.ok) {
-            throw new Error(`Failed to activate version: ${activateResponse.status}`);
-        }
-
-        showAlert('success', 'Configuration saved and activated (version ' + newVersion.version + ')');
+        const result = await response.json();
+        console.log('Success response:', result);
+         
+        showAlert('success', 'Configuration saved and activated (version ' + result.version + ')');
         modifyModal.hide();
         document.getElementById('modify-result').classList.add('d-none');
         
@@ -698,6 +706,7 @@ async function saveModifiedStrategy() {
             viewStrategy(currentStrategyId);
         }
     } catch (error) {
+        console.error('Exception in saveModifiedStrategy:', error);
         showAlert('danger', `Failed to save: ${error.message}`);
     }
 }

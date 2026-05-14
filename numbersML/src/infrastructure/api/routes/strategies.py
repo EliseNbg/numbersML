@@ -24,6 +24,7 @@ from src.application.services.llm_strategy_service import LLMStrategyService
 from src.domain.repositories.runtime_event_repository import StrategyRuntimeEventRepository
 from src.domain.repositories.strategy_repository import StrategyRepository
 from src.domain.strategies.strategy_config import StrategyConfigVersion, StrategyDefinition
+from src.domain.strategies.config_schema import validate_strategy_config
 from src.infrastructure.database import get_db_pool_async
 from src.infrastructure.repositories.runtime_event_repository_pg import (
     StrategyRuntimeEventRepositoryPG,
@@ -63,7 +64,10 @@ class StrategyCreateRequest(BaseModel):
     description: str | None = None
     mode: str = Field(default="paper", pattern="^(paper|live)$")
     strategy_type: str = Field(default="config", pattern="^(config|class)$")
-    class_path: str | None = Field(default=None, description="Fully qualified class path for class-based strategies (e.g., src.strategies.user.grid1.Grid1Strategy)")
+    class_path: str | None = Field(
+        default=None,
+        description="Fully qualified class path for class-based strategies (e.g., src.strategies.user.grid1.Grid1Strategy)",
+    )
     config: StrategyConfigSchema | None = None
     created_by: str = Field(default="system", max_length=255)
 
@@ -78,6 +82,11 @@ class StrategyUpdateRequest(BaseModel):
 class StrategyVersionCreateRequest(BaseModel):
     config: StrategyConfigSchema
     schema_version: int = Field(default=1, ge=1)
+    created_by: str = Field(default="system", max_length=255)
+
+
+class UpdateActiveVersionRequest(BaseModel):
+    config: StrategyConfigSchema
     created_by: str = Field(default="system", max_length=255)
 
 
@@ -219,7 +228,9 @@ async def create_strategy(
         await repo.create_version(
             strategy_id=saved.id,
             config=req.config.dict() if req.config else {},
-            schema_version=req.config.dict().get("meta", {}).get("schema_version", 1) if req.config else 1,
+            schema_version=(
+                req.config.dict().get("meta", {}).get("schema_version", 1) if req.config else 1
+            ),
             created_by=req.created_by,
         )
         return StrategyResponse.from_domain(saved)
@@ -458,6 +469,93 @@ async def activate_strategy_version(
     except Exception as e:
         logger.error(f"Failed to activate version: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to activate version: {e}")
+
+
+# ============================================================================
+# Active Version Update Endpoint
+# ============================================================================
+
+
+@router.post("/{strategy_id}/active-version", response_model=StrategyVersionResponse)
+async def update_active_strategy_version(
+    strategy_id: UUID,
+    req: UpdateActiveVersionRequest,
+    repo: StrategyRepository = Depends(get_strategy_repo),
+) -> StrategyVersionResponse:
+    """Update the active strategy configuration by creating a new version and activating it."""
+    try:
+        # Verify strategy exists
+        strategy = await repo.get_by_id(strategy_id)
+        if not strategy:
+            raise HTTPException(status_code=404, detail=f"Strategy {strategy_id} not found")
+
+        # Convert config to dict for validation and storage
+        config_dict = req.config.dict()
+
+        # Validate the configuration
+        is_valid, issues = validate_strategy_config(config_dict)
+        if not is_valid:
+            logger.warning(f"Validation failed for strategy {strategy_id}: {issues}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "errors": [issue.message for issue in issues],
+                    "validation_issues": [
+                        {"path": issue.path, "message": issue.message} for issue in issues
+                    ],
+                },
+            )
+
+        # Get current active version to preserve schema version
+        versions = await repo.list_versions(strategy_id)
+        if not versions:
+            raise HTTPException(status_code=400, detail="No configuration versions found")
+
+        active_version = next((v for v in versions if v.is_active), None)
+        if not active_version:
+            raise HTTPException(status_code=400, detail="No active version found")
+
+        # Extract schema version from config meta (or default to 1)
+        schema_version = config_dict.get("meta", {}).get("schema_version", 1)
+
+        # Create new version
+        new_version = await repo.create_version(
+            strategy_id=strategy_id,
+            config=config_dict,
+            schema_version=schema_version,
+            created_by=req.created_by,
+        )
+
+        # Activate the new version
+        activated = await repo.set_active_version(strategy_id, new_version.version)
+        if not activated:
+            raise HTTPException(status_code=500, detail="Failed to activate new version")
+
+        # Return the activated version (create a new instance with is_active=True)
+        activated_version = StrategyConfigVersion(
+            strategy_id=new_version.strategy_id,
+            version=new_version.version,
+            schema_version=new_version.schema_version,
+            config=new_version.config,
+            is_active=True,
+            created_by=new_version.created_by,
+            created_at=new_version.created_at,
+            id=new_version.id,
+        )
+        return StrategyVersionResponse.from_domain(activated_version)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        # Re-raise HTTPExceptions to preserve status codes and details
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update active version: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to update active version: {e}")
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to update active version: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to update active version: {e}")
 
 
 # ============================================================================
@@ -815,9 +913,12 @@ async def debug_strategy_status(
             # Get or create lifecycle service directly
             strategy_manager = StrategyManager()
             from src.infrastructure.database import get_db_pool_async
+
             pool = await get_db_pool_async()
             from src.infrastructure.repositories.strategy_repository_pg import StrategyRepositoryPG
-            from src.infrastructure.repositories.runtime_event_repository_pg import StrategyRuntimeEventRepositoryPG
+            from src.infrastructure.repositories.runtime_event_repository_pg import (
+                StrategyRuntimeEventRepositoryPG,
+            )
             from src.application.services.strategy_lifecycle import StrategyLifecycleService
 
             repo = StrategyRepositoryPG(pool)
