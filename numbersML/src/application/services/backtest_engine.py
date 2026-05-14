@@ -609,6 +609,7 @@ class BacktestEngine:
                                 ),
                             )
                         )
+                        strategy.on_position_closed(symbol, Decimal(str(current_price)), "stop_loss")
                         del positions[symbol]
                         continue
 
@@ -628,6 +629,7 @@ class BacktestEngine:
                                 ),
                             )
                         )
+                        strategy.on_position_closed(symbol, Decimal(str(current_price)), "take_profit")
                         del positions[symbol]
                         continue
 
@@ -677,6 +679,11 @@ class BacktestEngine:
                                 )
                             )
                             del positions[signal.symbol]
+                            strategy.on_position_closed(
+                                signal.symbol,
+                                Decimal(str(float(candle["close"]))),
+                                "signal",
+                            )
 
                 positions_value = sum(
                     p["quantity"] * float(candle["close"]) for p in positions.values()
@@ -710,9 +717,10 @@ class BacktestEngine:
                         message=(
                             f"Force-closed {symbol} at end of test at {trade.exit_price:.4f}; "
                             f"pnl={trade.pnl:.2f}"
-                        ),
+                            ),
+                        )
                     )
-                )
+                strategy.on_position_closed(symbol, Decimal(str(final_price)), "end_of_test")
         finally:
             await strategy.stop()
 

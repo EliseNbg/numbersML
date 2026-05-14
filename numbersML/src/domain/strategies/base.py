@@ -410,7 +410,7 @@ class Strategy(ABC):
         Close existing position.
 
         Args:
-            symbol: Trading pair
+            symbol: Trading pair symbol
             price: Close price
 
         Returns:
@@ -428,6 +428,20 @@ class Strategy(ABC):
         )
 
         return position
+
+    def on_position_closed(self, symbol: str, price: Decimal, exit_reason: str) -> None:
+        """
+        Called when the backtest engine closes a position externally
+        (stop loss, take profit, or end of test).
+
+        Strategies can override this to clean up internal state.
+
+        Args:
+            symbol: Trading pair symbol
+            price: Price at which position was closed
+            exit_reason: Reason for closure (stop_loss, take_profit, end_of_test, etc.)
+        """
+        pass
 
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get configuration value."""
