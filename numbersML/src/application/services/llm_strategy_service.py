@@ -220,7 +220,7 @@ class LLMStrategyService:
                 )
 
             # Guardrail 3: Schema validation
-            is_valid, issues = validate_strategy_config(config)
+            is_valid, issues = validate_strategy_config(config, strategy_type="config")
 
             if not is_valid:
                 logger.warning(f"Generated config failed validation: {issues}")

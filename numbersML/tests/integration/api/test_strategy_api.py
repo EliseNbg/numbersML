@@ -199,6 +199,8 @@ class TestStrategyCRUD:
             mock_strategy.created_by = strategy_payload.get("created_by", "system")
             mock_strategy.created_at = datetime.now(UTC)
             mock_strategy.updated_at = datetime.now(UTC)
+            mock_strategy.strategy_type = "config"  # Match the payload
+            mock_strategy.class_path = None  # Config-based strategy
 
             mock_save = AsyncMock(return_value=mock_strategy)
             mock_repo.return_value.save = mock_save

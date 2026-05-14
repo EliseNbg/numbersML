@@ -566,11 +566,24 @@ async function createStrategy() {
         payload.class_path = classPath;
 
         // Build minimal config for class-based strategy
+        // Note: signal/risk/execution are required by schema but signal is ignored for class-based strategies
         payload.config = {
             meta: { name: payload.name, description: payload.description, schema_version: 1 },
             universe: {
                 symbols: formData.get('symbols').split(',').map(s => s.trim()).filter(s => s),
                 timeframe: formData.get('timeframe')
+            },
+            signal: { type: 'rsi', params: { period: 14, oversold: 30, overbought: 70 } }, // Dummy signal (ignored for class-based)
+            risk: {
+                max_position_size_pct: 10,
+                max_daily_loss_pct: 5,
+                stop_loss_pct: 2,
+                take_profit_pct: 4
+            },
+            execution: {
+                order_type: 'market',
+                slippage_bps: 10,
+                fee_bps: 10
             },
             mode: payload.mode,
             status: 'draft'

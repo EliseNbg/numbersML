@@ -36,6 +36,21 @@ router = APIRouter(prefix="/api/strategies", tags=["strategies"])
 logger = logging.getLogger(__name__)
 
 
+def _ensure_valid_signal_for_class_based(config: dict[str, Any], strategy_type: str) -> dict[str, Any]:
+    """Ensure the config has a valid signal for class-based strategies to satisfy JSON schema.
+    
+    For class-based strategies, the signal is ignored but must still be present and valid
+    according to the JSON schema (which requires type and params). If missing, provide a default.
+    """
+    if strategy_type == "class":
+        # Make a copy to avoid mutating the original
+        config = config.copy()
+        signal = config.get("signal")
+        if not isinstance(signal, dict) or "type" not in signal or "params" not in signal:
+            config["signal"] = {"type": "rsi", "params": {"period": 14, "oversold": 30, "overbought": 70}}
+    return config
+
+
 # ============================================================================
 # Pydantic Models
 # ============================================================================
@@ -346,7 +361,7 @@ async def validate_strategy(
         # Validate the configuration
         from src.domain.strategies.config_schema import validate_strategy_config
 
-        is_valid, issues = validate_strategy_config(active_version.config)
+        is_valid, issues = validate_strategy_config(active_version.config, strategy_def.strategy_type)
 
         return {
             "strategy_id": str(strategy_id),
@@ -493,7 +508,7 @@ async def update_active_strategy_version(
         config_dict = req.config.dict()
 
         # Validate the configuration
-        is_valid, issues = validate_strategy_config(config_dict)
+        is_valid, issues = validate_strategy_config(config_dict, strategy.strategy_type)
         if not is_valid:
             logger.warning(f"Validation failed for strategy {strategy_id}: {issues}")
             raise HTTPException(

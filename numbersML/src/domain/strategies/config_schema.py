@@ -25,8 +25,16 @@ def load_strategy_schema() -> dict[str, Any]:
     return json.loads(_schema_path().read_text(encoding="utf-8"))
 
 
-def validate_strategy_config(config: dict[str, Any]) -> tuple[bool, list[ValidationIssue]]:
-    """Validate strategy config against schema and business rules."""
+def validate_strategy_config(config: dict[str, Any], strategy_type: str = "config") -> tuple[bool, list[ValidationIssue]]:
+    """Validate strategy config against schema and business rules.
+    
+    Args:
+        config: The strategy configuration dictionary.
+        strategy_type: Either "config" or "class". For "class" types, signal validation is skipped.
+        
+    Returns:
+        Tuple of (is_valid, list_of_issues).
+    """
     validator = Draft202012Validator(load_strategy_schema())
     issues = [
         ValidationIssue(
@@ -47,7 +55,9 @@ def validate_strategy_config(config: dict[str, Any]) -> tuple[bool, list[Validat
             )
         )
 
-    issues.extend(_validate_signal_params(config.get("signal", {})))
+    # For class-based strategies, skip signal validation as signal is not used
+    if strategy_type != "class":
+        issues.extend(_validate_signal_params(config.get("signal", {})))
 
     return len(issues) == 0, issues
 
