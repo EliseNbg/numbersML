@@ -27,11 +27,11 @@ def load_strategy_schema() -> dict[str, Any]:
 
 def validate_strategy_config(config: dict[str, Any], strategy_type: str = "config") -> tuple[bool, list[ValidationIssue]]:
     """Validate strategy config against schema and business rules.
-    
+
     Args:
         config: The strategy configuration dictionary.
         strategy_type: Either "config" or "class". For "class" types, signal validation is skipped.
-        
+
     Returns:
         Tuple of (is_valid, list_of_issues).
     """
@@ -47,7 +47,13 @@ def validate_strategy_config(config: dict[str, Any], strategy_type: str = "confi
     risk = config.get("risk", {})
     stop_loss = risk.get("stop_loss_pct")
     take_profit = risk.get("take_profit_pct")
-    if stop_loss is not None and take_profit is not None and stop_loss >= take_profit:
+    # stop_loss_pct = 0 means disabled, skip comparison
+    if (
+        stop_loss is not None
+        and stop_loss > 0
+        and take_profit is not None
+        and stop_loss >= take_profit
+    ):
         issues.append(
             ValidationIssue(
                 path="risk",

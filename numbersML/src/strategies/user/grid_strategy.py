@@ -39,6 +39,7 @@ Configuration:
 """
 
 import logging
+from decimal import Decimal
 from typing import Any
 
 from src.domain.strategies.base import EnrichedTick, Signal, SignalType, Strategy

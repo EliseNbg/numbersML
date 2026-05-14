@@ -59,7 +59,7 @@
       "properties": {
         "max_position_size_pct": {"type": "number", "exclusiveMinimum": 0, "maximum": 100},
         "max_daily_loss_pct": {"type": "number", "exclusiveMinimum": 0, "maximum": 100},
-        "stop_loss_pct": {"type": "number", "exclusiveMinimum": 0, "maximum": 100},
+        "stop_loss_pct": {"type": "number", "minimum": 0, "maximum": 100},
         "take_profit_pct": {"type": "number", "exclusiveMinimum": 0, "maximum": 100}
       }
     },
