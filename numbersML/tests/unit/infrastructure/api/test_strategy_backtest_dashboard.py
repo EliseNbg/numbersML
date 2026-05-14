@@ -118,8 +118,8 @@ def sample_backtest_result():
             EquityPoint(now, 10500.0, 10500.0, 0.0, 0.0),
         ],
         price_series=[
-            PricePoint(now - timedelta(days=7), 50000.0),
-            PricePoint(now, 51000.0),
+            PricePoint(now - timedelta(days=7), 50000.0, 50050.0, 49950.0, 50100.0),
+            PricePoint(now, 51000.0, 51050.0, 50950.0, 51100.0),
         ],
         debug_messages=[
             DebugMessage(now - timedelta(days=6), "INFO", "Buy signal triggered"),
@@ -206,7 +206,7 @@ class TestBacktestDashboardDataContract:
     def test_price_point_has_required_fields(self):
         """Verify price point has all fields needed for chart."""
         now = datetime.now(UTC)
-        point = PricePoint(timestamp=now, close=50000.0)
+        point = PricePoint(timestamp=now, open=50000.0, high=50100.0, low=49900.0, close=50000.0)
 
         assert point.timestamp is not None
         assert point.close is not None
@@ -422,10 +422,6 @@ class TestBacktestHistoryLoading:
     @pytest.mark.asyncio
     async def test_list_recent_backtests(self):
         """Test listing recent backtests for history view."""
-        from src.infrastructure.repositories.strategy_backtest_repository_pg import (
-            StrategyBacktestRepositoryPG,
-        )
-
         # Mock the database
         mock_pool = MagicMock()
         mock_conn = AsyncMock()

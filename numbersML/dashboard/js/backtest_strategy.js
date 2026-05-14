@@ -681,22 +681,22 @@ async function loadBacktestHistory() {
     try {
         const response = await fetch(`${API_BASE}/strategy-backtests/results?limit=20`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
+
         const results = await response.json();
         const tbody = document.getElementById('backtest-history-tbody');
-        
+
         if (!results || results.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No backtests found</td></tr>';
             return;
         }
-        
+
         tbody.innerHTML = results.map(result => {
             const returnPct = result.metrics?.total_return_pct || 0;
             const returnClass = returnPct >= 0 ? 'positive' : 'negative';
             const returnSign = returnPct >= 0 ? '+' : '';
-            
+
             return `
-                <tr data-backtest-id="${result.id}">
+                <tr data-backtest-id="${result.id}" class="history-row" style="cursor: pointer;">
                     <td>${formatDateShort(result.created_at)}</td>
                     <td>${result.strategy_name || 'Unknown'}</td>
                     <td>${result.strategy_version || '-'}</td>
@@ -708,10 +708,20 @@ async function loadBacktestHistory() {
                 </tr>
             `;
         }).join('');
-        
+
+        // Add click handlers to history rows
+        document.querySelectorAll('.history-row').forEach(row => {
+            row.addEventListener('click', () => {
+                const backtestId = row.getAttribute('data-backtest-id');
+                if (backtestId) {
+                    window.location.href = `backtest_details.html?backtest_id=${backtestId}`;
+                }
+            });
+        });
+
     } catch (error) {
         console.error('Failed to load backtest history:', error);
-        document.getElementById('backtest-history-tbody').innerHTML = 
+        document.getElementById('backtest-history-tbody').innerHTML =
             '<tr><td colspan="8" class="text-center text-danger">Failed to load history</td></tr>';
     }
 }

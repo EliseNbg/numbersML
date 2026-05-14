@@ -62,9 +62,12 @@ class EquityPoint:
 
 @dataclass
 class PricePoint:
-    """Close-price point used by the backtest dashboard."""
+    """OHLC-price point used by the backtest dashboard."""
 
     timestamp: datetime
+    open: float
+    high: float
+    low: float
     close: float
 
 
@@ -355,8 +358,15 @@ class BacktestMetricsCalculator:
             if point.equity > peak:
                 peak = point.equity
                 if in_drawdown:
-                    # Drawdown ended
-                    dd_duration = point.timestamp - current_dd_start
+                    # Drawdown ended - ensure both timestamps have same tzinfo
+                    dd_start = current_dd_start
+                    dd_end = point.timestamp
+                    # Handle naive vs aware datetime comparison
+                    if dd_start.tzinfo is None and dd_end.tzinfo is not None:
+                        dd_start = dd_start.replace(tzinfo=UTC)
+                    elif dd_start.tzinfo is not None and dd_end.tzinfo is None:
+                        dd_end = dd_end.replace(tzinfo=UTC)
+                    dd_duration = dd_end - dd_start
                     if dd_duration > max_dd_duration:
                         max_dd_duration = dd_duration
                     in_drawdown = False
@@ -572,9 +582,14 @@ class BacktestEngine:
                     progress_callback(i / total_candles)
 
                 tick = self._create_enriched_tick(candle, symbols[0])
-                price_series.append(
-                    PricePoint(timestamp=candle["time"], close=float(candle["close"]))
+                pp = PricePoint(
+                    timestamp=candle["time"],
+                    open=float(candle["open"]),
+                    high=float(candle["high"]),
+                    low=float(candle["low"]),
+                    close=float(candle["close"]),
                 )
+                price_series.append(pp)
 
                 for symbol, pos in list(positions.items()):
                     current_price = float(candle["close"])
@@ -941,9 +956,12 @@ def serialize_equity_point(point: EquityPoint) -> dict[str, Any]:
 
 
 def serialize_price_point(point: PricePoint) -> dict[str, Any]:
-    """Convert a close-price point into a JSON-serializable payload."""
+    """Convert an OHLC-price point into a JSON-serializable payload."""
     return {
         "timestamp": point.timestamp.isoformat(),
+        "open": point.open,
+        "high": point.high,
+        "low": point.low,
         "close": point.close,
     }
 

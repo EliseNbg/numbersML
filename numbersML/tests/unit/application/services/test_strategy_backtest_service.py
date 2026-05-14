@@ -107,7 +107,7 @@ class TestStrategyBacktestService:
                 EquityPoint(now - timedelta(days=7), 10000.0, 10000.0, 0.0, 0.0),
                 EquityPoint(now, 10100.0, 10100.0, 0.0, 0.0),
             ],
-            price_series=[PricePoint(now, 50500.0)],
+            price_series=[PricePoint(now, 50500.0, 50550.0, 50450.0, 50500.0)],
             debug_messages=[DebugMessage(now, "INFO", "closed trade")],
             parameters={"fee_bps": 10.0},
         )

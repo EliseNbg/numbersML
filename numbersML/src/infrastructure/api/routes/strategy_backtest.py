@@ -447,3 +447,46 @@ async def list_saved_backtests(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch backtest results: {str(e)}",
         ) from e
+
+
+@router.get(
+    "/results/{backtest_id}",
+    response_model=dict[str, Any],
+    summary="Get single backtest result",
+    description="Get detailed results for a specific saved backtest by ID.",
+)
+async def get_saved_backtest(
+    backtest_id: UUID,
+    backtest_repo: StrategyBacktestRepositoryPG = Depends(get_backtest_repository),
+) -> dict[str, Any]:
+    """
+    Get a specific saved backtest result by ID.
+
+    Args:
+        backtest_id: The UUID of the backtest result
+        backtest_repo: Backtest repository instance
+
+    Returns:
+        Complete backtest result with all trade data and price series
+
+    Raises:
+        404: Backtest not found
+        500: Failed to fetch result
+    """
+    try:
+        result = await backtest_repo.get_with_price_series(backtest_id)
+        if result is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Backtest {backtest_id} not found",
+            )
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get backtest {backtest_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch backtest result: {str(e)}",
+        ) from e

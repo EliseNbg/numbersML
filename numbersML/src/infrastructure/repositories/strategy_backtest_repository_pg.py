@@ -60,7 +60,7 @@ class StrategyBacktestRepositoryPG:
         def _json_serializable(v):
             if isinstance(v, datetime):
                 return v.isoformat()
-            if isinstance(v, (int, float, str, bool, type(None))):
+            if isinstance(v, int | float | str | bool | type(None)):
                 return v
             return str(v)
 
@@ -127,6 +127,64 @@ class StrategyBacktestRepositoryPG:
         if row is None:
             return None
         return self._map_backtest(row)
+
+    async def get_with_price_series(self, backtest_id: UUID) -> dict[str, Any] | None:
+        """Get a backtest result with price series for charting.
+
+        Args:
+            backtest_id: Backtest record ID
+
+        Returns:
+            Backtest result with price_series populated, or None if not found
+        """
+        result = await self.get(backtest_id)
+        if result is None:
+            return None
+
+        # Load price series from candles if we have symbol and time range
+        symbol = result.get("symbol")
+        start_time = result.get("time_range_start")
+        end_time = result.get("time_range_end")
+
+        if symbol and start_time and end_time:
+            result["price_series"] = await self._load_price_series(symbol, start_time, end_time)
+        else:
+            result["price_series"] = []
+
+        # Load parameters from trades metadata if available
+        trades = result.get("trades", [])
+        if trades:
+            result["parameters"] = {}
+
+        return result
+
+    async def _load_price_series(
+        self, symbol: str, start_time: datetime, end_time: datetime
+    ) -> list[dict[str, Any]]:
+        """Load price series from candles table for charting."""
+        async with self._connection() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT c.time, c.open, c.high, c.low, c.close, c.volume
+                FROM candles_1s c
+                JOIN symbols s ON s.id = c.symbol_id
+                WHERE s.symbol = $1 AND c.time >= $2 AND c.time <= $3
+                ORDER BY c.time ASC
+                """,
+                symbol,
+                start_time,
+                end_time,
+            )
+        return [
+            {
+                "timestamp": row["time"].isoformat() if row["time"] else None,
+                "open": float(row["open"]) if row["open"] else 0,
+                "high": float(row["high"]) if row["high"] else 0,
+                "low": float(row["low"]) if row["low"] else 0,
+                "close": float(row["close"]) if row["close"] else 0,
+            }
+            for row in rows
+        ]
 
     async def list_for_strategy(
         self,

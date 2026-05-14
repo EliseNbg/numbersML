@@ -54,7 +54,7 @@ class TestStrategyBacktestApi:
                 EquityPoint(now - timedelta(days=2), 10000.0, 10000.0, 0.0, 0.0),
                 EquityPoint(now, 10250.0, 10250.0, 0.0, 0.0),
             ],
-            price_series=[PricePoint(now, 51250.0)],
+            price_series=[PricePoint(now, 51250.0, 52000.0, 51000.0, 51250.0)],
             debug_messages=[DebugMessage(now, "INFO", "trade closed")],
             parameters={"fee_bps": 10.0},
         )
