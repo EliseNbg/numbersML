@@ -3,7 +3,7 @@
   "$id": "https://numbersml.local/schemas/strategy_config_v1.json",
   "title": "StrategyConfigV1",
   "type": "object",
-  "additionalProperties": false,
+  "additionalProperties": true,
   "required": [
     "meta",
     "universe",

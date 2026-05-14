@@ -59,6 +59,8 @@ def _ensure_valid_signal_for_class_based(config: dict[str, Any], strategy_type: 
 class StrategyConfigSchema(BaseModel):
     """Canonical strategy configuration schema."""
 
+    model_config = {"extra": "allow"}
+
     meta: dict[str, Any] = Field(default_factory=dict)
     universe: dict[str, Any] = Field(default_factory=dict)
     signal: dict[str, Any] = Field(default_factory=dict)

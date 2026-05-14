@@ -116,6 +116,7 @@ class TestStrategyRepositoryPG:
             "updated_at": now,
         }
         version_row = {
+            "id": uuid4(),
             "strategy_id": strategy_id,
             "version": 4,
             "schema_version": 1,

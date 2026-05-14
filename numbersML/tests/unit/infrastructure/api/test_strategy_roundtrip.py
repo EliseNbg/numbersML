@@ -203,6 +203,7 @@ class TestStrategyRoundTrip:
 
         # Version row returned from create_version
         version_row = {
+            "id": uuid4(),
             "strategy_id": strategy_id,
             "version": 1,
             "schema_version": 1,
