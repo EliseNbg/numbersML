@@ -102,25 +102,31 @@ class StrategyRepositoryPG(StrategyRepository):
         created_by: str = "system",
     ) -> StrategyConfigVersion:
         import logging
+
         from asyncpg import UniqueViolationError
 
         logger = logging.getLogger(__name__)
-        strategy = await self.get_by_id(strategy_id)
-        if strategy is None:
-            raise ValueError(f"Strategy {strategy_id} does not exist.")
-
         max_retries = 5
         for attempt in range(max_retries):
-            # Refresh the strategy to get the latest current_version
-            strategy = await self.get_by_id(strategy_id)
-            next_version = strategy.current_version + 1
-            logger.debug(
-                f"Attempt {attempt}: strategy {strategy_id} current_version={strategy.current_version}, "
-                f"next_version to insert={next_version}"
-            )
             async with self.pool.acquire() as conn:
                 try:
                     async with conn.transaction():
+                        # Lock the strategy row to serialize version creation
+                        await conn.fetchrow(
+                            "SELECT 1 FROM strategies WHERE id = $1 FOR UPDATE",
+                            strategy_id,
+                        )
+                        # Compute next version from actual max to handle stale current_version
+                        max_row = await conn.fetchrow(
+                            "SELECT COALESCE(MAX(version), 0) as max_ver FROM strategy_versions WHERE strategy_id = $1",
+                            strategy_id,
+                        )
+                        next_version = max_row["max_ver"] + 1
+                        logger.debug(
+                            f"Attempt {attempt}: strategy {strategy_id}, next_version to insert={next_version} "
+                            f"(derived from MAX(version) of strategy_versions)"
+                        )
+                        # Insert new version
                         row = await conn.fetchrow(
                             """
                             INSERT INTO strategy_versions (strategy_id, version, schema_version, config, created_by)

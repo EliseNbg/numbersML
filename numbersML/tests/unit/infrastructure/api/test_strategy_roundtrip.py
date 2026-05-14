@@ -212,12 +212,16 @@ class TestStrategyRoundTrip:
             "created_at": now,
         }
 
-        # Mock fetchrow for save, create_version (2 get_by_id calls), and INSERT
+        # Mock fetchrow for:
+        # 1. save: INSERT RETURNING *
+        # 2. create_version: SELECT FOR UPDATE (lock)
+        # 3. create_version: MAX(version) query
+        # 4. create_version: INSERT RETURNING *
         mock_connection.fetchrow.side_effect = [
-            strategy_row,
-            strategy_row,
-            strategy_row,
-            version_row,
+            strategy_row,  # 1. save returns strategy
+            strategy_row,  # 2. lock SELECT (unused)
+            {"max_ver": 0},  # 3. MAX(version) -> no existing versions
+            version_row,  # 4. INSERT returns new version
         ]
         mock_connection.fetch.return_value = [version_row]
 

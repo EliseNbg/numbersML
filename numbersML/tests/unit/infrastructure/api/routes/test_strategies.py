@@ -140,8 +140,8 @@ class TestUpdateActiveVersion:
 
         # Mock fetchrow calls:
         # 1. get_by_id for existence check in update_active_strategy_version (endpoint)
-        # 2. get_by_id inside create_version (first call, outside loop)
-        # 3. get_by_id inside create_version (inside loop, first attempt)
+        # 2. SELECT FOR UPDATE inside create_version to lock strategy row
+        # 3. MAX(version) query inside create_version
         # 4. INSERT returning row in create_version
         # 5. set_active_version: fetchrow to check version exists (returns id)
         version_id = uuid4()
@@ -156,23 +156,13 @@ class TestUpdateActiveVersion:
             "created_at": now,
         }
         mock_connection.fetchrow.side_effect = [
-            strategy_row,  # 1. get_by_id for existence check in update_active_strategy_version (endpoint)
-            strategy_row,  # 2. get_by_id inside create_version (first call, outside loop)
-            strategy_row,  # 3. get_by_id inside create_version (inside loop, first attempt)
-            inserted_version_row,  # 4. INSERT returning row in create_version
-            {"id": version_id},  # 5. set_active_version: fetchrow to check version exists
+            strategy_row,  # 1. get_by_id for existence check
+            strategy_row,  # 2. SELECT FOR UPDATE (lock, result unused)
+            {"max_ver": 1},  # 3. MAX(version) query -> current max is 1
+            inserted_version_row,  # 4. INSERT returning row
+            {"id": version_id},  # 5. set_active_version SELECT id
         ]
-        # Mock fetch for list_versions calls
-        mock_connection.fetch.side_effect = [
-            [initial_version_row],  # First list_versions call (before update)
-            [new_version_row],  # Second list_versions call after activation
-        ]
-        # Mock fetch for list_versions calls
-        mock_connection.fetch.side_effect = [
-            [initial_version_row],  # First list_versions call (before update)
-            [new_version_row],  # Second list_versions call after activation
-        ]
-        # Mock fetch for list_versions calls
+        # Mock fetch for list_versions calls (first call in POST, second call in GET)
         mock_connection.fetch.side_effect = [
             [initial_version_row],  # First list_versions call (before update)
             [new_version_row],  # Second list_versions call after activation

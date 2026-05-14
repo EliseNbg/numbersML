@@ -124,7 +124,10 @@ class TestStrategyRepositoryPG:
             "created_by": "tester",
             "created_at": now,
         }
-        mock_connection.fetchrow.side_effect = [strategy_row, strategy_row, version_row]
+        # First fetchrow: lock (return strategy_row unused)
+        # Second fetchrow: MAX(version) query -> max_ver=3
+        # Third fetchrow: INSERT RETURNING *
+        mock_connection.fetchrow.side_effect = [strategy_row, {"max_ver": 3}, version_row]
 
         repo = StrategyRepositoryPG(mock_pool)
         version = await repo.create_version(
