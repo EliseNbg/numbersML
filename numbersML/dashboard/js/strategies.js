@@ -217,16 +217,24 @@ function loadConfigTemplate(type) {
 async function loadStrategies() {
     try {
         showLoading();
+        console.log('[loadStrategies] Fetching all strategies');
         const response = await fetch(`${API_BASE_URL}/strategies`);
-
+        console.log('[loadStrategies] Response status:', response.status);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
-
         strategies = await response.json();
+        console.log('[loadStrategies] Received strategies:', strategies.map(s => ({
+            id: s.id,
+            name: s.name,
+            current_version: s.current_version,
+            status: s.status,
+            strategy_type: s.strategy_type
+        })));
         renderStrategies();
         updateStrategyCount();
     } catch (error) {
+        console.error('[loadStrategies] Error:', error);
         showAlert('danger', `Failed to load strategies: ${error.message}`);
     }
 }
@@ -433,15 +441,29 @@ function getRuntimeColor(state) {
  */
 async function loadStrategyConfig(strategyId) {
     try {
+        console.log('[loadStrategyConfig] Fetching versions for strategy', strategyId);
         const response = await fetch(`${API_BASE_URL}/strategies/${strategyId}/versions`);
+        console.log('[loadStrategyConfig] Response status:', response.status);
         if (response.ok) {
             const versions = await response.json();
+            console.log('[loadStrategyConfig] Raw versions response:', versions);
             const activeVersion = versions.find(v => v.is_active) || versions[versions.length - 1];
             if (activeVersion) {
+                console.log('[loadStrategyConfig] Active version:', {
+                    version: activeVersion.version,
+                    is_active: activeVersion.is_active,
+                    config_keys: Object.keys(activeVersion.config || {}),
+                    config: activeVersion.config
+                });
                 document.getElementById('detail-config').textContent = JSON.stringify(activeVersion.config, null, 2);
+            } else {
+                console.warn('[loadStrategyConfig] No versions found for strategy', strategyId);
             }
+        } else {
+            console.error('[loadStrategyConfig] Failed:', await response.json());
         }
     } catch (error) {
+        console.error('[loadStrategyConfig] Exception:', error);
         document.getElementById('detail-config').textContent = 'Failed to load config';
     }
 }
@@ -451,9 +473,19 @@ async function loadStrategyConfig(strategyId) {
  */
 async function loadVersions(strategyId) {
     try {
+        console.log('[loadVersions] Fetching versions for strategy', strategyId);
         const response = await fetch(`${API_BASE_URL}/strategies/${strategyId}/versions`);
+        console.log('[loadVersions] Response status:', response.status);
         if (response.ok) {
             const versions = await response.json();
+            console.log('[loadVersions] Raw versions:', versions);
+            console.log('[loadVersions] Versions summary:', versions.map(v => ({
+                version: v.version,
+                is_active: v.is_active,
+                created_by: v.created_by,
+                config_keys: Object.keys(v.config || {}),
+                config: v.config
+            })));
             document.getElementById('versions-list').innerHTML = versions.map(v => `
                 <div class="card mb-2 ${v.is_active ? 'border-success' : ''}">
                     <div class="card-body py-2">
@@ -660,53 +692,65 @@ async function openModifyModal() {
  * Save modified strategy by updating active configuration (creates new version and activates it in one operation)
  */
 async function saveModifiedStrategy() {
-    console.log('saveModifiedStrategy called');
+    console.log('='.repeat(60));
+    console.log('[saveModifiedStrategy] called');
     if (!currentStrategyId) {
-        console.log('No currentStrategyId, returning');
+        console.log('[saveModifiedStrategy] No currentStrategyId, returning');
         return;
     }
 
     const configText = document.getElementById('modify-config').value;
-    console.log('Config text from textarea:', configText.substring(0, 100) + '...'); // Log first 100 chars
+    console.log('[saveModifiedStrategy] Config text from textarea (first 200 chars):', 
+                configText.substring(0, 200));
     let config;
     try {
         config = JSON.parse(configText);
-        console.log('Parsed config:', config);
+        console.log('[saveModifiedStrategy] Parsed config:', {
+            keys: Object.keys(config),
+            meta: config.meta,
+            universe: config.universe,
+            signal: config.signal,
+            risk: config.risk,
+            execution: config.execution,
+            mode: config.mode,
+            status: config.status
+        });
     } catch (e) {
-        console.error('Invalid JSON in configuration:', e);
+        console.error('[saveModifiedStrategy] Invalid JSON in configuration:', e);
         showAlert('danger', 'Invalid JSON in configuration');
         return;
     }
 
     try {
         // Update active configuration using new endpoint that creates version and activates it
-        console.log('Sending request to:', `${API_BASE_URL}/strategies/${currentStrategyId}/active-version`);
-        console.log('Request body:', JSON.stringify({
+        const url = `${API_BASE_URL}/strategies/${currentStrategyId}/active-version`;
+        const body = {
             config: config,
             created_by: 'dashboard'
-        }, null, 2));
+        };
+        console.log('[saveModifiedStrategy] POST:', url);
+        console.log('[saveModifiedStrategy] Request body:', JSON.stringify(body, null, 2));
         
-        const response = await fetch(`${API_BASE_URL}/strategies/${currentStrategyId}/active-version`, {
+        const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                config: config,
-                created_by: 'dashboard'
-            })
+            body: JSON.stringify(body)
         });
 
-        console.log('Response status:', response.status);
-        console.log('Response ok:', response.ok);
+        console.log('[saveModifiedStrategy] Response status:', response.status);
+        console.log('[saveModifiedStrategy] Response ok:', response.ok);
         
         if (!response.ok) {
             const error = await response.json();
-            console.error('Error response:', error);
+            console.error('[saveModifiedStrategy] Error response:', error);
             throw new Error(error.detail || `HTTP ${response.status}`);
         }
 
         const result = await response.json();
-        console.log('Success response:', result);
-         
+        console.log('[saveModifiedStrategy] Success response:', result);
+        console.log('[saveModifiedStrategy] Returned config:', result.config);
+        console.log('[saveModifiedStrategy] Config keys:', Object.keys(result.config || {}));
+        
         showAlert('success', 'Configuration saved and activated (version ' + result.version + ')');
         modifyModal.hide();
         document.getElementById('modify-result').classList.add('d-none');
@@ -716,10 +760,11 @@ async function saveModifiedStrategy() {
         
         // Refresh the detail view with updated data
         if (currentStrategyId) {
+            console.log('[saveModifiedStrategy] Refreshing detail view for', currentStrategyId);
             viewStrategy(currentStrategyId);
         }
     } catch (error) {
-        console.error('Exception in saveModifiedStrategy:', error);
+        console.error('[saveModifiedStrategy] Exception:', error);
         showAlert('danger', `Failed to save: ${error.message}`);
     }
 }

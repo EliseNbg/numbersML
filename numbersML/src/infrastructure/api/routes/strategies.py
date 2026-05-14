@@ -439,17 +439,31 @@ async def create_strategy_version(
     repo: StrategyRepository = Depends(get_strategy_repo),
 ) -> StrategyVersionResponse:
     try:
+        config_dict = req.config.dict()
+        logger.info(
+            f"[API create_version] strategy_id={strategy_id} "
+            f"config_keys={list(config_dict.keys())} "
+            f"signal={config_dict.get('signal', {})} "
+            f"schema_version={req.schema_version} created_by={req.created_by}"
+        )
+        logger.debug(
+            f"[API create_version] Full config for strategy {strategy_id}: "
+            f"{config_dict}"
+        )
         v = await repo.create_version(
             strategy_id=strategy_id,
-            config=req.config.dict(),
+            config=config_dict,
             schema_version=req.schema_version,
             created_by=req.created_by,
+        )
+        logger.info(
+            f"[API create_version] Created version {v.version} for strategy {strategy_id}"
         )
         return StrategyVersionResponse.from_domain(v)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        logger.error(f"Failed to create version: {e}", exc_info=True)
+        logger.error(f"[API create_version] Failed for strategy {strategy_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to create version: {e}")
 
 
@@ -460,6 +474,16 @@ async def list_strategy_versions(
 ) -> list[StrategyVersionResponse]:
     try:
         versions = await repo.list_versions(strategy_id)
+        logger.info(
+            f"[API list_versions] strategy_id={strategy_id} count={len(versions)} "
+            f"versions={[v.version for v in versions]} "
+            f"active={[v.version for v in versions if v.is_active]}"
+        )
+        for v in versions:
+            logger.debug(
+                f"[API list_versions] version={v.version} is_active={v.is_active} "
+                f"config_keys={list(v.config.keys()) if isinstance(v.config, dict) else 'N/A'}"
+            )
         return [StrategyVersionResponse.from_domain(v) for v in versions]
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -504,8 +528,23 @@ async def update_active_strategy_version(
         if not strategy:
             raise HTTPException(status_code=404, detail=f"Strategy {strategy_id} not found")
 
+        logger.info(
+            f"[API update_active_version] strategy_id={strategy_id} "
+            f"strategy_type={strategy.strategy_type} current_version={strategy.current_version}"
+        )
+
         # Convert config to dict for validation and storage
         config_dict = req.config.dict()
+        logger.info(
+            f"[API update_active_version] config_keys={list(config_dict.keys())} "
+            f"signal={config_dict.get('signal', {})} schema_version={config_dict.get('meta', {}).get('schema_version', 1)}"
+        )
+        logger.debug(
+            f"[API update_active_version] Full config: {config_dict}"
+        )
+
+        # Ensure valid signal structure for class-based strategies to satisfy JSON schema
+        config_dict = _ensure_valid_signal_for_class_based(config_dict, strategy.strategy_type)
 
         # Validate the configuration
         is_valid, issues = validate_strategy_config(config_dict, strategy.strategy_type)
@@ -540,11 +579,21 @@ async def update_active_strategy_version(
             schema_version=schema_version,
             created_by=req.created_by,
         )
+        logger.info(
+            f"[API update_active_version] Created version {new_version.version} "
+            f"for strategy {strategy_id}, now activating"
+        )
 
         # Activate the new version
         activated = await repo.set_active_version(strategy_id, new_version.version)
         if not activated:
+            logger.error(f"[API update_active_version] Activation failed for version {new_version.version}")
             raise HTTPException(status_code=500, detail="Failed to activate new version")
+
+        logger.info(
+            f"[API update_active_version] Activated version {new_version.version} "
+            f"for strategy {strategy_id}"
+        )
 
         # Return the activated version (create a new instance with is_active=True)
         activated_version = StrategyConfigVersion(
