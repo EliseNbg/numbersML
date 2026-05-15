@@ -139,21 +139,51 @@ function renderCandlestickChart(priceSeries, trades) {
                 borderColor: "#cccccc",
                 timeVisible: true,
                 secondsVisible: false,
-                tickMarkFormatter: (time, tickType) => {
-                    if (typeof time === 'string') return time;
-                    const d = new Date(time * 1000);
-                    if (tickType === 'time') {
-                        return d.toLocaleTimeString('en-US', {
+                tickMarkFormatter(originalTime, tickMarkType, locale) {
+                    // originalTime is the raw user value (number or internal object)
+                    // tickMarkType: 0=Year | 1=Month | 2=DayOfMonth | 3=Time | 4=TimeWithSeconds
+                    // locale: browser locale string (e.g. 'fr-FR', 'en-US')
+                    let secs;
+                    if (typeof originalTime === 'number') {
+                        secs = originalTime;
+                    } else if (originalTime && typeof originalTime._internal_timestamp === 'number') {
+                        secs = originalTime._internal_timestamp;
+                    } else if (typeof originalTime === 'object') {
+                        secs = originalTime._internal_timestamp;
+                    }
+                    if (typeof secs !== 'number') return '';
+                    const d = new Date(secs * 1000);
+                    const loc = locale || undefined;
+                    if (tickMarkType === 3) {
+                        // Sub-day tick – show only HH:mm
+                        return d.toLocaleTimeString(loc, {
                             hour: '2-digit',
                             minute: '2-digit',
                             hour12: false,
                         });
                     }
-                    return d.toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        weekday: 'short',
-                    });
+                    if (tickMarkType === 4) {
+                        // Sub-day + seconds – show HH:mm:ss
+                        return d.toLocaleTimeString(loc, {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            hour12: false,
+                        });
+                    }
+                    // Year / Month / Day ticks – date + time on same label
+                    return [
+                        d.toLocaleDateString(loc, {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                        }),
+                        d.toLocaleTimeString(loc, {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: false,
+                        }),
+                    ].join(' ');
                 },
             },
         });
