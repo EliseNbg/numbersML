@@ -195,6 +195,10 @@ function renderCandlestickChart(priceSeries, trades) {
             borderUpColor: "#26a69a",
             wickDownColor: "#ef5350",
             wickUpColor: "#26a69a",
+            priceFormat: {
+                type: "custom",
+                formatter: (price) => price.toFixed(8),
+            },
         });
     }
 
@@ -258,7 +262,7 @@ function createTradeMarkers(trades, priceSeries) {
                 markers.push({
                     time: t,
                     position: "belowBar",
-                    color: "#26a69a",
+                    color: "#1e88e5",
                     shape: "circle",
                     text: "BUY",
                     price: trade.entry_price,
@@ -277,7 +281,7 @@ function createTradeMarkers(trades, priceSeries) {
                 markers.push({
                     time: t,
                     position: "aboveBar",
-                    color: isProfit ? "#26a69a" : "#ef5350",
+                    color: isProfit ? "#fb8c00" : "#ef5350",
                     shape: "square",
                     text: isProfit ? "SELL" : "LOSS",
                     price: trade.exit_price,
