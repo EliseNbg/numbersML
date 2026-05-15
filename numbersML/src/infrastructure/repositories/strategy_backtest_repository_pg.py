@@ -169,6 +169,8 @@ class StrategyBacktestRepositoryPG:
                 FROM candles_1s c
                 JOIN symbols s ON s.id = c.symbol_id
                 WHERE s.symbol = $1 AND c.time >= $2 AND c.time <= $3
+                  AND c.open IS NOT NULL AND c.high IS NOT NULL
+                  AND c.low  IS NOT NULL AND c.close IS NOT NULL
                 ORDER BY c.time ASC
                 """,
                 symbol,
@@ -178,10 +180,10 @@ class StrategyBacktestRepositoryPG:
         return [
             {
                 "timestamp": row["time"].isoformat() if row["time"] else None,
-                "open": float(row["open"]) if row["open"] else 0,
-                "high": float(row["high"]) if row["high"] else 0,
-                "low": float(row["low"]) if row["low"] else 0,
-                "close": float(row["close"]) if row["close"] else 0,
+                "open": float(row["open"]),
+                "high": float(row["high"]),
+                "low": float(row["low"]),
+                "close": float(row["close"]),
             }
             for row in rows
         ]

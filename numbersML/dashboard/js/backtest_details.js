@@ -151,13 +151,19 @@ function renderCandlestickChart(priceSeries, trades) {
     }
 
     // Prepare candlestick data - downsample if too many points for performance
-    let candleData = priceSeries.map(p => ({
-        time: formatTimeForChart(p.timestamp),
-        open: p.open || p.close,
-        high: p.high || p.close,
-        low: p.low || p.close,
-        close: p.close,
-    }));
+    // Use ?? (nullish coalescing) - NOT || - so that legitimate 0 prices are
+    // preserved and only null / undefined values fall back.
+    let candleData = priceSeries
+        .map(p => ({
+            time: formatTimeForChart(p.timestamp),
+            open: p.open ?? p.close,
+            high: p.high ?? p.close,
+            low:  p.low  ?? p.close,
+            close: p.close,
+        }))
+        // Drop rows with null close or non-finite time — Lightweight Charts
+        // throws "Value is null" on either condition.
+        .filter(c => c.close != null && isFinite(c.time));
 
     // Downsample to max 5000 points for chart performance
     if (candleData.length > 5000) {
@@ -169,6 +175,10 @@ function renderCandlestickChart(priceSeries, trades) {
 
     // Create trade markers using the downsampled data's available times
     const markers = createTradeMarkers(trades, candleData);
+
+    // Debug: log marker shape to console
+    console.log("markers:", markers.length, markers.slice(0, 2));
+
     candlestickSeries.setMarkers(markers);
 }
 
@@ -191,42 +201,45 @@ function createTradeMarkers(trades, priceSeries) {
     const markers = [];
 
     limitedTrades.forEach(trade => {
-        // Find nearest available timestamp for entry marker
-        let entryTime = formatTimeForChart(trade.entry_time);
-        if (!availableTimes.has(entryTime)) {
-            entryTime = findNearestTime(entryTime, availableTimes);
+        // Build entry marker when entry price and time are both valid
+        if (trade.entry_price != null) {
+            const entryTime = formatTimeForChart(trade.entry_time);
+            if (isFinite(entryTime) && isFinite(trade.entry_price)) {
+                const t = availableTimes.has(entryTime)
+                    ? entryTime : findNearestTime(entryTime, availableTimes);
+                markers.push({
+                    time: t,
+                    position: "belowBar",
+                    color: "#26a69a",
+                    shape: "circle",
+                    text: "BUY",
+                    price: trade.entry_price,
+                    tradeId: trade.entry_time,
+                });
+            }
         }
 
-        // Entry marker - green circle
-        markers.push({
-            time: entryTime,
-            position: "belowBar",
-            color: "#26a69a",
-            shape: "circle",
-            text: "BUY",
-            price: trade.entry_price,
-            tradeId: trade.entry_time,
-        });
-
-        // Exit marker - color based on PnL
-        if (trade.exit_time) {
-            let exitTime = formatTimeForChart(trade.exit_time);
-            if (!availableTimes.has(exitTime)) {
-                exitTime = findNearestTime(exitTime, availableTimes);
+        // Build exit marker when exit data is present and valid
+        if (trade.exit_time && trade.exit_price != null) {
+            const exitTime = formatTimeForChart(trade.exit_time);
+            if (isFinite(exitTime) && isFinite(trade.exit_price)) {
+                const t = availableTimes.has(exitTime)
+                    ? exitTime : findNearestTime(exitTime, availableTimes);
+                const isProfit = trade.pnl >= 0;
+                markers.push({
+                    time: t,
+                    position: "aboveBar",
+                    color: isProfit ? "#26a69a" : "#ef5350",
+                    shape: "square",
+                    text: isProfit ? "SELL" : "LOSS",
+                    price: trade.exit_price,
+                    tradeId: trade.exit_time,
+                });
             }
-            const isProfit = trade.pnl >= 0;
-            markers.push({
-                time: exitTime,
-                position: "aboveBar",
-                color: isProfit ? "#26a69a" : "#ef5350",
-                shape: "square",
-                text: isProfit ? "SELL" : "LOSS",
-                price: trade.exit_price,
-                tradeId: trade.exit_time,
-            });
         }
     });
 
+    console.assert(Array.isArray(markers), "createTradeMarkers must return an array");
     return markers;
 }
 
