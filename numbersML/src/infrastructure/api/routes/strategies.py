@@ -69,7 +69,7 @@ class StrategyConfigSchema(BaseModel):
     mode: str = Field(default="paper", pattern="^(paper|live)$")
     status: str = Field(default="draft", pattern="^(draft|validated|active|paused|archived)$")
 
-    def dict(self, *args, **kwargs):
+    def model_dump_with_schema(self, *args, **kwargs):
         d = super().model_dump(*args, **kwargs)
         if "meta" in d and "schema_version" not in d["meta"]:
             d["meta"]["schema_version"] = 1
@@ -244,9 +244,9 @@ async def create_strategy(
         saved = await repo.save(s)
         await repo.create_version(
             strategy_id=saved.id,
-            config=req.config.dict() if req.config else {},
+            config=req.config.model_dump_with_schema() if req.config else {},
             schema_version=(
-                req.config.dict().get("meta", {}).get("schema_version", 1) if req.config else 1
+                req.config.model_dump_with_schema().get("meta", {}).get("schema_version", 1) if req.config else 1
             ),
             created_by=req.created_by,
         )
@@ -441,7 +441,7 @@ async def create_strategy_version(
     repo: StrategyRepository = Depends(get_strategy_repo),
 ) -> StrategyVersionResponse:
     try:
-        config_dict = req.config.dict()
+        config_dict = req.config.model_dump_with_schema()
         logger.info(
             f"[API create_version] strategy_id={strategy_id} "
             f"config_keys={list(config_dict.keys())} "
@@ -536,7 +536,7 @@ async def update_active_strategy_version(
         )
 
         # Convert config to dict for validation and storage
-        config_dict = req.config.dict()
+        config_dict = req.config.model_dump_with_schema()
         logger.info(
             f"[API update_active_version] config_keys={list(config_dict.keys())} "
             f"signal={config_dict.get('signal', {})} schema_version={config_dict.get('meta', {}).get('schema_version', 1)}"
