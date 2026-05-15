@@ -117,8 +117,9 @@ function renderCandlestickChart(priceSeries, trades) {
 
     // Initialize chart if not exists
     if (!chart) {
+        const containerWidth = Math.max(container.clientWidth || 800, 800);
         chart = LightweightCharts.createChart(container, {
-            width: container.clientWidth,
+            width: containerWidth,
             height: 500,
             layout: {
                 backgroundColor: "#ffffff",
@@ -149,8 +150,8 @@ function renderCandlestickChart(priceSeries, trades) {
         });
     }
 
-    // Prepare candlestick data
-    const candleData = priceSeries.map(p => ({
+    // Prepare candlestick data - downsample if too many points for performance
+    let candleData = priceSeries.map(p => ({
         time: formatTimeForChart(p.timestamp),
         open: p.open || p.close,
         high: p.high || p.close,
@@ -158,18 +159,31 @@ function renderCandlestickChart(priceSeries, trades) {
         close: p.close,
     }));
 
+    // Downsample to max 5000 points for chart performance
+    if (candleData.length > 5000) {
+        const factor = Math.ceil(candleData.length / 5000);
+        candleData = candleData.filter((_, i) => i % factor === 0);
+    }
+
     candlestickSeries.setData(candleData);
 
-    // Create trade markers (limit to 50 for performance)
-    const markers = createTradeMarkers(trades, priceSeries);
+    // Create trade markers using the downsampled data's available times
+    const markers = createTradeMarkers(trades, candleData);
     candlestickSeries.setMarkers(markers);
 }
 
 /**
  * Create trade markers for chart
+ * Adjusts timestamps to match nearest available candle for visibility
+ * @param trades - Array of trade objects with entry_time, exit_time, entry_price, exit_price, pnl
+ * @param priceSeries - Array of candle data with 'time' property (already converted to Unix timestamp)
  */
 function createTradeMarkers(trades, priceSeries) {
     if (!trades || trades.length === 0) return [];
+    if (!priceSeries || priceSeries.length === 0) return [];
+
+    // Build a set of available timestamps from candle data
+    const availableTimes = new Set(priceSeries.map(p => p.time));
 
     // Limit to 50 most recent trades for performance
     const limitedTrades = trades.slice(-50);
@@ -177,9 +191,15 @@ function createTradeMarkers(trades, priceSeries) {
     const markers = [];
 
     limitedTrades.forEach(trade => {
+        // Find nearest available timestamp for entry marker
+        let entryTime = formatTimeForChart(trade.entry_time);
+        if (!availableTimes.has(entryTime)) {
+            entryTime = findNearestTime(entryTime, availableTimes);
+        }
+
         // Entry marker - green circle
         markers.push({
-            time: formatTimeForChart(trade.entry_time),
+            time: entryTime,
             position: "belowBar",
             color: "#26a69a",
             shape: "circle",
@@ -190,9 +210,13 @@ function createTradeMarkers(trades, priceSeries) {
 
         // Exit marker - color based on PnL
         if (trade.exit_time) {
+            let exitTime = formatTimeForChart(trade.exit_time);
+            if (!availableTimes.has(exitTime)) {
+                exitTime = findNearestTime(exitTime, availableTimes);
+            }
             const isProfit = trade.pnl >= 0;
             markers.push({
-                time: formatTimeForChart(trade.exit_time),
+                time: exitTime,
                 position: "aboveBar",
                 color: isProfit ? "#26a69a" : "#ef5350",
                 shape: "square",
@@ -207,14 +231,42 @@ function createTradeMarkers(trades, priceSeries) {
 }
 
 /**
+ * Find nearest available time for marker alignment
+ */
+function findNearestTime(targetTime, availableTimes) {
+    const times = Array.from(availableTimes).sort((a, b) => a - b);
+    let nearest = times[0];
+    let minDiff = Math.abs(targetTime - nearest);
+
+    for (const t of times) {
+        const diff = Math.abs(targetTime - t);
+        if (diff < minDiff) {
+            minDiff = diff;
+            nearest = t;
+        }
+    }
+    return nearest;
+}
+
+/**
  * Format timestamp for Lightweight Charts
+ * Returns Unix timestamp (seconds) for proper intraday charting
  */
 function formatTimeForChart(timestamp) {
-    if (typeof timestamp === "string") {
+    if (typeof timestamp === "number") {
         return timestamp;
     }
+    if (typeof timestamp === "string") {
+        // Check if already in YYYY-MM-DD format (daily) - keep as-is
+        if (/^\d{4}-\d{2}-\d{2}$/.test(timestamp)) {
+            return timestamp;
+        }
+        // For ISO datetime strings, convert to Unix timestamp
+        const date = new Date(timestamp);
+        return Math.floor(date.getTime() / 1000);
+    }
     const date = new Date(timestamp);
-    return date.toISOString().split("T")[0];
+    return Math.floor(date.getTime() / 1000);
 }
 
 /**
