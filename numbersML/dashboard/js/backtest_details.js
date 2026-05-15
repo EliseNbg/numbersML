@@ -137,6 +137,24 @@ function renderCandlestickChart(priceSeries, trades) {
             },
             timeScale: {
                 borderColor: "#cccccc",
+                timeVisible: true,
+                secondsVisible: false,
+                tickMarkFormatter: (time, tickType) => {
+                    if (typeof time === 'string') return time;
+                    const d = new Date(time * 1000);
+                    if (tickType === 'time') {
+                        return d.toLocaleTimeString('en-US', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: false,
+                        });
+                    }
+                    return d.toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        weekday: 'short',
+                    });
+                },
             },
         });
 
