@@ -449,12 +449,6 @@ async def list_saved_backtests(
         ) from e
 
 
-@router.get(
-    "/results/{backtest_id}",
-    response_model=dict[str, Any],
-    summary="Get single backtest result",
-    description="Get detailed results for a specific saved backtest by ID.",
-)
 @router.delete(
     "/results/{backtest_id}",
     summary="Delete a backtest result",
@@ -535,6 +529,12 @@ async def bulk_delete_backtests(
         ) from e
 
 
+@router.get(
+    "/results/{backtest_id}",
+    response_model=dict[str, Any],
+    summary="Get single backtest result",
+    description="Get detailed results for a specific saved backtest by ID.",
+)
 async def get_saved_backtest(
     backtest_id: UUID,
     backtest_repo: StrategyBacktestRepositoryPG = Depends(get_backtest_repository),
