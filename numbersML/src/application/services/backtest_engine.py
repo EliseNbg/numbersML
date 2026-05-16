@@ -549,7 +549,7 @@ class BacktestEngine:
 
         # Initialize tracking
         cash = initial_balance
-        positions: dict[str, dict[str, Any]] = {}
+        positions: dict[str, list[dict[str, Any]]] = {}
         trades: list[TradeRecord] = []
         equity_curve: list[EquityPoint] = []
         price_series: list[PricePoint] = []
@@ -591,47 +591,64 @@ class BacktestEngine:
                 )
                 price_series.append(pp)
 
-                for symbol, pos in list(positions.items()):
+                for symbol, pos_list in list(positions.items()):
                     current_price = float(candle["close"])
-                    stop_loss = pos.get("stop_loss")
-                    if stop_loss and pos["side"] == "LONG" and current_price <= stop_loss:
-                        cash, trade = self._close_position(
-                            pos, current_price, cash, candle["time"], "stop_loss"
-                        )
-                        trades.append(trade)
-                        debug_messages.append(
-                            DebugMessage(
-                                timestamp=candle["time"],
-                                level="INFO",
-                                message=(
-                                    f"Closed {symbol} on stop loss at {trade.exit_price:.4f}; "
-                                    f"pnl={trade.pnl:.2f}"
-                                ),
+                    for pos in list(pos_list):
+                        stop_loss = pos.get("stop_loss")
+                        if stop_loss and pos["side"] == "LONG" and current_price <= stop_loss:
+                            grid_index = pos.get("grid_index")
+                            cash, trade = self._close_position(
+                                pos, current_price, cash, candle["time"], "stop_loss"
                             )
-                        )
-                        strategy.on_position_closed(symbol, Decimal(str(current_price)), "stop_loss")
-                        del positions[symbol]
-                        continue
+                            trades.append(trade)
+                            debug_messages.append(
+                                DebugMessage(
+                                    timestamp=candle["time"],
+                                    level="INFO",
+                                    message=(
+                                        f"Closed {symbol} on stop loss at {trade.exit_price:.4f}; "
+                                        f"pnl={trade.pnl:.2f}"
+                                    ),
+                                )
+                            )
+                            strategy.on_position_closed(
+                                symbol,
+                                Decimal(str(current_price)),
+                                "stop_loss",
+                                grid_index,
+                            )
+                            pos_list.remove(pos)
+                            if not pos_list:
+                                del positions[symbol]
+                            continue
 
-                    take_profit = pos.get("take_profit")
-                    if take_profit and pos["side"] == "LONG" and current_price >= take_profit:
-                        cash, trade = self._close_position(
-                            pos, current_price, cash, candle["time"], "take_profit"
-                        )
-                        trades.append(trade)
-                        debug_messages.append(
-                            DebugMessage(
-                                timestamp=candle["time"],
-                                level="INFO",
-                                message=(
-                                    f"Closed {symbol} on take profit at {trade.exit_price:.4f}; "
-                                    f"pnl={trade.pnl:.2f}"
-                                ),
+                        take_profit = pos.get("take_profit")
+                        if take_profit and pos["side"] == "LONG" and current_price >= take_profit:
+                            grid_index = pos.get("grid_index")
+                            cash, trade = self._close_position(
+                                pos, current_price, cash, candle["time"], "take_profit"
                             )
-                        )
-                        strategy.on_position_closed(symbol, Decimal(str(current_price)), "take_profit")
-                        del positions[symbol]
-                        continue
+                            trades.append(trade)
+                            debug_messages.append(
+                                DebugMessage(
+                                    timestamp=candle["time"],
+                                    level="INFO",
+                                    message=(
+                                        f"Closed {symbol} on take profit at {trade.exit_price:.4f}; "
+                                        f"pnl={trade.pnl:.2f}"
+                                    ),
+                                )
+                            )
+                            strategy.on_position_closed(
+                                symbol,
+                                Decimal(str(current_price)),
+                                "take_profit",
+                                grid_index,
+                            )
+                            pos_list.remove(pos)
+                            if not pos_list:
+                                del positions[symbol]
+                            continue
 
                 signal = strategy.process_tick(tick)
                 if signal:
@@ -646,10 +663,12 @@ class BacktestEngine:
                         )
                     )
 
-                    if signal.signal_type == SignalType.BUY and not positions.get(signal.symbol):
+                    if signal.signal_type == SignalType.BUY:
                         cash, pos = self._open_position(signal, candle, cash, config)
                         if pos:
-                            positions[signal.symbol] = pos
+                            if signal.symbol not in positions:
+                                positions[signal.symbol] = []
+                            positions[signal.symbol].append(pos)
                             debug_messages.append(
                                 DebugMessage(
                                     timestamp=candle["time"],
@@ -662,31 +681,45 @@ class BacktestEngine:
                             )
 
                     elif signal.signal_type in (SignalType.SELL, SignalType.CLOSE_LONG):
+                        grid_index = signal.metadata.get("grid_index") if signal.metadata else None
                         if positions.get(signal.symbol):
-                            pos = positions[signal.symbol]
-                            cash, trade = self._close_position(
-                                pos, float(candle["close"]), cash, candle["time"], "signal"
-                            )
-                            trades.append(trade)
-                            debug_messages.append(
-                                DebugMessage(
-                                    timestamp=candle["time"],
-                                    level="INFO",
-                                    message=(
-                                        f"Closed {signal.symbol} on signal at {trade.exit_price:.4f}; "
-                                        f"pnl={trade.pnl:.2f}"
-                                    ),
+                            pos_to_close = None
+                            if grid_index is not None:
+                                for p in positions[signal.symbol]:
+                                    if p.get("grid_index") == grid_index:
+                                        pos_to_close = p
+                                        break
+                            else:
+                                pos_to_close = positions[signal.symbol][0]
+
+                            if pos_to_close:
+                                pos_list = positions[signal.symbol]
+                                cash, trade = self._close_position(
+                                    pos_to_close, float(candle["close"]), cash, candle["time"], "signal"
                                 )
-                            )
-                            del positions[signal.symbol]
-                            strategy.on_position_closed(
-                                signal.symbol,
-                                Decimal(str(float(candle["close"]))),
-                                "signal",
-                            )
+                                trades.append(trade)
+                                debug_messages.append(
+                                    DebugMessage(
+                                        timestamp=candle["time"],
+                                        level="INFO",
+                                        message=(
+                                            f"Closed {signal.symbol} on signal at {trade.exit_price:.4f}; "
+                                            f"pnl={trade.pnl:.2f}"
+                                        ),
+                                    )
+                                )
+                                pos_list.remove(pos_to_close)
+                                strategy.on_position_closed(
+                                    signal.symbol,
+                                    Decimal(str(float(candle["close"]))),
+                                    "signal",
+                                    grid_index,
+                                )
+                                if not pos_list:
+                                    del positions[signal.symbol]
 
                 positions_value = sum(
-                    p["quantity"] * float(candle["close"]) for p in positions.values()
+                    p["quantity"] * float(candle["close"]) for pos_list in positions.values() for p in pos_list
                 )
                 total_equity = cash + positions_value
 
@@ -705,22 +738,26 @@ class BacktestEngine:
                     )
 
             final_price = float(candles[-1]["close"])
-            for symbol, pos in list(positions.items()):
-                cash, trade = self._close_position(
-                    pos, final_price, cash, candles[-1]["time"], "end_of_test"
-                )
-                trades.append(trade)
-                debug_messages.append(
-                    DebugMessage(
-                        timestamp=candles[-1]["time"],
-                        level="INFO",
-                        message=(
-                            f"Force-closed {symbol} at end of test at {trade.exit_price:.4f}; "
-                            f"pnl={trade.pnl:.2f}"
+            for symbol, pos_list in list(positions.items()):
+                for pos in pos_list:
+                    grid_index = pos.get("grid_index")
+                    cash, trade = self._close_position(
+                        pos, final_price, cash, candles[-1]["time"], "end_of_test"
+                    )
+                    trades.append(trade)
+                    debug_messages.append(
+                        DebugMessage(
+                            timestamp=candles[-1]["time"],
+                            level="INFO",
+                            message=(
+                                f"Force-closed {symbol} at end of test at {trade.exit_price:.4f}; "
+                                f"pnl={trade.pnl:.2f}"
                             ),
                         )
                     )
-                strategy.on_position_closed(symbol, Decimal(str(final_price)), "end_of_test")
+                    strategy.on_position_closed(
+                        symbol, Decimal(str(final_price)), "end_of_test", grid_index
+                    )
         finally:
             await strategy.stop()
 
@@ -837,15 +874,18 @@ class BacktestEngine:
     ) -> tuple[float, dict[str, Any] | None]:
         """Open a new position."""
         risk_config = config.get("risk", {})
-        max_position_pct = risk_config.get("max_position_size_pct", 10) / 100
+        grid_quantity_absolute = config.get("grid_quantity_absolute")
 
         price = float(candle["close"])
 
-        # Calculate position size
-        position_value = cash * max_position_pct
-        quantity = position_value / price
+        if grid_quantity_absolute:
+            position_value = grid_quantity_absolute
+            quantity = position_value / price
+        else:
+            max_position_pct = risk_config.get("max_position_size_pct", 10) / 100
+            position_value = cash * max_position_pct
+            quantity = position_value / price
 
-        # Simulate execution
         executed_price, fees = self.execution_sim.simulate_market_order(
             price=price,
             quantity=quantity,
@@ -855,10 +895,12 @@ class BacktestEngine:
         total_cost = executed_price * quantity + fees
 
         if total_cost > cash:
-            # Not enough cash
             return cash, None
 
         new_cash = cash - total_cost
+
+        # Use take_profit_price from signal metadata if available (for grid strategies)
+        signal_take_profit = signal.metadata.get("take_profit_price") if signal.metadata else None
 
         position = {
             "symbol": signal.symbol,
@@ -869,8 +911,8 @@ class BacktestEngine:
             "entry_fees": fees,
             "stop_loss": risk_config.get("stop_loss_pct")
             and executed_price * (1 - risk_config.get("stop_loss_pct", 0) / 100),
-            "take_profit": risk_config.get("take_profit_pct")
-            and executed_price * (1 + risk_config.get("take_profit_pct", 0) / 100),
+            "take_profit": signal_take_profit,
+            "grid_index": signal.metadata.get("sell_level_index") if signal.metadata else None,
         }
 
         return new_cash, position

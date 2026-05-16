@@ -1,6 +1,7 @@
 """Helpers for loading executable strategy instances from stored definitions."""
 
 import logging
+from decimal import Decimal
 
 from src.domain.strategies.base import EnrichedTick, Signal, SignalType, Strategy, TimeFrame
 from src.domain.strategies.strategy_config import StrategyConfigVersion, StrategyDefinition
@@ -62,12 +63,32 @@ class ConfigDrivenStrategy(Strategy):
 
             return None
 
+        if signal_type == "grid":
+            # Grid strategy would need a dedicated strategy class
+            # For now, log that this type isn't supported in ConfigDrivenStrategy
+            logger.warning(
+                "Grid strategy type requires dedicated GridTradingStrategy class, "
+                "not ConfigDrivenStrategy. Use strategy_type='class' with class_path "
+                "pointing to GridTradingStrategy."
+            )
+            return None
+
         logger.warning(
             "Unsupported config-driven signal type %s for strategy %s",
             signal_type,
             self.id,
         )
         return None
+
+    def on_position_closed(
+        self,
+        symbol: str,
+        price: Decimal,
+        exit_reason: str,
+        grid_index: int | None = None,
+    ) -> None:
+        """Handle position closure by the backtest engine."""
+        self._position_open = False
 
 
 def resolve_symbols(

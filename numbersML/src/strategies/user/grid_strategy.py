@@ -1,41 +1,16 @@
 """
 Grid Trading Strategy.
 
-This strategy implements a grid trading approach that profits from
-sideways/oscillating markets by buying at lower grid levels and selling
-at higher grid levels.
-
 Grid Structure:
-    - N levels below reference_price (buy zones)
-    - N levels above reference_price (take-profit zones)
-    - Levels are evenly spaced by grid_spacing_pct of reference_price
-
-Signal Logic:
-    - BUY:  price crosses below a buy-zone level (no current position needed)
-    - SELL: price crosses above any grid level above the current buy level
-
-Position Management:
-    - The backtest engine handles actual position opening/closing and enforces:
-      - Only 1 position per symbol at a time (BUY ignored if position exists)
-      - Stop-loss and take-profit execution
-    - This strategy uses on_position_closed() callback to detect external closures
-      so it can properly reset and re-enter the grid after stop-loss events
-    - After a stop-loss, the strategy resets and buys at the next appropriate level
-
-Key fixes vs original implementation:
-    1. Uses on_position_closed() callback instead of in_position flag for
-       position tracking. The old in_position flag desynced from the engine
-       which closes positions via stop_loss internally without telling the strategy.
-    2. Removed last_trade_grid_index which permanently blocked grid levels
-       from being reused in future cycles.
-    3. Sell triggers at ANY level above the buy level, not just levels above
-       reference_price. This enables smaller, more frequent profits.
+    - grid_size is total number of levels
+    - Even indices (0, 2, 4...): BUY levels below reference
+    - Odd indices (1, 3, 5...): TAKE-PROFIT levels ~2*spacing above corresponding buy
+    - Buy at level i, sell at level i+1 for ~2*grid_spacing_pct profit (e.g., 1.3%)
 
 Configuration:
-    - grid_size: Number of levels on each side of reference (default: 5)
-    - grid_spacing_pct: Vertical spacing between levels as % of reference (default: 1.0)
-    - risk.max_position_size_pct: Position size as % of balance (default: 10%)
-    - risk.stop_loss_pct: Stop loss as % below entry (0 = disabled)
+    - grid_size: Number of grid levels (default: 10)
+    - grid_spacing_pct: Spacing between levels as % (default: 0.65)
+    - grid_quantity_absolute: Dollar amount per grid position
 """
 
 import logging
@@ -48,21 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class GridTradingStrategy(Strategy):
-    """Grid trading strategy with proper lifecycle management.
-
-    The strategy buys when price drops to grid levels below the reference price
-    and sells when price rises back to the next available grid level. It is
-    designed to profit from range-bound/oscillating market conditions.
-
-    State:
-        - reference_price: Center price for grid (set on first tick)
-        - grid_levels: Sorted list of all grid price levels
-                        (buy levels 0..N-1 below ref, sell levels N..2N-1 above ref)
-        - last_price: Previous tick price (for cross detection)
-        - grid_size: Number of levels each side of reference
-        - grid_spacing_pct: Level spacing as percentage of reference
-        - _buy_index: Grid index where current position was opened (-1 if flat)
-    """
+    """Grid trading with alternating buy/take-profit levels around reference."""
 
     def __init__(
         self,
@@ -72,138 +33,94 @@ class GridTradingStrategy(Strategy):
     ) -> None:
         super().__init__(strategy_id, symbols, time_frame)
 
-        # Grid parameters (loaded from config on first tick)
         self.reference_price: float | None = None
         self.grid_levels: list[float] = []
         self.last_price: float = 0.0
-        self.grid_size: int = 5
         self.grid_spacing_pct: float = 1.0
 
-        # Position tracking: index of the grid level where we are currently long
-        # -1 means flat (no position). Set on BUY, reset to -1 on SELL or
-        # when the engine closes the position externally (stop-loss/take-profit).
-        self._buy_index: int = -1
+        self._open_positions: dict[int, int] = {}  # buy_index -> tp_index
+        self._used_buy_levels: set[int] = set()
 
-        # Tick counter for periodic debug logging
         self._tick_count: int = 0
 
         logger.info(f"GridTradingStrategy {strategy_id} initialized")
 
     def on_tick(self, tick: EnrichedTick) -> Signal | None:
-        """Process tick and generate grid trading signals.
-
-        BUY  when price crosses down through a buy-zone level.
-        SELL when price rises through any grid level above our current buy level.
-
-        Args:
-            tick: Enriched tick data
-
-        Returns:
-            Signal if a grid level was crossed, None otherwise
-        """
         price = float(tick.price)
 
-        # ------------------------------------------------------------------
-        # Initialization: set reference price and calculate grid on first tick
-        # ------------------------------------------------------------------
         if self.reference_price is None:
             self._initialize_grid(price)
             self.last_price = price
             return None
 
         self._tick_count += 1
-        signal = None
+        signal = self._detect_crossing(price, tick) if self.last_price > 0 else None
 
-        # ------------------------------------------------------------------
-        # Detect grid level crossings
-        # ------------------------------------------------------------------
-        if self.last_price > 0:
-            signal = self._detect_crossing(price, tick)
-
-        # ------------------------------------------------------------------
-        # Periodic debugging output
-        # ------------------------------------------------------------------
         if self._tick_count % 500 == 0:
-            pos = (
-                f"grid_idx={self._buy_index} "
-                f"level={self.grid_levels[self._buy_index]:.6f}"
-                if self._buy_index >= 0
-                else "flat"
-            )
             logger.info(
                 f"[{self._strategy_id}] Tick {self._tick_count}: "
-                f"price={price:.8f}, {pos}"
+                f"price={price:.8f}, open_positions={len(self._open_positions)}"
             )
 
         self.last_price = price
         return signal
 
     def _initialize_grid(self, first_price: float) -> None:
-        """Initialize grid parameters from config and first tick price."""
         self.reference_price = first_price
-        self.grid_size = self.get_config("grid_size", 5)
-        self.grid_spacing_pct = self.get_config("grid_spacing_pct", 1.0)
+        self.grid_size = self.get_config("grid_size", 10)
+        self.grid_spacing_pct = self.get_config("grid_spacing_pct", 0.65)
         self._calculate_grid_levels()
 
         logger.info(
-            f"[{self._strategy_id}] Grid initialized BEFORE config apply: "
-            f"ref_price={self.reference_price}, grid_size={self.grid_size}, "
-            f"spacing_pct={self.grid_spacing_pct}"
-        )
-        logger.info(
-            f"[{self._strategy_id}] Grid levels AFTER config apply: "
-            f"{[round(l, 6) for l in self.grid_levels]}"
+            f"[{self._strategy_id}] Grid: ref={self.reference_price}, "
+            f"size={self.grid_size}, spacing={self.grid_spacing_pct}%, "
+            f"levels={[round(level, 6) for level in self.grid_levels]}"
         )
 
-    # ----------------------------------------------------------------------
-    # Core signal detection
-    # ----------------------------------------------------------------------
+    def _calculate_grid_levels(self) -> None:
+        """Calculate alternating buy (below ref) and TP levels for 2*spacing profit.
+
+        Grid pairs: BUY at ref - n*spacing, TP at ref - (n-2)*spacing for n=1,2,3...
+        This gives ~2*grid_spacing_pct profit per complete grid cycle (e.g., 1.3%).
+        """
+        if self.reference_price is None:
+            return
+
+        spacing = self.reference_price * (self.grid_spacing_pct / 100.0)
+        levels = []
+
+        pair_index = 0
+        for i in range(self.grid_size):
+            if i % 2 == 0:  # BUY level (below reference)
+                # For pair n (starting at 1): buy at ref - n*spacing
+                levels.append(self.reference_price - (pair_index + 1) * spacing)
+            else:  # TP level (2*spacing above corresponding buy)
+                # For pair n: TP at ref - (n-2)*spacing = BUY + 2*spacing
+                levels.append(self.reference_price - (pair_index - 1) * spacing)
+                pair_index += 1
+
+        self.grid_levels = levels
 
     def _detect_crossing(self, price: float, tick: EnrichedTick) -> Signal | None:
-        """Scan all grid levels for upward or downward crossings.
-
-        BUY  triggers when price drops BELOW a buy-zone level (below reference)
-             and we are currently flat.
-
-        SELL triggers when price rises to ANY grid level above our current buy
-             index, confirming we have an active position to close.
-
-        Returns first matched signal to avoid multiple signals per tick.
-        """
         last = self.last_price
-        is_buy_eligible = self._buy_index == -1  # No active position
-        is_sell_eligible = self._buy_index != -1  # Have active position to close
 
         for i, level in enumerate(self.grid_levels):
-            # --------------------------------------------------------------
-            # BUY signal: price drops TO a buy-zone level from above
-            # --------------------------------------------------------------
-            if level < self.reference_price and is_buy_eligible:
-                if last > level and price <= level:
+            if i % 2 == 0:  # BUY level (below reference)
+                if i not in self._used_buy_levels and last > level and price <= level:
                     return self._signal_buy(tick, level, i)
-
-            # --------------------------------------------------------------
-            # SELL signal: price rises TO a grid level above where we bought
-            #
-            # This is the key fix: sell at the NEXT level above our entry,
-            # NOT just levels above reference_price. This allows smaller
-            # profit targets and enables the grid to actually cycle.
-            # --------------------------------------------------------------
-            if is_sell_eligible and i > self._buy_index:
-                if last < level and price >= level:
+            else:  # TAKE-PROFIT level (above reference)
+                if i in self._open_positions.values() and last < level and price >= level:
                     return self._signal_sell(tick, level, i)
 
         return None
 
     def _signal_buy(self, tick: EnrichedTick, level: float, grid_index: int) -> Signal:
-        """Generate a BUY signal and update internal state."""
-        logger.info(
-            f"[{self._strategy_id}] BUY check at level {level:.6f}: "
-            f"last={self.last_price:.6f}, price={float(tick.price):.6f}, "
-            f"cross_cond=True, flat=True"
-        )
-        self._buy_index = grid_index
-        logger.info(f"[{self._strategy_id}] BUY signal at grid level {level}")
+        tp_index = grid_index + 1
+        tp_price = self.grid_levels[tp_index]
+        self._used_buy_levels.add(grid_index)
+        self._open_positions[grid_index] = tp_index
+
+        logger.info(f"[{self._strategy_id}] BUY at lvl {grid_index} ({level:.6f}), TP @ {tp_price:.6f}")
 
         return Signal(
             strategy_id=self._strategy_id,
@@ -214,25 +131,17 @@ class GridTradingStrategy(Strategy):
             metadata={
                 "grid_level": level,
                 "grid_index": grid_index,
+                "take_profit_price": tp_price,
                 "reference_price": self.reference_price,
-                "price_crossed_from": "above",
             },
         )
 
     def _signal_sell(self, tick: EnrichedTick, level: float, grid_index: int) -> Signal:
-        """Generate a SELL signal and update internal state."""
-        orig_buy_idx = self._buy_index
-        self._buy_index = -1
-        logger.info(
-            f"[{self._strategy_id}] SELL check at level {level:.6f}: "
-            f"last={self.last_price:.6f}, price={float(tick.price):.6f}, "
-            f"cross_cond=True, in_pos=True"
-        )
-        logger.info(
-            f"[{self._strategy_id}] SELL signal at grid level {level} "
-            f"(bought at grid index {orig_buy_idx} = "
-            f"{self.grid_levels[orig_buy_idx]:.6f})"
-        )
+        buy_index = grid_index - 1
+        self._open_positions.pop(buy_index, None)
+        self._used_buy_levels.discard(buy_index)
+
+        logger.info(f"[{self._strategy_id}] SELL at lvl {grid_index} ({level:.6f})")
 
         return Signal(
             strategy_id=self._strategy_id,
@@ -243,96 +152,34 @@ class GridTradingStrategy(Strategy):
             metadata={
                 "grid_level": level,
                 "grid_index": grid_index,
-                "buy_grid_index": orig_buy_idx,
                 "reference_price": self.reference_price,
-                "price_crossed_from": "below",
             },
         )
 
-    # ----------------------------------------------------------------------
-    # External position lifecycle callbacks
-    # ----------------------------------------------------------------------
-
-    def on_position_closed(self, symbol: str, price: Decimal, exit_reason: str) -> None:
-        """Handle position closure by the backtest engine.
-
-        Called when the engine closes our position externally:
-        - stop-loss triggered
-        - take-profit triggered
-        - end of backtest
-
-        Without this callback, the strategy's _buy_index would remain set
-        after a stop-loss, permanently blocking new BUY signals. This was
-        the root cause of the grid strategy getting stuck after the first
-        stop-loss event.
-
-        Args:
-            symbol: Trading pair symbol
-            price: Price at which position was closed
-            exit_reason: Reason for closure (stop_loss, take_profit, etc.)
-        """
-        if self._buy_index != -1:
-            logger.info(
-                f"[{self._strategy_id}] Position externally closed: "
-                f"reason={exit_reason}, price={price:.8f}, "
-                f"was at grid_index={self._buy_index} "
-                f"(level={self.grid_levels[self._buy_index]:.6f})"
-            )
-            self._buy_index = -1
-
-    # ----------------------------------------------------------------------
-    # Grid calculation
-    # ----------------------------------------------------------------------
-
-    def _calculate_grid_levels(self) -> None:
-        """Calculate evenly-spaced grid levels around the reference price.
-
-        Structure:
-            - grid_size levels below reference_price (buy zone, indices 0..N-1)
-            - grid_size levels above reference_price (take-profit zone, indices N..2N-1)
-        """
-        if self.reference_price is None:
-            return
-
-        spacing = self.reference_price * (self.grid_spacing_pct / 100.0)
-
-        levels: list[float] = []
-        # Buy levels below reference
-        for i in range(1, self.grid_size + 1):
-            levels.append(self.reference_price - (spacing * i))
-        # Take-profit levels above reference
-        for i in range(1, self.grid_size + 1):
-            levels.append(self.reference_price + (spacing * i))
-
-        self.grid_levels = sorted(levels)
-
-        buy_levels = [l for l in self.grid_levels if l < self.reference_price]
-        sell_levels = [l for l in self.grid_levels if l >= self.reference_price]
+    def on_position_closed(
+        self,
+        symbol: str,
+        price: Decimal,
+        exit_reason: str,
+        grid_index: int | None = None,
+    ) -> None:
         logger.info(
-            f"[{self._strategy_id}] Calculated {len(self.grid_levels)} grid levels, "
-            f"spacing={spacing:.8f}"
+            f"[{self._strategy_id}] Position closed: reason={exit_reason}, "
+            f"price={price:.8f}, grid_index={grid_index}"
         )
-        logger.info(
-            f"[{self._strategy_id}] Buy levels: {[round(l, 6) for l in buy_levels]}"
-        )
-        logger.info(
-            f"[{self._strategy_id}] Sell levels: {[round(l, 6) for l in sell_levels]}"
-        )
-
-    # ----------------------------------------------------------------------
-    # Statistics
-    # ----------------------------------------------------------------------
+        if grid_index is not None:
+            buy_index = grid_index - 1 if grid_index % 2 == 1 else grid_index
+            self._open_positions.pop(buy_index, None)
+            self._used_buy_levels.discard(buy_index)
 
     def get_stats(self) -> dict[str, Any]:
-        """Override to include custom grid state in stats."""
         stats = super().get_stats()
         stats.update(
             {
                 "reference_price": self.reference_price,
-                "grid_levels_count": len(self.grid_levels),
-                "in_position": self._buy_index != -1,
-                "grid_index": self._buy_index,
-                "last_price": self.last_price,
+                "grid_levels": self.grid_levels,
+                "open_positions_count": len(self._open_positions),
+                "used_buy_levels": list(self._used_buy_levels),
                 "tick_count": self._tick_count,
             }
         )

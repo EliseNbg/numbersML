@@ -157,7 +157,7 @@ class EnrichedTick:
     indicators: dict[str, float] = field(default_factory=dict)
 
     @classmethod
-    def from_message(cls, message: dict[str, Any]) -> "EnrichedTick":
+    def from_message(cls, message: dict[str, Any]) -> EnrichedTick:
         """Create EnrichedTick from Redis message."""
         return cls(
             symbol=message.get("symbol", ""),
@@ -429,7 +429,14 @@ class Strategy(ABC):
 
         return position
 
-    def on_position_closed(self, symbol: str, price: Decimal, exit_reason: str) -> None:
+    @abstractmethod
+    def on_position_closed(
+        self,
+        symbol: str,
+        price: Decimal,
+        exit_reason: str,
+        grid_index: int | None = None,
+    ) -> None:
         """
         Called when the backtest engine closes a position externally
         (stop loss, take profit, or end of test).
@@ -440,6 +447,7 @@ class Strategy(ABC):
             symbol: Trading pair symbol
             price: Price at which position was closed
             exit_reason: Reason for closure (stop_loss, take_profit, end_of_test, etc.)
+            grid_index: Grid level index if applicable (for grid strategies)
         """
         pass
 
