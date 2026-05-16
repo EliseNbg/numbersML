@@ -4,6 +4,7 @@ Strategy Interface - Base class and types for trading strategies.
 Provides the foundation for implementing trading strategies that
 consume enriched tick data via Redis pub/sub.
 """
+from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
