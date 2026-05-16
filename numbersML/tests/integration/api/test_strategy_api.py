@@ -203,8 +203,11 @@ class TestStrategyCRUD:
             mock_strategy.class_path = None  # Config-based strategy
 
             mock_save = AsyncMock(return_value=mock_strategy)
+            mock_create_version = AsyncMock()
+            mock_create_version.return_value = MagicMock(version=1)
             mock_repo.return_value.save = mock_save
-            mock_repo.return_value.create_version = AsyncMock()
+            mock_repo.return_value.create_version = mock_create_version
+            mock_repo.return_value.set_active_version = AsyncMock(return_value=True)
 
             response = client.post("/api/strategies", json=strategy_payload, headers=trader_headers)
             assert response.status_code == 201

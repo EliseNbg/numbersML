@@ -242,7 +242,7 @@ async def create_strategy(
             created_by=req.created_by,
         )
         saved = await repo.save(s)
-        await repo.create_version(
+        created_version = await repo.create_version(
             strategy_id=saved.id,
             config=req.config.model_dump_with_schema() if req.config else {},
             schema_version=(
@@ -250,6 +250,7 @@ async def create_strategy(
             ),
             created_by=req.created_by,
         )
+        await repo.set_active_version(saved.id, created_version.version)
         return StrategyResponse.from_domain(saved)
     except Exception as e:
         logger.error(f"Failed to create strategy: {e}", exc_info=True)
