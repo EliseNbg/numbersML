@@ -10,6 +10,7 @@ The strategy maintains:
 """
 
 import logging
+from decimal import Decimal
 from typing import Any
 
 from src.domain.strategies.base import EnrichedTick, Signal, SignalType, Strategy
@@ -149,3 +150,13 @@ class SMACrossStrategy(Strategy):
             }
         )
         return stats
+
+    def on_position_closed(
+        self,
+        symbol: str,
+        price: Decimal,
+        exit_reason: str,
+        grid_index: int | None = None,
+    ) -> None:
+        """Handle position closure."""
+        self.in_position = False

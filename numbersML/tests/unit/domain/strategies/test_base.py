@@ -485,3 +485,13 @@ class SimpleTestStrategy(Strategy):
             signal_type=SignalType.HOLD,
             price=tick.price,
         )
+
+    def on_position_closed(
+        self,
+        symbol: str,
+        price: Decimal,
+        exit_reason: str,
+        grid_index: int | None = None,
+    ) -> None:
+        """Handle position closure."""
+        pass

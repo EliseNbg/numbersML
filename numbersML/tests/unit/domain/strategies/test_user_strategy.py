@@ -73,6 +73,16 @@ class MockRSIStrategy(Strategy):
         )
         return stats
 
+    def on_position_closed(
+        self,
+        symbol: str,
+        price: Decimal,
+        exit_reason: str,
+        grid_index: int | None = None,
+    ) -> None:
+        """Handle position closure."""
+        self.position_open = False
+
 
 class TestUserStrategyState:
     """Test persistent state between ticks."""

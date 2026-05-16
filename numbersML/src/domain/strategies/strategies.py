@@ -8,6 +8,8 @@ Implements example trading strategies:
 - Bollinger Bands Mean Reversion
 """
 
+from decimal import Decimal
+
 import logging
 
 from src.domain.strategies.base import (
@@ -135,6 +137,16 @@ class RSIStrategy(Strategy):
             )
 
         return None
+
+    def on_position_closed(
+        self,
+        symbol: str,
+        price: Decimal,
+        exit_reason: str,
+        grid_index: int | None = None,
+    ) -> None:
+        """Handle position closure."""
+        pass
 
 
 class MACDStrategy(Strategy):
@@ -272,6 +284,16 @@ class MACDStrategy(Strategy):
 
         return None
 
+    def on_position_closed(
+        self,
+        symbol: str,
+        price: Decimal,
+        exit_reason: str,
+        grid_index: int | None = None,
+    ) -> None:
+        """Handle position closure."""
+        pass
+
 
 class SMACrossoverStrategy(Strategy):
     """
@@ -396,6 +418,16 @@ class SMACrossoverStrategy(Strategy):
 
         return None
 
+    def on_position_closed(
+        self,
+        symbol: str,
+        price: Decimal,
+        exit_reason: str,
+        grid_index: int | None = None,
+    ) -> None:
+        """Handle position closure."""
+        pass
+
 
 class BollingerBandsStrategy(Strategy):
     """
@@ -506,6 +538,16 @@ class BollingerBandsStrategy(Strategy):
             )
 
         return None
+
+    def on_position_closed(
+        self,
+        symbol: str,
+        price: Decimal,
+        exit_reason: str,
+        grid_index: int | None = None,
+    ) -> None:
+        """Handle position closure."""
+        pass
 
 
 class MultiIndicatorStrategy(Strategy):
@@ -677,3 +719,13 @@ class MultiIndicatorStrategy(Strategy):
                 "condition": condition,
             },
         )
+
+    def on_position_closed(
+        self,
+        symbol: str,
+        price: Decimal,
+        exit_reason: str,
+        grid_index: int | None = None,
+    ) -> None:
+        """Handle position closure."""
+        pass

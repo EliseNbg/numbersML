@@ -1,7 +1,8 @@
 """Example RSI Strategy for testing class-based strategy loading."""
 
-import logging
+from decimal import Decimal
 from typing import Any
+import logging
 
 from src.domain.strategies.base import EnrichedTick, Signal, SignalType, Strategy
 
@@ -114,3 +115,13 @@ class ExampleRSIStrategy(Strategy):
             }
         )
         return stats
+
+    def on_position_closed(
+        self,
+        symbol: str,
+        price: Decimal,
+        exit_reason: str,
+        grid_index: int | None = None,
+    ) -> None:
+        """Handle position closure."""
+        self.position_open = False
