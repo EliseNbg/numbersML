@@ -70,7 +70,11 @@
       "properties": {
         "order_type": {"type": "string", "enum": ["market", "limit"]},
         "slippage_bps": {"type": "number", "minimum": 0, "maximum": 500},
-        "fee_bps": {"type": "number", "minimum": 0, "maximum": 200}
+        "fee_bps": {"type": "number", "minimum": 0, "maximum": 200},
+        "grid_profit_pct": {"type": "number", "minimum": 0, "maximum": 100},
+        "grid_quantity_absolute": {"type": "number", "minimum": 0},
+        "grid_size": {"type": "integer", "minimum": 1},
+        "grid_spacing_pct": {"type": "number", "minimum": 0}
       }
     },
     "mode": {"type": "string", "enum": ["paper", "live"]},

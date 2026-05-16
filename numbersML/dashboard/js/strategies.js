@@ -605,7 +605,7 @@ async function createStrategy() {
                 symbols: formData.get('symbols').split(',').map(s => s.trim()).filter(s => s),
                 timeframe: formData.get('timeframe')
             },
-            signal: { type: 'rsi', params: { period: 14, oversold: 30, overbought: 70 } }, // Dummy signal (ignored for class-based)
+            signal: { type: 'rsi', params: { period: 14, oversold: 30, overbought: 70 } },
             risk: {
                 max_position_size_pct: 10,
                 max_daily_loss_pct: 5,
@@ -620,6 +620,10 @@ async function createStrategy() {
             mode: payload.mode,
             status: 'draft'
         };
+        if (payload.config.universe.symbols.length === 0) {
+            showAlert('warning', 'At least one symbol must be specified');
+            return;
+        }
     } else {
         // Config-based strategy
         let config;
@@ -641,6 +645,10 @@ async function createStrategy() {
         config.universe = config.universe || {};
         config.universe.timeframe = formData.get('timeframe');
         config.universe.symbols = formData.get('symbols').split(',').map(s => s.trim()).filter(s => s);
+        if (config.universe.symbols.length === 0) {
+            showAlert('danger', 'At least one symbol must be specified in universe.symbols');
+            return;
+        }
     }
 
     try {
@@ -718,6 +726,12 @@ async function saveModifiedStrategy() {
     } catch (e) {
         console.error('[saveModifiedStrategy] Invalid JSON in configuration:', e);
         showAlert('danger', 'Invalid JSON in configuration');
+        return;
+    }
+
+    // Guard: must have at least one symbol
+    if (!config.universe || !config.universe.symbols || config.universe.symbols.length === 0) {
+        showAlert('danger', 'Configuration must have at least one symbol in universe.symbols');
         return;
     }
 
