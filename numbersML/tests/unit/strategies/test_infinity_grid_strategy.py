@@ -151,12 +151,10 @@ class TestInfinityGridStrategy:
         )
 
         # Process the tick before (should not generate signal)
-        strategy.last_price = float(last_price)
         signal_before = strategy.on_tick(tick_before)
         assert signal_before is None
 
         # Process the tick at/below level (should generate signal)
-        strategy.last_price = float(last_price)  # This is what _detect_crossing uses as 'last'
         signal_at = strategy.on_tick(tick_at)
         
         assert signal_at is not None
@@ -185,12 +183,11 @@ class TestInfinityGridStrategy:
         )
         
         # Process the tick before (should not generate signal)
-        strategy.last_price = float(last_price)
+        # last_price was already set by Strategy.on_tick to last processed price
         signal_before_4 = strategy.on_tick(tick_before_4)
         assert signal_before_4 is None
 
         # Process the tick at/below level (should generate signal)
-        strategy.last_price = float(last_price)
         signal_at_4 = strategy.on_tick(tick_at_4)
         
         assert signal_at_4 is not None

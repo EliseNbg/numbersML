@@ -134,18 +134,33 @@ class InfinityGridStrategy(Strategy):
                 crossed_level_index = i
                 break
 
-        # If we crossed a level, check if it's the adjacent level to unlock the locked level
+        # If we crossed a level, check if it is the adjacent level to unlock the locked level
         if crossed_any_level and crossed_level_index is not None:
             locked_level = self._symbol_locked_level.get(symbol)
             if locked_level is not None:
-                # Check if crossed level is adjacent to locked level (N-1 or N+1)
-                if abs(crossed_level_index - locked_level) == 1:
+                # Unlock when the crossed level is adjacent to the locked level,
+                # OR when we cross from one side of the reference price to the other
+                # (crossing FROM below to above the reference is a valid floor-reset).
+                half_size = self.grid_size // 2
+                cross_side_unlock = (
+                    locked_level < half_size and crossed_level_index >= half_size
+                    or locked_level >= half_size and crossed_level_index < half_size
+                )
+                is_adjacent = abs(crossed_level_index - locked_level) == 1
+
+                if is_adjacent:
                     # Unlock the level and track which level caused unlock
                     self._symbol_locked_level[symbol] = None
                     unlocked_at_level = crossed_level_index
                     logger.info(
                         f"[{self._strategy_id}] Unlocked buying after crossing adjacent level "
                         f"(was locked at {locked_level}, crossed at {crossed_level_index}) for {symbol}"
+                    )
+                elif cross_side_unlock:
+                    self._symbol_locked_level[symbol] = None
+                    logger.info(
+                        f"[{self._strategy_id}] Unlocked buying after crossing reference boundary "
+                        f"(was locked at {locked_level}, crossed at {crossed_level_index} on opposite side) for {symbol}"
                     )
 
         # Check for BUY signals (price crossing from above to below)
