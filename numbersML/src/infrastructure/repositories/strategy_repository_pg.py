@@ -212,7 +212,7 @@ class StrategyRepositoryPG(StrategyRepository):
             await conn.execute(
                 """
                 UPDATE strategies
-                SET status = 'active', current_version = $2, updated_at = NOW()
+                SET current_version = $2, updated_at = NOW()
                 WHERE id = $1
                 """,
                 strategy_id,
