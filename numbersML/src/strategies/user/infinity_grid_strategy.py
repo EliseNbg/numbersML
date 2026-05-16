@@ -2,13 +2,15 @@
 Infinity Grid Trading Strategy.
 
 Grid Structure:
-    - grid_size is total number of BUY levels
-    - All indices (0, 1, 2...): BUY levels below reference
-    - Buy at level i, sell at expected profit price (current buy price + grid_profit_pct%)
+    - grid_size is total number of grid levels (both above and below reference price)
+    - All indices (0, 1, 2...): grid levels
+    - Buy at level i when price crosses from above to below the level
+    - After a buy signal, lock buying until price crosses either level i-1 or i+1
+    - Sell at expected profit price (current buy price + grid_profit_pct%)
     - Market (or user) is responsible for selling the asset at expected profit price.
 
 Configuration:
-    - grid_size: Number of grid levels (BUY levels only)
+    - grid_size: Number of grid levels
     - grid_spacing_pct: Spacing between levels as % (default: 0.65)
     - grid_profit_pct: Profit percentage for each BUY (default: 0.85)
     - grid_quantity_absolute: Dollar amount per grid position
@@ -40,8 +42,11 @@ class InfinityGridStrategy(Strategy):
         self.grid_spacing_pct: float = 1.0
         self.grid_profit_pct: float = 0.85
 
-        # Track per symbol: which buy levels have been used and open position grid index
+        # Track per symbol: which level is locked after a signal (None means not locked)
+        self._symbol_locked_level: dict[str, int | None] = {}
+        # Track per symbol: which buy levels have been used (for statistics)
         self._symbol_used_buy_levels: dict[str, set[int]] = {}
+        # Track per symbol: the grid index of open position (None if no position)
         self._symbol_open_positions: dict[str, int | None] = {}
 
         self._tick_count: int = 0
@@ -61,7 +66,7 @@ class InfinityGridStrategy(Strategy):
 
         if self._tick_count % 500 == 0:
             logger.info(
-                f"[{self._strategy_id}] Tick {self._tick_count}: "
+                f"{tick.time} Tick {self._tick_count}: "
                 f"price={price:.8f}, open_positions={sum(1 for v in self._symbol_open_positions.values() if v is not None)}"
             )
 
@@ -77,6 +82,7 @@ class InfinityGridStrategy(Strategy):
 
         # Initialize per-symbol tracking
         for symbol in self.symbols:
+            self._symbol_locked_level[symbol] = None
             self._symbol_used_buy_levels[symbol] = set()
             self._symbol_open_positions[symbol] = None
 
@@ -88,16 +94,25 @@ class InfinityGridStrategy(Strategy):
         )
 
     def _calculate_grid_levels(self) -> None:
-        """Calculate BUY levels only (below reference price)."""
+        """Calculate grid levels both above and below reference price with uniform spacing.
+        The reference price is not included in the levels array.
+        Half of the levels are below reference, half are above (for even grid_size).
+        Only levels below reference price are used for BUY signals.
+        """
         if self.reference_price is None:
             return
 
         spacing = self.reference_price * (self.grid_spacing_pct / 100.0)
         levels = []
-
-        for i in range(self.grid_size):
-            # BUY level: reference_price - (i+1)*spacing
-            levels.append(self.reference_price - (i + 1) * spacing)
+        half_size = self.grid_size // 2
+        
+        # Calculate levels below reference: ref - half_size*spacing, ref - (half_size-1)*spacing, ..., ref - 1*spacing
+        for i in range(half_size, 0, -1):
+            levels.append(self.reference_price - i * spacing)
+            
+        # Calculate levels above reference: ref + 1*spacing, ref + 2*spacing, ..., ref + half_size*spacing
+        for i in range(1, half_size + 1):
+            levels.append(self.reference_price + i * spacing)
 
         self.grid_levels = levels
 
@@ -105,9 +120,77 @@ class InfinityGridStrategy(Strategy):
         last = self.last_price
         symbol = tick.symbol
 
+        # Track the level that caused unlock (to prevent immediate buy at that level)
+        unlocked_at_level = None
+
+        # Check if we crossed any level (either direction)
+        crossed_any_level = False
+        crossed_level_index = None
+
         for i, level in enumerate(self.grid_levels):
-            # Check if this BUY level is available for this symbol
-            if i not in self._symbol_used_buy_levels[symbol] and last > level and price <= level:
+            # Check if we crossed this level (either direction)
+            if (last > level and price <= level) or (last < level and price >= level):
+                crossed_any_level = True
+                crossed_level_index = i
+                break
+
+        # If we crossed a level, check if it's the adjacent level to unlock the locked level
+        if crossed_any_level and crossed_level_index is not None:
+            locked_level = self._symbol_locked_level.get(symbol)
+            if locked_level is not None:
+                # Check if crossed level is adjacent to locked level (N-1 or N+1)
+                if abs(crossed_level_index - locked_level) == 1:
+                    # Unlock the level and track which level caused unlock
+                    self._symbol_locked_level[symbol] = None
+                    unlocked_at_level = crossed_level_index
+                    logger.info(
+                        f"[{self._strategy_id}] Unlocked buying after crossing adjacent level "
+                        f"(was locked at {locked_level}, crossed at {crossed_level_index}) for {symbol}"
+                    )
+
+        # Check for BUY signals (price crossing from above to below)
+        for i, level in enumerate(self.grid_levels):
+            # Skip BUY at the level that just unlocked us (prevents buy storm)
+            if i == unlocked_at_level:
+                continue
+            if self._symbol_locked_level.get(symbol) is None and last > level and price <= level:
+                return self._signal_buy(tick, level, i, symbol)
+
+        return None
+
+    def _detect_crossing_old(self, price: float, tick: EnrichedTick) -> Signal | None:
+        last = self.last_price
+        symbol = tick.symbol
+
+        # Check if we crossed any level (either direction)
+        crossed_any_level = False
+        crossed_level_index = None
+        
+        for i, level in enumerate(self.grid_levels):
+            # Check if we crossed this level (either direction)
+            if (last > level and price <= level) or (last < level and price >= level):
+                crossed_any_level = True
+                crossed_level_index = i
+                break
+
+        # If we crossed a level, check if it's the adjacent level to unlock the locked level
+        if crossed_any_level and crossed_level_index is not None:
+            # If we have a locked level for this symbol, check if the crossed level is adjacent
+            locked_level = self._symbol_locked_level.get(symbol)
+            if locked_level is not None:
+                # Check if crossed level is adjacent to locked level (N-1 or N+1)
+                if abs(crossed_level_index - locked_level) == 1:
+                    # Unlock the level
+                    self._symbol_locked_level[symbol] = None
+                    logger.info(
+                        f"[{self._strategy_id}] Unlocked buying after crossing adjacent level "
+                        f"(was locked at {locked_level}, crossed at {crossed_level_index}) for {symbol}"
+                    )
+
+        # Check for BUY signals (price crossing from above to below)
+        for i, level in enumerate(self.grid_levels):
+            # Check if buying is not locked for this symbol and price crossed from above to below
+            if self._symbol_locked_level.get(symbol) is None and last > level and price <= level:
                 return self._signal_buy(tick, level, i, symbol)
 
         return None
@@ -116,9 +199,10 @@ class InfinityGridStrategy(Strategy):
         # Calculate expected profit price: buy_price * (1 + grid_profit_pct/100)
         expected_profit_price = level * (1 + self.grid_profit_pct / 100.0)
 
-        # Mark level as used for this symbol
+        # Lock this level for this symbol (prevent another signal at same level until adjacent level crossed)
+        self._symbol_locked_level[symbol] = grid_index
+        # Mark this level as used and set as open position for statistics
         self._symbol_used_buy_levels[symbol].add(grid_index)
-        # Mark that we have an open position at this grid index for this symbol
         self._symbol_open_positions[symbol] = grid_index
 
         logger.info(

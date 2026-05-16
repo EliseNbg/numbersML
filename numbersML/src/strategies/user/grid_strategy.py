@@ -72,7 +72,7 @@ class GridTradingStrategy(Strategy):
         self._calculate_grid_levels()
 
         logger.info(
-            f"[{self._strategy_id}] Grid: ref={self.reference_price}, "
+            f"[{self._strategy_id}] GridTradingStrategy: ref={self.reference_price}, "
             f"size={self.grid_size}, spacing={self.grid_spacing_pct}%, "
             f"levels={[round(level, 6) for level in self.grid_levels]}"
         )

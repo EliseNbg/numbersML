@@ -36,6 +36,7 @@ class TestInfinityGridStrategy:
         assert strategy.symbols == ["BTC/USDT"]
         assert strategy.reference_price is None
         assert len(strategy.grid_levels) == 0
+        assert strategy._symbol_locked_level == {}
 
     def test_initialize_grid(self, strategy, sample_tick):
         """Test grid initialization."""
@@ -54,15 +55,39 @@ class TestInfinityGridStrategy:
         assert strategy.grid_profit_pct == 0.85
         assert len(strategy.grid_levels) == 8
 
-        # Check grid levels are below reference price
-        for level in strategy.grid_levels:
-            assert level < 50000.0
+        # Check grid levels (with even grid_size=8, reference is between levels)
+        # half_size = 4
+        # Levels 0-3: below reference (indices 0,1,2,3)
+        # Levels 4-7: above reference (indices 4,5,6,7)
+        expected_spacing = 50000.0 * (0.65 / 100.0)  # 325.0
+        expected_levels = [
+            50000.0 - 4 * expected_spacing,  # 48700.0
+            50000.0 - 3 * expected_spacing,  # 49025.0
+            50000.0 - 2 * expected_spacing,  # 49350.0
+            50000.0 - 1 * expected_spacing,  # 49675.0
+            50000.0 + 1 * expected_spacing,  # 50325.0
+            50000.0 + 2 * expected_spacing,  # 50650.0
+            50000.0 + 3 * expected_spacing,  # 50975.0
+            50000.0 + 4 * expected_spacing,  # 51300.0
+        ]
+        
+        for i, expected in enumerate(expected_levels):
+            assert abs(strategy.grid_levels[i] - expected) < 0.01
+
+        # Check that only levels below reference are used for BUY signals
+        for i in range(4):  # First 4 levels (indices 0-3) are below reference
+            assert strategy.grid_levels[i] < 50000.0
+        for i in range(4, 8):  # Last 4 levels (indices 4-7) are above reference
+            assert strategy.grid_levels[i] > 50000.0
 
         # Check spacing is consistent
-        expected_spacing = 50000.0 * (0.65 / 100.0)  # 325.0
         for i in range(len(strategy.grid_levels) - 1):
-            diff = strategy.grid_levels[i] - strategy.grid_levels[i + 1]
-            assert abs(diff - expected_spacing) < 0.01
+            diff = strategy.grid_levels[i + 1] - strategy.grid_levels[i]
+            # The middle gap (between last below-ref and first above-ref level) is 2*spacing
+            if i == 3:  # Between index 3 and 4 (last below-ref and first above-ref)
+                assert abs(diff - 2 * expected_spacing) < 0.01
+            else:
+                assert abs(diff - expected_spacing) < 0.01
 
     def test_signal_buy_generates_correct_signal(self, strategy, sample_tick):
         """Test that _signal_buy generates correct signal with expected profit price."""
@@ -93,10 +118,21 @@ class TestInfinityGridStrategy:
         strategy._initialize_grid(50000.0)
         strategy.grid_spacing_pct = 0.65  # 325 spacing
         strategy.grid_profit_pct = 0.85
+        
+        # Disable reference price reset for this test by using levels close to reference
+        # that won't trigger the 2% threshold when we move around them
+        strategy.set_config("grid_size", 8)
 
-        # Set up price crossing scenario: last price above level, current price at/below level
-        last_price = strategy.grid_levels[0] + 10  # Above the level
-        current_price = strategy.grid_levels[0] - 10  # Below the level
+        # With grid_size=8 (even), half_size=4
+        # Levels 0-3: below reference (indices 0,1,2,3)
+        # Levels 4-7: above reference (indices 4,5,6,7)
+        # Test with a level below reference (index 1) and a level above reference (index 4)
+        # These levels are within 2% of reference price to avoid triggering reset
+        
+        # Test level below reference (index 1)
+        level_1 = strategy.grid_levels[1]  # Should be 50000 - 3*spacing = 49025
+        last_price = level_1 + 1  # Above the level (small move to avoid 2% reset)
+        current_price = level_1 - 1  # Below the level
 
         # Create ticks
         tick_before = EnrichedTick(
@@ -125,7 +161,41 @@ class TestInfinityGridStrategy:
         
         assert signal_at is not None
         assert signal_at.signal_type == SignalType.BUY
-        assert signal_at.metadata["grid_index"] == 0
+        assert signal_at.metadata["grid_index"] == 1
+        
+        # Test level above reference (index 4) - should also generate BUY signal when crossed from above
+        level_4 = strategy.grid_levels[4]  # Should be 50000 + 1*spacing = 50325
+        last_price = level_4 + 1  # Above the level (small move)
+        current_price = level_4 - 1  # Below the level
+        
+        # Process ticks for level 4
+        tick_before_4 = EnrichedTick(
+            symbol="BTC/USDT",
+            price=Decimal(str(last_price)),
+            volume=Decimal("1.5"),
+            time=Decimal("1640995202"),
+            indicators={},
+        )
+        tick_at_4 = EnrichedTick(
+            symbol="BTC/USDT",
+            price=Decimal(str(current_price)),
+            volume=Decimal("1.5"),
+            time=Decimal("1640995203"),
+            indicators={},
+        )
+        
+        # Process the tick before (should not generate signal)
+        strategy.last_price = float(last_price)
+        signal_before_4 = strategy.on_tick(tick_before_4)
+        assert signal_before_4 is None
+
+        # Process the tick at/below level (should generate signal)
+        strategy.last_price = float(last_price)
+        signal_at_4 = strategy.on_tick(tick_at_4)
+        
+        assert signal_at_4 is not None
+        assert signal_at_4.signal_type == SignalType.BUY
+        assert signal_at_4.metadata["grid_index"] == 4
 
     def test_on_position_closed_cleans_up_state(self, strategy):
         """Test that on_position_closed properly cleans up state."""
