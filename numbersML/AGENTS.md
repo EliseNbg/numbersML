@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Python 3.11 real-time crypto trading pipeline with ML inference. Uses asyncpg (PostgreSQL),
+Python 3.14 real-time crypto trading pipeline with ML inference. Uses asyncpg (PostgreSQL),
 FastAPI, PyTorch, and Binance WebSocket feeds. Follows Domain-Driven Design (DDD).
 
 ## Environment Setup
@@ -14,7 +14,7 @@ pip install -e ".[dev]"                          # Editable install with dev ext
 docker compose -f docker/docker-compose-infra.yml up -d  # Start Postgres + Redis
 ```
 
-Python version is pinned to **3.11** (`.python-version`).
+Python version is pinned to **3.14** (`.python-version`).
 
 ### Test Database Setup
 
@@ -47,7 +47,7 @@ The pytest fixture in `tests/integration/conftest.py` automatically sets up test
 ```bash
 ruff check src/ tests/                  # Lint (rules: E, W, F, I, N, UP, B, C4)
 ruff check --fix src/ tests/            # Lint with auto-fix
-black src/ tests/                       # Format (line-length=100, py311)
+black src/ tests/                       # Format (line-length=100, py314)
 mypy src/                               # Type checking (strict mode)
 pre-commit run --all-files              # Run all pre-commit hooks
 ```
@@ -113,7 +113,7 @@ docker/                      # docker-compose-infra.yml
 - **Line length**: 100 characters (`black` + `ruff` both configured to 100)
 - **Formatter**: `black` (do not manually reformat; run `black src/ tests/`)
 - **Linter**: `ruff` with rule sets E, W, F, I, N, UP, B, C4 (E501 ignored)
-- **Target**: Python 3.11 syntax and stdlib
+- **Target**: Python 3.14 syntax and stdlib
 
 ### Imports
 
@@ -138,7 +138,7 @@ docker/                      # docker-compose-infra.yml
 - Return type `-> None` is explicit, never omitted
 - Use `Optional[X]` or `X | None` (both styles exist; prefer `X | None` for new code)
 - Use `Dict`, `List`, `Tuple` from `typing` for complex generics; prefer built-in generics
-  (`dict[str, Any]`, `list[str]`) for Python 3.11+ new code
+   (`dict[str, Any]`, `list[str]`) for Python 3.14 new code
 - `numpy.ndarray` types should be explicitly typed
 - `mypy` is relaxed for `src.infrastructure.*` and `tests.*` (typed defs not required there)
 

@@ -6,13 +6,16 @@ import asyncio
 import os
 import sys
 
+# Ensure user site-packages are disabled FIRST before any imports
+sys.path = [p for p in sys.path if 'local/lib/python' not in p.replace('\\', '/')]
+
+import pytest
+
 # Add src to path for imports
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 src_path = os.path.join(project_root, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
-
-import pytest
 
 from src.infrastructure.database.config import get_test_db_url
 

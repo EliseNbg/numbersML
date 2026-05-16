@@ -2,31 +2,31 @@
 -r requirements.txt
 
 # ML Training (psycopg2 for synchronous dataset loading)
-psycopg2-binary==2.9.9
+psycopg2-binary>=2.9.9
 
 # Testing
-pytest==7.4.3
-pytest-asyncio==0.21.1
-pytest-cov==4.1.0
-pytest-mock==3.12.0
-pytest-timeout==2.2.0
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+pytest-cov>=4.1.0
+pytest-mock>=3.12.0
+pytest-timeout>=2.3.0
 
 # Type checking
-mypy==1.7.1
+mypy>=1.8.0
 
 # Linting & Formatting
-ruff==0.1.8
-black==23.12.0
+ruff>=0.2.0
+black>=24.1.0
 
 # Git hooks
-pre-commit==3.6.0
+pre-commit>=3.6.0
 
 # Testing utilities
-testcontainers==3.7.1
+testcontainers>=4.0.0
 
 # API testing (for dashboard)
-httpx==0.26.0
-python-multipart==0.0.9
+httpx>=0.27.0
+python-multipart>=0.0.9
 
 # CLI utilities
-psutil==7.2.2
+psutil>=6.0.0
