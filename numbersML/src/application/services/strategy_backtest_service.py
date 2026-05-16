@@ -68,11 +68,20 @@ class StrategyBacktestService:
         )
 
         if config_version.id is not None:
+            # Use the UTC-normalised times from BacktestResult so that the
+            # stored time_range_start / time_range_end always reflect the
+            # exact UTC window the engine simulated, regardless of whether
+            # the caller supplied timezone-naive datetimes (e.g. from an API
+            # request or CLI).  BacktestEngine.run_backtest already converts
+            # naive inputs to UTC-aware datetimes internally, and the
+            # BacktestResult carries those corrected values.
+            saved_start_time = result.start_time
+            saved_end_time = result.end_time
             await self._backtest_repo.save(
                 strategy_id=strategy_id,
                 strategy_version_id=config_version.id,
-                time_range_start=start_time,
-                time_range_end=end_time,
+                time_range_start=saved_start_time,
+                time_range_end=saved_end_time,
                 initial_balance=initial_balance,
                 final_balance=result.final_balance,
                 metrics=serialize_metrics(result.metrics),

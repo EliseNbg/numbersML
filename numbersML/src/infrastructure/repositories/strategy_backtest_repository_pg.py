@@ -141,10 +141,20 @@ class StrategyBacktestRepositoryPG:
         if result is None:
             return None
 
-        # Load price series from candles if we have symbol and time range
+        # Load price series from candles if we have symbol and time range.
+        # time_range_start / time_range_end may come back as naive datetimes
+        # for backtest records saved before the UTC-normalisation fix in
+        # StrategyBacktestService; coerce them to UTC-aware so the candle
+        # query window is always correct regardless of how the record was
+        # originally stored.
         symbol = result.get("symbol")
         start_time = result.get("time_range_start")
         end_time = result.get("time_range_end")
+
+        if isinstance(start_time, datetime) and start_time.tzinfo is None:
+            start_time = start_time.replace(tzinfo=UTC)
+        if isinstance(end_time, datetime) and end_time.tzinfo is None:
+            end_time = end_time.replace(tzinfo=UTC)
 
         if symbol and start_time and end_time:
             result["price_series"] = await self._load_price_series(symbol, start_time, end_time)

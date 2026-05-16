@@ -27,10 +27,10 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-# Add user site-packages AND .venv FIRST (before any other imports)
+# Add user site-packages AND .venv FIRST (before local package imports)
 script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(os.path.dirname(script_dir))
 
@@ -43,10 +43,6 @@ if os.path.exists(venv_site) and venv_site not in sys.path:
 USER_SITE = "/home/andy/.local/lib/python3.13/site-packages"
 if USER_SITE not in sys.path:
     sys.path.insert(0, USER_SITE)
-
-import argparse
-import logging
-import sys
 
 from src.application.services.backtest_engine import BacktestEngine
 from src.application.services.strategy_backtest_service import StrategyBacktestService
@@ -231,7 +227,7 @@ async def run_backtest_async(args: argparse.Namespace) -> dict:
             except ValueError:
                 raise ValueError(f"Invalid start-time format: {args.start_time}")
         else:
-            start_time = datetime.now() - timedelta(days=7)
+            start_time = datetime.now(UTC) - timedelta(days=7)
 
         if args.end_time:
             try:
@@ -239,7 +235,7 @@ async def run_backtest_async(args: argparse.Namespace) -> dict:
             except ValueError:
                 raise ValueError(f"Invalid end-time format: {args.end_time}")
         else:
-            end_time = datetime.now()
+            end_time = datetime.now(UTC)
 
         # Validate time range
         if end_time <= start_time:
@@ -313,7 +309,7 @@ async def run_backtest_async(args: argparse.Namespace) -> dict:
                 if result.debug_messages
                 else None
             ),
-            "completed_at": datetime.now().isoformat(),
+            "completed_at": datetime.now(UTC).isoformat(),
         }
 
         return serialized_result
