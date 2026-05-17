@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Key Management - Crypto Trading</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        h1 { margin-bottom: 20px; color: #1a1a1a; }
+        .keys-table { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
+        .keys-table table { width: 100%; border-collapse: collapse; }
+        .keys-table th { background: #f9fafb; padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; color: #666; text-transform: uppercase; border-bottom: 1px solid #e5e7eb; }
+        .keys-table td { padding: 12px 16px; border-bottom: 1px solid #f3f4f6; font-size: 14px; }
+        .keys-table tr:hover { background: #f9fafb; }
+        .status-active { color: #22c55e; font-weight: 500; }
+        .status-inactive { color: #ef4444; font-weight: 500; }
+        .actions { display: flex; gap: 10px; margin-bottom: 20px; }
+        .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; }
+        .btn-primary { background: #3b82f6; color: white; }
+        .btn-primary:hover { background: #2563eb; }
+        .btn-secondary { background: #e5e7eb; color: #374151; }
+        .btn-secondary:hover { background: #d1d5db; }
+        .btn-danger { background: #ef4444; color: white; }
+        .btn-danger:hover { background: #dc2626; }
+        .last-updated { font-size: 12px; color: #666; margin-top: 10px; }
+        .nav { margin-bottom: 20px; }
+        .nav a { margin-right: 15px; color: #3b82f6; text-decoration: none; }
+        .nav a:hover { text-decoration: underline; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 100; }
+        .modal.active { display: flex; align-items: center; justify-content: center; }
+        .modal-content { background: white; border-radius: 8px; padding: 24px; width: 400px; max-width: 90%; }
+        .modal-content h2 { margin-bottom: 16px; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; margin-bottom: 4px; font-size: 14px; font-weight: 500; }
+        .form-group input, .form-group select { width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
+        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav">
+            <a href="index.html">Dashboard</a>
+            <a href="strategies.html">Strategies</a>
+            <a href="orders.html">Orders</a>
+            <a href="api_keys.html">API Keys</a>
+        </div>
+        <h1>API Key Management</h1>
+
+        <div class="actions">
+            <button class="btn btn-primary" onclick="showAddModal()">Add Key</button>
+            <button class="btn btn-secondary" onclick="refreshData()">Refresh</button>
+        </div>
+
+        <div class="keys-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Environment</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Last Used</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="keys-body">
+                    <tr><td colspan="6" style="text-align:center;padding:40px;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="last-updated">Last updated: <span id="last-updated">-</span></div>
+    </div>
+
+    <div class="modal" id="add-modal">
+        <div class="modal-content">
+            <h2>Add API Key</h2>
+            <div class="form-group">
+                <label>Name</label>
+                <input type="text" id="key-name" placeholder="e.g. Testnet Key">
+            </div>
+            <div class="form-group">
+                <label>Environment</label>
+                <select id="key-env">
+                    <option value="testnet">Testnet</option>
+                    <option value="mainnet">Mainnet</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>API Key</label>
+                <input type="text" id="key-api" placeholder="Enter API key">
+            </div>
+            <div class="form-group">
+                <label>API Secret</label>
+                <input type="password" id="key-secret" placeholder="Enter API secret">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="hideAddModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="addKey()">Add</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function refreshData() {
+            try {
+                const response = await fetch('/api/keys');
+                const keys = await response.json();
+
+                const tbody = document.getElementById('keys-body');
+                if (keys.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;">No API keys found</td></tr>';
+                } else {
+                    tbody.innerHTML = keys.map(k => `
+                        <tr>
+                            <td>${k.name}</td>
+                            <td>${k.environment}</td>
+                            <td class="${k.is_active ? 'status-active' : 'status-inactive'}">${k.is_active ? 'Active' : 'Inactive'}</td>
+                            <td>${new Date(k.created_at).toLocaleDateString()}</td>
+                            <td>${k.last_used_at ? new Date(k.last_used_at).toLocaleString() : 'Never'}</td>
+                            <td>
+                                <button class="btn btn-secondary" onclick="testKey('${k.id}')">Test</button>
+                                <button class="btn btn-danger" onclick="deleteKey('${k.id}')">Delete</button>
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+
+                document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+            } catch (err) {
+                console.error('Failed to refresh:', err);
+            }
+        }
+
+        function showAddModal() { document.getElementById('add-modal').classList.add('active'); }
+        function hideAddModal() { document.getElementById('add-modal').classList.remove('active'); }
+
+        async function addKey() {
+            const name = document.getElementById('key-name').value;
+            const env = document.getElementById('key-env').value;
+            const apiKey = document.getElementById('key-api').value;
+            const apiSecret = document.getElementById('key-secret').value;
+
+            if (!name || !apiKey || !apiSecret) {
+                alert('All fields are required');
+                return;
+            }
+
+            try {
+                await fetch(`/api/keys?name=${encodeURIComponent(name)}&environment=${env}&api_key=${encodeURIComponent(apiKey)}&api_secret=${encodeURIComponent(apiSecret)}`, { method: 'POST' });
+                hideAddModal();
+                refreshData();
+            } catch (err) {
+                alert('Failed to add key');
+            }
+        }
+
+        async function testKey(keyId) {
+            try {
+                const response = await fetch(`/api/keys/${keyId}/test`, { method: 'POST' });
+                const result = await response.json();
+                alert(result.message);
+            } catch (err) {
+                alert('Failed to test key');
+            }
+        }
+
+        async function deleteKey(keyId) {
+            if (!confirm('Delete this API key?')) return;
+            try {
+                await fetch(`/api/keys/${keyId}`, { method: 'DELETE' });
+                refreshData();
+            } catch (err) {
+                alert('Failed to delete key');
+            }
+        }
+
+        refreshData();
+    </script>
+</body>
+</html>

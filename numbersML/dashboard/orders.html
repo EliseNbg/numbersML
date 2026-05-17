@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Dashboard - Crypto Trading</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        h1 { margin-bottom: 20px; color: #1a1a1a; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
+        .stat-card { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .stat-card h3 { font-size: 14px; color: #666; margin-bottom: 8px; }
+        .stat-card .value { font-size: 28px; font-weight: 600; color: #1a1a1a; }
+        .stat-card .value.success { color: #22c55e; }
+        .stat-card .value.error { color: #ef4444; }
+        .stat-card .value.warning { color: #f59e0b; }
+        .orders-table { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
+        .orders-table table { width: 100%; border-collapse: collapse; }
+        .orders-table th { background: #f9fafb; padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; color: #666; text-transform: uppercase; border-bottom: 1px solid #e5e7eb; }
+        .orders-table td { padding: 12px 16px; border-bottom: 1px solid #f3f4f6; font-size: 14px; }
+        .orders-table tr:hover { background: #f9fafb; }
+        .status-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+        .status-FILLED { background: #dcfce7; color: #166534; }
+        .status-REJECTED { background: #fee2e2; color: #991b1b; }
+        .status-CANCELED { background: #fef3c7; color: #92400e; }
+        .status-NEW { background: #e0e7ff; color: #3730a3; }
+        .actions { display: flex; gap: 10px; margin-bottom: 20px; }
+        .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; }
+        .btn-primary { background: #3b82f6; color: white; }
+        .btn-primary:hover { background: #2563eb; }
+        .btn-secondary { background: #e5e7eb; color: #374151; }
+        .btn-secondary:hover { background: #d1d5db; }
+        .last-updated { font-size: 12px; color: #666; margin-top: 10px; }
+        .nav { margin-bottom: 20px; }
+        .nav a { margin-right: 15px; color: #3b82f6; text-decoration: none; }
+        .nav a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav">
+            <a href="index.html">Dashboard</a>
+            <a href="strategies.html">Strategies</a>
+            <a href="orders.html">Orders</a>
+            <a href="api_keys.html">API Keys</a>
+        </div>
+        <h1>Order Dashboard</h1>
+
+        <div class="actions">
+            <button class="btn btn-primary" onclick="refreshData()">Refresh</button>
+            <button class="btn btn-secondary" onclick="exportCSV()">Export CSV</button>
+        </div>
+
+        <div class="stats-grid" id="stats-grid">
+            <div class="stat-card"><h3>Orders Today</h3><div class="value" id="total-today">-</div></div>
+            <div class="stat-card"><h3>Fill Rate</h3><div class="value success" id="fill-rate">-</div></div>
+            <div class="stat-card"><h3>Filled</h3><div class="value success" id="filled">-</div></div>
+            <div class="stat-card"><h3>Rejected</h3><div class="value error" id="rejected">-</div></div>
+            <div class="stat-card"><h3>Cancelled</h3><div class="value warning" id="cancelled">-</div></div>
+            <div class="stat-card"><h3>Avg Latency</h3><div class="value" id="avg-latency">-</div></div>
+        </div>
+
+        <div class="orders-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Order ID</th>
+                        <th>Symbol</th>
+                        <th>Side</th>
+                        <th>Type</th>
+                        <th>Quantity</th>
+                        <th>Price</th>
+                        <th>Status</th>
+                        <th>Mode</th>
+                        <th>Strategy</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="orders-body">
+                    <tr><td colspan="11" style="text-align:center;padding:40px;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="last-updated">Last updated: <span id="last-updated">-</span></div>
+    </div>
+
+    <script>
+        const REFRESH_INTERVAL = 10000;
+
+        async function refreshData() {
+            try {
+                const response = await fetch('/api/orders/dashboard');
+                const data = await response.json();
+
+                document.getElementById('total-today').textContent = data.stats.total_orders_today;
+                document.getElementById('fill-rate').textContent = data.stats.fill_rate_pct + '%';
+                document.getElementById('filled').textContent = data.stats.filled;
+                document.getElementById('rejected').textContent = data.stats.rejected;
+                document.getElementById('cancelled').textContent = data.stats.cancelled;
+                document.getElementById('avg-latency').textContent = data.stats.avg_latency_ms + 'ms';
+
+                const tbody = document.getElementById('orders-body');
+                if (data.orders.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:40px;">No orders found</td></tr>';
+                } else {
+                    tbody.innerHTML = data.orders.map(o => `
+                        <tr>
+                            <td><code>${o.id.slice(0, 8)}...</code></td>
+                            <td>${o.symbol}</td>
+                            <td>${o.side}</td>
+                            <td>${o.order_type}</td>
+                            <td>${o.quantity}</td>
+                            <td>${o.requested_price || '-'}</td>
+                            <td><span class="status-badge status-${o.status}">${o.status}</span></td>
+                            <td>${o.mode}</td>
+                            <td>${o.strategy_name || '-'}</td>
+                            <td>${new Date(o.created_at).toLocaleTimeString()}</td>
+                            <td>${o.status === 'NEW' ? `<button class="btn btn-secondary" onclick="cancelOrder('${o.id}')">Cancel</button>` : '-'}</td>
+                        </tr>
+                    `).join('');
+                }
+
+                document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+            } catch (err) {
+                console.error('Failed to refresh:', err);
+            }
+        }
+
+        async function cancelOrder(orderId) {
+            if (!confirm('Cancel this order?')) return;
+            try {
+                await fetch(`/api/orders/${orderId}/cancel`, { method: 'POST' });
+                refreshData();
+            } catch (err) {
+                alert('Failed to cancel order');
+            }
+        }
+
+        async function exportCSV() {
+            const response = await fetch('/api/orders/export');
+            const csv = await response.text();
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `orders_${new Date().toISOString().slice(0, 10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        refreshData();
+        setInterval(refreshData, REFRESH_INTERVAL);
+    </script>
+</body>
+</html>
