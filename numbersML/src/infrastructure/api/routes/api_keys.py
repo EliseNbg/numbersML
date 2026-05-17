@@ -17,9 +17,14 @@ router = APIRouter(prefix="/api/keys", tags=["api-keys"])
 
 def get_key_service() -> ApiKeyService:
     """Get API key service instance (dependency injection placeholder)."""
-    from src.infrastructure.api.dependencies import get_db_pool
+    from src.infrastructure.database import get_db_pool
 
-    encryption = EncryptionService()
+    import os
+    master_key = os.environ.get("BINANCE_MASTER_KEY")
+    if master_key is None:
+        # Generate a temporary key for development (not secure for production)
+        master_key = "0" * 64
+    encryption = EncryptionService(master_key=master_key)
     pool = get_db_pool()
     return ApiKeyService(encryption_service=encryption, db_pool=pool)
 
@@ -67,9 +72,13 @@ async def list_api_keys(
     Returns:
         List of key metadata.
     """
-    service = get_key_service()
-    keys = await service.list_keys(environment=environment)
-    return [key.to_public_dict() for key in keys]
+    try:
+        service = get_key_service()
+        keys = await service.list_keys(environment=environment)
+        return [key.to_public_dict() for key in keys]
+    except Exception as exc:
+        logger.error(f"Failed to list API keys: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.get("/{key_id}")
