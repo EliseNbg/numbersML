@@ -46,6 +46,7 @@ class MACDCrossStrategy(Strategy):
         self.fast_period: int = 12
         self.slow_period: int = 26
         self.signal_period: int = 9
+        self.min_histogram_threshold: float = 0.0000001
 
         self._tick_count: int = 0
         self._initialized: bool = False
@@ -98,11 +99,12 @@ class MACDCrossStrategy(Strategy):
         self.fast_period = self.get_config("fast_period", 12)
         self.slow_period = self.get_config("slow_period", 26)
         self.signal_period = self.get_config("signal_period", 9)
+        self.min_histogram_threshold = self.get_config("min_histogram_threshold", 0.0000001)
 
         logger.info(
             f"[{self._strategy_id}] MACD: name={self.macd_indicator_name}, "
             f"fast={self.fast_period}, slow={self.slow_period}, "
-            f"signal={self.signal_period}"
+            f"signal={self.signal_period}, min_threshold={self.min_histogram_threshold}"
         )
 
         logger.info(f"[{self._strategy_id}] Config: {self._config}")
@@ -194,6 +196,11 @@ class MACDCrossStrategy(Strategy):
             Signal if crossover detected, None otherwise
         """
         signal = None
+        histogram = abs(macd_value - signal_value)
+
+        # Skip if histogram is below threshold (noise filter)
+        if histogram < self.min_histogram_threshold:
+            return None
 
         # Bullish crossover: MACD crosses above signal line
         if (
@@ -325,6 +332,7 @@ class MACDCrossStrategy(Strategy):
                 "fast_period": self.fast_period,
                 "slow_period": self.slow_period,
                 "signal_period": self.signal_period,
+                "min_histogram_threshold": self.min_histogram_threshold,
             }
         )
         return stats
