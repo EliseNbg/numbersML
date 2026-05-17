@@ -44,23 +44,23 @@ class TestMACDCrossStrategy:
         assert strategy._tick_count == 0
         assert strategy._initialized is False
 
-    def test_initialize_macd(self, strategy):
+    def test_initialize_macd(self, strategy, sample_tick):
         """Test MACD initialization with config values."""
         strategy.set_config("macd_indicator_name", "custom_macd")
         strategy.set_config("fast_period", 10)
         strategy.set_config("slow_period", 20)
         strategy.set_config("signal_period", 8)
 
-        strategy._initialize_macd()
+        strategy._initialize_macd(sample_tick)
 
         assert strategy.macd_indicator_name == "custom_macd"
         assert strategy.fast_period == 10
         assert strategy.slow_period == 20
         assert strategy.signal_period == 8
 
-    def test_initialize_macd_defaults(self, strategy):
+    def test_initialize_macd_defaults(self, strategy, sample_tick):
         """Test MACD initialization with default values."""
-        strategy._initialize_macd()
+        strategy._initialize_macd(sample_tick)
 
         assert strategy.macd_indicator_name == "macdindicator"
         assert strategy.fast_period == 12
@@ -69,7 +69,7 @@ class TestMACDCrossStrategy:
 
     def test_get_macd_values_prefixed(self, strategy, sample_tick):
         """Test getting MACD values with prefixed indicator names."""
-        strategy._initialize_macd()
+        strategy._initialize_macd(sample_tick)
 
         tick = EnrichedTick(
             symbol="BTC/USDT",
@@ -90,7 +90,7 @@ class TestMACDCrossStrategy:
 
     def test_get_macd_values_simple(self, strategy, sample_tick):
         """Test getting MACD values with simple indicator names."""
-        strategy._initialize_macd()
+        strategy._initialize_macd(sample_tick)
 
         tick = EnrichedTick(
             symbol="BTC/USDT",
@@ -111,7 +111,7 @@ class TestMACDCrossStrategy:
 
     def test_get_macd_values_missing(self, strategy, sample_tick):
         """Test getting MACD values when indicators are missing."""
-        strategy._initialize_macd()
+        strategy._initialize_macd(sample_tick)
 
         tick = EnrichedTick(
             symbol="BTC/USDT",
@@ -214,16 +214,16 @@ class TestMACDCrossStrategy:
 
     def test_on_tick_returns_none_when_indicators_missing(self, strategy, sample_tick):
         """Test that on_tick returns None when indicators are missing."""
-        strategy._initialize_macd()
+        strategy._initialize_macd(sample_tick)
         strategy._initialized = True
 
         signal = strategy.on_tick(sample_tick)
 
         assert signal is None
 
-    def test_on_tick_generates_buy_signal(self, strategy):
+    def test_on_tick_generates_buy_signal(self, strategy, sample_tick):
         """Test that on_tick generates BUY signal on bullish crossover."""
-        strategy._initialize_macd()
+        strategy._initialize_macd(sample_tick)
         strategy._initialized = True
         strategy.last_macd = 0.0010
         strategy.last_signal = 0.0012
@@ -247,9 +247,9 @@ class TestMACDCrossStrategy:
         assert strategy.in_position is True
         assert strategy.cross_count == 1
 
-    def test_on_tick_generates_sell_signal(self, strategy):
+    def test_on_tick_generates_sell_signal(self, strategy, sample_tick):
         """Test that on_tick generates SELL signal on bearish crossover."""
-        strategy._initialize_macd()
+        strategy._initialize_macd(sample_tick)
         strategy._initialized = True
         strategy.last_macd = 0.0015
         strategy.last_signal = 0.0010
@@ -273,9 +273,9 @@ class TestMACDCrossStrategy:
         assert strategy.in_position is False
         assert strategy.cross_count == 1
 
-    def test_on_tick_updates_state(self, strategy):
+    def test_on_tick_updates_state(self, strategy, sample_tick):
         """Test that on_tick updates MACD state variables."""
-        strategy._initialize_macd()
+        strategy._initialize_macd(sample_tick)
         strategy._initialized = True
 
         tick = EnrichedTick(
@@ -307,9 +307,9 @@ class TestMACDCrossStrategy:
 
         assert strategy.in_position is False
 
-    def test_get_stats(self, strategy):
+    def test_get_stats(self, strategy, sample_tick):
         """Test that get_stats returns correct information."""
-        strategy._initialize_macd()
+        strategy._initialize_macd(sample_tick)
         strategy.last_macd = 0.0015
         strategy.last_signal = 0.0010
         strategy.last_histogram = 0.0005

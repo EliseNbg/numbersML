@@ -62,7 +62,7 @@ class MACDCrossStrategy(Strategy):
             Signal if crossover detected, None otherwise
         """
         if not self._initialized:
-            self._initialize_macd()
+            self._initialize_macd(tick)
             self._initialized = True
 
         self._tick_count += 1
@@ -88,8 +88,12 @@ class MACDCrossStrategy(Strategy):
 
         return signal
 
-    def _initialize_macd(self) -> None:
-        """Initialize MACD strategy configuration."""
+    def _initialize_macd(self, tick: EnrichedTick) -> None:
+        """Initialize MACD strategy configuration.
+
+        Args:
+            tick: First tick used to log available indicators
+        """
         self.macd_indicator_name = self.get_config("macd_indicator_name", "macdindicator")
         self.fast_period = self.get_config("fast_period", 12)
         self.slow_period = self.get_config("slow_period", 26)
@@ -100,6 +104,9 @@ class MACDCrossStrategy(Strategy):
             f"fast={self.fast_period}, slow={self.slow_period}, "
             f"signal={self.signal_period}"
         )
+
+        logger.info(f"[{self._strategy_id}] Config: {self._config}")
+        logger.info(f"[{self._strategy_id}] Indicators: {tick.indicators}")
 
     def _get_macd_values(self, tick: EnrichedTick) -> tuple[float | None, float | None, float | None]:
         """Extract MACD, signal, and histogram values from tick.
