@@ -67,7 +67,7 @@ class MACDCrossStrategy(Strategy):
 
         self._tick_count += 1
 
-        macd_value, signal_value = self._get_macd_values(tick)
+        macd_value, signal_value, histogram_value = self._get_macd_values(tick)
 
         if macd_value is None or signal_value is None:
             return None
@@ -78,13 +78,13 @@ class MACDCrossStrategy(Strategy):
             logger.info(
                 f"{tick.time} Tick {self._tick_count}: "
                 f"macd={macd_value:.4f}, signal={signal_value:.4f}, "
-                f"histogram={self.last_histogram:.4f}, "
+                f"histogram={histogram_value:.4f}, "
                 f"in_position={self.in_position}, cross_count={self.cross_count}"
             )
 
         self.last_macd = macd_value
         self.last_signal = signal_value
-        self.last_histogram = macd_value - signal_value
+        self.last_histogram = histogram_value
 
         return signal
 
@@ -101,26 +101,31 @@ class MACDCrossStrategy(Strategy):
             f"signal={self.signal_period}"
         )
 
-    def _get_macd_values(self, tick: EnrichedTick) -> tuple[float | None, float | None]:
-        """Extract MACD and signal values from tick.
+    def _get_macd_values(self, tick: EnrichedTick) -> tuple[float | None, float | None, float | None]:
+        """Extract MACD, signal, and histogram values from tick.
 
         Args:
             tick: Enriched tick data with indicators
 
         Returns:
-            Tuple of (macd_value, signal_value) or (None, None) if not available
+            Tuple of (macd_value, signal_value, histogram_value) or (None, None, None) if not available
         """
         macd_value = tick.get_indicator(f"{self.macd_indicator_name}_macd", None)
         signal_value = tick.get_indicator(f"{self.macd_indicator_name}_signal", None)
+        histogram_value = tick.get_indicator(f"{self.macd_indicator_name}_histogram", None)
 
         if macd_value is None or signal_value is None:
             macd_value = tick.get_indicator("macd", None)
             signal_value = tick.get_indicator("macd_signal", None)
+            histogram_value = tick.get_indicator("macd_histogram", None)
 
         if macd_value is None or signal_value is None:
-            return None, None
+            return None, None, None
 
-        return macd_value, signal_value
+        if histogram_value is None:
+            histogram_value = macd_value - signal_value
+
+        return macd_value, signal_value, histogram_value
 
     def _detect_crossover(
         self,

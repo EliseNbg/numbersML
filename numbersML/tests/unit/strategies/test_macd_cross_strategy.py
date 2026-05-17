@@ -82,10 +82,11 @@ class TestMACDCrossStrategy:
             },
         )
 
-        macd_value, signal_value = strategy._get_macd_values(tick)
+        macd_value, signal_value, histogram_value = strategy._get_macd_values(tick)
 
         assert macd_value == 0.0015
         assert signal_value == 0.0010
+        assert histogram_value == 0.0005
 
     def test_get_macd_values_simple(self, strategy, sample_tick):
         """Test getting MACD values with simple indicator names."""
@@ -102,10 +103,11 @@ class TestMACDCrossStrategy:
             },
         )
 
-        macd_value, signal_value = strategy._get_macd_values(tick)
+        macd_value, signal_value, histogram_value = strategy._get_macd_values(tick)
 
         assert macd_value == 0.0015
         assert signal_value == 0.0010
+        assert histogram_value == 0.0005
 
     def test_get_macd_values_missing(self, strategy, sample_tick):
         """Test getting MACD values when indicators are missing."""
@@ -119,10 +121,11 @@ class TestMACDCrossStrategy:
             indicators={},
         )
 
-        macd_value, signal_value = strategy._get_macd_values(tick)
+        macd_value, signal_value, histogram_value = strategy._get_macd_values(tick)
 
         assert macd_value is None
         assert signal_value is None
+        assert histogram_value is None
 
     def test_detect_crossover_bullish(self, strategy, sample_tick):
         """Test bullish crossover detection."""
