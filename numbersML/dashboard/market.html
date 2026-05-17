@@ -4,245 +4,370 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Market - Crypto Trading Dashboard</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; }
-        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-        header { background: #1a1a2e; color: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; }
-        header h1 { font-size: 24px; margin-bottom: 8px; }
-        header .stats { display: flex; gap: 20px; font-size: 14px; opacity: 0.9; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
-        .card { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .card h2 { font-size: 18px; margin-bottom: 15px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
-        th { background: #f9f9f9; font-weight: 600; }
-        .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
-        .badge-buy { background: #d4edda; color: #155724; }
-        .badge-sell { background: #f8d7da; color: #721c24; }
-        .badge-executed { background: #d1ecf1; color: #0c5460; }
-        .badge-rejected { background: #fff3cd; color: #856404; }
-        .badge-failed { background: #f5c6cb; color: #721c24; }
-        .badge-pending { background: #e2e3e5; color: #383d41; }
-        .stdout-box { background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 6px; font-family: monospace; font-size: 13px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; }
-        .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
-        .btn-primary { background: #007bff; color: white; }
-        .btn-danger { background: #dc3545; color: white; }
-        .btn:hover { opacity: 0.9; }
-        .refresh { float: right; }
-        .loading { text-align: center; padding: 40px; color: #666; }
-        .error { background: #f8d7da; color: #721c24; padding: 15px; border-radius: 6px; margin-bottom: 20px; }
-        .strategy-selector { margin-bottom: 15px; }
-        .strategy-selector select { padding: 8px; border-radius: 4px; border: 1px solid #ddd; font-size: 14px; }
-        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
-        .stat-card { background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .stat-card .value { font-size: 28px; font-weight: bold; color: #1a1a2e; }
-        .stat-card .label { font-size: 12px; color: #666; margin-top: 5px; }
-        .top-nav { margin-bottom: 15px; }
-        .top-nav a { margin-right: 15px; color: #3b82f6; text-decoration: none; font-weight: 500; }
-        .top-nav a:hover { text-decoration: underline; }
-    </style>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="css/dashboard.css" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
-        <div class="top-nav">
-            <a href="index.html">Dashboard</a>
-            <a href="strategies.html">Strategies</a>
-            <a class="active" href="market.html">Market</a>
-            <a href="orders.html">Orders</a>
-            <a href="api_keys.html">API Keys</a>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="index.html">
+                <i class="bi bi-wallet2"></i> Market Service
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="index.html">
+                            <i class="bi bi-house"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="symbols.html">
+                            <i class="bi bi-currency-bitcoin"></i> Symbols
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="strategies.html">
+                            <i class="bi bi-cpu"></i> Strategies
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="market.html">
+                            <i class="bi bi-wallet2"></i> Market
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="orders.html">
+                            <i class="bi bi-receipt"></i> Orders
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="api_keys.html">
+                            <i class="bi bi-key"></i> API Keys
+                        </a>
+                    </li>
+                </ul>
+            </div>
         </div>
-        <header>
-            <h1>Market Service</h1>
-            <div class="stats">
-                <span id="total-strategies">Strategies: 0</span>
-                <span id="total-signals">Signals: 0</span>
-                <span id="last-update">Updated: --</span>
-            </div>
-        </header>
+    </nav>
 
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="value" id="stat-buy">0</div>
-                <div class="label">BUY Signals</div>
-            </div>
-            <div class="stat-card">
-                <div class="value" id="stat-sell">0</div>
-                <div class="label">SELL Signals</div>
-            </div>
-            <div class="stat-card">
-                <div class="value" id="stat-executed">0</div>
-                <div class="label">Executed</div>
-            </div>
-            <div class="stat-card">
-                <div class="value" id="stat-failed">0</div>
-                <div class="label">Failed</div>
+    <div class="container-fluid mt-4">
+        <div class="row mb-4">
+            <div class="col-12">
+                <h1><i class="bi bi-wallet2"></i> Market Service</h1>
+                <p class="text-muted">Order execution, filter normalization, and market data</p>
             </div>
         </div>
 
-        <div class="grid">
-            <div class="card">
-                <h2>Recent Signals <button class="btn btn-primary refresh" onclick="loadDashboard()">Refresh</button></h2>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Time</th>
-                            <th>Strategy</th>
-                            <th>Symbol</th>
-                            <th>Side</th>
-                            <th>Price</th>
-                            <th>Qty</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody id="signals-table">
-                        <tr><td colspan="7" class="loading">Loading...</td></tr>
-                    </tbody>
-                </table>
+        <!-- Controls -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <label class="form-label">Symbol</label>
+                <select class="form-select" id="symbol-select"></select>
             </div>
+            <div class="col-md-3">
+                <label class="form-label">Execution Mode</label>
+                <select class="form-select" id="execution-mode">
+                    <option value="paper">Paper Trading</option>
+                    <option value="testnet">Testnet</option>
+                    <option value="live">Live (Mainnet)</option>
+                </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button class="btn btn-primary w-100" id="btn-refresh">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button class="btn btn-outline-secondary w-100" id="btn-test-connection">
+                    <i class="bi bi-activity"></i> Test Connection
+                </button>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <div id="status" class="text-muted"></div>
+            </div>
+        </div>
 
-            <div class="card">
-                <h2>Strategy Stdout</h2>
-                <div class="strategy-selector">
-                    <select id="strategy-select" onchange="loadStdout()">
-                        <option value="">Select a strategy...</option>
-                    </select>
-                    <button class="btn btn-danger" onclick="clearStdout()" style="margin-left: 10px;">Clear</button>
+        <!-- Stats Cards -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title"><i class="bi bi-wallet2"></i> Balance</h5>
+                        <h3 class="text-primary" id="balance">--</h3>
+                    </div>
                 </div>
-                <div class="stdout-box" id="stdout-content">Select a strategy to view stdout...</div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title"><i class="bi bi-graph-up"></i> Positions</h5>
+                        <h3 class="text-success" id="positions">--</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title"><i class="bi bi-check-circle"></i> Fill Rate</h5>
+                        <h3 class="text-info" id="fill-rate">--</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title"><i class="bi bi-lightning"></i> Avg Latency</h5>
+                        <h3 class="text-warning" id="avg-latency">--</h3>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <div class="card">
-            <h2>Cleanup</h2>
-            <div style="display: flex; gap: 10px; align-items: center;">
-                <button class="btn btn-danger" onclick="cleanupOldSignals()">Clean Old Signals (30d)</button>
-                <button class="btn btn-danger" onclick="cleanupOldBacktests()">Clean Old Backtests (90d)</button>
-                <span id="cleanup-status" style="margin-left: 10px; color: #666;"></span>
+        <!-- Order Form -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-plus-circle"></i> Place Order
+                    </div>
+                    <div class="card-body">
+                        <form id="order-form">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Side</label>
+                                    <select class="form-select" id="order-side">
+                                        <option value="BUY">BUY</option>
+                                        <option value="SELL">SELL</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Type</label>
+                                    <select class="form-select" id="order-type">
+                                        <option value="MARKET">MARKET</option>
+                                        <option value="LIMIT">LIMIT</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Quantity</label>
+                                    <input type="number" class="form-control" id="order-qty" step="any" placeholder="0.001">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Price (LIMIT only)</label>
+                                    <input type="number" class="form-control" id="order-price" step="any" placeholder="67000">
+                                </div>
+                                <div class="col-12">
+                                    <button type="submit" class="btn btn-success w-100">
+                                        <i class="bi bi-send"></i> Place Order
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-clock-history"></i> Recent Orders
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Side</th>
+                                    <th>Qty</th>
+                                    <th>Price</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recent-orders">
+                                <tr><td colspan="5" class="text-center text-muted">No orders yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter Info -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-shield-check"></i> Symbol Filters
+                    </div>
+                    <div class="card-body">
+                        <div id="filter-info" class="text-muted">Select a symbol to view filter details</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         const API_BASE = '/api';
 
-        async function loadDashboard() {
+        async function loadSymbols() {
             try {
-                const response = await fetch(`${API_BASE}/signals/dashboard`);
-                const data = await response.json();
-
-                document.getElementById('total-strategies').textContent = `Strategies: ${data.signals.total_strategies}`;
-                document.getElementById('total-signals').textContent = `Signals: ${data.signals.total_signals}`;
-                document.getElementById('last-update').textContent = `Updated: ${new Date(data.timestamp).toLocaleTimeString()}`;
-
-                // Stats
-                let buyCount = 0, sellCount = 0, executedCount = 0, failedCount = 0;
-                if (data.signals.stats) {
-                    buyCount = data.signals.stats.buy_count || 0;
-                    sellCount = data.signals.stats.sell_count || 0;
-                    executedCount = data.signals.stats.executed_count || 0;
-                    failedCount = data.signals.stats.failed_count || 0;
-                }
-                document.getElementById('stat-buy').textContent = buyCount;
-                document.getElementById('stat-sell').textContent = sellCount;
-                document.getElementById('stat-executed').textContent = executedCount;
-                document.getElementById('stat-failed').textContent = failedCount;
-
-                // Signals table
-                const tbody = document.getElementById('signals-table');
-                if (data.recent_signals && data.recent_signals.length > 0) {
-                    tbody.innerHTML = data.recent_signals.map(s => `
-                        <tr>
-                            <td>${new Date(s.timestamp).toLocaleTimeString()}</td>
-                            <td>${s.strategy_name || '--'}</td>
-                            <td>${s.symbol}</td>
-                            <td><span class="badge badge-${s.side.toLowerCase()}">${s.side}</span></td>
-                            <td>${s.price ? s.price.toFixed(2) : '--'}</td>
-                            <td>${s.quantity.toFixed(4)}</td>
-                            <td><span class="badge badge-${s.status.toLowerCase()}">${s.status}</span></td>
-                        </tr>
-                    `).join('');
-                } else {
-                    tbody.innerHTML = '<tr><td colspan="7" class="loading">No signals yet</td></tr>';
-                }
-
-                // Strategy selector
-                const select = document.getElementById('strategy-select');
-                const currentVal = select.value;
-                select.innerHTML = '<option value="">Select a strategy...</option>';
-                if (data.stdout_strategies) {
-                    data.stdout_strategies.forEach(s => {
-                        const opt = document.createElement('option');
-                        opt.value = s.strategy_id;
-                        opt.textContent = `${s.strategy_id.substring(0, 8)}... (${s.line_count} lines)`;
-                        select.appendChild(opt);
-                    });
-                }
-                if (currentVal) select.value = currentVal;
-
-            } catch (err) {
-                console.error('Failed to load dashboard:', err);
+                const response = await fetch(`${API_BASE}/symbols`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const symbols = await response.json();
+                const activeSymbols = symbols.filter(s => s.is_active);
+                const select = document.getElementById('symbol-select');
+                select.innerHTML = '<option value="">Select symbol...</option>' +
+                    activeSymbols.map(s => `<option value="${s.symbol}">${s.symbol}</option>`).join('');
+            } catch (error) {
+                console.error('Failed to load symbols:', error);
             }
         }
 
-        async function loadStdout() {
-            const strategyId = document.getElementById('strategy-select').value;
-            const content = document.getElementById('stdout-content');
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/orders/stats`);
+                if (!response.ok) return;
+                const stats = await response.json();
+                document.getElementById('fill-rate').textContent = stats.fill_rate_pct + '%';
+                document.getElementById('avg-latency').textContent = stats.avg_latency_ms + 'ms';
+            } catch (e) {
+                console.error('Failed to load stats:', e);
+            }
+        }
 
-            if (!strategyId) {
-                content.textContent = 'Select a strategy to view stdout...';
+        async function loadRecentOrders() {
+            try {
+                const response = await fetch(`${API_BASE}/orders/dashboard`);
+                if (!response.ok) return;
+                const data = await response.json();
+                const tbody = document.getElementById('recent-orders');
+                if (data.orders.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No orders yet</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.orders.slice(0, 10).map(o => `
+                    <tr>
+                        <td>${o.symbol}</td>
+                        <td><span class="badge bg-${o.side === 'BUY' ? 'success' : 'danger'}">${o.side}</span></td>
+                        <td>${o.quantity}</td>
+                        <td>${o.requested_price || '--'}</td>
+                        <td><span class="badge bg-${getStatusColor(o.status)}">${o.status}</span></td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                console.error('Failed to load orders:', e);
+            }
+        }
+
+        function getStatusColor(status) {
+            const colors = { FILLED: 'success', REJECTED: 'danger', CANCELED: 'warning', NEW: 'info' };
+            return colors[status] || 'secondary';
+        }
+
+        async function loadFilterInfo(symbol) {
+            const info = document.getElementById('filter-info');
+            if (!symbol) {
+                info.textContent = 'Select a symbol to view filter details';
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE}/symbols`);
+                const symbols = await response.json();
+                const sym = symbols.find(s => s.symbol === symbol);
+                if (!sym) {
+                    info.textContent = 'Symbol not found';
+                    return;
+                }
+                info.innerHTML = `
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <strong>Tick Size:</strong> ${sym.tick_size || '--'}<br>
+                            <strong>Min Price:</strong> ${sym.min_price || '--'}<br>
+                            <strong>Max Price:</strong> ${sym.max_price || '--'}
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Step Size:</strong> ${sym.step_size || '--'}<br>
+                            <strong>Min Qty:</strong> ${sym.min_quantity || '--'}<br>
+                            <strong>Max Qty:</strong> ${sym.max_quantity || '--'}
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Min Notional:</strong> ${sym.min_notional || '--'}<br>
+                            <strong>Max Notional:</strong> ${sym.max_notional || '--'}
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Market Min Qty:</strong> ${sym.market_min_qty || '--'}<br>
+                            <strong>Market Step Size:</strong> ${sym.market_step_size || '--'}
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                info.textContent = 'Failed to load filter info';
+            }
+        }
+
+        // Order form submission
+        document.getElementById('order-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const symbol = document.getElementById('symbol-select').value;
+            const side = document.getElementById('order-side').value;
+            const type = document.getElementById('order-type').value;
+            const qty = document.getElementById('order-qty').value;
+            const price = document.getElementById('order-price').value;
+            const status = document.getElementById('status');
+
+            if (!symbol || !qty) {
+                status.textContent = 'Symbol and quantity required';
                 return;
             }
 
             try {
-                const response = await fetch(`${API_BASE}/signals/stdout/${strategyId}?limit=500`);
-                const data = await response.json();
-                content.textContent = data.lines.join('\n') || 'No stdout captured yet...';
-            } catch (err) {
-                content.textContent = 'Failed to load stdout...';
+                status.textContent = 'Placing order...';
+                // Use paper mode for now (paper trading)
+                const response = await fetch(`${API_BASE}/market/order`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        symbol, side, order_type: type, quantity: parseFloat(qty),
+                        limit_price: price ? parseFloat(price) : null,
+                    }),
+                });
+                const result = await response.json();
+                status.textContent = `Order placed: ${result.status || 'success'}`;
+                loadRecentOrders();
+                loadStats();
+            } catch (e) {
+                status.textContent = 'Order failed: ' + e.message;
             }
-        }
+        });
 
-        async function clearStdout() {
-            const strategyId = document.getElementById('strategy-select').value;
-            if (!strategyId) return;
-
+        // Test connection
+        document.getElementById('btn-test-connection').addEventListener('click', async () => {
+            const status = document.getElementById('status');
+            status.textContent = 'Testing...';
             try {
-                await fetch(`${API_BASE}/signals/stdout/${strategyId}/clear`, { method: 'POST' });
-                document.getElementById('stdout-content').textContent = 'Stdout cleared.';
-                loadDashboard();
-            } catch (err) {
-                console.error('Failed to clear stdout:', err);
-            }
-        }
-
-        async function cleanupOldSignals() {
-            const status = document.getElementById('cleanup-status');
-            status.textContent = 'Cleaning...';
-            try {
-                const response = await fetch(`${API_BASE}/signals/cleanup-old-signals`, { method: 'POST' });
+                const response = await fetch(`${API_BASE}/market/ticker?symbol=BTCUSDT`);
                 const data = await response.json();
-                status.textContent = `Deleted ${data.deleted} signals`;
-            } catch (err) {
-                status.textContent = 'Cleanup failed';
+                status.textContent = `BTC: $${data.price}`;
+            } catch (e) {
+                status.textContent = 'Connection failed';
             }
-        }
+        });
 
-        async function cleanupOldBacktests() {
-            const status = document.getElementById('cleanup-status');
-            status.textContent = 'Cleaning...';
-            try {
-                const response = await fetch(`${API_BASE}/signals/cleanup-old-backtests`, { method: 'POST' });
-                const data = await response.json();
-                status.textContent = `Deleted ${data.deleted} backtests`;
-            } catch (err) {
-                status.textContent = 'Cleanup failed';
-            }
-        }
-
-        // Auto-refresh every 10 seconds
-        loadDashboard();
-        setInterval(loadDashboard, 10000);
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSymbols();
+            loadStats();
+            loadRecentOrders();
+        });
+        document.getElementById('symbol-select').addEventListener('change', (e) => loadFilterInfo(e.target.value));
+        document.getElementById('btn-refresh').addEventListener('click', () => {
+            loadStats();
+            loadRecentOrders();
+        });
     </script>
 </body>
 </html>

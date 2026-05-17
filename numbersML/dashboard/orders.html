@@ -3,98 +3,178 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Order Dashboard - Crypto Trading</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; }
-        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-        h1 { margin-bottom: 20px; color: #1a1a1a; }
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
-        .stat-card { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .stat-card h3 { font-size: 14px; color: #666; margin-bottom: 8px; }
-        .stat-card .value { font-size: 28px; font-weight: 600; color: #1a1a1a; }
-        .stat-card .value.success { color: #22c55e; }
-        .stat-card .value.error { color: #ef4444; }
-        .stat-card .value.warning { color: #f59e0b; }
-        .orders-table { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
-        .orders-table table { width: 100%; border-collapse: collapse; }
-        .orders-table th { background: #f9fafb; padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; color: #666; text-transform: uppercase; border-bottom: 1px solid #e5e7eb; }
-        .orders-table td { padding: 12px 16px; border-bottom: 1px solid #f3f4f6; font-size: 14px; }
-        .orders-table tr:hover { background: #f9fafb; }
-        .status-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; }
-        .status-FILLED { background: #dcfce7; color: #166534; }
-        .status-REJECTED { background: #fee2e2; color: #991b1b; }
-        .status-CANCELED { background: #fef3c7; color: #92400e; }
-        .status-NEW { background: #e0e7ff; color: #3730a3; }
-        .actions { display: flex; gap: 10px; margin-bottom: 20px; }
-        .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; }
-        .btn-primary { background: #3b82f6; color: white; }
-        .btn-primary:hover { background: #2563eb; }
-        .btn-secondary { background: #e5e7eb; color: #374151; }
-        .btn-secondary:hover { background: #d1d5db; }
-        .last-updated { font-size: 12px; color: #666; margin-top: 10px; }
-        .nav { margin-bottom: 20px; }
-        .nav a { margin-right: 15px; color: #3b82f6; text-decoration: none; }
-        .nav a:hover { text-decoration: underline; }
-    </style>
+    <title>Orders - Crypto Trading Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="css/dashboard.css" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
-        <div class="nav">
-            <a href="index.html">Dashboard</a>
-            <a href="strategies.html">Strategies</a>
-            <a href="market.html">Market</a>
-            <a href="orders.html">Orders</a>
-            <a href="api_keys.html">API Keys</a>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="index.html">
+                <i class="bi bi-receipt"></i> Order Dashboard
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="index.html">
+                            <i class="bi bi-house"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="symbols.html">
+                            <i class="bi bi-currency-bitcoin"></i> Symbols
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="strategies.html">
+                            <i class="bi bi-cpu"></i> Strategies
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="market.html">
+                            <i class="bi bi-wallet2"></i> Market
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="orders.html">
+                            <i class="bi bi-receipt"></i> Orders
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="api_keys.html">
+                            <i class="bi bi-key"></i> API Keys
+                        </a>
+                    </li>
+                </ul>
+            </div>
         </div>
-        <h1>Order Dashboard</h1>
+    </nav>
 
-        <div class="actions">
-            <button class="btn btn-primary" onclick="refreshData()">Refresh</button>
-            <button class="btn btn-secondary" onclick="exportCSV()">Export CSV</button>
+    <div class="container-fluid mt-4">
+        <div class="row mb-4">
+            <div class="col-12">
+                <h1><i class="bi bi-receipt"></i> Order Dashboard</h1>
+                <p class="text-muted">Order execution history and statistics</p>
+            </div>
         </div>
 
-        <div class="stats-grid" id="stats-grid">
-            <div class="stat-card"><h3>Orders Today</h3><div class="value" id="total-today">-</div></div>
-            <div class="stat-card"><h3>Fill Rate</h3><div class="value success" id="fill-rate">-</div></div>
-            <div class="stat-card"><h3>Filled</h3><div class="value success" id="filled">-</div></div>
-            <div class="stat-card"><h3>Rejected</h3><div class="value error" id="rejected">-</div></div>
-            <div class="stat-card"><h3>Cancelled</h3><div class="value warning" id="cancelled">-</div></div>
-            <div class="stat-card"><h3>Avg Latency</h3><div class="value" id="avg-latency">-</div></div>
+        <!-- Stats Cards -->
+        <div class="row mb-4">
+            <div class="col-md-2">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h6 class="card-title text-muted">Today</h6>
+                        <h3 id="total-today">--</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h6 class="card-title text-muted">Filled</h6>
+                        <h3 class="text-success" id="filled">--</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h6 class="card-title text-muted">Rejected</h6>
+                        <h3 class="text-danger" id="rejected">--</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h6 class="card-title text-muted">Cancelled</h6>
+                        <h3 class="text-warning" id="cancelled">--</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h6 class="card-title text-muted">Fill Rate</h6>
+                        <h3 class="text-info" id="fill-rate">--</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h6 class="card-title text-muted">Avg Latency</h6>
+                        <h3 class="text-secondary" id="avg-latency">--</h3>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <div class="orders-table">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Order ID</th>
-                        <th>Symbol</th>
-                        <th>Side</th>
-                        <th>Type</th>
-                        <th>Quantity</th>
-                        <th>Price</th>
-                        <th>Status</th>
-                        <th>Mode</th>
-                        <th>Strategy</th>
-                        <th>Created</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="orders-body">
-                    <tr><td colspan="11" style="text-align:center;padding:40px;">Loading...</td></tr>
-                </tbody>
-            </table>
+        <!-- Controls -->
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <div class="btn-group">
+                    <button class="btn btn-outline-primary" id="btn-refresh">
+                        <i class="bi bi-arrow-clockwise"></i> Refresh
+                    </button>
+                    <button class="btn btn-outline-secondary" id="btn-export">
+                        <i class="bi bi-download"></i> Export CSV
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-6 text-end">
+                <span class="text-muted">Auto-refresh: 10s</span>
+            </div>
         </div>
 
-        <div class="last-updated">Last updated: <span id="last-updated">-</span></div>
+        <!-- Orders Table -->
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-list-ul"></i> Recent Orders
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Order ID</th>
+                                <th>Symbol</th>
+                                <th>Side</th>
+                                <th>Type</th>
+                                <th>Quantity</th>
+                                <th>Price</th>
+                                <th>Status</th>
+                                <th>Mode</th>
+                                <th>Strategy</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="orders-body">
+                            <tr><td colspan="11" class="text-center text-muted">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        const REFRESH_INTERVAL = 10000;
+        const API_BASE = '/api';
+
+        function getStatusColor(status) {
+            const colors = { FILLED: 'success', REJECTED: 'danger', CANCELED: 'warning', NEW: 'info', PARTIALLY_FILLED: 'primary' };
+            return colors[status] || 'secondary';
+        }
 
         async function refreshData() {
             try {
-                const response = await fetch('/api/orders/dashboard');
+                const response = await fetch(`${API_BASE}/orders/dashboard`);
                 const data = await response.json();
 
                 document.getElementById('total-today').textContent = data.stats.total_orders_today;
@@ -106,26 +186,24 @@
 
                 const tbody = document.getElementById('orders-body');
                 if (data.orders.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:40px;">No orders found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted">No orders found</td></tr>';
                 } else {
                     tbody.innerHTML = data.orders.map(o => `
                         <tr>
-                            <td><code>${o.id.slice(0, 8)}...</code></td>
+                            <td><code>${o.id.substring(0, 8)}...</code></td>
                             <td>${o.symbol}</td>
-                            <td>${o.side}</td>
+                            <td><span class="badge bg-${o.side === 'BUY' ? 'success' : 'danger'}">${o.side}</span></td>
                             <td>${o.order_type}</td>
                             <td>${o.quantity}</td>
-                            <td>${o.requested_price || '-'}</td>
-                            <td><span class="status-badge status-${o.status}">${o.status}</span></td>
-                            <td>${o.mode}</td>
-                            <td>${o.strategy_name || '-'}</td>
+                            <td>${o.requested_price || '--'}</td>
+                            <td><span class="badge bg-${getStatusColor(o.status)}">${o.status}</span></td>
+                            <td><span class="badge bg-${o.mode === 'live' ? 'danger' : o.mode === 'testnet' ? 'warning' : 'secondary'}">${o.mode}</span></td>
+                            <td>${o.strategy_name || '--'}</td>
                             <td>${new Date(o.created_at).toLocaleTimeString()}</td>
-                            <td>${o.status === 'NEW' ? `<button class="btn btn-secondary" onclick="cancelOrder('${o.id}')">Cancel</button>` : '-'}</td>
+                            <td>${o.status === 'NEW' ? `<button class="btn btn-sm btn-outline-danger" onclick="cancelOrder('${o.id}')">Cancel</button>` : '-'}</td>
                         </tr>
                     `).join('');
                 }
-
-                document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
             } catch (err) {
                 console.error('Failed to refresh:', err);
             }
@@ -134,7 +212,7 @@
         async function cancelOrder(orderId) {
             if (!confirm('Cancel this order?')) return;
             try {
-                await fetch(`/api/orders/${orderId}/cancel`, { method: 'POST' });
+                await fetch(`${API_BASE}/orders/${orderId}/cancel`, { method: 'POST' });
                 refreshData();
             } catch (err) {
                 alert('Failed to cancel order');
@@ -142,7 +220,7 @@
         }
 
         async function exportCSV() {
-            const response = await fetch('/api/orders/export');
+            const response = await fetch(`${API_BASE}/orders/export`);
             const csv = await response.text();
             const blob = new Blob([csv], { type: 'text/csv' });
             const url = URL.createObjectURL(blob);
@@ -153,8 +231,10 @@
             URL.revokeObjectURL(url);
         }
 
-        refreshData();
-        setInterval(refreshData, REFRESH_INTERVAL);
+        document.addEventListener('DOMContentLoaded', refreshData);
+        document.getElementById('btn-refresh').addEventListener('click', refreshData);
+        document.getElementById('btn-export').addEventListener('click', exportCSV);
+        setInterval(refreshData, 10000);
     </script>
 </body>
 </html>

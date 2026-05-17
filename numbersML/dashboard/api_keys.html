@@ -3,140 +3,176 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>API Key Management - Crypto Trading</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-        h1 { margin-bottom: 20px; color: #1a1a1a; }
-        .keys-table { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
-        .keys-table table { width: 100%; border-collapse: collapse; }
-        .keys-table th { background: #f9fafb; padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; color: #666; text-transform: uppercase; border-bottom: 1px solid #e5e7eb; }
-        .keys-table td { padding: 12px 16px; border-bottom: 1px solid #f3f4f6; font-size: 14px; }
-        .keys-table tr:hover { background: #f9fafb; }
-        .status-active { color: #22c55e; font-weight: 500; }
-        .status-inactive { color: #ef4444; font-weight: 500; }
-        .actions { display: flex; gap: 10px; margin-bottom: 20px; }
-        .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; }
-        .btn-primary { background: #3b82f6; color: white; }
-        .btn-primary:hover { background: #2563eb; }
-        .btn-secondary { background: #e5e7eb; color: #374151; }
-        .btn-secondary:hover { background: #d1d5db; }
-        .btn-danger { background: #ef4444; color: white; }
-        .btn-danger:hover { background: #dc2626; }
-        .last-updated { font-size: 12px; color: #666; margin-top: 10px; }
-        .nav { margin-bottom: 20px; }
-        .nav a { margin-right: 15px; color: #3b82f6; text-decoration: none; }
-        .nav a:hover { text-decoration: underline; }
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 100; }
-        .modal.active { display: flex; align-items: center; justify-content: center; }
-        .modal-content { background: white; border-radius: 8px; padding: 24px; width: 400px; max-width: 90%; }
-        .modal-content h2 { margin-bottom: 16px; }
-        .form-group { margin-bottom: 16px; }
-        .form-group label { display: block; margin-bottom: 4px; font-size: 14px; font-weight: 500; }
-        .form-group input, .form-group select { width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
-        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
-    </style>
+    <title>API Keys - Crypto Trading Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="css/dashboard.css" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
-        <div class="nav">
-            <a href="index.html">Dashboard</a>
-            <a href="strategies.html">Strategies</a>
-            <a href="market.html">Market</a>
-            <a href="orders.html">Orders</a>
-            <a href="api_keys.html">API Keys</a>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="index.html">
+                <i class="bi bi-key"></i> API Key Management
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="index.html">
+                            <i class="bi bi-house"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="symbols.html">
+                            <i class="bi bi-currency-bitcoin"></i> Symbols
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="strategies.html">
+                            <i class="bi bi-cpu"></i> Strategies
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="market.html">
+                            <i class="bi bi-wallet2"></i> Market
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="orders.html">
+                            <i class="bi bi-receipt"></i> Orders
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="api_keys.html">
+                            <i class="bi bi-key"></i> API Keys
+                        </a>
+                    </li>
+                </ul>
+            </div>
         </div>
-        <h1>API Key Management</h1>
+    </nav>
 
-        <div class="actions">
-            <button class="btn btn-primary" onclick="showAddModal()">Add Key</button>
-            <button class="btn btn-secondary" onclick="refreshData()">Refresh</button>
+    <div class="container-fluid mt-4">
+        <div class="row mb-4">
+            <div class="col-12">
+                <h1><i class="bi bi-key"></i> API Key Management</h1>
+                <p class="text-muted">Manage encrypted API keys for exchange access</p>
+            </div>
         </div>
 
-        <div class="keys-table">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Environment</th>
-                        <th>Status</th>
-                        <th>Created</th>
-                        <th>Last Used</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="keys-body">
-                    <tr><td colspan="6" style="text-align:center;padding:40px;">Loading...</td></tr>
-                </tbody>
-            </table>
+        <!-- Controls -->
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addKeyModal">
+                    <i class="bi bi-plus-circle"></i> Add Key
+                </button>
+                <button class="btn btn-outline-secondary ms-2" id="btn-refresh">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+            </div>
+            <div class="col-md-6 text-end">
+                <span class="text-muted"><i class="bi bi-shield-lock"></i> Keys are encrypted at rest</span>
+            </div>
         </div>
 
-        <div class="last-updated">Last updated: <span id="last-updated">-</span></div>
+        <!-- Keys Table -->
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-list-ul"></i> API Keys
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Environment</th>
+                                <th>Status</th>
+                                <th>Created</th>
+                                <th>Last Used</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="keys-body">
+                            <tr><td colspan="6" class="text-center text-muted">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="modal" id="add-modal">
-        <div class="modal-content">
-            <h2>Add API Key</h2>
-            <div class="form-group">
-                <label>Name</label>
-                <input type="text" id="key-name" placeholder="e.g. Testnet Key">
-            </div>
-            <div class="form-group">
-                <label>Environment</label>
-                <select id="key-env">
-                    <option value="testnet">Testnet</option>
-                    <option value="mainnet">Mainnet</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>API Key</label>
-                <input type="text" id="key-api" placeholder="Enter API key">
-            </div>
-            <div class="form-group">
-                <label>API Secret</label>
-                <input type="password" id="key-secret" placeholder="Enter API secret">
-            </div>
-            <div class="modal-actions">
-                <button class="btn btn-secondary" onclick="hideAddModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="addKey()">Add</button>
+    <!-- Add Key Modal -->
+    <div class="modal fade" id="addKeyModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add API Key</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="add-key-form">
+                        <div class="mb-3">
+                            <label class="form-label">Name</label>
+                            <input type="text" class="form-control" id="key-name" placeholder="e.g. Testnet Key" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Environment</label>
+                            <select class="form-select" id="key-env">
+                                <option value="testnet">Testnet</option>
+                                <option value="mainnet">Mainnet</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">API Key</label>
+                            <input type="text" class="form-control" id="key-api" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">API Secret</label>
+                            <input type="password" class="form-control" id="key-secret" required>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="btn-add-key">Add</button>
+                </div>
             </div>
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        const API_BASE = '/api';
+
         async function refreshData() {
             try {
-                const response = await fetch('/api/keys');
+                const response = await fetch(`${API_BASE}/keys`);
                 const keys = await response.json();
-
                 const tbody = document.getElementById('keys-body');
                 if (keys.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;">No API keys found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No API keys found</td></tr>';
                 } else {
                     tbody.innerHTML = keys.map(k => `
                         <tr>
                             <td>${k.name}</td>
-                            <td>${k.environment}</td>
-                            <td class="${k.is_active ? 'status-active' : 'status-inactive'}">${k.is_active ? 'Active' : 'Inactive'}</td>
+                            <td><span class="badge bg-${k.environment === 'mainnet' ? 'danger' : 'warning'}">${k.environment}</span></td>
+                            <td><span class="badge bg-${k.is_active ? 'success' : 'secondary'}">${k.is_active ? 'Active' : 'Inactive'}</span></td>
                             <td>${new Date(k.created_at).toLocaleDateString()}</td>
                             <td>${k.last_used_at ? new Date(k.last_used_at).toLocaleString() : 'Never'}</td>
                             <td>
-                                <button class="btn btn-secondary" onclick="testKey('${k.id}')">Test</button>
-                                <button class="btn btn-danger" onclick="deleteKey('${k.id}')">Delete</button>
+                                <button class="btn btn-sm btn-outline-primary me-1" onclick="testKey('${k.id}')">Test</button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteKey('${k.id}')">Delete</button>
                             </td>
                         </tr>
                     `).join('');
                 }
-
-                document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
             } catch (err) {
                 console.error('Failed to refresh:', err);
             }
         }
-
-        function showAddModal() { document.getElementById('add-modal').classList.add('active'); }
-        function hideAddModal() { document.getElementById('add-modal').classList.remove('active'); }
 
         async function addKey() {
             const name = document.getElementById('key-name').value;
@@ -150,8 +186,9 @@
             }
 
             try {
-                await fetch(`/api/keys?name=${encodeURIComponent(name)}&environment=${env}&api_key=${encodeURIComponent(apiKey)}&api_secret=${encodeURIComponent(apiSecret)}`, { method: 'POST' });
-                hideAddModal();
+                await fetch(`${API_BASE}/keys?name=${encodeURIComponent(name)}&environment=${env}&api_key=${encodeURIComponent(apiKey)}&api_secret=${encodeURIComponent(apiSecret)}`, { method: 'POST' });
+                bootstrap.Modal.getInstance(document.getElementById('addKeyModal')).hide();
+                document.getElementById('add-key-form').reset();
                 refreshData();
             } catch (err) {
                 alert('Failed to add key');
@@ -160,7 +197,7 @@
 
         async function testKey(keyId) {
             try {
-                const response = await fetch(`/api/keys/${keyId}/test`, { method: 'POST' });
+                const response = await fetch(`${API_BASE}/keys/${keyId}/test`, { method: 'POST' });
                 const result = await response.json();
                 alert(result.message);
             } catch (err) {
@@ -171,14 +208,16 @@
         async function deleteKey(keyId) {
             if (!confirm('Delete this API key?')) return;
             try {
-                await fetch(`/api/keys/${keyId}`, { method: 'DELETE' });
+                await fetch(`${API_BASE}/keys/${keyId}`, { method: 'DELETE' });
                 refreshData();
             } catch (err) {
                 alert('Failed to delete key');
             }
         }
 
-        refreshData();
+        document.addEventListener('DOMContentLoaded', refreshData);
+        document.getElementById('btn-refresh').addEventListener('click', refreshData);
+        document.getElementById('btn-add-key').addEventListener('click', addKey);
     </script>
 </body>
 </html>
