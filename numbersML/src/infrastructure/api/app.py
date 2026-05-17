@@ -24,6 +24,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.infrastructure.api.routes import (
+    api_keys_router,
     backup_router,
     config_router,
     dashboard_router,
@@ -160,6 +161,7 @@ Currently no authentication. Add authentication middleware for production use.
     app.include_router(strategy_source_router)
     app.include_router(signals_router)
     app.include_router(strategies_gui_router)
+    app.include_router(api_keys_router)
 
     # Mount static files for frontend (dashboard)
     # Note: Frontend files will be created in Step 022.6

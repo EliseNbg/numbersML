@@ -1,5 +1,6 @@
 """API Routes Package."""
 
+from .api_keys import router as api_keys_router
 from .backup import router as backup_router
 from .candles import router as candles_router
 from .config import router as config_router
@@ -30,4 +31,5 @@ __all__ = [
     "ml_router",
     "backup_router",
     "signals_router",
+    "api_keys_router",
 ]

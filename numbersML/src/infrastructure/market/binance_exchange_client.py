@@ -107,6 +107,80 @@ class BinanceExchangeClient(LiveExchangeClient):
         data = await self._request("GET", "/api/v3/ticker/price", params=payload, signed=False)
         return Decimal(str(data["price"]))
 
+    async def get_exchange_info(self, symbol: str | None = None) -> dict:
+        """Fetch exchange info (symbol filters) from Binance.
+
+        Args:
+            symbol: Optional specific symbol to fetch info for.
+
+        Returns:
+            Exchange info dict with 'symbols' and 'filters' data.
+        """
+        params: dict[str, Any] = {}
+        if symbol is not None:
+            params["symbol"] = self._normalize_symbol(symbol)
+        return await self._request("GET", "/api/v3/exchangeInfo", params=params, signed=False)
+
+    async def get_symbol_filters(self, symbol: str) -> dict | None:
+        """Fetch filters for a specific symbol.
+
+        Args:
+            symbol: Trading pair symbol.
+
+        Returns:
+            Symbol data dict with filters, or None if not found.
+        """
+        exchange_info = await self.get_exchange_info(symbol)
+        symbols_data = exchange_info.get("symbols", [])
+        normalized = self._normalize_symbol(symbol)
+        for sym_data in symbols_data:
+            if sym_data.get("symbol") == normalized:
+                return sym_data
+        return None
+
+    async def create_test_order(
+        self,
+        symbol: str,
+        side: str,
+        order_type: str,
+        quantity: Decimal,
+        price: Decimal | None,
+        client_order_id: str,
+    ) -> dict:
+        """Create test order (Binance test endpoint).
+
+        Uses /api/v3/order/test — validates order but does NOT execute.
+        Returns what the order would look like if submitted.
+        Perfect for backtesting without real execution.
+
+        Args:
+            symbol: Trading pair symbol.
+            side: BUY or SELL.
+            order_type: MARKET or LIMIT.
+            quantity: Order quantity.
+            price: Limit price (required for LIMIT orders).
+            client_order_id: Client-supplied order ID.
+
+        Returns:
+            Test order response dict.
+        """
+        self._require_credentials()
+        payload: dict[str, Any] = {
+            "symbol": self._normalize_symbol(symbol),
+            "side": side.upper(),
+            "type": order_type.upper(),
+            "quantity": str(quantity),
+            "newClientOrderId": client_order_id,
+            "timestamp": self._timestamp_ms(),
+        }
+        if payload["type"] == "LIMIT":
+            if price is None:
+                raise ValueError("price is required for LIMIT orders.")
+            payload["price"] = str(price)
+            payload["timeInForce"] = "GTC"
+        signed = self._sign_payload(payload)
+        return await self._request("POST", "/api/v3/order/test", params=signed, signed=True)
+
     async def _request(
         self,
         method: str,
