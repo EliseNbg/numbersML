@@ -15,7 +15,7 @@ import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
@@ -23,6 +23,7 @@ from src.pipeline.aggregator import MultiSymbolAggregator
 from src.pipeline.database_writer import MultiSymbolDatabaseWriter
 from src.pipeline.indicator_calculator import IndicatorCalculator
 from src.pipeline.recovery import RecoveryManager
+from src.pipeline.strategy_runner import StrategyRunner
 from src.pipeline.ticket import LIVE_STEPS, PipelineStep, PipelineTicket
 from src.pipeline.websocket_manager import AggTrade, BinanceWebSocketManager
 from src.pipeline.wide_vector_service import WideVectorService
@@ -70,12 +71,13 @@ class TradePipeline:
         self._db_writer = MultiSymbolDatabaseWriter(db_pool)
         self._indicator_calculator = IndicatorCalculator(db_pool)
         self._wide_vector_service = WideVectorService(db_pool)
+        self._strategy_runner = StrategyRunner(db_pool=db_pool)
         self._recovery_managers: dict[str, RecoveryManager] = {}
-        self._ws_manager: Optional[BinanceWebSocketManager] = None
+        self._ws_manager: BinanceWebSocketManager | None = None
 
         # State
         self._running = False
-        self._start_time: Optional[datetime] = None
+        self._start_time: datetime | None = None
 
         # Statistics
         self._stats = {
@@ -85,6 +87,8 @@ class TradePipeline:
             "indicator_errors": 0,
             "wide_vectors_generated": 0,
             "wide_vector_errors": 0,
+            "strategy_signals": 0,
+            "strategy_errors": 0,
             "recovery_events": 0,
             "websocket_errors": 0,
             "database_errors": 0,
@@ -136,6 +140,21 @@ class TradePipeline:
 
         # Step 3: Wide vector (runs once per tick, after all symbols — handled in _ticker_loop)
         # Step 4+: Future ML/trading steps
+
+        # Step 5: Execute strategies
+        if ticket.has(PipelineStep.STRATEGY):
+            try:
+                signals = await self._strategy_runner.execute_tick(
+                    symbol=symbol,
+                    candle_time=candle.time,
+                    tick_indicators={},
+                    current_price=Decimal(str(candle.close)),
+                )
+                if signals:
+                    self._stats["strategy_signals"] += len(signals)
+            except Exception as e:
+                logger.error(f"Strategy runner error for {symbol}: {e}")
+                self._stats["strategy_errors"] += 1
 
     async def _ticker_loop(self) -> None:
         """
@@ -412,7 +431,7 @@ class TradePipeline:
                 )
 
                 if symbol_id:
-                    stats = recovery.get_stats()
+                    recovery.get_stats()
                     uptime = (
                         (datetime.now(UTC) - self._start_time).total_seconds()
                         if self._start_time
@@ -456,6 +475,8 @@ class TradePipeline:
             "trades_per_second": trades_per_second,
             "trades_processed": self._stats["trades_processed"],
             "candles_written": self._stats["candles_written"],
+            "strategy_signals": self._stats["strategy_signals"],
+            "strategy_errors": self._stats["strategy_errors"],
             "recovery_events": self._stats["recovery_events"],
             "websocket_errors": self._stats["websocket_errors"],
             "database_errors": self._stats["database_errors"],
@@ -472,6 +493,7 @@ class TradePipeline:
             "pipeline": self.get_status(),
             "aggregator": self._aggregator.get_stats(),
             "database_writer": self._db_writer.get_stats(),
+            "strategy_runner": self._strategy_runner.get_stats(),
             "recovery": {},
         }
 
@@ -608,7 +630,7 @@ class PipelineManager:
         logger.info(f"Stopped pipeline {pipeline_id}")
         return True
 
-    def get_pipeline_status(self, pipeline_id: str = "default") -> Optional[dict[str, Any]]:
+    def get_pipeline_status(self, pipeline_id: str = "default") -> dict[str, Any] | None:
         """
         Get pipeline status.
 
@@ -644,7 +666,7 @@ class PipelineManager:
 _pipeline_manager = None
 
 
-def get_pipeline_manager() -> Optional[PipelineManager]:
+def get_pipeline_manager() -> PipelineManager | None:
     """Get global pipeline manager instance."""
     return _pipeline_manager
 
