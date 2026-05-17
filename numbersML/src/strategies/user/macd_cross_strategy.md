@@ -39,12 +39,56 @@ The strategy maintains the following state:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `macd_indicator_name` | str | `"macdindicator"` | Name of the MACD indicator in the tick data |
+| `macd_indicator_name` | str | `"macdindicator"` | Base name of the pre-calculated MACD indicator to use |
 | `fast_period` | int | `12` | Fast EMA period for MACD calculation |
 | `slow_period` | int | `26` | Slow EMA period for MACD calculation |
 | `signal_period` | int | `9` | Signal line EMA period |
 
-### Example Configuration
+### Selecting a Pre-calculated MACD Indicator
+
+The database may contain multiple pre-calculated MACD indicators with different parameters.
+Use the `macd_indicator_name` config key to select which one the strategy should use.
+
+Available indicators in the database:
+
+| Indicator Name | Fast | Slow | Signal | Description |
+|---------------|------|------|--------|-------------|
+| `macd_280_590_29` | 280 | 590 | 29 | Long-term MACD for slower trends |
+| `macd_450_960_100` | 450 | 960 | 100 | Very long-term MACD for macro trends |
+
+The strategy looks for indicator keys in the format:
+- `{macd_indicator_name}_macd`
+- `{macd_indicator_name}_signal`
+- `{macd_indicator_name}_histogram`
+
+If no matching indicator is found, the strategy falls back to auto-detection
+(scans all available indicator keys for any containing "macd").
+
+### Example Configuration (JSON)
+
+To use the long-term MACD (280/590/29):
+
+```json
+{
+  "macd_indicator_name": "macd_280_590_29",
+  "fast_period": 280,
+  "slow_period": 590,
+  "signal_period": 29
+}
+```
+
+To use the very long-term MACD (450/960/100):
+
+```json
+{
+  "macd_indicator_name": "macd_450_960_100",
+  "fast_period": 450,
+  "slow_period": 960,
+  "signal_period": 100
+}
+```
+
+### Example Configuration (Python)
 
 ```python
 strategy = MACDCrossStrategy(
@@ -52,11 +96,11 @@ strategy = MACDCrossStrategy(
     symbols=["BTC/USDT"],
 )
 
-# Set custom configuration
-strategy.set_config("macd_indicator_name", "macdindicator")
-strategy.set_config("fast_period", 12)
-strategy.set_config("slow_period", 26)
-strategy.set_config("signal_period", 9)
+# Use long-term MACD
+strategy.set_config("macd_indicator_name", "macd_280_590_29")
+strategy.set_config("fast_period", 280)
+strategy.set_config("slow_period", 590)
+strategy.set_config("signal_period", 29)
 ```
 
 ## Architecture
@@ -93,7 +137,9 @@ on_tick()
 On first tick, the strategy logs its configuration:
 
 ```
-[strategy_id] MACD: name=macdindicator, fast=12, slow=26, signal=9
+[strategy_id] MACD: name=macd_280_590_29, fast=280, slow=590, signal=9
+[strategy_id] Config: {'macd_indicator_name': 'macd_280_590_29', ...}
+[strategy_id] Indicators: {'macd_280_590_29_macd': 0.0012, 'macd_280_590_29_signal': 0.0010, ...}
 ```
 
 ### Periodic Status
@@ -141,34 +187,43 @@ The `get_stats()` method returns:
     "in_position": False,
     "cross_count": 5,
     "tick_count": 1000,
-    "macd_indicator_name": "macdindicator",
-    "fast_period": 12,
-    "slow_period": 26,
-    "signal_period": 9,
+    "macd_indicator_name": "macd_280_590_29",
+    "fast_period": 280,
+    "slow_period": 590,
+    "signal_period": 29,
 }
 ```
 
 ## Indicator Data Format
 
-The strategy expects tick data to include MACD indicators in one of two formats:
+The strategy expects tick data to include MACD indicators. It tries to find them in this order:
 
-### Format 1: Prefixed with indicator name
+### 1. Configured indicator name (recommended)
+
+Set `macd_indicator_name` in config to match your pre-calculated indicators:
+
 ```python
 tick.indicators = {
-    "macdindicator_macd": 0.0012,
-    "macdindicator_signal": 0.0010,
+    "macd_280_590_29_macd": 0.0012,
+    "macd_280_590_29_signal": 0.0010,
+    "macd_280_590_29_histogram": 0.0002,
 }
 ```
 
-### Format 2: Simple names
+### 2. Simple names (fallback)
+
 ```python
 tick.indicators = {
     "macd": 0.0012,
     "macd_signal": 0.0010,
+    "macd_histogram": 0.0002,
 }
 ```
 
-The strategy tries Format 1 first, then falls back to Format 2.
+### 3. Auto-detection (last resort)
+
+If neither of the above matches, the strategy scans all indicator keys for any
+containing "macd" with `_macd`, `_signal`, or `_histogram` suffixes.
 
 ## Usage Example
 
@@ -184,10 +239,11 @@ strategy = MACDCrossStrategy(
     symbols=["ETH/USDT"],
 )
 
-# Configure
-strategy.set_config("fast_period", 12)
-strategy.set_config("slow_period", 26)
-strategy.set_config("signal_period", 9)
+# Configure - select which pre-calculated MACD indicator to use
+strategy.set_config("macd_indicator_name", "macd_280_590_29")
+strategy.set_config("fast_period", 280)
+strategy.set_config("slow_period", 590)
+strategy.set_config("signal_period", 29)
 
 # Process ticks
 tick = EnrichedTick(
@@ -196,8 +252,9 @@ tick = EnrichedTick(
     volume=Decimal("10.5"),
     time=datetime.now(UTC),
     indicators={
-        "macdindicator_macd": 0.0015,
-        "macdindicator_signal": 0.0010,
+        "macd_280_590_29_macd": 0.0015,
+        "macd_280_590_29_signal": 0.0010,
+        "macd_280_590_29_histogram": 0.0005,
     },
 )
 
