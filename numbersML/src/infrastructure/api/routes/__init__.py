@@ -10,6 +10,7 @@ from .ml import router as ml_router
 from .pipeline import router as pipeline_router
 from .signals import router as signals_router
 from .strategies import router as strategies_router
+from .strategies_gui import router as strategies_gui_router
 from .strategy_backtest import router as strategy_backtest_router
 from .symbols import router as symbols_router
 from .target_values import router as target_values_router
@@ -21,6 +22,7 @@ __all__ = [
     "config_router",
     "pipeline_router",
     "strategies_router",
+    "strategies_gui_router",
     "market_router",
     "strategy_backtest_router",
     "candles_router",

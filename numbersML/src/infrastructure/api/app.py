@@ -31,6 +31,7 @@ from src.infrastructure.api.routes import (
     market_router,
     pipeline_router,
     signals_router,
+    strategies_gui_router,
     strategies_router,
     strategy_backtest_router,
     symbols_router,
@@ -158,6 +159,7 @@ Currently no authentication. Add authentication middleware for production use.
     app.include_router(backup_router)
     app.include_router(strategy_source_router)
     app.include_router(signals_router)
+    app.include_router(strategies_gui_router)
 
     # Mount static files for frontend (dashboard)
     # Note: Frontend files will be created in Step 022.6
