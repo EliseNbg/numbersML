@@ -8,6 +8,7 @@ from .indicators import router as indicators_router
 from .market import router as market_router
 from .ml import router as ml_router
 from .pipeline import router as pipeline_router
+from .signals import router as signals_router
 from .strategies import router as strategies_router
 from .strategy_backtest import router as strategy_backtest_router
 from .symbols import router as symbols_router
@@ -26,4 +27,5 @@ __all__ = [
     "target_values_router",
     "ml_router",
     "backup_router",
+    "signals_router",
 ]
