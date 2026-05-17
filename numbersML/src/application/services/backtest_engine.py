@@ -9,7 +9,6 @@ Provides:
 - Deterministic, reproducible results
 """
 
-import json
 import logging
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -29,8 +28,6 @@ from src.domain.strategies.base import (
     StrategyState,
     TimeFrame,
 )
-from src.indicators.base import Indicator
-from src.pipeline.indicators_buffer import IndicatorsBuffer
 
 logger = logging.getLogger(__name__)
 
@@ -500,12 +497,6 @@ class BacktestEngine:
         self.execution_sim = PaperExecutionSimulator(fee_bps, slippage_bps)
         self.metrics_calc = BacktestMetricsCalculator()
 
-        # Indicator calculation state
-        self._indicator_definitions: list[dict[str, Any]] = []
-        self._indicator_classes: dict[str, type[Indicator]] = {}
-        self._max_indicator_period: int = 200
-        self._buffer: IndicatorsBuffer | None = None
-
     async def run_backtest(
         self,
         strategy_id: UUID,
@@ -548,32 +539,13 @@ class BacktestEngine:
         self.execution_sim = PaperExecutionSimulator(fee_bps, slippage_bps)
         self.execution_sim.reset()
 
-        # Reset indicator calculation state
-        self._indicator_definitions = []
-        self._indicator_classes = {}
-        self._max_indicator_period = 200
-        self._buffer = None
+        # Load historical data
+        candles = await self._load_historical_data(symbols[0], start_time, end_time)
 
-        # Load historical data with warmup period for indicators
-        warmup_seconds = self._max_indicator_period
-        warmup_start = start_time - timedelta(seconds=warmup_seconds)
-        all_candles = await self._load_historical_data(symbols[0], warmup_start, end_time)
-
-        if not all_candles:
+        if not candles:
             raise ValueError("No historical data found for backtest period")
 
-        # Split into warmup candles and simulation candles
-        warmup_candles = [c for c in all_candles if c["time"] < start_time]
-        sim_candles = [c for c in all_candles if c["time"] >= start_time]
-
-        logger.info(
-            f"Loaded {len(all_candles)} candles ({len(warmup_candles)} warmup, {len(sim_candles)} for simulation)"
-        )
-
-        # Load indicator definitions and initialize buffer with warmup candles
-        await self._load_indicator_definitions()
-        if self._indicator_definitions and warmup_candles:
-            self._init_indicator_buffer(symbols[0], warmup_candles)
+        logger.info(f"Loaded {len(candles)} candles for backtest")
 
         # Initialize tracking
         cash = initial_balance
@@ -602,16 +574,14 @@ class BacktestEngine:
         )
 
         # Run simulation
-        total_candles = len(sim_candles)
+        total_candles = len(candles)
 
         try:
-            for i, candle in enumerate(sim_candles):
+            for i, candle in enumerate(candles):
                 if progress_callback and i % 100 == 0:
                     progress_callback(i / total_candles)
 
-                # Calculate indicators on-the-fly for this candle
-                indicators = self._calculate_indicators_for_candle(candle)
-                tick = self._create_enriched_tick(candle, symbols[0], indicators)
+                tick = self._create_enriched_tick(candle, symbols[0])
                 pp = PricePoint(
                     timestamp=candle["time"],
                     open=float(candle["open"]),
@@ -767,17 +737,17 @@ class BacktestEngine:
                         )
                     )
 
-            final_price = float(sim_candles[-1]["close"])
+            final_price = float(candles[-1]["close"])
             for symbol, pos_list in list(positions.items()):
                 for pos in pos_list:
                     grid_index = pos.get("grid_index")
                     cash, trade = self._close_position(
-                        pos, final_price, cash, sim_candles[-1]["time"], "end_of_test"
+                        pos, final_price, cash, candles[-1]["time"], "end_of_test"
                     )
                     trades.append(trade)
                     debug_messages.append(
                         DebugMessage(
-                            timestamp=sim_candles[-1]["time"],
+                            timestamp=candles[-1]["time"],
                             level="INFO",
                             message=(
                                 f"Force-closed {symbol} at end of test at {trade.exit_price:.4f}; "
@@ -885,16 +855,14 @@ class BacktestEngine:
 
         return candles
 
-    def _create_enriched_tick(
-        self, candle: dict[str, Any], symbol: str, indicators: dict[str, float] | None = None
-    ) -> EnrichedTick:
+    def _create_enriched_tick(self, candle: dict[str, Any], symbol: str) -> EnrichedTick:
         """Create EnrichedTick from candle data."""
         return EnrichedTick(
             symbol=symbol,
             price=Decimal(str(candle["close"])),
             volume=Decimal(str(candle["volume"])),
             time=candle["time"],
-            indicators=indicators or candle.get("indicators", {}),
+            indicators=candle.get("indicators", {}),
         )
 
     def _open_position(
@@ -1007,157 +975,6 @@ class BacktestEngine:
         )
         strategy._config = config.copy()
         return strategy
-
-    async def _load_indicator_definitions(self) -> None:
-        """Load active indicator definitions from the database."""
-        async with self.db_pool.acquire() as conn:
-            rows = await conn.fetch("""
-                SELECT name, class_name, module_path, params
-                FROM indicator_definitions
-                WHERE is_active = true
-                ORDER BY name
-            """)
-            self._indicator_definitions = []
-            for r in rows:
-                params = r["params"]
-                if isinstance(params, str):
-                    params = json.loads(params)
-                elif not isinstance(params, dict):
-                    params = {}
-                self._indicator_definitions.append({
-                    "name": r["name"],
-                    "class_name": r["class_name"],
-                    "module_path": r["module_path"],
-                    "params": params,
-                })
-
-        self._max_indicator_period = self._calculate_max_indicator_period()
-        logger.info(
-            f"Loaded {len(self._indicator_definitions)} indicator definitions "
-            f"(max period: {self._max_indicator_period})"
-        )
-
-    def _calculate_max_indicator_period(self) -> int:
-        """Calculate the maximum lookback period needed for all indicators."""
-        import re
-
-        max_period = 200
-        for defn in self._indicator_definitions:
-            params = defn.get("params", {})
-            class_name = defn.get("class_name", "")
-            for key, value in params.items():
-                if isinstance(value, int | float):
-                    if "macd" in class_name.lower():
-                        if "slow" in key or "fast" in key:
-                            signal = params.get("signal_period", 9)
-                            total = int(value) + int(signal) + 50
-                            max_period = max(max_period, total)
-                        elif "signal" in key:
-                            max_period = max(max_period, int(value) + 50)
-                    else:
-                        max_period = max(max_period, int(value) + 20)
-            name_nums = [int(n) for n in re.findall(r"\d+", defn.get("name", ""))]
-            if name_nums:
-                max_period = max(max_period, max(name_nums) + 50)
-        return max_period
-
-    def _get_indicator_class(self, class_name: str, module_path: str) -> type[Indicator] | None:
-        """Dynamically import and cache indicator class."""
-        cache_key = f"{module_path}.{class_name}"
-        if cache_key in self._indicator_classes:
-            return self._indicator_classes[cache_key]
-
-        try:
-            import importlib
-
-            module = importlib.import_module(module_path)
-            cls = getattr(module, class_name)
-            self._indicator_classes[cache_key] = cls
-            return cls
-        except (ImportError, AttributeError) as e:
-            logger.error(f"Failed to import {module_path}.{class_name}: {e}")
-            return None
-
-    def _init_indicator_buffer(self, symbol: str, candles: list[dict[str, Any]]) -> None:
-        """Initialize the indicator buffer with warmup candles."""
-        self._buffer = IndicatorsBuffer(
-            dbconn=self.db_pool,
-            symbol=symbol,
-            max_indicator_period=self._max_indicator_period,
-        )
-
-        warmup_count = min(self._max_indicator_period, len(candles))
-        for candle in candles[:warmup_count]:
-            self._buffer.highs_buff.append(float(candle["high"]))
-            self._buffer.lows_buff.append(float(candle["low"]))
-            self._buffer.closes_buff.append(float(candle["close"]))
-            self._buffer.volumes_buff.append(float(candle["volume"]))
-
-        logger.info(
-            f"Initialized indicator buffer for {symbol} with {len(self._buffer.closes_buff)} warmup candles"
-        )
-
-    def _calculate_indicators_for_candle(self, candle: dict[str, Any]) -> dict[str, float]:
-        """Calculate all active indicators for the current candle.
-
-        Args:
-            candle: Current candle data with OHLCV values
-
-        Returns:
-            Dictionary of indicator name -> latest value
-        """
-        if not self._indicator_definitions or not self._buffer:
-            return {}
-
-        # Add current candle to buffer
-        self._buffer.highs_buff.append(float(candle["high"]))
-        self._buffer.lows_buff.append(float(candle["low"]))
-        self._buffer.closes_buff.append(float(candle["close"]))
-        self._buffer.volumes_buff.append(float(candle["volume"]))
-
-        # Check if we have enough data
-        if len(self._buffer.closes_buff) < 2:
-            return {}
-
-        # Get data arrays from buffer
-        prices = np.array(list(self._buffer.closes_buff))
-        volumes = np.array(list(self._buffer.volumes_buff))
-        highs = np.array(list(self._buffer.highs_buff))
-        lows = np.array(list(self._buffer.lows_buff))
-        opens = np.array([0.0] * len(prices))
-
-        # Calculate all indicators
-        results: dict[str, float] = {}
-        for defn in self._indicator_definitions:
-            try:
-                cls = self._get_indicator_class(defn["class_name"], defn["module_path"])
-                if cls is None:
-                    continue
-
-                indicator = cls(**defn["params"])
-                result = indicator.calculate(
-                    prices=prices,
-                    volumes=volumes,
-                    highs=highs,
-                    lows=lows,
-                    opens=opens,
-                )
-
-                base_key = defn["name"]
-                for sub_key, values in result.values.items():
-                    if sub_key == "value" or len(result.values) == 1:
-                        flat_key = base_key
-                    else:
-                        flat_key = f"{base_key}_{sub_key}"
-
-                    if len(values) > 0:
-                        val = float(values[-1])
-                        if not np.isnan(val) and not np.isinf(val):
-                            results[flat_key] = val
-            except Exception as e:
-                logger.error(f"Error calculating {defn['name']}: {e}")
-
-        return results
 
 
 def serialize_trade_record(trade: TradeRecord) -> dict[str, Any]:
