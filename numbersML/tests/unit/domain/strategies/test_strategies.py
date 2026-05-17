@@ -69,6 +69,7 @@ class TestRSIStrategy:
     ) -> None:
         """Test RSI strategy generates BUY signal when oversold."""
         await rsi_strategy.initialize()
+        await rsi_strategy.start()
 
         # Create oversold tick (RSI = 25)
         tick = create_tick(rsi_value=25.0)
@@ -88,6 +89,7 @@ class TestRSIStrategy:
     ) -> None:
         """Test RSI strategy generates SELL signal when overbought."""
         await rsi_strategy.initialize()
+        await rsi_strategy.start()
 
         # Create overbought tick (RSI = 75)
         tick = create_tick(rsi_value=75.0)
@@ -107,6 +109,7 @@ class TestRSIStrategy:
     ) -> None:
         """Test RSI strategy generates no signal in neutral zone."""
         await rsi_strategy.initialize()
+        await rsi_strategy.start()
 
         # Create neutral tick (RSI = 50)
         tick = create_tick(rsi_value=50.0)
@@ -122,6 +125,7 @@ class TestRSIStrategy:
     ) -> None:
         """Test RSI strategy at threshold boundaries."""
         await rsi_strategy.initialize()
+        await rsi_strategy.start()
 
         # At oversold threshold (should not trigger)
         tick = create_tick(rsi_value=30.0)
@@ -193,6 +197,7 @@ class TestMACDStrategy:
     ) -> None:
         """Test MACD strategy generates BUY signal on bullish crossover."""
         await macd_strategy.initialize()
+        await macd_strategy.start()
 
         # First tick: MACD below signal
         tick1 = create_tick(macd=100.0, signal=110.0)
@@ -214,6 +219,7 @@ class TestMACDStrategy:
     ) -> None:
         """Test MACD strategy generates SELL signal on bearish crossover."""
         await macd_strategy.initialize()
+        await macd_strategy.start()
 
         # First tick: MACD above signal
         tick1 = create_tick(macd=120.0, signal=110.0)
@@ -235,6 +241,7 @@ class TestMACDStrategy:
     ) -> None:
         """Test MACD strategy generates no signal without crossover."""
         await macd_strategy.initialize()
+        await macd_strategy.start()
 
         # First tick
         tick1 = create_tick(macd=100.0, signal=90.0)
@@ -292,6 +299,7 @@ class TestSMACrossoverStrategy:
     ) -> None:
         """Test SMA strategy generates BUY signal on golden cross."""
         await sma_strategy.initialize()
+        await sma_strategy.start()
 
         # First tick: Fast SMA below slow SMA
         tick1 = create_tick(fast_sma=49000.0, slow_sma=50000.0)
@@ -313,6 +321,7 @@ class TestSMACrossoverStrategy:
     ) -> None:
         """Test SMA strategy generates SELL signal on death cross."""
         await sma_strategy.initialize()
+        await sma_strategy.start()
 
         # First tick: Fast SMA above slow SMA
         tick1 = create_tick(fast_sma=51000.0, slow_sma=50000.0)
@@ -378,6 +387,7 @@ class TestBollingerBandsStrategy:
     ) -> None:
         """Test BB strategy generates BUY signal at lower band."""
         await bb_strategy.initialize()
+        await bb_strategy.start()
 
         # Price at lower band
         tick = create_tick(price=49000.0, lower=49000.0)
@@ -395,6 +405,7 @@ class TestBollingerBandsStrategy:
     ) -> None:
         """Test BB strategy generates SELL signal at upper band."""
         await bb_strategy.initialize()
+        await bb_strategy.start()
 
         # Price at upper band
         tick = create_tick(price=51000.0, upper=51000.0)
@@ -412,6 +423,7 @@ class TestBollingerBandsStrategy:
     ) -> None:
         """Test BB strategy generates no signal in middle."""
         await bb_strategy.initialize()
+        await bb_strategy.start()
 
         # Price in middle
         tick = create_tick(price=50000.0)
@@ -483,6 +495,7 @@ class TestMultiIndicatorStrategy:
     ) -> None:
         """Test multi-indicator strategy with majority buy signals."""
         await multi_strategy.initialize()
+        await multi_strategy.start()
 
         # Setup: 2 out of 3 bullish (RSI oversold, price > SMA)
         # First tick for MACD state
@@ -517,6 +530,7 @@ class TestMultiIndicatorStrategy:
     ) -> None:
         """Test multi-indicator strategy with majority sell signals."""
         await multi_strategy.initialize()
+        await multi_strategy.start()
 
         # First tick for MACD state
         tick1 = create_tick(
@@ -554,6 +568,7 @@ class TestMultiIndicatorStrategy:
             require_all_signals=True,
         )
         await strategy.initialize()
+        await strategy.start()
 
         # First tick for MACD state
         tick1 = create_tick(

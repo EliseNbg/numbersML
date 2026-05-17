@@ -298,7 +298,6 @@ class Strategy(ABC):
             True
         """
         logger.info(f"Initializing strategy {self._strategy_id}")
-        self._state = StrategyState.RUNNING
         return True
 
     async def start(self) -> None:

@@ -6,7 +6,6 @@ Tests strategy base classes, signals, positions, and strategy manager.
 
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Optional
 
 import pytest
 
@@ -265,7 +264,7 @@ class TestStrategy:
         assert strategy.state == StrategyState.STOPPED
 
         await strategy.initialize()
-        assert strategy.state == StrategyState.RUNNING
+        assert strategy.state == StrategyState.STOPPED
 
         await strategy.start()
         assert strategy.state == StrategyState.RUNNING
@@ -282,6 +281,7 @@ class TestStrategy:
         )
 
         await strategy.initialize()
+        await strategy.start()
         assert strategy.state == StrategyState.RUNNING
 
         await strategy.pause()
@@ -312,6 +312,7 @@ class TestStrategy:
         import asyncio
 
         asyncio.run(strategy.initialize())
+        asyncio.run(strategy.start())
 
         # Should process when running
         signal = strategy.process_tick(tick)
@@ -477,7 +478,7 @@ class TestStrategyManager:
 class SimpleTestStrategy(Strategy):
     """Simple test strategy implementation."""
 
-    def on_tick(self, tick: EnrichedTick) -> Optional[Signal]:
+    def on_tick(self, tick: EnrichedTick) -> Signal | None:
         """Generate HOLD signal for testing."""
         return Signal(
             strategy_id=self.id,
