@@ -7,9 +7,17 @@ This strategy generates signals based on MACD line crossing the signal line:
 The strategy maintains:
 - Last MACD and signal values to detect crosses
 - State to track position (in position or not)
+- Cross count for statistics
+
+Configuration:
+    - macd_indicator_name: Name of MACD indicator (default: macdindicator)
+    - fast_period: MACD fast EMA period (default: 12)
+    - slow_period: MACD slow EMA period (default: 26)
+    - signal_period: Signal line period (default: 9)
 """
 
 import logging
+from decimal import Decimal
 from typing import Any
 
 from src.domain.strategies.base import EnrichedTick, Signal, SignalType, Strategy
@@ -18,21 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class MACDCrossStrategy(Strategy):
-    """MACD crossover strategy with persistent state.
-
-    State:
-        - last_macd: Last MACD line value
-        - last_signal: Last signal line value
-        - last_histogram: Last MACD histogram value
-        - in_position: Whether we have an open position
-        - cross_count: Number of crosses detected
-
-    Configuration (accessed via self.get_config):
-        - macd_indicator_name: Name of MACD indicator (default: macdindicator)
-        - fast_period: MACD fast EMA period (default: 12)
-        - slow_period: MACD slow EMA period (default: 26)
-        - signal_period: Signal line period (default: 9)
-    """
+    """MACD crossover strategy with persistent state."""
 
     def __init__(
         self,
@@ -48,6 +42,13 @@ class MACDCrossStrategy(Strategy):
         self.last_histogram: float = 0.0
         self.in_position: bool = False
         self.cross_count: int = 0
+        self.macd_indicator_name: str = "macdindicator"
+        self.fast_period: int = 12
+        self.slow_period: int = 26
+        self.signal_period: int = 9
+
+        self._tick_count: int = 0
+        self._initialized: bool = False
 
         logger.info(f"MACDCrossStrategy {strategy_id} initialized")
 
@@ -60,23 +61,83 @@ class MACDCrossStrategy(Strategy):
         Returns:
             Signal if crossover detected, None otherwise
         """
-        # Get MACD indicator values from tick
-        macd_name = self.get_config("macd_indicator_name", "macdindicator")
+        if not self._initialized:
+            self._initialize_macd()
+            self._initialized = True
 
-        # Try to get MACD values from indicators
-        # Assuming indicator names like: macdindicator_macd, macdindicator_signal, macdindicator_histogram
-        macd_value = tick.get_indicator(f"{macd_name}_macd", None)
-        signal_value = tick.get_indicator(f"{macd_name}_signal", None)
+        self._tick_count += 1
 
-        if macd_value is None or signal_value is None:
-            # Try alternative naming
-            macd_value = tick.get_indicator("macd", self.last_macd)
-            signal_value = tick.get_indicator("macd_signal", self.last_signal)
+        macd_value, signal_value = self._get_macd_values(tick)
 
         if macd_value is None or signal_value is None:
             return None
 
-        # Detect crossover
+        signal = self._detect_crossover(macd_value, signal_value, tick)
+
+        if self._tick_count % 500 == 0:
+            logger.info(
+                f"{tick.time} Tick {self._tick_count}: "
+                f"macd={macd_value:.4f}, signal={signal_value:.4f}, "
+                f"histogram={self.last_histogram:.4f}, "
+                f"in_position={self.in_position}, cross_count={self.cross_count}"
+            )
+
+        self.last_macd = macd_value
+        self.last_signal = signal_value
+        self.last_histogram = macd_value - signal_value
+
+        return signal
+
+    def _initialize_macd(self) -> None:
+        """Initialize MACD strategy configuration."""
+        self.macd_indicator_name = self.get_config("macd_indicator_name", "macdindicator")
+        self.fast_period = self.get_config("fast_period", 12)
+        self.slow_period = self.get_config("slow_period", 26)
+        self.signal_period = self.get_config("signal_period", 9)
+
+        logger.info(
+            f"[{self._strategy_id}] MACD: name={self.macd_indicator_name}, "
+            f"fast={self.fast_period}, slow={self.slow_period}, "
+            f"signal={self.signal_period}"
+        )
+
+    def _get_macd_values(self, tick: EnrichedTick) -> tuple[float | None, float | None]:
+        """Extract MACD and signal values from tick.
+
+        Args:
+            tick: Enriched tick data with indicators
+
+        Returns:
+            Tuple of (macd_value, signal_value) or (None, None) if not available
+        """
+        macd_value = tick.get_indicator(f"{self.macd_indicator_name}_macd", None)
+        signal_value = tick.get_indicator(f"{self.macd_indicator_name}_signal", None)
+
+        if macd_value is None or signal_value is None:
+            macd_value = tick.get_indicator("macd", None)
+            signal_value = tick.get_indicator("macd_signal", None)
+
+        if macd_value is None or signal_value is None:
+            return None, None
+
+        return macd_value, signal_value
+
+    def _detect_crossover(
+        self,
+        macd_value: float,
+        signal_value: float,
+        tick: EnrichedTick,
+    ) -> Signal | None:
+        """Detect MACD crossover and generate signal.
+
+        Args:
+            macd_value: Current MACD line value
+            signal_value: Current signal line value
+            tick: Enriched tick data
+
+        Returns:
+            Signal if crossover detected, None otherwise
+        """
         signal = None
 
         # Bullish crossover: MACD crosses above signal line
@@ -85,56 +146,114 @@ class MACDCrossStrategy(Strategy):
             and macd_value > signal_value
             and not self.in_position
         ):
-            self.in_position = True
-            self.cross_count += 1
-            signal = Signal(
-                strategy_id=self._strategy_id,
-                symbol=tick.symbol,
-                signal_type=SignalType.BUY,
-                price=tick.price,
-                confidence=min(1.0, abs(macd_value - signal_value) / 10.0),
-                metadata={
-                    "macd": macd_value,
-                    "signal": signal_value,
-                    "histogram": macd_value - signal_value,
-                    "crossover_type": "bullish",
-                    "cross_count": self.cross_count,
-                },
-            )
-            logger.info(
-                f"[{self._strategy_id}] BUY signal: "
-                f"MACD={macd_value:.4f} > Signal={signal_value:.4f}"
-            )
+            signal = self._signal_buy(tick, macd_value, signal_value)
 
         # Bearish crossover: MACD crosses below signal line
         elif self.last_macd >= self.last_signal and macd_value < signal_value and self.in_position:
-            self.in_position = False
-            self.cross_count += 1
-            signal = Signal(
-                strategy_id=self._strategy_id,
-                symbol=tick.symbol,
-                signal_type=SignalType.SELL,
-                price=tick.price,
-                confidence=min(1.0, abs(macd_value - signal_value) / 10.0),
-                metadata={
-                    "macd": macd_value,
-                    "signal": signal_value,
-                    "histogram": macd_value - signal_value,
-                    "crossover_type": "bearish",
-                    "cross_count": self.cross_count,
-                },
-            )
-            logger.info(
-                f"[{self._strategy_id}] SELL signal: "
-                f"MACD={macd_value:.4f} < Signal={signal_value:.4f}"
-            )
-
-        # Update state
-        self.last_macd = macd_value
-        self.last_signal = signal_value
-        self.last_histogram = macd_value - signal_value
+            signal = self._signal_sell(tick, macd_value, signal_value)
 
         return signal
+
+    def _signal_buy(
+        self,
+        tick: EnrichedTick,
+        macd_value: float,
+        signal_value: float,
+    ) -> Signal:
+        """Generate BUY signal.
+
+        Args:
+            tick: Enriched tick data
+            macd_value: Current MACD line value
+            signal_value: Current signal line value
+
+        Returns:
+            BUY signal
+        """
+        self.in_position = True
+        self.cross_count += 1
+
+        logger.info(
+            f"[{self._strategy_id}] BUY signal: "
+            f"MACD={macd_value:.4f} > Signal={signal_value:.4f}, "
+            f"histogram={macd_value - signal_value:.4f}"
+        )
+
+        return Signal(
+            strategy_id=self._strategy_id,
+            symbol=tick.symbol,
+            signal_type=SignalType.BUY,
+            price=tick.price,
+            confidence=min(1.0, abs(macd_value - signal_value) / 10.0),
+            metadata={
+                "macd": macd_value,
+                "signal": signal_value,
+                "histogram": macd_value - signal_value,
+                "crossover_type": "bullish",
+                "cross_count": self.cross_count,
+            },
+        )
+
+    def _signal_sell(
+        self,
+        tick: EnrichedTick,
+        macd_value: float,
+        signal_value: float,
+    ) -> Signal:
+        """Generate SELL signal.
+
+        Args:
+            tick: Enriched tick data
+            macd_value: Current MACD line value
+            signal_value: Current signal line value
+
+        Returns:
+            SELL signal
+        """
+        self.in_position = False
+        self.cross_count += 1
+
+        logger.info(
+            f"[{self._strategy_id}] SELL signal: "
+            f"MACD={macd_value:.4f} < Signal={signal_value:.4f}, "
+            f"histogram={macd_value - signal_value:.4f}"
+        )
+
+        return Signal(
+            strategy_id=self._strategy_id,
+            symbol=tick.symbol,
+            signal_type=SignalType.SELL,
+            price=tick.price,
+            confidence=min(1.0, abs(macd_value - signal_value) / 10.0),
+            metadata={
+                "macd": macd_value,
+                "signal": signal_value,
+                "histogram": macd_value - signal_value,
+                "crossover_type": "bearish",
+                "cross_count": self.cross_count,
+            },
+        )
+
+    def on_position_closed(
+        self,
+        symbol: str,
+        price: Decimal,
+        exit_reason: str,
+        grid_index: int | None = None,
+    ) -> None:
+        """Called when position is closed externally.
+
+        Args:
+            symbol: Trading pair symbol
+            price: Price at which position was closed
+            exit_reason: Reason for closure
+            grid_index: Not used for MACD strategy
+        """
+        logger.info(
+            f"[{self._strategy_id}] Position closed for {symbol}: "
+            f"reason={exit_reason}, price={price:.8f}"
+        )
+        self.in_position = False
 
     def get_stats(self) -> dict[str, Any]:
         """Override to include custom state in stats."""
@@ -146,6 +265,11 @@ class MACDCrossStrategy(Strategy):
                 "last_histogram": self.last_histogram,
                 "in_position": self.in_position,
                 "cross_count": self.cross_count,
+                "tick_count": self._tick_count,
+                "macd_indicator_name": self.macd_indicator_name,
+                "fast_period": self.fast_period,
+                "slow_period": self.slow_period,
+                "signal_period": self.signal_period,
             }
         )
         return stats
