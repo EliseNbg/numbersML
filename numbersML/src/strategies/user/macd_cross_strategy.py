@@ -117,22 +117,65 @@ class MACDCrossStrategy(Strategy):
         Returns:
             Tuple of (macd_value, signal_value, histogram_value) or (None, None, None) if not available
         """
+        # Try configured indicator name first
         macd_value = tick.get_indicator(f"{self.macd_indicator_name}_macd", None)
         signal_value = tick.get_indicator(f"{self.macd_indicator_name}_signal", None)
         histogram_value = tick.get_indicator(f"{self.macd_indicator_name}_histogram", None)
 
-        if macd_value is None or signal_value is None:
-            macd_value = tick.get_indicator("macd", None)
-            signal_value = tick.get_indicator("macd_signal", None)
-            histogram_value = tick.get_indicator("macd_histogram", None)
+        if macd_value is not None and signal_value is not None:
+            if histogram_value is None:
+                histogram_value = macd_value - signal_value
+            return macd_value, signal_value, histogram_value
 
-        if macd_value is None or signal_value is None:
-            return None, None, None
+        # Fallback: simple names
+        macd_value = tick.get_indicator("macd", None)
+        signal_value = tick.get_indicator("macd_signal", None)
+        histogram_value = tick.get_indicator("macd_histogram", None)
 
-        if histogram_value is None:
-            histogram_value = macd_value - signal_value
+        if macd_value is not None and signal_value is not None:
+            if histogram_value is None:
+                histogram_value = macd_value - signal_value
+            return macd_value, signal_value, histogram_value
+
+        # Auto-detect: find any MACD indicator keys in tick data
+        macd_value, signal_value, histogram_value = self._autodetect_macd(tick.indicators)
 
         return macd_value, signal_value, histogram_value
+
+    def _autodetect_macd(
+        self, indicators: dict[str, float]
+    ) -> tuple[float | None, float | None, float | None]:
+        """Auto-detect MACD indicators from available keys.
+
+        Looks for keys ending with _macd, _signal, _histogram that contain
+        'macd' in the base name.
+        """
+        macd_key = None
+        signal_key = None
+        histogram_key = None
+
+        for key in indicators:
+            key_lower = key.lower()
+            if "macd" not in key_lower:
+                continue
+
+            if key_lower.endswith("_macd"):
+                macd_key = key
+            elif key_lower.endswith("_signal"):
+                signal_key = key
+            elif key_lower.endswith("_histogram"):
+                histogram_key = key
+
+        macd_value = indicators.get(macd_key) if macd_key else None
+        signal_value = indicators.get(signal_key) if signal_key else None
+        histogram_value = indicators.get(histogram_key) if histogram_key else None
+
+        if macd_value is not None and signal_value is not None:
+            if histogram_value is None:
+                histogram_value = macd_value - signal_value
+            return macd_value, signal_value, histogram_value
+
+        return None, None, None
 
     def _detect_crossover(
         self,
