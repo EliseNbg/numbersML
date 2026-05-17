@@ -12,9 +12,12 @@ This folder contains independent implementation packets for Phase 3.
 - ✅ **Step 6** (`STEP_06_DASHBOARD_GUI.md`): COMPLETE - Dashboard GUI with class-based and config-based strategy support, market status widgets, removed LLM UI elements
 - ✅ **Step 7** (`STEP_07_BACKTEST_ENGINE.md`): COMPLETE - Event-driven backtest engine with detailed statistics, paper execution simulation, comprehensive metrics
 - ✅ **Step 8** (`STEP_08_DASHBOARD_GUI.md`): COMPLETE - Strategy backtest dashboard with job submission, results visualization, trade blotter, debug logs, price charts with buy/sell markers
-- 📋 **Step 9** (`STEP_09_STRATEGY_BT_DETAILS_GUI.md`): Planned. Strategy backtest details dashboard with buy/sell events and chart + statistics and PnL
-- 🔜 **Step 10** (`STEP_10_OBSERVABILITY_AND_SAFETY.md`): Not started.
-- 🔜 **Step 11** (`STEP_11_TESTING_AND_ROLLOUT.md`): Not started.
+- ✅ **Step 9** (`STEP_09_STRATEGY_BT_DETAILS_GUI.md`): COMPLETE. Strategy backtest details dashboard with buy/sell events and chart + statistics and PnL
+- 🔜 **Step 10** (`STEP_10_STRATEGY_RUNNER_PIPELINE_ORCHESTRATION.md`): Planned. Strategy runner, hot-plug, stdout collection, management GUI.
+- 🔜 **Step 11** (`STEP_11_MARKET_SERVICE_GUI.md`): Planned. Binance filter engine, order router, API key management, order dashboard.
+
+- 🔜 **Step 12** (`STEP_12_OBSERVABILITY_AND_SAFETY.md`): Not started.
+- 🔜 **Step 13** (`STEP_13_TESTING_AND_ROLLOUT.md`): Not started.
 
 Each step file is designed for a separate LLM session and includes:
 - Scope and objective
@@ -34,5 +37,7 @@ Suggested execution order:
 7. `STEP_07_BACKTEST_ENGINE.md`
 8. `STEP_08_DASHBOARD_GUI.md`
 9. `STEP_09_STRATEGY_BT_DETAILS_GUI.md`
-10. `STEP_10_OBSERVABILITY_AND_SAFETY.md`
-11. `STEP_11_TESTING_AND_ROLLOUT.md`
+10. `STEP_10_STRATEGY_RUNNER_PIPELINE_ORCHESTRATION.md`
+11. `STEP_11_MARKET_SERVICE_GUI.md`
+12. `STEP_12_OBSERVABILITY_AND_SAFETY.md`
+13. `STEP_13_TESTING_AND_ROLLOUT.md`
