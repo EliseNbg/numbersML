@@ -132,6 +132,7 @@ class TestMACDCrossStrategy:
         strategy.last_macd = 0.0010
         strategy.last_signal = 0.0012
         strategy.in_position = False
+        strategy.min_relative_threshold = 1e-9
 
         signal = strategy._detect_crossover(0.0015, 0.0010, sample_tick)
 
@@ -149,6 +150,7 @@ class TestMACDCrossStrategy:
         strategy.last_macd = 0.0015
         strategy.last_signal = 0.0010
         strategy.in_position = True
+        strategy.min_relative_threshold = 1e-9
 
         signal = strategy._detect_crossover(0.0008, 0.0012, sample_tick)
 
@@ -166,6 +168,7 @@ class TestMACDCrossStrategy:
         strategy.last_macd = 0.0010
         strategy.last_signal = 0.0012
         strategy.in_position = True
+        strategy.min_relative_threshold = 1e-9
 
         signal = strategy._detect_crossover(0.0015, 0.0010, sample_tick)
 
@@ -177,6 +180,7 @@ class TestMACDCrossStrategy:
         strategy.last_macd = 0.0015
         strategy.last_signal = 0.0010
         strategy.in_position = False
+        strategy.min_relative_threshold = 1e-9
 
         signal = strategy._detect_crossover(0.0008, 0.0012, sample_tick)
 
@@ -188,6 +192,7 @@ class TestMACDCrossStrategy:
         strategy.last_macd = 0.0010
         strategy.last_signal = 0.0012
         strategy.in_position = False
+        strategy.min_relative_threshold = 1e-9
 
         signal = strategy._detect_crossover(0.0008, 0.0010, sample_tick)
 
@@ -228,6 +233,7 @@ class TestMACDCrossStrategy:
         strategy.last_macd = 0.0010
         strategy.last_signal = 0.0012
         strategy.in_position = False
+        strategy.min_relative_threshold = 1e-9
 
         tick = EnrichedTick(
             symbol="BTC/USDT",
@@ -254,6 +260,7 @@ class TestMACDCrossStrategy:
         strategy.last_macd = 0.0015
         strategy.last_signal = 0.0010
         strategy.in_position = True
+        strategy.min_relative_threshold = 1e-9
 
         tick = EnrichedTick(
             symbol="BTC/USDT",
@@ -330,6 +337,7 @@ class TestMACDCrossStrategy:
         assert stats["fast_period"] == 12
         assert stats["slow_period"] == 26
         assert stats["signal_period"] == 9
+        assert stats["min_relative_threshold"] == 0.001
 
     def test_signal_buy_confidence(self, strategy, sample_tick):
         """Test that BUY signal confidence is calculated correctly."""
@@ -351,3 +359,65 @@ class TestMACDCrossStrategy:
 
         expected_confidence = min(1.0, abs(macd_value - signal_value) / 10.0)
         assert signal.confidence == expected_confidence
+
+    def test_detect_crossover_noise_filter_blocks_small_signals(self, strategy, sample_tick):
+        """Test that small histogram relative to price is filtered as noise."""
+        strategy.last_macd = 0.0000001
+        strategy.last_signal = 0.0000002
+        strategy.in_position = False
+        strategy.min_relative_threshold = 0.001
+
+        tick = EnrichedTick(
+            symbol="BTC/USDT",
+            price=Decimal("50000"),
+            volume=Decimal("1.5"),
+            time=datetime.now(UTC),
+            indicators={},
+        )
+
+        signal = strategy._detect_crossover(0.00000015, 0.0000001, tick)
+
+        assert signal is None
+        assert strategy.cross_count == 0
+
+    def test_detect_crossover_relative_threshold_allows_large_signals(self, strategy, sample_tick):
+        """Test that large histogram relative to price passes the filter."""
+        strategy.last_macd = 400
+        strategy.last_signal = 500
+        strategy.in_position = False
+        strategy.min_relative_threshold = 0.001
+
+        tick = EnrichedTick(
+            symbol="BTC/USDT",
+            price=Decimal("50000"),
+            volume=Decimal("1.5"),
+            time=datetime.now(UTC),
+            indicators={},
+        )
+
+        signal = strategy._detect_crossover(600, 500, tick)
+
+        assert signal is not None
+        assert signal.signal_type == SignalType.BUY
+        assert strategy.cross_count == 1
+
+    def test_detect_crossover_works_for_low_price_assets(self, strategy, sample_tick):
+        """Test that threshold scales correctly for low-price assets like SHIB."""
+        strategy.last_macd = 0.000000001
+        strategy.last_signal = 0.000000002
+        strategy.in_position = False
+        strategy.min_relative_threshold = 1e-5
+
+        tick = EnrichedTick(
+            symbol="SHIB/USDC",
+            price=Decimal("0.00001"),
+            volume=Decimal("1000000"),
+            time=datetime.now(UTC),
+            indicators={},
+        )
+
+        signal = strategy._detect_crossover(0.0000000015, 0.000000001, tick)
+
+        assert signal is not None
+        assert signal.signal_type == SignalType.BUY
+        assert strategy.cross_count == 1

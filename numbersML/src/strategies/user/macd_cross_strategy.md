@@ -43,7 +43,7 @@ The strategy maintains the following state:
 | `fast_period` | int | `12` | Fast EMA period for MACD calculation |
 | `slow_period` | int | `26` | Slow EMA period for MACD calculation |
 | `signal_period` | int | `9` | Signal line EMA period |
-| `min_histogram_threshold` | float | `1e-7` | Minimum histogram magnitude to trigger a signal (noise filter) |
+| `min_relative_threshold` | float | `0.001` | Minimum histogram/price ratio to trigger a signal (noise filter) |
 
 ### Selecting a Pre-calculated MACD Indicator
 
@@ -75,7 +75,7 @@ To use the long-term MACD (280/590/29):
   "fast_period": 280,
   "slow_period": 590,
   "signal_period": 29,
-  "min_histogram_threshold": 0.000001
+  "min_relative_threshold": 0.001
 }
 ```
 
@@ -87,7 +87,7 @@ To use the very long-term MACD (450/960/100):
   "fast_period": 450,
   "slow_period": 960,
   "signal_period": 100,
-  "min_histogram_threshold": 0.000001
+  "min_relative_threshold": 0.001
 }
 ```
 
@@ -104,20 +104,28 @@ strategy.set_config("macd_indicator_name", "macd_280_590_29")
 strategy.set_config("fast_period", 280)
 strategy.set_config("slow_period", 590)
 strategy.set_config("signal_period", 29)
-strategy.set_config("min_histogram_threshold", 0.000001)
+strategy.set_config("min_relative_threshold", 0.001)
 ```
 
 ### Noise Filter
 
-The `min_histogram_threshold` parameter prevents floating-point noise near zero
-from triggering false crossovers on 1-second candles. Signals are only generated
-when `abs(macd - signal) >= min_histogram_threshold`.
+The `min_relative_threshold` parameter prevents floating-point noise near zero
+from triggering false crossovers. Signals are only generated when
+`abs(macd - signal) / price >= min_relative_threshold`.
+
+This relative approach works across all price ranges:
+
+| Asset | Price | Histogram (0.1% of price) | Threshold |
+|-------|-------|---------------------------|-----------|
+| SHIB/USDC | 0.00001 | 1e-8 | `0.001` |
+| DOGE/USDC | 0.11 | 1.1e-4 | `0.001` |
+| BTC/USDC | 100,000 | 100 | `0.001` |
 
 | Threshold | Effect |
 |-----------|--------|
-| `1e-7` (default) | Allows most crossovers, filters only extreme noise |
-| `1e-6` | Moderate filtering, reduces whipsaw trades |
-| `1e-5` | Aggressive filtering, only strong crossovers trigger signals |
+| `0.001` (default) | Requires 0.1% of price, filters noise on all assets |
+| `0.0005` | Requires 0.05%, moderate filtering |
+| `0.005` | Requires 0.5%, aggressive filtering, only strong crossovers |
 
 ## Architecture
 
@@ -153,8 +161,8 @@ on_tick()
 On first tick, the strategy logs its configuration:
 
 ```
-[strategy_id] MACD: name=macd_280_590_29, fast=280, slow=590, signal=29, min_threshold=0.000001
-[strategy_id] Config: {'macd_indicator_name': 'macd_280_590_29', 'min_histogram_threshold': 1e-06, ...}
+[strategy_id] MACD: name=macd_280_590_29, fast=280, slow=590, signal=29, min_relative_threshold=0.001
+[strategy_id] Config: {'macd_indicator_name': 'macd_280_590_29', 'min_relative_threshold': 0.001, ...}
 [strategy_id] Indicators: {'macd_280_590_29_macd': 0.0012, 'macd_280_590_29_signal': 0.0010, ...}
 ```
 
@@ -207,7 +215,7 @@ The `get_stats()` method returns:
     "fast_period": 280,
     "slow_period": 590,
     "signal_period": 29,
-    "min_histogram_threshold": 1e-06,
+    "min_relative_threshold": 0.001,
 }
 ```
 
