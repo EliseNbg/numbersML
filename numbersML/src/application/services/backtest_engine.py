@@ -547,6 +547,9 @@ class BacktestEngine:
 
         logger.info(f"Loaded {len(candles)} candles for backtest")
 
+        # Validate that indicator data exists before starting backtest
+        self._validate_indicators_present(candles, symbols[0])
+
         # Initialize tracking
         cash = initial_balance
         positions: dict[str, list[dict[str, Any]]] = {}
@@ -854,6 +857,56 @@ class BacktestEngine:
             )
 
         return candles
+
+    def _validate_indicators_present(
+        self,
+        candles: list[dict[str, Any]],
+        symbol: str,
+    ) -> None:
+        """Validate that indicator data exists in loaded candles.
+
+        Samples the first 100 candles to check if any indicator values
+        are present. Raises a descriptive error if indicators are missing.
+
+        Args:
+            candles: List of candle dicts with 'indicators' key
+            symbol: Symbol name for error message
+
+        Raises:
+            ValueError: If no indicator data found in candles
+        """
+        sample_size = min(100, len(candles))
+        candles_with_indicators = 0
+        all_indicator_keys: set[str] = set()
+
+        for candle in candles[:sample_size]:
+            indicators = candle.get("indicators", {})
+            if indicators:
+                candles_with_indicators += 1
+                all_indicator_keys.update(indicators.keys())
+
+        if candles_with_indicators == 0:
+            raise ValueError(
+                f"No indicator data found for {symbol} in the backtest period. "
+                f"Checked {sample_size} candles — all had empty indicator dicts. "
+                f"Run the indicator recalculation pipeline before backtesting:\n"
+                f"  python -m src.cli.recalculate --indicators "
+                f"--from '<start_time>' --to '<end_time>' --symbols '{symbol}'"
+            )
+
+        if candles_with_indicators < sample_size:
+            coverage = candles_with_indicators / sample_size * 100
+            logger.warning(
+                f"Indicator coverage for {symbol}: {coverage:.1f}% "
+                f"({candles_with_indicators}/{sample_size} candles). "
+                f"Available keys: {sorted(all_indicator_keys)}"
+            )
+        else:
+            logger.info(
+                f"Indicator validation passed for {symbol}: "
+                f"{len(all_indicator_keys)} keys found "
+                f"({', '.join(sorted(all_indicator_keys)[:5])}...)"
+            )
 
     def _create_enriched_tick(self, candle: dict[str, Any], symbol: str) -> EnrichedTick:
         """Create EnrichedTick from candle data."""

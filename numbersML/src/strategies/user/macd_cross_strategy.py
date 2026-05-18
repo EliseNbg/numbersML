@@ -79,8 +79,8 @@ class MACDCrossStrategy(Strategy):
         if self._tick_count % 500 == 0:
             logger.info(
                 f"{tick.time} Tick {self._tick_count}: "
-                f"macd={macd_value:.4f}, signal={signal_value:.4f}, "
-                f"histogram={histogram_value:.4f}, "
+                f"macd={macd_value:.10f}, signal={signal_value:.10f}, "
+                f"histogram={histogram_value:.10f}, "
                 f"in_position={self.in_position}, cross_count={self.cross_count}"
             )
 
@@ -198,10 +198,12 @@ class MACDCrossStrategy(Strategy):
         """
         signal = None
         histogram = abs(macd_value - signal_value)
-        price = float(tick.price)
 
-        # Skip if histogram is below relative threshold (noise filter)
-        if price > 0 and (histogram / price) < self.min_relative_threshold:
+        # Noise filter: histogram relative to signal line (same scale)
+        # Using signal_value instead of price ensures the threshold works
+        # across all asset price ranges (BTC, DOGE, etc.)
+        signal_magnitude = abs(signal_value) if abs(signal_value) > 1e-10 else abs(macd_value)
+        if signal_magnitude > 1e-10 and (histogram / signal_magnitude) < self.min_relative_threshold:
             return None
 
         # Bullish crossover: MACD crosses above signal line

@@ -659,7 +659,7 @@ async def list_trades(
 
 
 @router.get(
-    "/ticker/{symbol}",
+    "/ticker",
     response_model=MarketDataResponse,
     summary="Get market ticker",
     description="Get current market data for a symbol.",

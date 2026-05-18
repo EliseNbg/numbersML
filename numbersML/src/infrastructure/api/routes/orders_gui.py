@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 
-from src.infrastructure.api.dependencies import get_db_pool
+from src.infrastructure.database import get_db_pool
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ async def get_order_dashboard() -> dict:
             """
             SELECT o.*, s.name as strategy_name
             FROM orders o
-            LEFT JOIN strategy_signals s ON o.strategy_id = s.id
+            LEFT JOIN strategies s ON o.strategy_id = s.id
             ORDER BY o.created_at DESC
             LIMIT 100
             """
@@ -61,72 +61,6 @@ async def get_order_dashboard() -> dict:
             "avg_latency_ms": round(stats["avg_latency"] or 0, 1),
         },
     }
-
-
-@router.get("/{order_id}")
-async def get_order_details(order_id: UUID) -> dict:
-    """Order details with execution history.
-
-    Args:
-        order_id: Order UUID.
-
-    Returns:
-        Order details dict.
-
-    Raises:
-        HTTPException: 404 if not found.
-    """
-    pool = get_db_pool()
-
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT * FROM orders WHERE id = $1",
-            order_id,
-        )
-
-    if row is None:
-        raise HTTPException(status_code=404, detail="Order not found")
-
-    return dict(row)
-
-
-@router.post("/{order_id}/cancel")
-async def cancel_order(order_id: UUID) -> dict:
-    """Cancel an order.
-
-    Args:
-        order_id: Order UUID.
-
-    Returns:
-        Cancel result.
-
-    Raises:
-        HTTPException: 404 if not found.
-    """
-    pool = get_db_pool()
-
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT id, status FROM orders WHERE id = $1",
-            order_id,
-        )
-
-    if row is None:
-        raise HTTPException(status_code=404, detail="Order not found")
-
-    if row["status"] in ("FILLED", "CANCELED", "REJECTED"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot cancel order with status: {row['status']}",
-        )
-
-    async with pool.acquire() as conn:
-        await conn.execute(
-            "UPDATE orders SET status = 'CANCELED', updated_at = NOW() WHERE id = $1",
-            order_id,
-        )
-
-    return {"status": "canceled", "order_id": str(order_id)}
 
 
 @router.get("/stats")
@@ -206,3 +140,69 @@ async def export_orders_csv(
         lines.append(",".join(values))
 
     return "\n".join(lines)
+
+
+@router.get("/{order_id}")
+async def get_order_details(order_id: UUID) -> dict:
+    """Order details with execution history.
+
+    Args:
+        order_id: Order UUID.
+
+    Returns:
+        Order details dict.
+
+    Raises:
+        HTTPException: 404 if not found.
+    """
+    pool = get_db_pool()
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM orders WHERE id = $1",
+            order_id,
+        )
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    return dict(row)
+
+
+@router.post("/{order_id}/cancel")
+async def cancel_order(order_id: UUID) -> dict:
+    """Cancel an order.
+
+    Args:
+        order_id: Order UUID.
+
+    Returns:
+        Cancel result.
+
+    Raises:
+        HTTPException: 404 if not found.
+    """
+    pool = get_db_pool()
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT id, status FROM orders WHERE id = $1",
+            order_id,
+        )
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    if row["status"] in ("FILLED", "CANCELED", "REJECTED"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel order with status: {row['status']}",
+        )
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE orders SET status = 'CANCELED', updated_at = NOW() WHERE id = $1",
+            order_id,
+        )
+
+    return {"status": "canceled", "order_id": str(order_id)}

@@ -471,7 +471,7 @@ class TestBacktestEngine:
     @pytest.mark.asyncio
     async def test_no_trades_scenario(self, mock_db_pool):
         """Test backtest with no trading signals."""
-        # Create candles without RSI indicators (no signals)
+        # Create candles with indicators but none that trigger signals
         mock_conn = AsyncMock()
         mock_conn.fetch = AsyncMock(
             return_value=[
@@ -482,7 +482,9 @@ class TestBacktestEngine:
                     "low": 49900.0,
                     "close": 50000.0,
                     "volume": 1.0,
-                    "indicators": {},  # No indicators = no signals
+                    "indicators": {
+                        "rsiindicator_period14_rsi": 50.0,  # Neutral RSI, no signals
+                    },
                 }
                 for i in range(50)
             ]
@@ -572,6 +574,143 @@ class TestBacktestEngine:
 # ============================================================================
 # Edge Cases
 # ============================================================================
+
+
+class TestIndicatorValidation:
+    """Test indicator data validation before backtest."""
+
+    def test_validate_passes_with_indicators(self, engine):
+        """Test validation passes when indicators are present."""
+        candles = [
+            {
+                "time": datetime(2024, 1, 1) + timedelta(minutes=i),
+                "close": 50000.0,
+                "indicators": {"macdindicator_macd": 0.001, "macdindicator_signal": 0.0005},
+            }
+            for i in range(100)
+        ]
+
+        # Should not raise
+        engine._validate_indicators_present(candles, "BTC/USDC")
+
+    def test_validate_fails_with_empty_indicators(self, engine):
+        """Test validation fails when all candles have empty indicators."""
+        candles = [
+            {
+                "time": datetime(2024, 1, 1) + timedelta(minutes=i),
+                "close": 50000.0,
+                "indicators": {},
+            }
+            for i in range(100)
+        ]
+
+        with pytest.raises(ValueError, match="No indicator data found for BTC/USDC"):
+            engine._validate_indicators_present(candles, "BTC/USDC")
+
+    def test_validate_fails_with_missing_indicator_key(self, engine):
+        """Test validation fails when 'indicators' key is missing."""
+        candles = [
+            {
+                "time": datetime(2024, 1, 1) + timedelta(minutes=i),
+                "close": 50000.0,
+            }
+            for i in range(100)
+        ]
+
+        with pytest.raises(ValueError, match="No indicator data found for BTC/USDC"):
+            engine._validate_indicators_present(candles, "BTC/USDC")
+
+    def test_validate_warns_with_partial_coverage(self, engine, caplog):
+        """Test validation logs warning when only some candles have indicators."""
+        candles = []
+        for i in range(100):
+            if i % 2 == 0:
+                candles.append(
+                    {
+                        "time": datetime(2024, 1, 1) + timedelta(minutes=i),
+                        "close": 50000.0,
+                        "indicators": {"rsi": 50.0},
+                    }
+                )
+            else:
+                candles.append(
+                    {
+                        "time": datetime(2024, 1, 1) + timedelta(minutes=i),
+                        "close": 50000.0,
+                        "indicators": {},
+                    }
+                )
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="src.application.services.backtest_engine"):
+            engine._validate_indicators_present(candles, "ETH/USDC")
+
+        assert "Indicator coverage for ETH/USDC: 50.0%" in caplog.text
+
+    def test_validate_reports_available_keys(self, engine, caplog):
+        """Test validation logs available indicator keys."""
+        candles = [
+            {
+                "time": datetime(2024, 1, 1) + timedelta(minutes=i),
+                "close": 50000.0,
+                "indicators": {
+                    "macdindicator_macd": 0.001,
+                    "macdindicator_signal": 0.0005,
+                    "macdindicator_histogram": 0.0005,
+                },
+            }
+            for i in range(100)
+        ]
+
+        import logging
+
+        with caplog.at_level(logging.INFO, logger="src.application.services.backtest_engine"):
+            engine._validate_indicators_present(candles, "BTC/USDC")
+
+        assert "Indicator validation passed for BTC/USDC" in caplog.text
+        assert "3 keys found" in caplog.text
+
+    def test_validate_small_dataset(self, engine):
+        """Test validation works with fewer than 100 candles."""
+        candles = [
+            {
+                "time": datetime(2024, 1, 1) + timedelta(minutes=i),
+                "close": 50000.0,
+                "indicators": {"rsi": 50.0},
+            }
+            for i in range(10)
+        ]
+
+        # Should not raise — samples all 10 candles
+        engine._validate_indicators_present(candles, "BTC/USDC")
+
+    def test_validate_small_dataset_all_empty(self, engine):
+        """Test validation fails with small dataset when all empty."""
+        candles = [
+            {
+                "time": datetime(2024, 1, 1) + timedelta(minutes=i),
+                "close": 50000.0,
+                "indicators": {},
+            }
+            for i in range(10)
+        ]
+
+        with pytest.raises(ValueError, match="Checked 10 candles"):
+            engine._validate_indicators_present(candles, "BTC/USDC")
+
+    def test_validate_error_message_includes_recalc_command(self, engine):
+        """Test error message includes recalculation command."""
+        candles = [
+            {
+                "time": datetime(2024, 1, 1),
+                "close": 50000.0,
+                "indicators": {},
+            }
+        ]
+
+        with pytest.raises(ValueError, match="python -m src.cli.recalculate"):
+            engine._validate_indicators_present(candles, "DOGE/USDC")
 
 
 class TestEdgeCases:

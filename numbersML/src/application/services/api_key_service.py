@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -89,8 +90,8 @@ class ApiKeyService:
                 encrypted_key,
                 encrypted_secret,
                 key.is_active,
-                key.permissions,
-                key.ip_whitelist,
+                json.dumps(key.permissions),
+                json.dumps(key.ip_whitelist),
                 key.created_at,
                 key.updated_at,
                 key.created_by,
@@ -183,16 +184,16 @@ class ApiKeyService:
                 UPDATE api_keys SET
                     name = COALESCE($2, name),
                     is_active = COALESCE($3, is_active),
-                    permissions = COALESCE($4, permissions),
-                    ip_whitelist = COALESCE($5, ip_whitelist),
+                    permissions = COALESCE($4, permissions)::jsonb,
+                    ip_whitelist = COALESCE($5, ip_whitelist)::jsonb,
                     updated_at = $6
                 WHERE id = $1
                 """,
                 key_id,
                 updates.get("name"),
                 updates.get("is_active"),
-                updates.get("permissions"),
-                updates.get("ip_whitelist"),
+                json.dumps(updates["permissions"]) if "permissions" in updates else None,
+                json.dumps(updates["ip_whitelist"]) if "ip_whitelist" in updates else None,
                 now,
             )
 

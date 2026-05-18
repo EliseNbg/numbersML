@@ -8,6 +8,7 @@ from .dashboard import router as dashboard_router
 from .indicators import router as indicators_router
 from .market import router as market_router
 from .ml import router as ml_router
+from .orders_gui import router as orders_gui_router
 from .pipeline import router as pipeline_router
 from .signals import router as signals_router
 from .strategies import router as strategies_router
@@ -32,4 +33,5 @@ __all__ = [
     "backup_router",
     "signals_router",
     "api_keys_router",
+    "orders_gui_router",
 ]

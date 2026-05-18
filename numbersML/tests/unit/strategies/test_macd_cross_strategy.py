@@ -361,11 +361,11 @@ class TestMACDCrossStrategy:
         assert signal.confidence == expected_confidence
 
     def test_detect_crossover_noise_filter_blocks_small_signals(self, strategy, sample_tick):
-        """Test that small histogram relative to price is filtered as noise."""
+        """Test that small histogram relative to signal line is filtered as noise."""
         strategy.last_macd = 0.0000001
         strategy.last_signal = 0.0000002
         strategy.in_position = False
-        strategy.min_relative_threshold = 0.001
+        strategy.min_relative_threshold = 0.1
 
         tick = EnrichedTick(
             symbol="BTC/USDT",
@@ -375,13 +375,15 @@ class TestMACDCrossStrategy:
             indicators={},
         )
 
-        signal = strategy._detect_crossover(0.00000015, 0.0000001, tick)
+        # histogram=0.00000005, signal=0.0000001 → ratio=0.5 > 0.1 → passes
+        # Need smaller ratio: histogram=0.000000005, signal=0.0000001 → ratio=0.05 < 0.1
+        signal = strategy._detect_crossover(0.000000105, 0.0000001, tick)
 
         assert signal is None
         assert strategy.cross_count == 0
 
     def test_detect_crossover_relative_threshold_allows_large_signals(self, strategy, sample_tick):
-        """Test that large histogram relative to price passes the filter."""
+        """Test that large histogram relative to signal line passes the filter."""
         strategy.last_macd = 400
         strategy.last_signal = 500
         strategy.in_position = False
@@ -402,7 +404,7 @@ class TestMACDCrossStrategy:
         assert strategy.cross_count == 1
 
     def test_detect_crossover_works_for_low_price_assets(self, strategy, sample_tick):
-        """Test that threshold scales correctly for low-price assets like SHIB."""
+        """Test that threshold works for low-price assets using signal-relative scale."""
         strategy.last_macd = 0.000000001
         strategy.last_signal = 0.000000002
         strategy.in_position = False
