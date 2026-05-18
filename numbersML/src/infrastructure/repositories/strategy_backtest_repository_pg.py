@@ -1,6 +1,7 @@
 """PostgreSQL implementation of strategy backtest repository."""
 
 import json
+import math
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
@@ -57,6 +58,20 @@ class StrategyBacktestRepositoryPG:
             Saved backtest record as dictionary
         """
 
+        def _sanitize_for_json(v: Any) -> Any:
+            """Convert non-JSON-safe values (inf, nan) to None."""
+            if isinstance(v, float):
+                if math.isinf(v) or math.isnan(v):
+                    return None
+                return v
+            if isinstance(v, dict):
+                return {k: _sanitize_for_json(val) for k, val in v.items()}
+            if isinstance(v, list):
+                return [_sanitize_for_json(item) for item in v]
+            if isinstance(v, datetime):
+                return v.isoformat()
+            return v
+
         def _json_serializable(v):
             if isinstance(v, datetime):
                 return v.isoformat()
@@ -64,13 +79,14 @@ class StrategyBacktestRepositoryPG:
                 return v
             return str(v)
 
+        sanitized_metrics = _sanitize_for_json(metrics)
+        metrics_json = json.dumps(sanitized_metrics)
         trades_json = json.dumps(
             [{k: _json_serializable(v) for k, v in t.items()} for t in (trades or [])]
         )
         equity_json = json.dumps(
             [{k: _json_serializable(v) for k, v in p.items()} for p in (equity_curve or [])]
         )
-        metrics_json = json.dumps(metrics)
 
         async with self._connection() as conn:
             row = await conn.fetchrow(
