@@ -665,3 +665,80 @@ class TestMACDBuyStrategy:
         signal = strategy.on_tick(tick)
 
         assert signal is None
+
+    def test_sma_multiplicator_initialized_from_config(self, strategy, sample_tick):
+        """Test that sma_multiplicator is initialized from config."""
+        strategy.set_config("sma_multiplicator", 0.995)
+
+        strategy._initialize_macd(sample_tick)
+
+        assert strategy.sma_multiplicator == 0.995
+
+    def test_sma_multiplicator_default_value(self, strategy, sample_tick):
+        """Test that sma_multiplicator defaults to 0.997."""
+        strategy._initialize_macd(sample_tick)
+
+        assert strategy.sma_multiplicator == 0.997
+
+    def test_sma_multiplicator_affects_filter(self, strategy, sample_tick):
+        """Test that sma_multiplicator changes the effective SMA threshold."""
+        strategy.last_macd = -0.0020
+        strategy.last_signal = -0.0015
+        strategy.bottom_border_macd_to_buy = 0.0
+        strategy.min_relative_threshold = 1e-9
+        strategy.sma_fast = "sma_800"
+        strategy.sma_slow = "sma_2000"
+        strategy.sma_multiplicator = 0.995
+
+        tick = EnrichedTick(
+            symbol="BTC/USDT",
+            price=Decimal("49700"),
+            volume=Decimal("1.5"),
+            time=datetime.now(UTC),
+            indicators={
+                "macdindicator_macd": -0.0010,
+                "macdindicator_signal": -0.0015,
+                "sma_800": 50000.0,
+                "sma_2000": 55000.0,
+            },
+        )
+
+        signal = strategy._detect_crossover(-0.0010, -0.0015, tick)
+
+        assert signal is not None
+
+    def test_sma_multiplicator_blocks_when_price_above_adjusted_sma(self, strategy, sample_tick):
+        """Test that signal is blocked when price is above adjusted SMA."""
+        strategy.last_macd = -0.0020
+        strategy.last_signal = -0.0015
+        strategy.bottom_border_macd_to_buy = 0.0
+        strategy.min_relative_threshold = 1e-9
+        strategy.sma_fast = "sma_800"
+        strategy.sma_slow = "sma_2000"
+        strategy.sma_multiplicator = 0.999
+
+        tick = EnrichedTick(
+            symbol="BTC/USDT",
+            price=Decimal("49950"),
+            volume=Decimal("1.5"),
+            time=datetime.now(UTC),
+            indicators={
+                "macdindicator_macd": -0.0010,
+                "macdindicator_signal": -0.0015,
+                "sma_800": 50000.0,
+                "sma_2000": 55000.0,
+            },
+        )
+
+        signal = strategy._detect_crossover(-0.0010, -0.0015, tick)
+
+        assert signal is None
+
+    def test_get_stats_includes_sma_multiplicator(self, strategy, sample_tick):
+        """Test that get_stats includes sma_multiplicator."""
+        strategy._initialize_macd(sample_tick)
+        strategy.sma_multiplicator = 0.995
+
+        stats = strategy.get_stats()
+
+        assert stats["sma_multiplicator"] == 0.995

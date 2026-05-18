@@ -32,6 +32,7 @@ A BUY signal is generated when **all** of the following are true:
 | `grid_profit_pct` | float | `0.85` | Profit target percentage for take-profit calculation |
 | `sma_fast` | str | `None` | Name of fast SMA indicator for price filter (e.g., `"sma_800"`) |
 | `sma_slow` | str | `None` | Name of slow SMA indicator for price filter (e.g., `"sma_2000"`) |
+| `sma_multiplicator` | float | `0.997` | Multiplier applied to SMA values for price comparison |
 
 ### Selecting a Pre-calculated MACD Indicator
 
@@ -94,6 +95,7 @@ To use SMA price filter (buy only when price is below both SMAs):
   "bottom_border_macd_to_buy": -0.5,
   "sma_fast": "sma_800",
   "sma_slow": "sma_2000",
+  "sma_multiplicator": 0.997,
   "grid_quantity_absolute": 100.0,
   "grid_profit_pct": 0.85
 }
@@ -177,6 +179,8 @@ price is below key moving averages.
 - If only one is configured, price must be below that SMA
 - If both are configured, price must be below **both** SMAs
 - If an SMA indicator is missing from the tick data, that check is skipped (allows signal)
+- The `sma_multiplicator` is applied to each SMA value before comparison:
+  `price < sma_value * sma_multiplicator`
 
 **Common configurations:**
 
@@ -291,6 +295,7 @@ The `get_stats()` method returns:
     "grid_profit_pct": 0.85,
     "sma_fast": "sma_800",
     "sma_slow": "sma_2000",
+    "sma_multiplicator": 0.997,
 }
 ```
 

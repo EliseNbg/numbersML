@@ -35,8 +35,8 @@
 │     - Reads candle_indicators (if available)                   │
 │     - NO WAIT - generates immediately                        │
 │     ↓                                                        │
-│  4. LLM Model                                                │
-│     - Receives vector                                        │
+│  4. LLM Model OR Strategy-Class                              │
+│     - Receives vector / indicators                           │
 │     - Makes buy/sell decision                                │
 │                                                              │
 │  ✅ Simple, fast, no blocking                                │

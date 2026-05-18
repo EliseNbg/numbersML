@@ -53,7 +53,7 @@ Implement a single market execution abstraction with two modes: paper/test and l
 Implement Step 2 only: Market Service abstraction with paper and live adapters.
 
 Project constraints:
-- Python 3.11, asyncpg, DDD layering.
+- Python 3.14, asyncpg, DDD layering.
 - Preserve clear boundary: strategy signal logic must not know exchange specifics.
 
 Tasks:

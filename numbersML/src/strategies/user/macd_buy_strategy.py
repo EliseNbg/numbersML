@@ -23,6 +23,7 @@ Configuration:
     - grid_profit_pct: Profit target percentage for take-profit (default: 0.85)
     - sma_fast: Name of fast SMA indicator for price filter (optional, e.g., "sma_800")
     - sma_slow: Name of slow SMA indicator for price filter (optional, e.g., "sma_2000")
+    - sma_multiplicator: Multiplier applied to SMA values for price comparison (default: 0.997)
 """
 
 import logging
@@ -59,6 +60,7 @@ class MACDBuyStrategy(Strategy):
         self.grid_profit_pct: float = 0.85
         self.sma_fast: str | None = None
         self.sma_slow: str | None = None
+        self.sma_multiplicator: float = 0.997
 
         self._tick_count: int = 0
         self._initialized: bool = False
@@ -116,6 +118,7 @@ class MACDBuyStrategy(Strategy):
         self.grid_profit_pct = self.get_config("grid_profit_pct", 0.85)
         self.sma_fast = self.get_config("sma_fast")
         self.sma_slow = self.get_config("sma_slow")
+        self.sma_multiplicator = self.get_config("sma_multiplicator", 0.997)
 
         logger.info(
             f"[{self._strategy_id}] MACD: name={self.macd_indicator_name}, "
@@ -129,7 +132,8 @@ class MACDBuyStrategy(Strategy):
         )
         if self.sma_fast or self.sma_slow:
             logger.info(
-                f"[{self._strategy_id}] SMA filter: fast={self.sma_fast}, slow={self.sma_slow}"
+                f"[{self._strategy_id}] SMA filter: fast={self.sma_fast}, slow={self.sma_slow}, "
+                f"multiplicator={self.sma_multiplicator}"
             )
 
         logger.info(f"[{self._strategy_id}] Config: {self._config}")
@@ -217,13 +221,13 @@ class MACDBuyStrategy(Strategy):
 
         if self.sma_fast:
             if self.sma_fast in tick.indicators:
-                sma_fast_value = tick.indicators[self.sma_fast]
+                sma_fast_value = tick.indicators[self.sma_fast] * self.sma_multiplicator
                 if price >= sma_fast_value:
                     return False
 
         if self.sma_slow:
             if self.sma_slow in tick.indicators:
-                sma_slow_value = tick.indicators[self.sma_slow]
+                sma_slow_value = tick.indicators[self.sma_slow] * self.sma_multiplicator
                 if price >= sma_slow_value:
                     return False
 
@@ -349,6 +353,7 @@ class MACDBuyStrategy(Strategy):
                 "grid_profit_pct": self.grid_profit_pct,
                 "sma_fast": self.sma_fast,
                 "sma_slow": self.sma_slow,
+                "sma_multiplicator": self.sma_multiplicator,
             }
         )
         return stats
