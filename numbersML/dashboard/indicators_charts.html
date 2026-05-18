@@ -179,17 +179,19 @@
                 // 1. Price + EMA / SMA
                 const priceChart = createChartCard(`${symbol} Price with EMA / SMA`, container);
                 const priceSeries = priceChart.addLineSeries({
-                     color: '#2196F3', 
+                     color: '#2196F3',
                      lineStyle: 2,
                             priceScaleId: 'sma',
                             priceFormat: {
                                 type: 'custom',
                                 formatter: (price) => price.toFixed(8)
                             },
-                     lineWidth: 2, 
-                     title: 'Close' 
+                     lineWidth: 2,
+                     title: 'Close'
                     });
-                priceSeries.setData(candles.map(c => ({ time: c.time, value: c.close })));
+                // Use price from indicator rows so timestamps align with indicators
+                const priceData = indicatorRows.map(r => ({ time: r.time, value: r.price })).filter(p => p.value != null);
+                priceSeries.setData(priceData);
 
                 const indicatorColors = [
                     '#FF5722', '#9C27B0', '#00BCD4', '#8BC34A', '#FF9800',
@@ -244,7 +246,7 @@
                 // 2. Price + Bollinger Bands (upper, lower, middle)
                 const bbPriceChart = createChartCard(`${symbol} Price with Bollinger Bands`, container);
                 const bbPriceSeries = bbPriceChart.addLineSeries({ color: '#2196F3', lineWidth: 2, title: 'Close', priceFormat: { type: 'custom', formatter: (price) => price.toFixed(8) } });
-                bbPriceSeries.setData(candles.map(c => ({ time: c.time, value: c.close })));
+                bbPriceSeries.setData(priceData);
 
                 // Show all BB indicators dynamically
                 Object.keys(indicators)
