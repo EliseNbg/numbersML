@@ -6,6 +6,8 @@ with an additional constraint that the MACD value must be below a configured bot
 Buy conditions:
 - MACD crosses above signal line (bullish crossover)
 - Current MACD value < bottom_border_macd_to_buy (ensures buying at dips)
+- Current close price < sma_fast (if configured, e.g., sma_800)
+- Current close price < sma_slow (if configured, e.g., sma_2000)
 
 No SELL signals are generated. The strategy includes expected_profit_price in signal metadata,
 which is handled externally by the market or take-profit mechanism.
@@ -19,6 +21,8 @@ Configuration:
     - bottom_border_macd_to_buy: Maximum MACD value to allow BUY signals (default: 0.0)
     - grid_quantity_absolute: USDC amount to buy per signal (default: 100.0)
     - grid_profit_pct: Profit target percentage for take-profit (default: 0.85)
+    - sma_fast: Name of fast SMA indicator for price filter (optional, e.g., "sma_800")
+    - sma_slow: Name of slow SMA indicator for price filter (optional, e.g., "sma_2000")
 """
 
 import logging
@@ -53,6 +57,8 @@ class MACDBuyStrategy(Strategy):
         self.bottom_border_macd_to_buy: float = 0.0
         self.grid_quantity_absolute: float = 100.0
         self.grid_profit_pct: float = 0.85
+        self.sma_fast: str | None = None
+        self.sma_slow: str | None = None
 
         self._tick_count: int = 0
         self._initialized: bool = False
@@ -108,6 +114,8 @@ class MACDBuyStrategy(Strategy):
         self.bottom_border_macd_to_buy = self.get_config("bottom_border_macd_to_buy", 0.0)
         self.grid_quantity_absolute = self.get_config("grid_quantity_absolute", 100.0)
         self.grid_profit_pct = self.get_config("grid_profit_pct", 0.85)
+        self.sma_fast = self.get_config("sma_fast")
+        self.sma_slow = self.get_config("sma_slow")
 
         logger.info(
             f"[{self._strategy_id}] MACD: name={self.macd_indicator_name}, "
@@ -119,6 +127,10 @@ class MACDBuyStrategy(Strategy):
             f"[{self._strategy_id}] Trade: quantity={self.grid_quantity_absolute} USDC, "
             f"profit_target={self.grid_profit_pct}%"
         )
+        if self.sma_fast or self.sma_slow:
+            logger.info(
+                f"[{self._strategy_id}] SMA filter: fast={self.sma_fast}, slow={self.sma_slow}"
+            )
 
         logger.info(f"[{self._strategy_id}] Config: {self._config}")
         logger.info(f"[{self._strategy_id}] Indicators: {tick.indicators}")
@@ -189,6 +201,34 @@ class MACDBuyStrategy(Strategy):
 
         return None, None, None
 
+    def _check_sma_filter(self, tick: EnrichedTick) -> bool:
+        """Check if current price is below configured SMA indicators.
+
+        Args:
+            tick: Enriched tick data with indicators
+
+        Returns:
+            True if price is below all configured SMAs, or if no SMA filter is configured
+        """
+        if not self.sma_fast and not self.sma_slow:
+            return True
+
+        price = float(tick.price)
+
+        if self.sma_fast:
+            if self.sma_fast in tick.indicators:
+                sma_fast_value = tick.indicators[self.sma_fast]
+                if price >= sma_fast_value:
+                    return False
+
+        if self.sma_slow:
+            if self.sma_slow in tick.indicators:
+                sma_slow_value = tick.indicators[self.sma_slow]
+                if price >= sma_slow_value:
+                    return False
+
+        return True
+
     def _detect_crossover(
         self,
         macd_value: float,
@@ -205,6 +245,9 @@ class MACDBuyStrategy(Strategy):
         Returns:
             BUY signal if crossover detected below bottom border, None otherwise
         """
+        if not self._check_sma_filter(tick):
+            return None
+
         histogram = abs(macd_value - signal_value)
 
         # Noise filter: histogram relative to signal line (same scale)
@@ -304,6 +347,8 @@ class MACDBuyStrategy(Strategy):
                 "bottom_border_macd_to_buy": self.bottom_border_macd_to_buy,
                 "grid_quantity_absolute": self.grid_quantity_absolute,
                 "grid_profit_pct": self.grid_profit_pct,
+                "sma_fast": self.sma_fast,
+                "sma_slow": self.sma_slow,
             }
         )
         return stats

@@ -400,3 +400,268 @@ class TestMACDBuyStrategy:
         signal = strategy._detect_crossover(-0.4, -0.5, tick)
 
         assert signal is None
+
+    def test_sma_filter_not_configured_allows_signal(self, strategy, sample_tick):
+        """Test that signal is allowed when no SMA filter is configured."""
+        strategy.last_macd = -0.0020
+        strategy.last_signal = -0.0015
+        strategy.bottom_border_macd_to_buy = 0.0
+        strategy.min_relative_threshold = 1e-9
+        strategy.sma_fast = None
+        strategy.sma_slow = None
+
+        tick = EnrichedTick(
+            symbol="BTC/USDT",
+            price=Decimal("50000"),
+            volume=Decimal("1.5"),
+            time=datetime.now(UTC),
+            indicators={
+                "macdindicator_macd": -0.0010,
+                "macdindicator_signal": -0.0015,
+                "sma_800": 55000.0,
+                "sma_2000": 60000.0,
+            },
+        )
+
+        signal = strategy._detect_crossover(-0.0010, -0.0015, tick)
+
+        assert signal is not None
+        assert signal.signal_type == SignalType.BUY
+
+    def test_sma_filter_price_below_both_allows_signal(self, strategy, sample_tick):
+        """Test that signal is allowed when price is below both SMAs."""
+        strategy.last_macd = -0.0020
+        strategy.last_signal = -0.0015
+        strategy.bottom_border_macd_to_buy = 0.0
+        strategy.min_relative_threshold = 1e-9
+        strategy.sma_fast = "sma_800"
+        strategy.sma_slow = "sma_2000"
+
+        tick = EnrichedTick(
+            symbol="BTC/USDT",
+            price=Decimal("48000"),
+            volume=Decimal("1.5"),
+            time=datetime.now(UTC),
+            indicators={
+                "macdindicator_macd": -0.0010,
+                "macdindicator_signal": -0.0015,
+                "sma_800": 50000.0,
+                "sma_2000": 55000.0,
+            },
+        )
+
+        signal = strategy._detect_crossover(-0.0010, -0.0015, tick)
+
+        assert signal is not None
+        assert signal.signal_type == SignalType.BUY
+
+    def test_sma_filter_price_above_fast_blocks_signal(self, strategy, sample_tick):
+        """Test that signal is blocked when price is above fast SMA."""
+        strategy.last_macd = -0.0020
+        strategy.last_signal = -0.0015
+        strategy.bottom_border_macd_to_buy = 0.0
+        strategy.min_relative_threshold = 1e-9
+        strategy.sma_fast = "sma_800"
+        strategy.sma_slow = "sma_2000"
+
+        tick = EnrichedTick(
+            symbol="BTC/USDT",
+            price=Decimal("52000"),
+            volume=Decimal("1.5"),
+            time=datetime.now(UTC),
+            indicators={
+                "macdindicator_macd": -0.0010,
+                "macdindicator_signal": -0.0015,
+                "sma_800": 50000.0,
+                "sma_2000": 55000.0,
+            },
+        )
+
+        signal = strategy._detect_crossover(-0.0010, -0.0015, tick)
+
+        assert signal is None
+
+    def test_sma_filter_price_above_slow_blocks_signal(self, strategy, sample_tick):
+        """Test that signal is blocked when price is above slow SMA."""
+        strategy.last_macd = -0.0020
+        strategy.last_signal = -0.0015
+        strategy.bottom_border_macd_to_buy = 0.0
+        strategy.min_relative_threshold = 1e-9
+        strategy.sma_fast = "sma_800"
+        strategy.sma_slow = "sma_2000"
+
+        tick = EnrichedTick(
+            symbol="BTC/USDT",
+            price=Decimal("58000"),
+            volume=Decimal("1.5"),
+            time=datetime.now(UTC),
+            indicators={
+                "macdindicator_macd": -0.0010,
+                "macdindicator_signal": -0.0015,
+                "sma_800": 60000.0,
+                "sma_2000": 55000.0,
+            },
+        )
+
+        signal = strategy._detect_crossover(-0.0010, -0.0015, tick)
+
+        assert signal is None
+
+    def test_sma_filter_only_fast_configured(self, strategy, sample_tick):
+        """Test SMA filter with only fast SMA configured."""
+        strategy.last_macd = -0.0020
+        strategy.last_signal = -0.0015
+        strategy.bottom_border_macd_to_buy = 0.0
+        strategy.min_relative_threshold = 1e-9
+        strategy.sma_fast = "sma_800"
+        strategy.sma_slow = None
+
+        tick = EnrichedTick(
+            symbol="BTC/USDT",
+            price=Decimal("48000"),
+            volume=Decimal("1.5"),
+            time=datetime.now(UTC),
+            indicators={
+                "macdindicator_macd": -0.0010,
+                "macdindicator_signal": -0.0015,
+                "sma_800": 50000.0,
+            },
+        )
+
+        signal = strategy._detect_crossover(-0.0010, -0.0015, tick)
+
+        assert signal is not None
+
+    def test_sma_filter_only_slow_configured(self, strategy, sample_tick):
+        """Test SMA filter with only slow SMA configured."""
+        strategy.last_macd = -0.0020
+        strategy.last_signal = -0.0015
+        strategy.bottom_border_macd_to_buy = 0.0
+        strategy.min_relative_threshold = 1e-9
+        strategy.sma_fast = None
+        strategy.sma_slow = "sma_2000"
+
+        tick = EnrichedTick(
+            symbol="BTC/USDT",
+            price=Decimal("52000"),
+            volume=Decimal("1.5"),
+            time=datetime.now(UTC),
+            indicators={
+                "macdindicator_macd": -0.0010,
+                "macdindicator_signal": -0.0015,
+                "sma_2000": 55000.0,
+            },
+        )
+
+        signal = strategy._detect_crossover(-0.0010, -0.0015, tick)
+
+        assert signal is not None
+
+    def test_sma_filter_missing_indicator_allows_signal(self, strategy, sample_tick):
+        """Test that signal is allowed when SMA indicator is missing from tick."""
+        strategy.last_macd = -0.0020
+        strategy.last_signal = -0.0015
+        strategy.bottom_border_macd_to_buy = 0.0
+        strategy.min_relative_threshold = 1e-9
+        strategy.sma_fast = "sma_800"
+        strategy.sma_slow = "sma_2000"
+
+        tick = EnrichedTick(
+            symbol="BTC/USDT",
+            price=Decimal("48000"),
+            volume=Decimal("1.5"),
+            time=datetime.now(UTC),
+            indicators={
+                "macdindicator_macd": -0.0010,
+                "macdindicator_signal": -0.0015,
+            },
+        )
+
+        signal = strategy._detect_crossover(-0.0010, -0.0015, tick)
+
+        assert signal is not None
+
+    def test_sma_filter_initialized_via_config(self, strategy, sample_tick):
+        """Test that SMA filter is initialized from config."""
+        strategy.set_config("sma_fast", "sma_800")
+        strategy.set_config("sma_slow", "sma_2000")
+
+        strategy._initialize_macd(sample_tick)
+
+        assert strategy.sma_fast == "sma_800"
+        assert strategy.sma_slow == "sma_2000"
+
+    def test_sma_filter_defaults_to_none(self, strategy, sample_tick):
+        """Test that SMA filter defaults to None when not configured."""
+        strategy._initialize_macd(sample_tick)
+
+        assert strategy.sma_fast is None
+        assert strategy.sma_slow is None
+
+    def test_get_stats_includes_sma_params(self, strategy, sample_tick):
+        """Test that get_stats includes SMA filter parameters."""
+        strategy._initialize_macd(sample_tick)
+        strategy.sma_fast = "sma_800"
+        strategy.sma_slow = "sma_2000"
+
+        stats = strategy.get_stats()
+
+        assert stats["sma_fast"] == "sma_800"
+        assert stats["sma_slow"] == "sma_2000"
+
+    def test_on_tick_with_sma_filter_generates_signal(self, strategy, sample_tick):
+        """Test full on_tick flow with SMA filter allowing signal."""
+        strategy._initialize_macd(sample_tick)
+        strategy._initialized = True
+        strategy.last_macd = -0.0020
+        strategy.last_signal = -0.0015
+        strategy.bottom_border_macd_to_buy = 0.0
+        strategy.min_relative_threshold = 1e-9
+        strategy.sma_fast = "sma_800"
+        strategy.sma_slow = "sma_2000"
+
+        tick = EnrichedTick(
+            symbol="BTC/USDT",
+            price=Decimal("48000"),
+            volume=Decimal("1.5"),
+            time=datetime.now(UTC),
+            indicators={
+                "macdindicator_macd": -0.0010,
+                "macdindicator_signal": -0.0015,
+                "sma_800": 50000.0,
+                "sma_2000": 55000.0,
+            },
+        )
+
+        signal = strategy.on_tick(tick)
+
+        assert signal is not None
+        assert signal.signal_type == SignalType.BUY
+
+    def test_on_tick_with_sma_filter_blocks_signal(self, strategy, sample_tick):
+        """Test full on_tick flow with SMA filter blocking signal."""
+        strategy._initialize_macd(sample_tick)
+        strategy._initialized = True
+        strategy.last_macd = -0.0020
+        strategy.last_signal = -0.0015
+        strategy.bottom_border_macd_to_buy = 0.0
+        strategy.min_relative_threshold = 1e-9
+        strategy.sma_fast = "sma_800"
+        strategy.sma_slow = "sma_2000"
+
+        tick = EnrichedTick(
+            symbol="BTC/USDT",
+            price=Decimal("52000"),
+            volume=Decimal("1.5"),
+            time=datetime.now(UTC),
+            indicators={
+                "macdindicator_macd": -0.0010,
+                "macdindicator_signal": -0.0015,
+                "sma_800": 50000.0,
+                "sma_2000": 55000.0,
+            },
+        )
+
+        signal = strategy.on_tick(tick)
+
+        assert signal is None

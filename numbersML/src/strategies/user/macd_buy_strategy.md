@@ -16,6 +16,7 @@ A BUY signal is generated when **all** of the following are true:
 1. **Bullish crossover**: MACD crosses above signal line (previous: MACD <= signal, current: MACD > signal)
 2. **Below bottom border**: Current MACD value < `bottom_border_macd_to_buy`
 3. **Noise filter**: `abs(MACD - signal) / price >= min_relative_threshold`
+4. **SMA price filter** (optional): Current close price < `sma_fast` AND current close price < `sma_slow`
 
 ## Configuration
 
@@ -29,6 +30,8 @@ A BUY signal is generated when **all** of the following are true:
 | `bottom_border_macd_to_buy` | float | `0.0` | Maximum MACD value to allow BUY signals |
 | `grid_quantity_absolute` | float | `100.0` | USDC amount to buy per signal |
 | `grid_profit_pct` | float | `0.85` | Profit target percentage for take-profit calculation |
+| `sma_fast` | str | `None` | Name of fast SMA indicator for price filter (e.g., `"sma_800"`) |
+| `sma_slow` | str | `None` | Name of slow SMA indicator for price filter (e.g., `"sma_2000"`) |
 
 ### Selecting a Pre-calculated MACD Indicator
 
@@ -80,6 +83,22 @@ To use the very long-term MACD (450/960/100) with a larger position size:
 }
 ```
 
+To use SMA price filter (buy only when price is below both SMAs):
+
+```json
+{
+  "macd_indicator_name": "macd_280_590_29",
+  "fast_period": 280,
+  "slow_period": 590,
+  "signal_period": 29,
+  "bottom_border_macd_to_buy": -0.5,
+  "sma_fast": "sma_800",
+  "sma_slow": "sma_2000",
+  "grid_quantity_absolute": 100.0,
+  "grid_profit_pct": 0.85
+}
+```
+
 ### Example Configuration (Python)
 
 ```python
@@ -94,6 +113,23 @@ strategy.set_config("fast_period", 280)
 strategy.set_config("slow_period", 590)
 strategy.set_config("signal_period", 29)
 strategy.set_config("bottom_border_macd_to_buy", -0.0001)
+strategy.set_config("grid_quantity_absolute", 100.0)
+strategy.set_config("grid_profit_pct", 0.85)
+```
+
+With SMA price filter:
+
+```python
+strategy = MACDBuyStrategy(
+    strategy_id="macd_buy_btc_sma",
+    symbols=["BTC/USDC"],
+)
+
+# Use MACD with SMA price filter (buy only when price below both SMAs)
+strategy.set_config("macd_indicator_name", "macd_280_590_29")
+strategy.set_config("sma_fast", "sma_800")
+strategy.set_config("sma_slow", "sma_2000")
+strategy.set_config("bottom_border_macd_to_buy", -0.5)
 strategy.set_config("grid_quantity_absolute", 100.0)
 strategy.set_config("grid_profit_pct", 0.85)
 ```
@@ -127,6 +163,42 @@ This relative approach works across all price ranges:
 | `0.001` (default) | Requires 0.1% of price, filters noise on all assets |
 | `0.0005` | Requires 0.05%, moderate filtering |
 | `0.005` | Requires 0.5%, aggressive filtering, only strong crossovers |
+
+### SMA Price Filter
+
+The `sma_fast` and `sma_slow` parameters add an optional price filter that ensures
+BUY signals are only generated when the current close price is below the specified
+SMA indicators. This is useful for ensuring you only buy during downtrends or when
+price is below key moving averages.
+
+**Behavior:**
+
+- If neither `sma_fast` nor `sma_slow` is configured, the filter is disabled (always passes)
+- If only one is configured, price must be below that SMA
+- If both are configured, price must be below **both** SMAs
+- If an SMA indicator is missing from the tick data, that check is skipped (allows signal)
+
+**Common configurations:**
+
+| sma_fast | sma_slow | Effect |
+|----------|----------|--------|
+| `None` | `None` | No price filter (default) |
+| `"sma_800"` | `None` | Buy only when price < 800-period SMA |
+| `"sma_800"` | `"sma_2000"` | Buy only when price < both SMAs |
+
+**Example tick data with SMA indicators:**
+
+```python
+tick.indicators = {
+    "macd_280_590_29_macd": -0.0012,
+    "macd_280_590_29_signal": -0.0015,
+    "sma_800": 50000.0,
+    "sma_2000": 55000.0,
+}
+```
+
+If `sma_fast="sma_800"` and `sma_slow="sma_2000"`, a BUY signal will only be
+generated when `tick.price < 50000` AND `tick.price < 55000`.
 
 ## Architecture
 
@@ -217,6 +289,8 @@ The `get_stats()` method returns:
     "bottom_border_macd_to_buy": -0.5,
     "grid_quantity_absolute": 100.0,
     "grid_profit_pct": 0.85,
+    "sma_fast": "sma_800",
+    "sma_slow": "sma_2000",
 }
 ```
 
