@@ -1,0 +1,301 @@
+# MACD Peak Strategy
+
+## Overview
+
+BUY-only strategy that generates signals when the MACD line reverses from a decline to an uptrend (local minimum / trough detection). Unlike crossover-based strategies, this detects the MACD line's own momentum shift, providing earlier entry signals.
+
+No SELL signals are generated. Each BUY signal includes an `expected_profit_price` in its metadata, which is handled externally by the market or take-profit mechanism.
+
+## Buy Conditions
+
+A BUY signal is generated when **all** of the following are true:
+
+1. **Trend reversal**: MACD was declining for `trend_lookback` consecutive ticks, then starts rising (current MACD > previous MACD)
+2. **Below bottom border**: Current MACD value < `bottom_border_macd_to_buy`
+3. **Noise filter**: `abs(current MACD - previous MACD) / signal_magnitude >= min_relative_threshold`
+4. **SMA price filter** (optional): Current close price < `sma_fast * sma_multiplicator` AND current close price < `sma_slow * sma_multiplicator`
+
+## Configuration
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `macd_indicator_name` | str | `"macdindicator"` | Base name of the pre-calculated MACD indicator to use |
+| `fast_period` | int | `12` | Fast EMA period for MACD calculation |
+| `slow_period` | int | `26` | Slow EMA period for MACD calculation |
+| `signal_period` | int | `9` | Signal line EMA period |
+| `min_relative_threshold` | float | `0.001` | Minimum MACD change ratio to trigger a signal (noise filter) |
+| `bottom_border_macd_to_buy` | float | `0.0` | Maximum MACD value to allow BUY signals |
+| `grid_quantity_absolute` | float | `100.0` | USDC amount to buy per signal |
+| `grid_profit_pct` | float | `0.85` | Profit target percentage for take-profit calculation |
+| `sma_fast` | str | `None` | Name of fast SMA indicator for price filter (e.g., `"sma_800"`) |
+| `sma_slow` | str | `None` | Name of slow SMA indicator for price filter (e.g., `"sma_2000"`) |
+| `sma_multiplicator` | float | `0.997` | Multiplier applied to SMA values for price comparison |
+| `trend_lookback` | int | `3` | Number of consecutive declining ticks required to confirm downtrend |
+
+### Trend Reversal Detection
+
+The strategy tracks MACD values in a sliding window of size `trend_lookback + 1`. A reversal is detected when:
+
+1. All values in the window (except the last two) show a consistent decline: `MACD[i] > MACD[i+1]`
+2. The most recent value shows an uptick: `MACD[current] > MACD[previous]`
+
+This identifies local minima (troughs) in the MACD line, signaling potential trend reversal points.
+
+**Effect of `trend_lookback`:**
+
+| trend_lookback | Effect |
+|----------------|--------|
+| `1` | Very sensitive, detects any single-tick reversal (more false signals) |
+| `3` (default) | Moderate, requires 3 consecutive declining ticks before reversal |
+| `5+` | Conservative, requires longer confirmed downtrend (fewer but stronger signals) |
+
+### Example Configuration (JSON)
+
+To use the long-term MACD (280/590/29) with trend reversal detection:
+
+```json
+{
+  "macd_indicator_name": "macd_280_590_29",
+  "fast_period": 280,
+  "slow_period": 590,
+  "signal_period": 29,
+  "bottom_border_macd_to_buy": -0.5,
+  "trend_lookback": 3,
+  "grid_quantity_absolute": 100.0,
+  "grid_profit_pct": 0.85
+}
+```
+
+To use SMA price filter with trend reversal:
+
+```json
+{
+  "macd_indicator_name": "macd_280_590_29",
+  "fast_period": 280,
+  "slow_period": 590,
+  "signal_period": 29,
+  "bottom_border_macd_to_buy": -0.5,
+  "sma_fast": "sma_800",
+  "sma_slow": "sma_2000",
+  "sma_multiplicator": 0.997,
+  "trend_lookback": 5,
+  "grid_quantity_absolute": 100.0,
+  "grid_profit_pct": 0.85
+}
+```
+
+### Example Configuration (Python)
+
+```python
+strategy = MACDPeakStrategy(
+    strategy_id="macd_peak_doge",
+    symbols=["DOGE/USDC"],
+)
+
+# Use long-term MACD with trend reversal detection
+strategy.set_config("macd_indicator_name", "macd_280_590_29")
+strategy.set_config("fast_period", 280)
+strategy.set_config("slow_period", 590)
+strategy.set_config("signal_period", 29)
+strategy.set_config("bottom_border_macd_to_buy", -0.0001)
+strategy.set_config("trend_lookback", 3)
+strategy.set_config("grid_quantity_absolute", 100.0)
+strategy.set_config("grid_profit_pct", 0.85)
+```
+
+With SMA price filter:
+
+```python
+strategy = MACDPeakStrategy(
+    strategy_id="macd_peak_btc_sma",
+    symbols=["BTC/USDC"],
+)
+
+# Use MACD with SMA price filter and trend reversal
+strategy.set_config("macd_indicator_name", "macd_280_590_29")
+strategy.set_config("sma_fast", "sma_800")
+strategy.set_config("sma_slow", "sma_2000")
+strategy.set_config("sma_multiplicator", 0.997)
+strategy.set_config("bottom_border_macd_to_buy", -0.5)
+strategy.set_config("trend_lookback", 5)
+strategy.set_config("grid_quantity_absolute", 100.0)
+strategy.set_config("grid_profit_pct", 0.85)
+```
+
+### Bottom Border Tuning
+
+The `bottom_border_macd_to_buy` parameter controls when the strategy is allowed to buy:
+
+| Bottom Border | Effect |
+|---------------|--------|
+| `0.0` (default) | Buy on any reversal when MACD is negative |
+| `-0.5` | Only buy when MACD is deeply negative (strong dip) |
+| `-1.0` | Very selective, only buy during extreme oversold conditions |
+
+### Noise Filter
+
+The `min_relative_threshold` parameter prevents floating-point noise near zero from triggering false reversals. Signals are only generated when `abs(current MACD - previous MACD) / signal_magnitude >= min_relative_threshold`.
+
+| Threshold | Effect |
+|-----------|--------|
+| `0.001` (default) | Requires 0.1% change, filters noise on all assets |
+| `0.0005` | Requires 0.05%, moderate filtering |
+| `0.005` | Requires 0.5%, aggressive filtering, only strong reversals |
+
+### SMA Price Filter
+
+The `sma_fast` and `sma_slow` parameters add an optional price filter that ensures BUY signals are only generated when the current close price is below the specified SMA indicators (multiplied by `sma_multiplicator`).
+
+**Behavior:**
+
+- If neither `sma_fast` nor `sma_slow` is configured, the filter is disabled (always passes)
+- If only one is configured, price must be below that SMA
+- If both are configured, price must be below **both** SMAs
+- If an SMA indicator is missing from the tick data, that check is skipped (allows signal)
+- The `sma_multiplicator` is applied to each SMA value before comparison: `price < sma_value * sma_multiplicator`
+
+**Common configurations:**
+
+| sma_fast | sma_slow | Effect |
+|----------|----------|--------|
+| `None` | `None` | No price filter (default) |
+| `"sma_800"` | `None` | Buy only when price < 800-period SMA * 0.997 |
+| `"sma_800"` | `"sma_2000"` | Buy only when price < both SMAs * 0.997 |
+
+## Architecture
+
+### Method Structure
+
+The strategy follows a modular design with clear separation of concerns:
+
+```
+on_tick()
+  ├── _initialize_macd()            # Initialize configuration on first tick
+  ├── _get_macd_values()            # Extract MACD values from tick data
+  ├── _detect_trend_reversal()      # Detect reversal and generate signal
+  │   ├── _check_sma_filter()       # Optional SMA price filter
+  │   └── _signal_buy()             # Create BUY signal with take-profit price
+  └── Update state variables
+```
+
+### Key Methods
+
+- **`on_tick(tick)`**: Main entry point called for each incoming tick
+- **`_initialize_macd()`**: Loads configuration parameters and logs them
+- **`_get_macd_values(tick)`**: Extracts MACD and signal values from tick indicators
+- **`_detect_trend_reversal(macd, signal, tick)`**: Detects trend reversals from decline to uptrend
+- **`_check_sma_filter(tick)`**: Validates price is below configured SMA thresholds
+- **`_signal_buy(tick, macd, signal)`**: Creates and logs BUY signals with expected profit price
+- **`on_position_closed(symbol, price, exit_reason)`**: Handles external position closure
+- **`get_stats()`**: Returns comprehensive strategy statistics
+
+## Logging
+
+### Initialization
+
+On first tick, the strategy logs its configuration:
+
+```
+[strategy_id] MACD: name=macd_280_590_29, fast=280, slow=590, signal=29, min_relative_threshold=0.001, bottom_border=-0.5, trend_lookback=3
+[strategy_id] Trade: quantity=100.0 USDC, profit_target=0.85%
+[strategy_id] SMA filter: fast=sma_800, slow=sma_2000, multiplicator=0.997
+[strategy_id] Config: {'macd_indicator_name': 'macd_280_590_29', ...}
+[strategy_id] Indicators: {'macd_280_590_29_macd': -0.0012, ...}
+```
+
+### Periodic Status
+
+Every 500 ticks, the strategy logs current state:
+
+```
+{timestamp} Tick 500: macd=-0.0012, signal=-0.0015, histogram=0.0003, signal_count=3
+```
+
+### Signal Generation
+
+When a signal is generated:
+
+```
+[strategy_id] BUY signal: MACD=-0.0018, Signal=-0.0019, histogram=0.0001, price=0.11033, expected_profit=0.11127
+```
+
+### Position Closure
+
+When a position is closed externally:
+
+```
+[strategy_id] Position closed for DOGE/USDC: reason=take_profit, price=0.11127
+```
+
+## Statistics
+
+The `get_stats()` method returns:
+
+```python
+{
+    "strategy_id": "macd_peak_doge",
+    "state": "RUNNING",
+    "symbols": ["DOGE/USDC"],
+    "ticks_processed": 1000,
+    "signals_generated": 5,
+    "active_positions": 0,
+    "total_unrealized_pnl": 0.0,
+    "errors": 0,
+    "last_macd": -0.0012,
+    "last_signal": -0.0015,
+    "last_histogram": 0.0003,
+    "prev_macd": -0.0014,
+    "signal_count": 5,
+    "tick_count": 1000,
+    "macd_indicator_name": "macd_280_590_29",
+    "fast_period": 280,
+    "slow_period": 590,
+    "signal_period": 29,
+    "min_relative_threshold": 0.001,
+    "bottom_border_macd_to_buy": -0.5,
+    "grid_quantity_absolute": 100.0,
+    "grid_profit_pct": 0.85,
+    "sma_fast": "sma_800",
+    "sma_slow": "sma_2000",
+    "sma_multiplicator": 0.997,
+    "trend_lookback": 3,
+}
+```
+
+## Indicator Data Format
+
+The strategy expects tick indicators in the following format:
+
+```python
+tick.indicators = {
+    "macdindicator_macd": -0.0012,
+    "macdindicator_signal": -0.0015,
+    "macdindicator_histogram": 0.0003,  # Optional, calculated if missing
+}
+```
+
+Or with custom indicator names:
+
+```python
+tick.indicators = {
+    "macd_280_590_29_macd": -0.0012,
+    "macd_280_590_29_signal": -0.0015,
+    "macd_280_590_29_histogram": 0.0003,
+}
+```
+
+## Signal Metadata
+
+Each BUY signal includes the following metadata:
+
+```python
+{
+    "macd": -0.0018,
+    "signal": -0.0019,
+    "histogram": 0.0001,
+    "reversal_type": "decline_to_uptrend",
+    "signal_count": 3,
+    "expected_profit_price": 0.11127,  # price * (1 + grid_profit_pct / 100)
+    "quantity_usdc": 100.0,
+}
+```
