@@ -81,6 +81,7 @@
     "status": {"type": "string", "enum": ["draft", "validated", "active", "paused", "archived"]},
     "sma_fast": {"type": ["string", "null"], "description": "Name of fast SMA indicator for price filter (e.g., sma_800)"},
     "sma_slow": {"type": ["string", "null"], "description": "Name of slow SMA indicator for price filter (e.g., sma_2000)"},
-    "sma_multiplicator": {"type": "number", "minimum": 0.9, "maximum": 1.0, "description": "Multiplier applied to SMA values for price comparison"}
+    "sma_multiplicator": {"type": "number", "minimum": 0.9, "maximum": 1.0, "description": "Multiplier applied to SMA values for price comparison"},
+    "trend_lookback": {"type": "integer", "minimum": 1, "maximum": 20, "description": "Number of consecutive declining ticks required to confirm downtrend for MACD peak strategy"}
   }
 }
