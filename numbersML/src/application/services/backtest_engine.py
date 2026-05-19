@@ -483,6 +483,7 @@ class BacktestEngine:
     - Realistic execution simulation (fees, slippage)
     - Comprehensive metrics calculation
     - Deterministic results for reproducibility
+    - Optional Binance testnet order validation
     """
 
     def __init__(
@@ -490,12 +491,14 @@ class BacktestEngine:
         db_pool,
         fee_bps: float = 10.0,
         slippage_bps: float = 5.0,
+        binance_test_client: object | None = None,
     ) -> None:
         self.db_pool = db_pool
         self.default_fee_bps = fee_bps
         self.default_slippage_bps = slippage_bps
         self.execution_sim = PaperExecutionSimulator(fee_bps, slippage_bps)
         self.metrics_calc = BacktestMetricsCalculator()
+        self.binance_test_client = binance_test_client
 
     async def run_backtest(
         self,
@@ -600,7 +603,7 @@ class BacktestEngine:
                         stop_loss = pos.get("stop_loss")
                         if stop_loss and pos["side"] == "LONG" and current_price <= stop_loss:
                             grid_index = pos.get("grid_index")
-                            cash, trade = self._close_position(
+                            cash, trade = await self._close_position(
                                 pos, current_price, cash, candle["time"], "stop_loss"
                             )
                             trades.append(trade)
@@ -628,7 +631,7 @@ class BacktestEngine:
                         take_profit = pos.get("take_profit")
                         if take_profit and pos["side"] == "LONG" and current_price >= take_profit:
                             grid_index = pos.get("grid_index")
-                            cash, trade = self._close_position(
+                            cash, trade = await self._close_position(
                                 pos, current_price, cash, candle["time"], "take_profit"
                             )
                             trades.append(trade)
@@ -667,7 +670,7 @@ class BacktestEngine:
                     )
 
                     if signal.signal_type == SignalType.BUY:
-                        cash, pos = self._open_position(signal, candle, cash, config)
+                        cash, pos = await self._open_position(signal, candle, cash, config)
                         if pos:
                             if signal.symbol not in positions:
                                 positions[signal.symbol] = []
@@ -697,8 +700,12 @@ class BacktestEngine:
 
                             if pos_to_close:
                                 pos_list = positions[signal.symbol]
-                                cash, trade = self._close_position(
-                                    pos_to_close, float(candle["close"]), cash, candle["time"], "signal"
+                                cash, trade = await self._close_position(
+                                    pos_to_close,
+                                    float(candle["close"]),
+                                    cash,
+                                    candle["time"],
+                                    "signal",
                                 )
                                 trades.append(trade)
                                 debug_messages.append(
@@ -722,7 +729,9 @@ class BacktestEngine:
                                     del positions[signal.symbol]
 
                 positions_value = sum(
-                    p["quantity"] * float(candle["close"]) for pos_list in positions.values() for p in pos_list
+                    p["quantity"] * float(candle["close"])
+                    for pos_list in positions.values()
+                    for p in pos_list
                 )
                 total_equity = cash + positions_value
 
@@ -744,7 +753,7 @@ class BacktestEngine:
             for symbol, pos_list in list(positions.items()):
                 for pos in pos_list:
                     grid_index = pos.get("grid_index")
-                    cash, trade = self._close_position(
+                    cash, trade = await self._close_position(
                         pos, final_price, cash, candles[-1]["time"], "end_of_test"
                     )
                     trades.append(trade)
@@ -763,6 +772,11 @@ class BacktestEngine:
                     )
         finally:
             await strategy.stop()
+            if self.binance_test_client is not None:
+                try:
+                    await self.binance_test_client.close()
+                except Exception:
+                    pass
 
         # Final equity
         final_balance = cash
@@ -918,7 +932,7 @@ class BacktestEngine:
             indicators=candle.get("indicators", {}),
         )
 
-    def _open_position(
+    async def _open_position(
         self,
         signal: Signal,
         candle: dict[str, Any],
@@ -935,7 +949,7 @@ class BacktestEngine:
             position_value = grid_quantity_absolute
             quantity = position_value / price
         else:
-            max_position_pct = risk_config.get("max_position_size_pct", 10) / 100
+            max_position_pct = risk_config.get("max_position_pct", 10) / 100
             position_value = cash * max_position_pct
             quantity = position_value / price
 
@@ -950,10 +964,41 @@ class BacktestEngine:
         if total_cost > cash:
             return cash, None
 
+        if self.binance_test_client is not None:
+            await self._validate_order_with_binance(
+                symbol=signal.symbol,
+                side="BUY",
+                order_type="MARKET",
+                quantity=quantity,
+                price=None,
+                candle_time=candle["time"],
+            )
+
         new_cash = cash - total_cost
 
-        # Use take_profit_price from signal metadata if available (for grid strategies)
         signal_take_profit = signal.metadata.get("take_profit_price") if signal.metadata else None
+
+        if self.binance_test_client is not None and signal_take_profit is not None:
+            await self._validate_order_with_binance(
+                symbol=signal.symbol,
+                side="SELL",
+                order_type="LIMIT",
+                quantity=quantity,
+                price=float(signal_take_profit),
+                candle_time=candle["time"],
+            )
+
+        stop_loss_price = risk_config.get("stop_loss_pct") and executed_price * (1 - risk_config.get("stop_loss_pct", 0) / 100)
+        if self.binance_test_client is not None and stop_loss_price:
+            await self._validate_order_with_binance(
+                symbol=signal.symbol,
+                side="SELL",
+                order_type="STOP_LOSS_LIMIT",
+                quantity=quantity,
+                price=float(stop_loss_price),
+                candle_time=candle["time"],
+                stop_price=float(stop_loss_price),
+            )
 
         position = {
             "symbol": signal.symbol,
@@ -970,7 +1015,7 @@ class BacktestEngine:
 
         return new_cash, position
 
-    def _close_position(
+    async def _close_position(
         self,
         position: dict[str, Any],
         price: float,
@@ -982,14 +1027,22 @@ class BacktestEngine:
         quantity = position["quantity"]
         entry_price = position["entry_price"]
 
-        # Simulate execution
         executed_price, fees = self.execution_sim.simulate_market_order(
             price=price,
             quantity=quantity,
             side="SELL",
         )
 
-        # Calculate PnL
+        if self.binance_test_client is not None:
+            await self._validate_order_with_binance(
+                symbol=position["symbol"],
+                side="SELL",
+                order_type="MARKET",
+                quantity=quantity,
+                price=None,
+                candle_time=exit_time,
+            )
+
         gross_proceeds = executed_price * quantity
         net_proceeds = gross_proceeds - fees
         entry_cost = entry_price * quantity
@@ -1013,6 +1066,65 @@ class BacktestEngine:
         )
 
         return new_cash, trade
+
+    async def _validate_order_with_binance(
+        self,
+        symbol: str,
+        side: str,
+        order_type: str,
+        quantity: float,
+        price: float | None,
+        candle_time: datetime,
+        stop_price: float | None = None,
+    ) -> None:
+        """Validate an order against Binance testnet endpoint.
+
+        Sends the order to /api/v3/order/test which validates the order
+        parameters without actually executing it. Logs request and response.
+
+        Args:
+            symbol: Trading pair symbol (e.g., DOGE/USDC).
+            side: BUY or SELL.
+            order_type: MARKET, LIMIT, STOP_LOSS_LIMIT, TAKE_PROFIT_LIMIT.
+            quantity: Order quantity.
+            price: Limit price (None for market orders).
+            candle_time: Timestamp of the candle triggering this order.
+            stop_price: Trigger price for stop-loss/take-profit orders.
+        """
+        try:
+            from uuid import uuid4
+
+            client_order_id = f"bt-{uuid4().hex[:16]}"
+            qty = Decimal(str(quantity))
+            px = Decimal(str(price)) if price is not None else None
+            sp = Decimal(str(stop_price)) if stop_price is not None else None
+
+            price_str = f"price={price}" if price is not None else "price=None"
+            stop_str = f"stop_price={stop_price}" if stop_price is not None else ""
+            logger.info(
+                f"[BINANCE-TEST] Sending test order: {side} {quantity:.8f} {symbol} "
+                f"type={order_type} {price_str} {stop_str} time={candle_time} "
+                f"clientOrderId={client_order_id}"
+            )
+
+            response = await self.binance_test_client.create_test_order(
+                symbol=symbol,
+                side=side,
+                order_type=order_type,
+                quantity=qty,
+                price=px,
+                client_order_id=client_order_id,
+                stop_price=sp,
+            )
+
+            logger.info(
+                f"[BINANCE-TEST] Response: {response}"
+            )
+
+        except Exception as e:
+            logger.error(
+                f"[BINANCE-TEST] Validation failed for {side} {symbol}: {e}"
+            )
 
     def _build_strategy_from_config(
         self,

@@ -194,6 +194,7 @@ async function runBacktest() {
     const endTime = new Date(document.getElementById('end-time').value);
     const includeEquityCurve = document.getElementById('include-equity-curve').checked;
     const includeTrades = document.getElementById('include-trades').checked;
+    const validateWithBinance = document.getElementById('validate-with-binance').checked;
     
     // Validation
     if (!strategyId || !symbol || !startTime || !endTime) {
@@ -224,6 +225,7 @@ async function runBacktest() {
                 symbol: symbol,
                 include_equity_curve: includeEquityCurve,
                 include_trades: includeTrades,
+                validate_with_binance: validateWithBinance,
             }),
         });
         
@@ -907,13 +909,14 @@ function generateCliCommand() {
     const endTime = document.getElementById('end-time').value;
     const includeEquityCurve = document.getElementById('include-equity-curve').checked;
     const includeTrades = document.getElementById('include-trades').checked;
+    const validateWithBinance = document.getElementById('validate-with-binance').checked;
     
     if (!strategyId) {
         document.getElementById('cli-command').value = '# Please select a strategy first';
         return;
     }
     
-    let cmd = 'python -m src.cli.run_backtest --strategy-id ' + strategyId;
+    let cmd = '.venv/bin/python -m src.cli.run_backtest --strategy-id ' + strategyId;
     
     if (version) {
         cmd += ' --version ' + version;
@@ -941,6 +944,10 @@ function generateCliCommand() {
     
     if (!includeTrades) {
         cmd += ' --no-trades';
+    }
+    
+    if (validateWithBinance) {
+        cmd += ' --validate-with-binance';
     }
     
     document.getElementById('cli-command').value = cmd;

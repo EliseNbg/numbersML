@@ -61,6 +61,9 @@ class StrategyBacktestRequest(BaseModel):
     symbol: str | None = Field(None, description="Optional symbol filter")
     include_equity_curve: bool = Field(default=True, description="Include equity curve in results")
     include_trades: bool = Field(default=True, description="Include individual trades")
+    validate_with_binance: bool = Field(
+        default=False, description="Validate orders against Binance testnet"
+    )
     metadata: dict[str, Any] | None = None
 
     @field_validator("time_range_end")
@@ -209,6 +212,7 @@ async def submit_backtest_job(
             "symbol": request.symbol,
             "include_equity_curve": request.include_equity_curve,
             "include_trades": request.include_trades,
+            "validate_with_binance": request.validate_with_binance,
             "metadata": request.metadata or {},
             "created_at": datetime.now(),
             "started_at": None,
@@ -255,7 +259,44 @@ async def _execute_backtest_job(
         job["progress"] = 0.1
 
         logger.info(f"Starting backtest job {job_id}")
-        result = await service.run_backtest(
+
+        if job.get("validate_with_binance"):
+            import os
+
+            from src.infrastructure.market.binance_exchange_client import (
+                BINANCE_TESTNET,
+                BinanceExchangeClient,
+            )
+
+            api_key = os.getenv("BINANCE_TESTNET_API_KEY")
+            api_secret = os.getenv("BINANCE_TESTNET_API_SECRET")
+            if api_key and api_secret:
+                binance_client = BinanceExchangeClient(
+                    api_key=api_key,
+                    api_secret=api_secret,
+                    environment=BINANCE_TESTNET,
+                )
+                logger.info("Binance testnet validation enabled for backtest job")
+            else:
+                logger.warning(
+                    "BINANCE_TESTNET_API_KEY/SECRET not set, skipping Binance validation"
+                )
+                binance_client = None
+        else:
+            binance_client = None
+
+        db_pool = await get_db_pool_async()
+        engine = BacktestEngine(db_pool=db_pool, binance_test_client=binance_client)
+        backtest_repo = StrategyBacktestRepositoryPG(db_pool)
+        strategy_repo = StrategyRepositoryPG(db_pool)
+        job_service = StrategyBacktestService(
+            strategy_repository=strategy_repo,
+            backtest_repository=backtest_repo,
+            backtest_engine=engine,
+            actor="api",
+        )
+
+        result = await job_service.run_backtest(
             strategy_id=job["strategy_id"],
             strategy_version=job["strategy_version"],
             start_time=job["time_range_start"],

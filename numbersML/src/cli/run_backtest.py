@@ -200,6 +200,12 @@ Examples:
         help="Timeout for waiting in seconds (default: 300)",
     )
 
+    parser.add_argument(
+        "--validate-with-binance",
+        action="store_true",
+        help="Validate orders against Binance testnet endpoint",
+    )
+
     return parser.parse_args()
 
 
@@ -245,7 +251,33 @@ async def run_backtest_async(args: argparse.Namespace) -> dict:
         db_pool = await get_db_pool_async()
         strategy_repo = StrategyRepositoryPG(db_pool)
         backtest_repo = StrategyBacktestRepositoryPG(db_pool)
-        backtest_engine = BacktestEngine(db_pool=db_pool)
+
+        binance_test_client = None
+        if args.validate_with_binance:
+            from src.infrastructure.market.binance_exchange_client import (
+                BINANCE_TESTNET,
+                BinanceExchangeClient,
+            )
+
+            api_key = os.getenv("BINANCE_TESTNET_API_KEY")
+            api_secret = os.getenv("BINANCE_TESTNET_API_SECRET")
+            if not api_key or not api_secret:
+                raise ValueError(
+                    "BINANCE_TESTNET_API_KEY and BINANCE_TESTNET_API_SECRET "
+                    "environment variables are required for Binance validation"
+                )
+            binance_test_client = BinanceExchangeClient(
+                api_key=api_key,
+                api_secret=api_secret,
+                environment=BINANCE_TESTNET,
+            )
+            logger.info("Binance testnet validation enabled")
+
+            # Enable HTTP request/response logging
+            logging.getLogger("aiohttp.client").setLevel(logging.DEBUG)
+            logging.getLogger("aiohttp.websocket").setLevel(logging.DEBUG)
+
+        backtest_engine = BacktestEngine(db_pool=db_pool, binance_test_client=binance_test_client)
         backtest_service = StrategyBacktestService(
             strategy_repository=strategy_repo,
             backtest_repository=backtest_repo,

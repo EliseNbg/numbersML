@@ -57,6 +57,7 @@ class BinanceExchangeClient(LiveExchangeClient):
         quantity: Decimal,
         price: Decimal | None,
         client_order_id: str,
+        stop_price: Decimal | None = None,
     ) -> dict:
         """Place signed order against selected Binance environment."""
         self._require_credentials()
@@ -68,11 +69,24 @@ class BinanceExchangeClient(LiveExchangeClient):
             "newClientOrderId": client_order_id,
             "timestamp": self._timestamp_ms(),
         }
-        if payload["type"] == "LIMIT":
+        order_type_upper = payload["type"]
+        if order_type_upper == "LIMIT":
             if price is None:
                 raise ValueError("price is required for LIMIT orders.")
             payload["price"] = str(price)
             payload["timeInForce"] = "GTC"
+        elif order_type_upper in ("STOP_LOSS_LIMIT", "TAKE_PROFIT_LIMIT"):
+            if price is None:
+                raise ValueError(f"price is required for {order_type_upper} orders.")
+            if stop_price is None:
+                raise ValueError(f"stop_price is required for {order_type_upper} orders.")
+            payload["price"] = str(price)
+            payload["stopPrice"] = str(stop_price)
+            payload["timeInForce"] = "GTC"
+        elif order_type_upper in ("STOP_LOSS", "TAKE_PROFIT_MARKET"):
+            if stop_price is None:
+                raise ValueError(f"stop_price is required for {order_type_upper} orders.")
+            payload["stopPrice"] = str(stop_price)
         signed = self._sign_payload(payload)
         return await self._request("POST", "/api/v3/order", params=signed, signed=True)
 
@@ -146,6 +160,7 @@ class BinanceExchangeClient(LiveExchangeClient):
         quantity: Decimal,
         price: Decimal | None,
         client_order_id: str,
+        stop_price: Decimal | None = None,
     ) -> dict:
         """Create test order (Binance test endpoint).
 
@@ -156,10 +171,11 @@ class BinanceExchangeClient(LiveExchangeClient):
         Args:
             symbol: Trading pair symbol.
             side: BUY or SELL.
-            order_type: MARKET or LIMIT.
+            order_type: MARKET, LIMIT, STOP_LOSS_LIMIT, TAKE_PROFIT_LIMIT.
             quantity: Order quantity.
-            price: Limit price (required for LIMIT orders).
+            price: Limit price (required for LIMIT and conditional orders).
             client_order_id: Client-supplied order ID.
+            stop_price: Trigger price for STOP_LOSS/TAKE_PROFIT orders.
 
         Returns:
             Test order response dict.
@@ -173,11 +189,24 @@ class BinanceExchangeClient(LiveExchangeClient):
             "newClientOrderId": client_order_id,
             "timestamp": self._timestamp_ms(),
         }
-        if payload["type"] == "LIMIT":
+        order_type_upper = payload["type"]
+        if order_type_upper == "LIMIT":
             if price is None:
                 raise ValueError("price is required for LIMIT orders.")
             payload["price"] = str(price)
             payload["timeInForce"] = "GTC"
+        elif order_type_upper in ("STOP_LOSS_LIMIT", "TAKE_PROFIT_LIMIT"):
+            if price is None:
+                raise ValueError(f"price is required for {order_type_upper} orders.")
+            if stop_price is None:
+                raise ValueError(f"stop_price is required for {order_type_upper} orders.")
+            payload["price"] = str(price)
+            payload["stopPrice"] = str(stop_price)
+            payload["timeInForce"] = "GTC"
+        elif order_type_upper in ("STOP_LOSS", "TAKE_PROFIT_MARKET"):
+            if stop_price is None:
+                raise ValueError(f"stop_price is required for {order_type_upper} orders.")
+            payload["stopPrice"] = str(stop_price)
         signed = self._sign_payload(payload)
         return await self._request("POST", "/api/v3/order/test", params=signed, signed=True)
 
