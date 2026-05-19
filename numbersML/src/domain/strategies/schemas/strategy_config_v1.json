@@ -82,6 +82,12 @@
     "sma_fast": {"type": ["string", "null"], "description": "Name of fast SMA indicator for price filter (e.g., sma_800)"},
     "sma_slow": {"type": ["string", "null"], "description": "Name of slow SMA indicator for price filter (e.g., sma_2000)"},
     "sma_multiplicator": {"type": "number", "minimum": 0.9, "maximum": 1.0, "description": "Multiplier applied to SMA values for price comparison"},
-    "trend_lookback": {"type": "integer", "minimum": 1, "maximum": 20, "description": "Number of consecutive declining ticks required to confirm downtrend for MACD peak strategy"}
+    "trend_lookback": {"type": "integer", "minimum": 1, "maximum": 20, "description": "Number of consecutive declining ticks required to confirm downtrend for MACD peak strategy"},
+    "macd_indicator_name": {"type": "string", "description": "Base name of the pre-calculated MACD indicator (e.g., macd_280_590_29)"},
+    "fast_period": {"type": "integer", "minimum": 1, "description": "MACD fast EMA period"},
+    "slow_period": {"type": "integer", "minimum": 1, "description": "MACD slow EMA period"},
+    "signal_period": {"type": "integer", "minimum": 1, "description": "MACD signal line EMA period"},
+    "min_relative_threshold": {"type": "number", "minimum": 0, "maximum": 1, "description": "Minimum histogram/MACD change ratio to trigger a signal (noise filter)"},
+    "bottom_border_macd_to_buy": {"type": "number", "description": "Maximum MACD value to allow BUY signals"}
   }
 }
