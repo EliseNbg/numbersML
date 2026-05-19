@@ -582,6 +582,9 @@ class BacktestEngine:
         # Run simulation
         total_candles = len(candles)
 
+        # Track peak equity for drawdown calculation (avoids O(n²) scan)
+        peak_equity = initial_balance
+
         try:
             for i, candle in enumerate(candles):
                 if progress_callback and i % 100 == 0:
@@ -735,8 +738,9 @@ class BacktestEngine:
                 )
                 total_equity = cash + positions_value
 
-                peak = max(p.equity for p in equity_curve)
-                drawdown = (peak - total_equity) / peak if peak > 0 else 0.0
+                if total_equity > peak_equity:
+                    peak_equity = total_equity
+                drawdown = (peak_equity - total_equity) / peak_equity if peak_equity > 0 else 0.0
 
                 if i % 10 == 0 or i == total_candles - 1:
                     equity_curve.append(
