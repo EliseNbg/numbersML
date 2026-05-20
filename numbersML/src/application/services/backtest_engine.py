@@ -596,6 +596,13 @@ class BacktestEngine:
             for i, candle in enumerate(candles):
                 if progress_callback and i % 100 == 0:
                     progress_callback(i / total_candles)
+                    tracked = market_service.get_tracked_positions()
+                    if tracked:
+                        logger.info(
+                            f"[BACKTEST] Candle {i}/{total_candles}: "
+                            f"{len(tracked)} open position(s), "
+                            f"price={candle['close']:.6f}"
+                        )
 
                 tick = self._create_enriched_tick(candle, symbols[0])
                 pp = PricePoint(
@@ -613,6 +620,12 @@ class BacktestEngine:
                     current_prices=current_prices,
                     exit_time=candle["time"],
                 )
+                if closed_positions:
+                    logger.info(
+                        f"[BACKTEST] {len(closed_positions)} position(s) auto-closed at "
+                        f"price={candle['close']:.6f}: "
+                        f"{', '.join(f'{c.symbol}@{c.exit_price:.6f} ({c.exit_reason})' for c in closed_positions)}"
+                    )
                 for closed in closed_positions:
                     # Find and remove from engine's position tracking
                     pos_to_remove = None
@@ -996,6 +1009,8 @@ class BacktestEngine:
         new_cash = cash - total_cost
 
         signal_take_profit = signal.metadata.get("take_profit_price") if signal.metadata else None
+        if signal_take_profit is None and signal.metadata:
+            signal_take_profit = signal.metadata.get("expected_profit_price")
 
         if self.binance_test_client is not None and signal_take_profit is not None:
             await self._validate_order_with_binance(
@@ -1045,6 +1060,11 @@ class BacktestEngine:
                 "grid_index": signal.metadata.get("sell_level_index") if signal.metadata else None,
                 "entry_time": candle["time"],
             },
+        )
+
+        logger.info(
+            f"[BACKTEST] Registered position: {signal.symbol} entry={executed_price:.6f}, "
+            f"tp={signal_take_profit}, sl={stop_loss_price}, qty={quantity:.8f}"
         )
 
         return new_cash, position
