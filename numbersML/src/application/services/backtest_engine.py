@@ -685,7 +685,9 @@ class BacktestEngine:
                     )
 
                     if signal.signal_type == SignalType.BUY:
-                        cash, pos = await self._open_position(signal, candle, cash, config)
+                        cash, pos = await self._open_position(
+                            signal, candle, cash, config, market_service
+                        )
                         if pos:
                             if signal.symbol not in positions:
                                 positions[signal.symbol] = []
@@ -954,6 +956,7 @@ class BacktestEngine:
         candle: dict[str, Any],
         cash: float,
         config: dict[str, Any],
+        market_service: BacktestMarketService,
     ) -> tuple[float, dict[str, Any] | None]:
         """Open a new position."""
         risk_config = config.get("risk", {})
@@ -1028,6 +1031,21 @@ class BacktestEngine:
             "take_profit": signal_take_profit,
             "grid_index": signal.metadata.get("sell_level_index") if signal.metadata else None,
         }
+
+        market_service.register_position(
+            symbol=signal.symbol,
+            side="LONG",
+            quantity=Decimal(str(quantity)),
+            entry_price=Decimal(str(executed_price)),
+            entry_time=candle["time"],
+            take_profit=Decimal(str(signal_take_profit)) if signal_take_profit is not None else None,
+            stop_loss=Decimal(str(stop_loss_price)) if stop_loss_price else None,
+            entry_fees=Decimal(str(fees)),
+            metadata={
+                "grid_index": signal.metadata.get("sell_level_index") if signal.metadata else None,
+                "entry_time": candle["time"],
+            },
+        )
 
         return new_cash, position
 
