@@ -15,7 +15,29 @@ from enum import Enum
 from typing import Any
 from uuid import UUID
 
+from src.domain.strategies.price_statistics import SymbolPriceStatistics
+
 logger = logging.getLogger(__name__)
+
+_price_stats: SymbolPriceStatistics | None = None
+
+
+def get_price_statistics() -> SymbolPriceStatistics:
+    """Get the shared SymbolPriceStatistics instance.
+
+    Returns:
+        Shared statistics tracker for all strategies.
+    """
+    global _price_stats
+    if _price_stats is None:
+        _price_stats = SymbolPriceStatistics()
+    return _price_stats
+
+
+def reset_price_statistics() -> None:
+    """Reset the shared statistics instance (useful for tests)."""
+    global _price_stats
+    _price_stats = None
 
 
 class SignalType(Enum):
@@ -471,6 +493,20 @@ class Strategy(ABC):
             Indicator value or default
         """
         return tick.get_indicator(name, default)
+
+    def get_avg_price(self, symbol: str, window: str) -> Decimal | None:
+        """Get cached average price for a symbol and time window.
+
+        Averages are updated at most once per hour by the pipeline.
+
+        Args:
+            symbol: Trading pair (e.g. "BTC/USDC")
+            window: One of ``"day"`` or ``"week"``
+
+        Returns:
+            Average price as ``Decimal``, or ``None`` if no data available.
+        """
+        return get_price_statistics().get_avg_price(symbol, window)
 
     def get_stats(self) -> dict[str, Any]:
         """

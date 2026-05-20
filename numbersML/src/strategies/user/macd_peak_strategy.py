@@ -261,6 +261,10 @@ class MACDPeakStrategy(Strategy):
         if not self._check_sma_filter(tick):
             return None
 
+        avg_day = self.get_avg_price(tick.symbol, "day")
+        if avg_day is not None and float(tick.price) >= float(avg_day):
+            return None
+
         self._macd_history.append(macd_value)
         if len(self._macd_history) > self.trend_lookback + 1:
             self._macd_history.pop(0)

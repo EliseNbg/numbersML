@@ -24,7 +24,7 @@ from uuid import UUID
 
 import asyncpg
 
-from src.domain.strategies.base import EnrichedTick, Strategy
+from src.domain.strategies.base import EnrichedTick, Strategy, get_price_statistics
 from src.domain.strategies.signal import SignalStatus, TradeSignal
 from src.pipeline.strategy_executor import StrategyExecutor, StrategyResult
 
@@ -133,6 +133,10 @@ class StrategyRunner:
 
         if not eligible:
             return []
+
+        # Record price for statistics (updated once per hour per symbol)
+        get_price_statistics().record_price(symbol, current_price, candle_time)
+        get_price_statistics().refresh(candle_time)
 
         # Execute all eligible strategies in parallel
         tasks = []
