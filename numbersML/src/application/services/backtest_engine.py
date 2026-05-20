@@ -649,6 +649,9 @@ class BacktestEngine:
                         if not pos_list:
                             del positions[sym]
 
+                    # Credit the sale proceeds back to engine's cash tracking
+                    cash += float(closed.cash_returned)
+
                     trade = TradeRecord(
                         entry_time=closed.exit_time,
                         exit_time=closed.exit_time,

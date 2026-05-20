@@ -64,6 +64,8 @@ class ClosedPosition:
         pnl: Net profit/loss.
         pnl_pct: PnL as percentage of entry cost.
         fees: Total fees (entry + exit).
+        exit_fee: Fee paid on exit only.
+        cash_returned: Net cash returned after exit (for LONG: exit_price * qty - exit_fee).
         metadata: Extra info carried from the tracked position.
     """
 
@@ -77,6 +79,8 @@ class ClosedPosition:
     pnl: Decimal
     pnl_pct: Decimal
     fees: Decimal
+    exit_fee: Decimal = Decimal("0")
+    cash_returned: Decimal = Decimal("0")
     metadata: dict = field(default_factory=dict)
 
 
@@ -394,10 +398,12 @@ class BacktestMarketService(MarketService):
             net_proceeds = gross_proceeds - exit_fee
             entry_cost = pos.entry_price * pos.quantity
             pnl = net_proceeds - entry_cost - pos.entry_fees
+            cash_returned = net_proceeds
         else:
             gross_proceeds = pos.entry_price * pos.quantity - pos.entry_fees
             buyback_cost = exit_price * pos.quantity + exit_fee
             pnl = gross_proceeds - buyback_cost
+            cash_returned = Decimal("0")
 
         entry_cost = pos.entry_price * pos.quantity
         pnl_pct = (pnl / entry_cost * Decimal("100")) if entry_cost > 0 else Decimal("0")
@@ -448,6 +454,8 @@ class BacktestMarketService(MarketService):
             pnl=pnl,
             pnl_pct=pnl_pct,
             fees=total_fees,
+            exit_fee=exit_fee,
+            cash_returned=cash_returned,
             metadata=dict(pos.metadata),
         )
 
