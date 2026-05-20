@@ -260,43 +260,7 @@ async def _execute_backtest_job(
 
         logger.info(f"Starting backtest job {job_id}")
 
-        if job.get("validate_with_binance"):
-            import os
-
-            from src.infrastructure.market.binance_exchange_client import (
-                BINANCE_TESTNET,
-                BinanceExchangeClient,
-            )
-
-            api_key = os.getenv("BINANCE_TESTNET_API_KEY")
-            api_secret = os.getenv("BINANCE_TESTNET_API_SECRET")
-            if api_key and api_secret:
-                binance_client = BinanceExchangeClient(
-                    api_key=api_key,
-                    api_secret=api_secret,
-                    environment=BINANCE_TESTNET,
-                )
-                logger.info("Binance testnet validation enabled for backtest job")
-            else:
-                logger.warning(
-                    "BINANCE_TESTNET_API_KEY/SECRET not set, skipping Binance validation"
-                )
-                binance_client = None
-        else:
-            binance_client = None
-
-        db_pool = await get_db_pool_async()
-        engine = BacktestEngine(db_pool=db_pool, binance_test_client=binance_client)
-        backtest_repo = StrategyBacktestRepositoryPG(db_pool)
-        strategy_repo = StrategyRepositoryPG(db_pool)
-        job_service = StrategyBacktestService(
-            strategy_repository=strategy_repo,
-            backtest_repository=backtest_repo,
-            backtest_engine=engine,
-            actor="api",
-        )
-
-        result = await job_service.run_backtest(
+        result = await service.run_backtest(
             strategy_id=job["strategy_id"],
             strategy_version=job["strategy_version"],
             start_time=job["time_range_start"],
