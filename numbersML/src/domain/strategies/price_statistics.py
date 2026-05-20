@@ -94,6 +94,32 @@ class SymbolPriceStatistics:
 
     def __init__(self) -> None:
         self._buffers: dict[str, _SymbolPriceBuffer] = {}
+        self._loaded: set[str] = set()
+
+    def load_historical_prices(
+        self,
+        symbol: str,
+        prices: list[tuple[datetime, Decimal]],
+    ) -> None:
+        """Bulk-load historical prices for a symbol (e.g. from DB candles).
+
+        Args:
+            symbol: Trading pair (e.g. "BTC/USDC")
+            prices: List of (timestamp, price) tuples, should be sorted by time.
+        """
+        if symbol in self._loaded:
+            return
+        buf = _SymbolPriceBuffer(prices=list(prices))
+        self._buffers[symbol] = buf
+        self._loaded.add(symbol)
+
+        now = datetime.now(UTC)
+        buf.refresh(now)
+
+        logger.info(
+            f"Loaded {len(prices)} historical prices for {symbol}, "
+            f"avg_day={buf.cached_avg_day}, avg_week={buf.cached_avg_week}"
+        )
 
     def record_price(self, symbol: str, price: Decimal, ts: datetime) -> None:
         """Record a price sample for the given symbol.

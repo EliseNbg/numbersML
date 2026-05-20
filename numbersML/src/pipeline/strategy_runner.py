@@ -17,7 +17,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -100,6 +100,44 @@ class StrategyRunner:
             "strategy_errors": 0,
             "deduplicated": 0,
         }
+        self._prices_preloaded: bool = False
+
+    async def _preload_price_statistics(self, symbols: list[str]) -> None:
+        """Load last 7 days of candle close prices from DB into price statistics.
+
+        Args:
+            symbols: List of symbol names to preload (e.g. ["BTC/USDC", "ETH/USDC"])
+        """
+        if not symbols:
+            return
+
+        stats = get_price_statistics()
+        now = datetime.now(UTC)
+        cutoff = now - timedelta(days=7)
+
+        try:
+            async with self.db_pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT s.name AS symbol, c.time, c.close
+                    FROM candles_1s c
+                    JOIN symbols s ON s.id = c.symbol_id
+                    WHERE s.name = ANY($1) AND c.time >= $2
+                    ORDER BY s.name, c.time
+                """, symbols, cutoff)
+        except Exception as e:
+            logger.warning(f"Failed to preload price statistics: {e}")
+            return
+
+        grouped: dict[str, list[tuple[datetime, Decimal]]] = {}
+        for row in rows:
+            sym = row["symbol"]
+            grouped.setdefault(sym, []).append(
+                (row["time"], Decimal(str(row["close"])))
+            )
+
+        for sym, prices in grouped.items():
+            stats.load_historical_prices(sym, prices)
+            self._prices_loaded.add(sym)
 
     async def execute_tick(
         self,
@@ -120,6 +158,16 @@ class StrategyRunner:
             List of TradeSignal emitted by strategies
         """
         self._tick_count += 1
+
+        # Preload historical prices on first tick
+        if not self._prices_preloaded:
+            all_symbols = [
+                sym for ctx in self._strategies.values()
+                for sym in (ctx.symbols or [])
+            ]
+            if all_symbols:
+                await self._preload_price_statistics(list(set(all_symbols)))
+            self._prices_preloaded = True
 
         # Hot-reload if interval elapsed
         if time.time() - self._last_reload > self.reload_interval:
