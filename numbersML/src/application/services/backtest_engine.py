@@ -28,6 +28,7 @@ from src.domain.strategies.base import (
     StrategyState,
     TimeFrame,
 )
+from src.infrastructure.market.backtest_market_service import BacktestMarketService
 
 logger = logging.getLogger(__name__)
 
@@ -564,6 +565,12 @@ class BacktestEngine:
             strategy_id, symbols, config
         )
 
+        market_service = BacktestMarketService(
+            db_pool=self.db_pool,
+            fee_bps=Decimal(str(fee_bps)),
+            slippage_bps=Decimal(str(slippage_bps)),
+        )
+
         await strategy.initialize()
         await strategy.start()
         strategy._state = StrategyState.RUNNING
@@ -600,64 +607,69 @@ class BacktestEngine:
                 )
                 price_series.append(pp)
 
-                for symbol, pos_list in list(positions.items()):
-                    current_price = float(candle["close"])
-                    for pos in list(pos_list):
-                        stop_loss = pos.get("stop_loss")
-                        if stop_loss and pos["side"] == "LONG" and current_price <= stop_loss:
-                            grid_index = pos.get("grid_index")
-                            cash, trade = await self._close_position(
-                                pos, current_price, cash, candle["time"], "stop_loss"
-                            )
-                            trades.append(trade)
-                            debug_messages.append(
-                                DebugMessage(
-                                    timestamp=candle["time"],
-                                    level="INFO",
-                                    message=(
-                                        f"Closed {symbol} on stop loss at {trade.exit_price:.4f}; "
-                                        f"pnl={trade.pnl:.2f}"
-                                    ),
-                                )
-                            )
-                            strategy.on_position_closed(
-                                symbol,
-                                Decimal(str(current_price)),
-                                "stop_loss",
-                                grid_index,
-                            )
-                            pos_list.remove(pos)
-                            if not pos_list:
-                                del positions[symbol]
-                            continue
+                # Check tracked positions for TP/SL exits
+                current_prices = {symbols[0]: Decimal(str(candle["close"]))}
+                closed_positions = market_service.check_positions(
+                    current_prices=current_prices,
+                    exit_time=candle["time"],
+                )
+                for closed in closed_positions:
+                    # Find and remove from engine's position tracking
+                    pos_to_remove = None
+                    for sym, pos_list in list(positions.items()):
+                        for p in pos_list:
+                            if (
+                                p["symbol"] == closed.symbol
+                                and p["entry_price"] == float(closed.entry_price)
+                                and p["quantity"] == float(closed.quantity)
+                            ):
+                                pos_to_remove = (sym, p)
+                                break
+                        if pos_to_remove:
+                            break
 
-                        take_profit = pos.get("take_profit")
-                        if take_profit and pos["side"] == "LONG" and current_price >= take_profit:
-                            grid_index = pos.get("grid_index")
-                            cash, trade = await self._close_position(
-                                pos, current_price, cash, candle["time"], "take_profit"
-                            )
-                            trades.append(trade)
-                            debug_messages.append(
-                                DebugMessage(
-                                    timestamp=candle["time"],
-                                    level="INFO",
-                                    message=(
-                                        f"Closed {symbol} on take profit at {trade.exit_price:.4f}; "
-                                        f"pnl={trade.pnl:.2f}"
-                                    ),
-                                )
-                            )
-                            strategy.on_position_closed(
-                                symbol,
-                                Decimal(str(current_price)),
-                                "take_profit",
-                                grid_index,
-                            )
-                            pos_list.remove(pos)
-                            if not pos_list:
-                                del positions[symbol]
-                            continue
+                    if pos_to_remove:
+                        sym, p = pos_to_remove
+                        grid_index = p.get("grid_index")
+                        pos_list = positions[sym]
+                        pos_list.remove(p)
+                        if not pos_list:
+                            del positions[sym]
+
+                    trade = TradeRecord(
+                        entry_time=closed.exit_time,
+                        exit_time=closed.exit_time,
+                        symbol=closed.symbol,
+                        side=closed.side,
+                        entry_price=float(closed.entry_price),
+                        exit_price=float(closed.exit_price),
+                        quantity=float(closed.quantity),
+                        pnl=float(closed.pnl),
+                        pnl_pct=float(closed.pnl_pct),
+                        fees=float(closed.fees),
+                        exit_reason=closed.exit_reason,
+                    )
+                    # Fix entry_time from tracked position metadata if available
+                    if "entry_time" in closed.metadata:
+                        trade.entry_time = closed.metadata["entry_time"]
+
+                    trades.append(trade)
+                    debug_messages.append(
+                        DebugMessage(
+                            timestamp=candle["time"],
+                            level="INFO",
+                            message=(
+                                f"Closed {closed.symbol} on {closed.exit_reason} at "
+                                f"{trade.exit_price:.4f}; pnl={trade.pnl:.2f}"
+                            ),
+                        )
+                    )
+                    strategy.on_position_closed(
+                        closed.symbol,
+                        closed.exit_price,
+                        closed.exit_reason,
+                        closed.metadata.get("grid_index"),
+                    )
 
                 signal = strategy.process_tick(tick)
                 if signal:

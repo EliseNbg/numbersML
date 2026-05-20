@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
@@ -19,6 +20,64 @@ from src.domain.market.order import (
 from src.domain.services.market_service import MarketService
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TrackedPosition:
+    """Position tracked for take-profit / stop-loss monitoring.
+
+    Args:
+        symbol: Trading pair.
+        side: BUY (long) or SELL (short).
+        quantity: Position size.
+        entry_price: Fill price at entry.
+        entry_time: When the position was opened.
+        take_profit: Target exit price (None if not set).
+        stop_loss: Stop-loss price (None if not set).
+        entry_fees: Fees paid on entry.
+        metadata: Extra info (e.g. grid_index).
+    """
+
+    symbol: str
+    side: str
+    quantity: Decimal
+    entry_price: Decimal
+    entry_time: datetime
+    take_profit: Decimal | None = None
+    stop_loss: Decimal | None = None
+    entry_fees: Decimal = Decimal("0")
+    metadata: dict = field(default_factory=dict)
+
+
+@dataclass
+class ClosedPosition:
+    """Result of an auto-closed position (TP/SL hit).
+
+    Args:
+        symbol: Trading pair.
+        side: BUY (long) or SELL (short).
+        quantity: Position size that was closed.
+        entry_price: Original entry price.
+        exit_price: Fill price at exit (with slippage).
+        exit_time: When the position was closed.
+        exit_reason: "take_profit" or "stop_loss".
+        pnl: Net profit/loss.
+        pnl_pct: PnL as percentage of entry cost.
+        fees: Total fees (entry + exit).
+        metadata: Extra info carried from the tracked position.
+    """
+
+    symbol: str
+    side: str
+    quantity: Decimal
+    entry_price: Decimal
+    exit_price: Decimal
+    exit_time: datetime
+    exit_reason: str
+    pnl: Decimal
+    pnl_pct: Decimal
+    fees: Decimal
+    metadata: dict = field(default_factory=dict)
 
 
 class BacktestMarketService(MarketService):
@@ -54,6 +113,7 @@ class BacktestMarketService(MarketService):
         }
         self._positions: dict[str, Position] = {}
         self._orders: dict[str, Order] = {}
+        self._tracked_positions: dict[str, list[TrackedPosition]] = {}
         self._fee_bps = fee_bps
         self._slippage_bps = slippage_bps
 
@@ -174,6 +234,222 @@ class BacktestMarketService(MarketService):
         if filters.get("status"):
             orders = [o for o in orders if o.status.value == filters["status"]]
         return orders
+
+    def register_position(
+        self,
+        symbol: str,
+        side: str,
+        quantity: Decimal,
+        entry_price: Decimal,
+        entry_time: datetime,
+        take_profit: Decimal | None = None,
+        stop_loss: Decimal | None = None,
+        entry_fees: Decimal = Decimal("0"),
+        metadata: dict | None = None,
+    ) -> TrackedPosition:
+        """Register a position for take-profit / stop-loss monitoring.
+
+        Args:
+            symbol: Trading pair (e.g. "BTC/USDC").
+            side: "LONG" or "SHORT".
+            quantity: Position size.
+            entry_price: Fill price at entry.
+            entry_time: When the position was opened.
+            take_profit: Target exit price (None if not set).
+            stop_loss: Stop-loss price (None if not set).
+            entry_fees: Fees paid on entry.
+            metadata: Extra info (e.g. grid_index).
+
+        Returns:
+            The registered TrackedPosition.
+        """
+        pos = TrackedPosition(
+            symbol=symbol,
+            side=side,
+            quantity=quantity,
+            entry_price=entry_price,
+            entry_time=entry_time,
+            take_profit=take_profit,
+            stop_loss=stop_loss,
+            entry_fees=entry_fees,
+            metadata=metadata or {},
+        )
+        if symbol not in self._tracked_positions:
+            self._tracked_positions[symbol] = []
+        self._tracked_positions[symbol].append(pos)
+        return pos
+
+    def check_positions(
+        self,
+        current_prices: dict[str, Decimal],
+        exit_time: datetime,
+    ) -> list[ClosedPosition]:
+        """Check tracked positions against current prices and auto-close those hitting TP/SL.
+
+        For LONG positions:
+        - take_profit triggers when current_price >= take_profit
+        - stop_loss triggers when current_price <= stop_loss
+
+        Args:
+            current_prices: Mapping of symbol -> current market price.
+            exit_time: Timestamp to use for the exit.
+
+        Returns:
+            List of ClosedPosition for each auto-closed position.
+        """
+        closed: list[ClosedPosition] = []
+
+        for symbol, pos_list in list(self._tracked_positions.items()):
+            current_price = current_prices.get(symbol)
+            if current_price is None:
+                continue
+
+            for pos in list(pos_list):
+                exit_reason = self._check_exit_condition(pos, current_price)
+                if exit_reason is None:
+                    continue
+
+                closed_pos = self._close_tracked_position(pos, current_price, exit_time, exit_reason)
+                closed.append(closed_pos)
+                pos_list.remove(pos)
+
+            if not pos_list:
+                del self._tracked_positions[symbol]
+
+        return closed
+
+    def get_tracked_positions(self, symbol: str | None = None) -> list[TrackedPosition]:
+        """Return currently tracked positions.
+
+        Args:
+            symbol: Optional filter by symbol.
+
+        Returns:
+            List of TrackedPosition.
+        """
+        if symbol:
+            return list(self._tracked_positions.get(symbol, []))
+        result: list[TrackedPosition] = []
+        for positions in self._tracked_positions.values():
+            result.extend(positions)
+        return result
+
+    def _check_exit_condition(
+        self,
+        pos: TrackedPosition,
+        current_price: Decimal,
+    ) -> str | None:
+        """Check if a position should exit due to TP or SL.
+
+        Args:
+            pos: The tracked position.
+            current_price: Current market price.
+
+        Returns:
+            "take_profit", "stop_loss", or None.
+        """
+        if pos.side == "LONG":
+            if pos.take_profit is not None and current_price >= pos.take_profit:
+                return "take_profit"
+            if pos.stop_loss is not None and current_price <= pos.stop_loss:
+                return "stop_loss"
+        elif pos.side == "SHORT":
+            if pos.take_profit is not None and current_price <= pos.take_profit:
+                return "take_profit"
+            if pos.stop_loss is not None and current_price >= pos.stop_loss:
+                return "stop_loss"
+        return None
+
+    def _close_tracked_position(
+        self,
+        pos: TrackedPosition,
+        current_price: Decimal,
+        exit_time: datetime,
+        exit_reason: str,
+    ) -> ClosedPosition:
+        """Close a tracked position with slippage and fees.
+
+        Args:
+            pos: The tracked position to close.
+            current_price: Current market price.
+            exit_time: Exit timestamp.
+            exit_reason: "take_profit" or "stop_loss".
+
+        Returns:
+            ClosedPosition with exit details.
+        """
+        slippage_ratio = self._slippage_bps / Decimal("10000")
+
+        if pos.side == "LONG":
+            exit_price = current_price * (Decimal("1") - slippage_ratio)
+        else:
+            exit_price = current_price * (Decimal("1") + slippage_ratio)
+
+        notional = exit_price * pos.quantity
+        exit_fee = notional * (self._fee_bps / Decimal("10000"))
+        total_fees = pos.entry_fees + exit_fee
+
+        if pos.side == "LONG":
+            gross_proceeds = exit_price * pos.quantity
+            net_proceeds = gross_proceeds - exit_fee
+            entry_cost = pos.entry_price * pos.quantity
+            pnl = net_proceeds - entry_cost - pos.entry_fees
+        else:
+            gross_proceeds = pos.entry_price * pos.quantity - pos.entry_fees
+            buyback_cost = exit_price * pos.quantity + exit_fee
+            pnl = gross_proceeds - buyback_cost
+
+        entry_cost = pos.entry_price * pos.quantity
+        pnl_pct = (pnl / entry_cost * Decimal("100")) if entry_cost > 0 else Decimal("0")
+
+        # Update balances
+        base_asset = pos.symbol.split("/")[0]
+        quote_balance = self._balances.get(
+            self._base_asset,
+            Balance(asset=self._base_asset, free=Decimal("0"), locked=Decimal("0")),
+        )
+        base_balance = self._balances.get(
+            base_asset,
+            Balance(asset=base_asset, free=Decimal("0"), locked=Decimal("0")),
+        )
+
+        if pos.side == "LONG":
+            self._balances[self._base_asset] = Balance(
+                asset=self._base_asset,
+                free=quote_balance.free + net_proceeds,
+                locked=quote_balance.locked,
+            )
+            self._balances[base_asset] = Balance(
+                asset=base_asset,
+                free=base_balance.free - pos.quantity,
+                locked=base_balance.locked,
+            )
+            self._positions.pop(pos.symbol, None)
+        else:
+            self._balances[self._base_asset] = Balance(
+                asset=self._base_asset,
+                free=quote_balance.free + (pos.entry_price * pos.quantity - exit_price * pos.quantity - total_fees),
+                locked=quote_balance.locked,
+            )
+            self._balances[base_asset] = Balance(
+                asset=base_asset,
+                free=base_balance.free + pos.quantity,
+                locked=base_balance.locked,
+            )
+
+        return ClosedPosition(
+            symbol=pos.symbol,
+            side=pos.side,
+            quantity=pos.quantity,
+            entry_price=pos.entry_price,
+            exit_price=exit_price,
+            exit_time=exit_time,
+            exit_reason=exit_reason,
+            pnl=pnl,
+            pnl_pct=pnl_pct,
+            fees=total_fees,
+            metadata=dict(pos.metadata),
+        )
 
     def _extract_market_price(self, request: OrderRequest) -> Decimal:
         """Extract market price from request or metadata.
