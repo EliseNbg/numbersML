@@ -8,8 +8,13 @@ Collects real-time tick data from Binance WebSocket.
 import asyncio
 import logging
 
+from dotenv import load_dotenv
+
 from src.infrastructure.database.connection import DatabaseConnection
 from src.infrastructure.exchanges.binance_client import BinanceWebSocketClient
+
+# Load environment variables from .env file
+load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"

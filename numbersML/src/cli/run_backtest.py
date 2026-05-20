@@ -44,6 +44,11 @@ USER_SITE = "/home/andy/.local/lib/python3.13/site-packages"
 if USER_SITE not in sys.path:
     sys.path.insert(0, USER_SITE)
 
+from dotenv import load_dotenv  # noqa: E402
+
+# Load environment variables from .env file
+load_dotenv()
+
 from src.application.services.backtest_engine import BacktestEngine
 from src.application.services.strategy_backtest_service import StrategyBacktestService
 from src.infrastructure.database import get_db_pool_async, set_db_pool
