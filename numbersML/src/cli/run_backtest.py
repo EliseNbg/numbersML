@@ -278,6 +278,17 @@ async def run_backtest_async(args: argparse.Namespace) -> dict:
             )
             logger.info("Binance testnet validation enabled")
 
+            # Log available symbols
+            try:
+                exchange_info = await binance_test_client.get_exchange_info()
+                symbols = [s["symbol"] for s in exchange_info.get("symbols", [])]
+                logger.info(
+                    f"Binance testnet: {len(symbols)} symbols available. "
+                    f"First 10: {symbols[:10]}, Last 10: {symbols[-10:]}"
+                )
+            except Exception as e:
+                logger.warning(f"Could not fetch Binance testnet symbols: {e}")
+
             # Enable HTTP request/response logging
             logging.getLogger("aiohttp.client").setLevel(logging.DEBUG)
             logging.getLogger("aiohttp.websocket").setLevel(logging.DEBUG)
