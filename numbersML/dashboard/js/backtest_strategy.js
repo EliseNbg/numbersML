@@ -95,6 +95,9 @@ function bindEventListeners() {
     // CLI command button
     document.getElementById('btn-show-cli-command').addEventListener('click', toggleCliCommand);
     document.getElementById('btn-copy-cli-command').addEventListener('click', copyCliCommand);
+
+    // View indicators button
+    document.getElementById('btn-view-indicators').addEventListener('click', openIndicatorsCharts);
 }
 
 /**
@@ -1005,4 +1008,38 @@ function showToast(message, type = 'info') {
     bsToast.show();
     
     toast.addEventListener('hidden.bs.toast', () => toast.remove());
+}
+
+/**
+ * Open indicators charts page with current backtest parameters
+ */
+function openIndicatorsCharts() {
+    const symbol = document.getElementById('symbol-select').value;
+    const startTime = document.getElementById('start-time').value;
+    const endTime = document.getElementById('end-time').value;
+
+    if (!symbol) {
+        showToast('Please select a symbol first', 'warning');
+        return;
+    }
+
+    const params = new URLSearchParams();
+    params.set('symbol', symbol);
+
+    if (startTime) {
+        const startUtc = new Date(startTime);
+        const pad = (n) => n.toString().padStart(2, '0');
+        const startStr = `${startUtc.getUTCFullYear()}-${pad(startUtc.getUTCMonth() + 1)}-${pad(startUtc.getUTCDate())} ${pad(startUtc.getUTCHours())}:${pad(startUtc.getUTCMinutes())}:${pad(startUtc.getUTCSeconds())}`;
+        params.set('from', startStr);
+    }
+
+    if (endTime) {
+        const endUtc = new Date(endTime);
+        const pad = (n) => n.toString().padStart(2, '0');
+        const endStr = `${endUtc.getUTCFullYear()}-${pad(endUtc.getUTCMonth() + 1)}-${pad(endUtc.getUTCDate())} ${pad(endUtc.getUTCHours())}:${pad(endUtc.getUTCMinutes())}:${pad(endUtc.getUTCSeconds())}`;
+        params.set('to', endStr);
+    }
+
+    const url = `/dashboard/indicators_charts.html?${params.toString()}`;
+    window.open(url, '_blank');
 }

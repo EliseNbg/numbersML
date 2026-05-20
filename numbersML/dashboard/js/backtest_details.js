@@ -15,6 +15,7 @@ const API_BASE = "/api";
 let chart = null;
 let candlestickSeries = null;
 let currentBacktestId = null;
+let currentBacktestData = null;
 
 // Initialize on page load
 document.addEventListener("DOMContentLoaded", async () => {
@@ -30,6 +31,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     await loadBacktestDetails(currentBacktestId);
+
+    // Bind event listeners
+    const btnIndicators = document.getElementById('btn-view-indicators');
+    if (btnIndicators) {
+        btnIndicators.addEventListener('click', openIndicatorsCharts);
+        console.log('View Indicators button bound');
+    } else {
+        console.error('btn-view-indicators element not found');
+    }
 });
 
 /**
@@ -58,6 +68,9 @@ async function loadBacktestDetails(backtestId) {
  * Render backtest details to the page
  */
 function renderBacktestDetails(data) {
+    // Store for later use (e.g. View Indicators button)
+    currentBacktestData = data;
+
     // Hide loading, show results
     document.getElementById("loading-panel").style.display = "none";
     document.getElementById("results-panel").style.display = "block";
@@ -505,4 +518,48 @@ function escapeHtml(text) {
     const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
+}
+
+/**
+ * Open indicators charts page with this backtest's symbol and time range
+ */
+function openIndicatorsCharts() {
+    console.log('View Indicators clicked', currentBacktestData);
+
+    if (!currentBacktestData) {
+        console.error('No backtest data loaded yet');
+        return;
+    }
+
+    const symbol = currentBacktestData.symbol;
+    const startTime = currentBacktestData.time_range_start;
+    const endTime = currentBacktestData.time_range_end;
+
+    console.log('symbol:', symbol, 'start:', startTime, 'end:', endTime);
+
+    if (!symbol) {
+        console.error('No symbol in backtest data');
+        return;
+    }
+
+    const pad = (n) => n.toString().padStart(2, '0');
+
+    const params = new URLSearchParams();
+    params.set('symbol', symbol);
+
+    if (startTime) {
+        const startUtc = new Date(startTime);
+        const startStr = `${startUtc.getUTCFullYear()}-${pad(startUtc.getUTCMonth() + 1)}-${pad(startUtc.getUTCDate())} ${pad(startUtc.getUTCHours())}:${pad(startUtc.getUTCMinutes())}:${pad(startUtc.getUTCSeconds())}`;
+        params.set('from', startStr);
+    }
+
+    if (endTime) {
+        const endUtc = new Date(endTime);
+        const endStr = `${endUtc.getUTCFullYear()}-${pad(endUtc.getUTCMonth() + 1)}-${pad(endUtc.getUTCDate())} ${pad(endUtc.getUTCHours())}:${pad(endUtc.getUTCMinutes())}:${pad(endUtc.getUTCSeconds())}`;
+        params.set('to', endStr);
+    }
+
+    const url = `/dashboard/indicators_charts.html?${params.toString()}`;
+    console.log('Opening:', url);
+    window.open(url, '_blank');
 }
