@@ -272,6 +272,11 @@ async def _execute_backtest_job(
             api_key = os.getenv("BINANCE_TESTNET_API_KEY")
             api_secret = os.getenv("BINANCE_TESTNET_API_SECRET")
             if api_key and api_secret:
+                logger.info(
+                    f"Binance testnet validation configured "
+                    f"(API key: {api_key[:4]}...{api_key[-4:]}, "
+                    f"Secret: {api_secret[:4]}...{api_secret[-4:]})"
+                )
                 try:
                     binance_client = BinanceExchangeClient(
                         api_key=api_key,

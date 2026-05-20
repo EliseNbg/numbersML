@@ -276,7 +276,11 @@ async def run_backtest_async(args: argparse.Namespace) -> dict:
                 api_secret=api_secret,
                 environment=BINANCE_TESTNET,
             )
-            logger.info("Binance testnet validation enabled")
+            logger.info(
+                f"Binance testnet validation enabled "
+                f"(API key: {api_key[:4]}...{api_key[-4:]}, "
+                f"Secret: {api_secret[:4]}...{api_secret[-4:]})"
+            )
 
             # Log available symbols
             try:
