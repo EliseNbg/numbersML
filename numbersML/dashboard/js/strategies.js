@@ -178,7 +178,7 @@ function loadConfigTemplate(type) {
     const templates = {
         rsi: {
             meta: { name: 'RSI Strategy', description: 'RSI oversold/overbought', schema_version: 1 },
-            universe: { symbols: ['BTC/USDC'], timeframe: '1M' },
+            universe: { symbols: ['BTC/USDC'], timeframe: '1S' },
             signal: { type: 'rsi', params: { period: 14, oversold: 30, overbought: 70 } },
             risk: { max_position_size_pct: 10, max_daily_loss_pct: 5, stop_loss_pct: 2, take_profit_pct: 4 },
             execution: { order_type: 'market', slippage_bps: 10, fee_bps: 10 },
@@ -187,7 +187,7 @@ function loadConfigTemplate(type) {
         },
         macd: {
             meta: { name: 'MACD Strategy', description: 'MACD crossover', schema_version: 1 },
-            universe: { symbols: ['BTC/USDC'], timeframe: '1M' },
+            universe: { symbols: ['BTC/USDC'], timeframe: '1S' },
             signal: { type: 'macd', params: { fast: 12, slow: 26, signal: 9 } },
             risk: { max_position_size_pct: 10, max_daily_loss_pct: 5, stop_loss_pct: 2, take_profit_pct: 4 },
             execution: { order_type: 'market', slippage_bps: 10, fee_bps: 10 },
@@ -196,7 +196,7 @@ function loadConfigTemplate(type) {
         },
         bollinger: {
             meta: { name: 'Bollinger Strategy', description: 'Bollinger Bands mean reversion', schema_version: 1 },
-            universe: { symbols: ['BTC/USDC'], timeframe: '1M' },
+            universe: { symbols: ['BTC/USDC'], timeframe: '1S' },
             signal: { type: 'bollinger', params: { period: 20, std_dev: 2.0 } },
             risk: { max_position_size_pct: 10, max_daily_loss_pct: 5, stop_loss_pct: 2, take_profit_pct: 4 },
             execution: { order_type: 'market', slippage_bps: 10, fee_bps: 10 },

@@ -126,7 +126,7 @@ class LLMStrategyService:
         self,
         description: str,
         symbols: list[str],
-        timeframe: str = "1M",
+        timeframe: str = "1S",
         mode: str = "paper",
         created_by: str = "llm",
     ) -> LLMGenerationResult:

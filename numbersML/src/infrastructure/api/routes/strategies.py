@@ -828,7 +828,7 @@ class LLMGenerateRequest(BaseModel):
         ..., min_length=10, description="Natural language strategy description"
     )
     symbols: list[str] = Field(default_factory=lambda: ["BTC/USDC"], description="Trading symbols")
-    timeframe: str = Field(default="1M", description="Candle timeframe")
+    timeframe: str = Field(default="1S", description="Candle timeframe")
     mode: str = Field(default="paper", pattern="^(paper|live)$")
     created_by: str = Field(default="llm", max_length=255)
 
