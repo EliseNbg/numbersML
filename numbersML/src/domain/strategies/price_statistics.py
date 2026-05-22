@@ -100,12 +100,14 @@ class SymbolPriceStatistics:
         self,
         symbol: str,
         prices: list[tuple[datetime, Decimal]],
+        now: datetime | None = None,
     ) -> None:
         """Bulk-load historical prices for a symbol (e.g. from DB candles).
 
         Args:
             symbol: Trading pair (e.g. "BTC/USDC")
             prices: List of (timestamp, price) tuples, should be sorted by time.
+            now: Reference time for cache expiry. Defaults to ``datetime.now(UTC)``.
         """
         if symbol in self._loaded:
             return
@@ -113,7 +115,8 @@ class SymbolPriceStatistics:
         self._buffers[symbol] = buf
         self._loaded.add(symbol)
 
-        now = datetime.now(UTC)
+        if now is None:
+            now = datetime.now(UTC)
         buf.refresh(now)
 
         logger.info(
@@ -147,32 +150,47 @@ class SymbolPriceStatistics:
         for buf in self._buffers.values():
             buf.refresh(now)
 
-    def get_avg_price(self, symbol: str, window: str) -> Decimal | None:
+    def get_avg_price(self, symbol: str, window: str) -> Decimal:
         """Get cached average price for a symbol and time window.
+
+        Returns the cached average for the requested window when available.
+        If the cache is empty but price data exists, computes the average
+        from all available data on-the-fly.
 
         Args:
             symbol: Trading pair (e.g. "BTC/USDC")
             window: One of ``"day"`` or ``"week"``
 
         Returns:
-            Average price as ``Decimal``, or ``None`` if no data available.
+            Average price as ``Decimal``. Returns ``Decimal('0')`` only when
+            no price data at all exists for the symbol.
 
         Raises:
             ValueError: If ``window`` is not ``"day"`` or ``"week"``.
         """
+        window_lower = window.lower()
+        if window_lower not in ("day", "week"):
+            raise ValueError(f"Unknown window: {window!r}. Use 'day' or 'week'.")
+
         buf = self._buffers.get(symbol)
         if buf is None:
-            return None
+            return Decimal("0")
 
-        window_lower = window.lower()
         if window_lower == "day":
-            return buf.cached_avg_day
-        if window_lower == "week":
-            return buf.cached_avg_week
+            avg = buf.cached_avg_day
+        else:
+            avg = buf.cached_avg_week
 
-        raise ValueError(f"Unknown window: {window!r}. Use 'day' or 'week'.")
+        if avg is not None:
+            return avg
 
-    def get_stats(self, symbol: str) -> dict[str, Decimal | None]:
+        if not buf.prices:
+            return Decimal("0")
+
+        total = sum(p for _, p in buf.prices)
+        return total / len(buf.prices)
+
+    def get_stats(self, symbol: str) -> dict[str, Decimal]:
         """Get all cached averages for a symbol.
 
         Args:

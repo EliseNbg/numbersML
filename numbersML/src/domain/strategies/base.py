@@ -494,7 +494,7 @@ class Strategy(ABC):
         """
         return tick.get_indicator(name, default)
 
-    def get_avg_price(self, symbol: str, window: str) -> Decimal | None:
+    def get_avg_price(self, symbol: str, window: str) -> Decimal:
         """Get cached average price for a symbol and time window.
 
         Averages are updated at most once per hour by the pipeline.
@@ -504,7 +504,7 @@ class Strategy(ABC):
             window: One of ``"day"`` or ``"week"``
 
         Returns:
-            Average price as ``Decimal``, or ``None`` if no data available.
+            Average price as ``Decimal``. Returns ``Decimal('0')`` if no data is available.
         """
         return get_price_statistics().get_avg_price(symbol, window)
 

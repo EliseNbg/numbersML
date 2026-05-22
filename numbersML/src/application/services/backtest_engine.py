@@ -27,6 +27,8 @@ from src.domain.strategies.base import (
     Strategy,
     StrategyState,
     TimeFrame,
+    get_price_statistics,
+    reset_price_statistics,
 )
 from src.infrastructure.market.backtest_market_service import BacktestMarketService
 
@@ -500,6 +502,8 @@ class BacktestEngine:
         self.execution_sim = PaperExecutionSimulator(fee_bps, slippage_bps)
         self.metrics_calc = BacktestMetricsCalculator()
         self.binance_test_client = binance_test_client
+        self._symbol_step_sizes: dict[str, Decimal] = {}
+        self._symbol_tick_sizes: dict[str, Decimal] = {}
 
     async def run_backtest(
         self,
@@ -542,6 +546,7 @@ class BacktestEngine:
         slippage_bps = float(execution_config.get("slippage_bps", self.default_slippage_bps))
         self.execution_sim = PaperExecutionSimulator(fee_bps, slippage_bps)
         self.execution_sim.reset()
+        reset_price_statistics()
 
         # Load historical data
         candles = await self._load_historical_data(symbols[0], start_time, end_time)
@@ -553,6 +558,12 @@ class BacktestEngine:
 
         # Validate that indicator data exists before starting backtest
         self._validate_indicators_present(candles, symbols[0])
+
+        # Preload price statistics so get_avg_price returns valid values
+        await self._preload_price_statistics(symbols[0], start_time)
+
+        # Load symbol step sizes for Binance validation
+        await self._load_symbol_step_sizes(symbols)
 
         # Initialize tracking
         cash = initial_balance
@@ -605,6 +616,15 @@ class BacktestEngine:
                         )
 
                 tick = self._create_enriched_tick(candle, symbols[0])
+
+                # Record price for average price calculations
+                candle_time: datetime = candle["time"]
+                if candle_time.tzinfo is None:
+                    candle_time = candle_time.replace(tzinfo=UTC)
+                close_price = Decimal(str(candle["close"]))
+                get_price_statistics().record_price(symbols[0], close_price, candle_time)
+                get_price_statistics().refresh(candle_time)
+
                 pp = PricePoint(
                     timestamp=candle["time"],
                     open=float(candle["open"]),
@@ -906,6 +926,97 @@ class BacktestEngine:
 
         return candles
 
+    async def _preload_price_statistics(
+        self,
+        symbol: str,
+        start_time: datetime,
+    ) -> None:
+        """Load historical close prices into price statistics for avg price calculation.
+
+        Loads up to 7 days of candle data before start_time so that
+        ``get_avg_price("day")`` and ``get_avg_price("week")`` return valid values
+        from the very first tick.
+
+        Args:
+            symbol: Trading pair (e.g. "BTC/USDC")
+            start_time: Backtest start time
+        """
+        stats_start = start_time - timedelta(days=7)
+        async with self.db_pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT c.time, c.close
+                FROM candles_1s c
+                JOIN symbols s ON s.id = c.symbol_id
+                WHERE s.symbol = $1 AND c.time >= $2 AND c.time < $3
+                ORDER BY c.time ASC
+                """,
+                symbol,
+                stats_start,
+                start_time,
+            )
+
+        if not rows:
+            logger.warning(
+                f"No historical prices found for {symbol} "
+                f"in [{stats_start}, {start_time}) — "
+                f"get_avg_price will fall back to Decimal('0')"
+            )
+            return
+
+        prices = [
+            (row["time"] if row["time"].tzinfo else row["time"].replace(tzinfo=UTC),
+             Decimal(str(row["close"])))
+            for row in rows
+        ]
+        stats = get_price_statistics()
+        stats.load_historical_prices(symbol, prices, now=start_time)
+        logger.info(
+            f"Preloaded {len(prices)} price points for {symbol} "
+            f"from {stats_start} to {start_time}"
+        )
+
+    async def _load_symbol_step_sizes(self, symbols: list[str]) -> None:
+        """Load step_size and tick_size for each symbol from the database."""
+        if not self.binance_test_client:
+            return
+
+        async with self.db_pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT symbol, step_size, tick_size
+                FROM symbols
+                WHERE symbol = ANY($1)
+                """,
+                symbols,
+            )
+
+        for row in rows:
+            self._symbol_step_sizes[row["symbol"]] = Decimal(str(row["step_size"]))
+            self._symbol_tick_sizes[row["symbol"]] = Decimal(str(row["tick_size"]))
+            logger.info(
+                f"[BINANCE-TEST] Loaded step_size={row['step_size']}, "
+                f"tick_size={row['tick_size']} for {row['symbol']}"
+            )
+
+    def _round_quantity(self, quantity: float, symbol: str) -> Decimal:
+        """Round quantity down to the symbol's step_size."""
+        step = self._symbol_step_sizes.get(symbol, Decimal("0.00000001"))
+        qty = Decimal(str(quantity))
+        rounded = (qty // step) * step
+        exponent = step.normalize().as_tuple().exponent
+        decimals = max(0, -int(exponent))
+        return rounded.quantize(Decimal(10) ** -decimals)
+
+    def _round_price(self, price: float, symbol: str) -> Decimal:
+        """Round price to the symbol's tick_size."""
+        tick = self._symbol_tick_sizes.get(symbol, Decimal("0.00001"))
+        px = Decimal(str(price))
+        rounded = (px // tick) * tick
+        exponent = tick.normalize().as_tuple().exponent
+        decimals = max(0, -int(exponent))
+        return rounded.quantize(Decimal(10) ** -decimals)
+
     def _validate_indicators_present(
         self,
         candles: list[dict[str, Any]],
@@ -1152,14 +1263,14 @@ class BacktestEngine:
             from uuid import uuid4
 
             client_order_id = f"bt-{uuid4().hex[:16]}"
-            qty = Decimal(str(quantity))
-            px = Decimal(str(price)) if price is not None else None
-            sp = Decimal(str(stop_price)) if stop_price is not None else None
+            qty = self._round_quantity(quantity, symbol)
+            px = self._round_price(price, symbol) if price is not None else None
+            sp = self._round_price(stop_price, symbol) if stop_price is not None else None
 
-            price_str = f"price={price}" if price is not None else "price=None"
-            stop_str = f"stop_price={stop_price}" if stop_price is not None else ""
+            price_str = f"price={px}" if px is not None else "price=None"
+            stop_str = f"stop_price={sp}" if sp is not None else ""
             logger.info(
-                f"[BINANCE-TEST] Sending test order: {side} {quantity:.8f} {symbol} "
+                f"[BINANCE-TEST] Sending test order: {side} {qty} {symbol} "
                 f"type={order_type} {price_str} {stop_str} time={candle_time} "
                 f"clientOrderId={client_order_id}"
             )

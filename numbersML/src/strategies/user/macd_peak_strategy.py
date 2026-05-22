@@ -262,7 +262,11 @@ class MACDPeakStrategy(Strategy):
             return None
 
         avg_day = self.get_avg_price(tick.symbol, "day")
-        if avg_day is not None and float(tick.price) >= float(avg_day):
+        if avg_day and float(tick.price) >= float(avg_day) * 0.99:
+            return None
+
+        avg_week = self.get_avg_price(tick.symbol, "week")
+        if avg_week and float(tick.price) >= float(avg_week) * 0.99:
             return None
 
         self._macd_history.append(macd_value)
