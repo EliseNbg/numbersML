@@ -38,16 +38,8 @@ class MACDCrossStrategy(Strategy):
         super().__init__(strategy_id, symbols, time_frame)
 
         # Persistent state
-        self.last_macd: float = 0.0
-        self.last_signal: float = 0.0
-        self.last_histogram: float = 0.0
         self.in_position: bool = False
         self.cross_count: int = 0
-        self.macd_indicator_name: str = "macdindicator"
-        self.fast_period: int = 12
-        self.slow_period: int = 26
-        self.signal_period: int = 9
-        self.min_relative_threshold: float = 0.001
 
         self._tick_count: int = 0
         self._initialized: bool = False

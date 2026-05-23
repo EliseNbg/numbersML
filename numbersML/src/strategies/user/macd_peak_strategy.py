@@ -51,26 +51,6 @@ class MACDPeakStrategy(Strategy):
     ) -> None:
         super().__init__(strategy_id, symbols, time_frame)
 
-        self.last_macd: float = 0.0
-        self.last_signal: float = 0.0
-        self.last_histogram: float = 0.0
-        self.prev_macd: float = 0.0
-        self.signal_count: int = 0
-        self.macd_indicator_name: str = "macdindicator"
-        self.fast_period: int = 12
-        self.slow_period: int = 26
-        self.signal_period: int = 9
-        self.min_relative_threshold: float = 0.001
-        self.bottom_border_macd_to_buy: float = 0.0
-        self.grid_quantity_absolute: float = 100.0
-        self.grid_profit_pct: float = 0.85
-        self.sma_fast: str | None = None
-        self.sma_slow: str | None = None
-        self.sma_multiplicator: float = 0.997
-        self.avg_multiplicator: float = 0.991
-        self.rsi_99_threshold: float = 32.0
-        self.trend_lookback: int = 3
-
         self._tick_count: int = 0
         self._initialized: bool = False
         self._macd_history: list[float] = []

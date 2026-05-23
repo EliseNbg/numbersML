@@ -40,7 +40,6 @@ class InfinityGridStrategy(Strategy):
         self.grid_levels: list[float] = []
         self.last_price: float = 0.0
         self.grid_spacing_pct: float = 1.0
-        self.grid_profit_pct: float = 0.85
 
         # Track per symbol: which level is locked after a signal (None means not locked)
         self._symbol_locked_level: dict[str, int | None] = {}
