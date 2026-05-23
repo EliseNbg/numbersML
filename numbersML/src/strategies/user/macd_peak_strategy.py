@@ -10,6 +10,8 @@ Buy conditions:
 - Current MACD value < bottom_border_macd_to_buy (ensures buying at dips)
 - Current close price < sma_fast * sma_multiplicator (if configured)
 - Current close price < sma_slow * sma_multiplicator (if configured)
+- Current close price < avg_day * avg_multiplicator (if configured)
+- Current close price < avg_week * avg_multiplicator (if configured)
 
 No SELL signals are generated. The strategy includes expected_profit_price in signal metadata,
 which is handled externally by the market or take-profit mechanism.
@@ -65,6 +67,8 @@ class MACDPeakStrategy(Strategy):
         self.sma_fast: str | None = None
         self.sma_slow: str | None = None
         self.sma_multiplicator: float = 0.997
+        self.avg_multiplicator: float = 0.991
+        self.rsi_99_threshold: float = 32.0
         self.trend_lookback: int = 3
 
         self._tick_count: int = 0
@@ -126,6 +130,8 @@ class MACDPeakStrategy(Strategy):
         self.sma_fast = self.get_config("sma_fast")
         self.sma_slow = self.get_config("sma_slow")
         self.sma_multiplicator = self.get_config("sma_multiplicator", 0.997)
+        self.avg_multiplicator = self.get_config("avg_multiplicator", 0.991)
+        self.rsi_99_threshold = self.get_config("rsi_99_threshold", 32.0)
         self.trend_lookback = self.get_config("trend_lookback", 3)
 
         logger.info(
@@ -143,6 +149,16 @@ class MACDPeakStrategy(Strategy):
             logger.info(
                 f"[{self._strategy_id}] SMA filter: fast={self.sma_fast}, slow={self.sma_slow}, "
                 f"multiplicator={self.sma_multiplicator}"
+            )
+        if self.avg_multiplicator :
+            logger.info(
+                f"[{self._strategy_id}] AVG filter: "
+                f"multiplicator={self.avg_multiplicator}"
+            )
+        if self.rsi_99_threshold:
+            logger.info(
+                f"[{self._strategy_id}] RSI filter: "
+                f"threshold={self.rsi_99_threshold}"
             )
 
         logger.info(f"[{self._strategy_id}] Config: {self._config}")
@@ -262,11 +278,11 @@ class MACDPeakStrategy(Strategy):
             return None
 
         avg_day = self.get_avg_price(tick.symbol, "day")
-        if avg_day and float(tick.price) >= float(avg_day) * 0.99:
+        if avg_day and float(tick.price) >= float(avg_day) * self.avg_multiplicator:
             return None
 
         avg_week = self.get_avg_price(tick.symbol, "week")
-        if avg_week and float(tick.price) >= float(avg_week) * 0.99:
+        if avg_week and float(tick.price) >= float(avg_week) * self.avg_multiplicator:
             return None
 
         self._macd_history.append(macd_value)
@@ -381,6 +397,8 @@ class MACDPeakStrategy(Strategy):
                 "sma_fast": self.sma_fast,
                 "sma_slow": self.sma_slow,
                 "sma_multiplicator": self.sma_multiplicator,
+                "avg_multiplicator": self.avg_multiplicator,
+                "rsi_99_threshold": self.rsi_99_threshold,  
                 "trend_lookback": self.trend_lookback,
             }
         )

@@ -277,21 +277,7 @@ async def _execute_backtest_job(
                     f"(API key: {api_key[:4]}...{api_key[-4:]}, "
                     f"Secret: {api_secret[:4]}...{api_secret[-4:]})"
                 )
-                try:
-                    binance_client = BinanceExchangeClient(
-                        api_key=api_key,
-                        api_secret=api_secret,
-                        environment=BINANCE_TESTNET,
-                    )
-                    exchange_info = await binance_client.get_exchange_info()
-                    symbols = [s["symbol"] for s in exchange_info.get("symbols", [])]
-                    logger.info(
-                        f"Binance testnet: {len(symbols)} symbols. "
-                        f"First 10: {symbols[:10]}, Last 10: {symbols[-10:]}"
-                    )
-                except Exception as e:
-                    logger.warning(f"Could not fetch Binance testnet symbols: {e}")
-
+            
         result = await service.run_backtest(
             strategy_id=job["strategy_id"],
             strategy_version=job["strategy_version"],

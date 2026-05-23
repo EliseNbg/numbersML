@@ -605,7 +605,7 @@ class BacktestEngine:
 
         try:
             for i, candle in enumerate(candles):
-                if progress_callback and i % 100 == 0:
+                if progress_callback and i % 500 == 0:
                     progress_callback(i / total_candles)
                     tracked = market_service.get_tracked_positions()
                     if tracked:
