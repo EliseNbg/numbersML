@@ -271,6 +271,7 @@ class Strategy(ABC):
         self._signals: list[Signal] = []
         self._ticks_processed: int = 0
         self._errors: int = 0
+        self._open_positions_count: int = 0
 
         # Configuration
         self._config: dict[str, Any] = {}
@@ -425,6 +426,10 @@ class Strategy(ABC):
                 )
                 return close_signal
 
+            # Enforce max open positions — skip strategy logic when limit reached
+            if self._open_positions_count >= self.max_open_positions:
+                return None
+
             signal = self.on_tick(tick)
 
             if signal:
@@ -578,6 +583,15 @@ class Strategy(ABC):
         )
 
         return position
+
+    def register_open_position(self) -> None:
+        """Increment the open-position counter (called by the backtest engine)."""
+        self._open_positions_count += 1
+
+    def register_close_position(self) -> None:
+        """Decrement the open-position counter (called by the backtest engine)."""
+        if self._open_positions_count > 0:
+            self._open_positions_count -= 1
 
     @abstractmethod
     def on_position_closed(

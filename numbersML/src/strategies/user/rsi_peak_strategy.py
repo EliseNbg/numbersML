@@ -96,16 +96,7 @@ class RSIPeakStrategy(Strategy):
         Args:
             tick: First tick used to log available indicators
         """
-        self.rsi_99_threshold = self.get_config("rsi_99_threshold", 32.0)
-        self.min_relative_threshold = self.get_config("min_relative_threshold", 0.001)
-        self.grid_quantity_absolute = self.get_config("grid_quantity_absolute", 100.0)
-        self.grid_profit_pct = self.get_config("grid_profit_pct", 0.85)
-        self.sma_fast = self.get_config("sma_fast")
-        self.sma_slow = self.get_config("sma_slow")
-        self.sma_multiplicator = self.get_config("sma_multiplicator", 0.997)
-        self.avg_multiplicator_day = self.get_config("avg_multiplicator_day", 0.991)
-        self.avg_multiplicator_week = self.get_config("avg_multiplicator_week", 0.991)
-        self.trend_lookback = self.get_config("trend_lookback", 3)
+        self.load_common_config()
 
         logger.info(
             f"[{self._strategy_id}] RSI_99: threshold={self.rsi_99_threshold}, "
@@ -253,6 +244,15 @@ class RSIPeakStrategy(Strategy):
             f"expected_profit={expected_profit_price:.8f}"
         )
 
+        quantity_multiplicator = 1
+        if(rsi_value < 25):
+            quantity_multiplicator = 1.5
+        if(rsi_value < 20):
+            quantity_multiplicator = 2.0
+        if(rsi_value < 15):
+            quantity_multiplicator = 2.5
+        
+
         return Signal(
             strategy_id=self._strategy_id,
             symbol=tick.symbol,
@@ -265,7 +265,7 @@ class RSIPeakStrategy(Strategy):
                 "reversal_type": "decline_to_uptrend",
                 "signal_count": self.signal_count,
                 "expected_profit_price": expected_profit_price,
-                "quantity_usdc": self.grid_quantity_absolute,
+                "quantity_usdc": self.grid_quantity_absolute * quantity_multiplicator,
             },
         )
 

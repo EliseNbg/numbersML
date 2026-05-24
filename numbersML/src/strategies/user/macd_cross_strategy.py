@@ -88,11 +88,7 @@ class MACDCrossStrategy(Strategy):
         Args:
             tick: First tick used to log available indicators
         """
-        self.macd_indicator_name = self.get_config("macd_indicator_name", "macdindicator")
-        self.fast_period = self.get_config("fast_period", 12)
-        self.slow_period = self.get_config("slow_period", 26)
-        self.signal_period = self.get_config("signal_period", 9)
-        self.min_relative_threshold = self.get_config("min_relative_threshold", 0.001)
+        self.load_common_config()
 
         logger.info(
             f"[{self._strategy_id}] MACD: name={self.macd_indicator_name}, "

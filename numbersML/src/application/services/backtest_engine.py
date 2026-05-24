@@ -700,6 +700,7 @@ class BacktestEngine:
                             ),
                         )
                     )
+                    strategy.register_close_position()
                     strategy.on_position_closed(
                         closed.symbol,
                         closed.exit_price,
@@ -728,6 +729,7 @@ class BacktestEngine:
                             if signal.symbol not in positions:
                                 positions[signal.symbol] = []
                             positions[signal.symbol].append(pos)
+                            strategy.register_open_position()
                             debug_messages.append(
                                 DebugMessage(
                                     timestamp=candle["time"],
@@ -772,6 +774,7 @@ class BacktestEngine:
                                     )
                                 )
                                 pos_list.remove(pos_to_close)
+                                strategy.register_close_position()
                                 strategy.on_position_closed(
                                     signal.symbol,
                                     Decimal(str(float(candle["close"]))),
@@ -821,6 +824,7 @@ class BacktestEngine:
                             ),
                         )
                     )
+                    strategy.register_close_position()
                     strategy.on_position_closed(
                         symbol, Decimal(str(final_price)), "end_of_test", grid_index
                     )
