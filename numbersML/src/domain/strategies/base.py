@@ -128,6 +128,8 @@ class Position:
     quantity: Decimal
     entry_price: Decimal
     current_price: Decimal = Decimal("0")
+    take_profit_price: Decimal | None = None
+    stop_loss_price: Decimal | None = None
     unrealized_pnl: Decimal = Decimal("0")
     opened_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
@@ -146,6 +148,22 @@ class Position:
             return 0.0
         return float(self.unrealized_pnl / self.entry_price * 100)
 
+    def is_take_profit_hit(self, price: Decimal) -> bool:
+        """Check if current price hits the take-profit level."""
+        if self.take_profit_price is None:
+            return False
+        if self.side == "LONG":
+            return price >= self.take_profit_price
+        return price <= self.take_profit_price
+
+    def is_stop_loss_hit(self, price: Decimal) -> bool:
+        """Check if current price hits the stop-loss level."""
+        if self.stop_loss_price is None:
+            return False
+        if self.side == "LONG":
+            return price <= self.stop_loss_price
+        return price >= self.stop_loss_price
+
     def to_dict(self) -> dict[str, Any]:
         """Convert position to dictionary."""
         return {
@@ -154,6 +172,8 @@ class Position:
             "quantity": float(self.quantity),
             "entry_price": float(self.entry_price),
             "current_price": float(self.current_price),
+            "take_profit_price": float(self.take_profit_price) if self.take_profit_price else None,
+            "stop_loss_price": float(self.stop_loss_price) if self.stop_loss_price else None,
             "unrealized_pnl": float(self.unrealized_pnl),
             "pnl_percent": self.pnl_percent,
             "opened_at": self.opened_at.isoformat(),
@@ -276,6 +296,7 @@ class Strategy(ABC):
         self.avg_multiplicator_week: float = 0.991
         self.rsi_99_threshold: float = 32.0
         self.trend_lookback: int = 3
+        self.max_open_positions: int = 5
 
         logger.info(f"Strategy {strategy_id} initialized for {len(symbols)} symbols")
 
@@ -376,7 +397,8 @@ class Strategy(ABC):
         """
         Process tick with state management.
 
-        Wrapper around on_tick() that handles state and error tracking.
+        Wrapper around on_tick() that handles TP/SL checks,
+        state validation and error tracking.
 
         Args:
             tick: Enriched tick data
@@ -392,6 +414,17 @@ class Strategy(ABC):
 
         try:
             self._ticks_processed += 1
+
+            # Check TP/SL for positions on this symbol first
+            close_signal = self._check_positions(tick)
+            if close_signal:
+                self._signals.append(close_signal)
+                logger.info(
+                    f"Position auto-closed: {close_signal.signal_type.value} "
+                    f"{close_signal.symbol} @ {close_signal.price}"
+                )
+                return close_signal
+
             signal = self.on_tick(tick)
 
             if signal:
@@ -407,6 +440,63 @@ class Strategy(ABC):
             logger.error(f"Error processing tick in {self._strategy_id}: {e}")
             self._errors += 1
             return None
+
+    def _check_positions(self, tick: EnrichedTick) -> Signal | None:
+        """Check open positions for take-profit and stop-loss hits.
+
+        Updates the position's current price, then checks whether the
+        configured take-profit or stop-loss level has been triggered.
+        If so, the position is closed and a corresponding close signal
+        is returned.
+
+        Args:
+            tick: Enriched tick data
+
+        Returns:
+            A close signal if a TP/SL was triggered, ``None`` otherwise.
+        """
+        symbol = tick.symbol
+        if symbol not in self._positions:
+            return None
+
+        position = self._positions[symbol]
+        price = tick.price
+        position.update_price(price)
+
+        exit_reason: str | None = None
+        if position.is_take_profit_hit(price):
+            exit_reason = "take_profit"
+        elif position.is_stop_loss_hit(price):
+            exit_reason = "stop_loss"
+
+        if exit_reason is None:
+            return None
+
+        closed = self.close_position(symbol, price)
+        if closed is None:
+            return None
+
+        signal_type = SignalType.SELL if closed.side == "LONG" else SignalType.CLOSE_SHORT
+        logger.info(
+            f"[{self._strategy_id}] TP/SL triggered for {symbol}: "
+            f"{exit_reason}, PnL={closed.unrealized_pnl} ({closed.pnl_percent:.2f}%)"
+        )
+
+        self.on_position_closed(symbol, price, exit_reason, grid_index=None)
+
+        return Signal(
+            strategy_id=self._strategy_id,
+            symbol=symbol,
+            signal_type=signal_type,
+            price=price,
+            confidence=1.0,
+            metadata={
+                "reason": exit_reason,
+                "entry_price": float(closed.entry_price),
+                "pnl": float(closed.unrealized_pnl),
+                "pnl_percent": closed.pnl_percent,
+            },
+        )
 
     def update_position(self, symbol: str, price: Decimal) -> None:
         """
@@ -425,7 +515,9 @@ class Strategy(ABC):
         side: str,
         quantity: Decimal,
         price: Decimal,
-    ) -> Position:
+        take_profit_price: Decimal | None = None,
+        stop_loss_price: Decimal | None = None,
+    ) -> Position | None:
         """
         Open new position.
 
@@ -434,19 +526,33 @@ class Strategy(ABC):
             side: LONG or SHORT
             quantity: Position size
             price: Entry price
+            take_profit_price: Price at which to auto-close for profit
+            stop_loss_price: Price at which to auto-close to limit loss
 
         Returns:
-            New position
+            New position, or None if ``max_open_positions`` limit is reached
         """
+        if len(self._positions) >= self.max_open_positions:
+            logger.warning(
+                f"[{self._strategy_id}] Cannot open {side} {symbol}: "
+                f"max_open_positions ({self.max_open_positions}) reached"
+            )
+            return None
+
         position = Position(
             symbol=symbol,
             side=side,
             quantity=quantity,
             entry_price=price,
             current_price=price,
+            take_profit_price=take_profit_price,
+            stop_loss_price=stop_loss_price,
         )
         self._positions[symbol] = position
-        logger.info(f"Opened {side} position: {quantity} {symbol} @ {price}")
+        logger.info(
+            f"Opened {side} position: {quantity} {symbol} @ {price} "
+            f"(TP={take_profit_price}, SL={stop_loss_price})"
+        )
         return position
 
     def close_position(self, symbol: str, price: Decimal) -> Position | None:
@@ -502,6 +608,30 @@ class Strategy(ABC):
     def set_config(self, key: str, value: Any) -> None:
         """Set configuration value."""
         self._config[key] = value
+
+    def load_common_config(self) -> None:
+        """Load common strategy configuration from self._config.
+
+        Reads all shared config parameters via ``get_config()`` so derived
+        classes can call this once at initialisation instead of repeating the
+        same ``self.xxx = self.get_config("xxx", default)`` lines.
+        """
+        self.macd_indicator_name = self.get_config("macd_indicator_name", "macdindicator")
+        self.fast_period = self.get_config("fast_period", 12)
+        self.slow_period = self.get_config("slow_period", 26)
+        self.signal_period = self.get_config("signal_period", 9)
+        self.min_relative_threshold = self.get_config("min_relative_threshold", 0.001)
+        self.bottom_border_macd_to_buy = self.get_config("bottom_border_macd_to_buy", 0.0)
+        self.grid_quantity_absolute = self.get_config("grid_quantity_absolute", 100.0)
+        self.grid_profit_pct = self.get_config("grid_profit_pct", 0.85)
+        self.sma_fast = self.get_config("sma_fast")
+        self.sma_slow = self.get_config("sma_slow")
+        self.sma_multiplicator = self.get_config("sma_multiplicator", 0.997)
+        self.avg_multiplicator_day = self.get_config("avg_multiplicator_day", 0.991)
+        self.avg_multiplicator_week = self.get_config("avg_multiplicator_week", 0.991)
+        self.rsi_99_threshold = self.get_config("rsi_99_threshold", 32.0)
+        self.trend_lookback = self.get_config("trend_lookback", 3)
+        self.max_open_positions = self.get_config("max_open_positions", 5)
 
     def get_indicator(self, tick: EnrichedTick, name: str, default: float = 0.0) -> float:
         """Convenience method to get indicator value from tick.

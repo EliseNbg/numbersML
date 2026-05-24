@@ -54,6 +54,29 @@ Default values are set in `Strategy.__init__()`:
 | `avg_multiplicator_week` | `float` | `0.991` | Multiplier applied to week average price for comparison |
 | `rsi_99_threshold` | `float` | `32.0` | RSI filter threshold |
 | `trend_lookback` | `int` | `3` | Number of ticks to confirm downtrend before reversal |
+| `max_open_positions` | `int` | `5` | Maximum number of simultaneous open positions. Enforced by ``open_position()`` — returns ``None`` when the limit is reached. |
+
+### Position Management (base class)
+
+The base ``Strategy`` class provides automatic take-profit and stop-loss checking
+via ``process_tick()``.
+
+**``Position`` fields:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| ``take_profit_price`` | ``Decimal \| None`` | ``None`` | Price that triggers an auto-close for profit |
+| ``stop_loss_price`` | ``Decimal \| None`` | ``None`` | Price that triggers an auto-close to limit loss |
+
+**How it works:**
+
+1. A strategy calls ``self.open_position(symbol, side, quantity, price, take_profit_price, stop_loss_price)``.
+2. If ``len(self._positions) >= self.max_open_positions``, the open is rejected with a warning.
+3. On every tick, ``process_tick()`` first runs ``_check_positions(tick)``, which:
+   - Updates the position's current price
+   - Tests ``is_take_profit_hit()`` / ``is_stop_loss_hit()``
+   - If triggered, closes the position, calls ``on_position_closed()``, and returns a close ``Signal``
+4. Only if no TP/SL is triggered does ``on_tick()`` run, so the strategy can evaluate new entries.
 
 ## Usage From Subclasses
 
