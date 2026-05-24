@@ -272,7 +272,8 @@ class Strategy(ABC):
         self.sma_fast: str | None = None
         self.sma_slow: str | None = None
         self.sma_multiplicator: float = 0.997
-        self.avg_multiplicator: float = 0.991
+        self.avg_multiplicator_day: float = 0.991
+        self.avg_multiplicator_week: float = 0.991
         self.rsi_99_threshold: float = 32.0
         self.trend_lookback: int = 3
 

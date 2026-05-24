@@ -50,7 +50,8 @@ Default values are set in `Strategy.__init__()`:
 | `sma_fast` | `str \| None` | `None` | Name of fast SMA indicator (e.g. `"sma_800"`) |
 | `sma_slow` | `str \| None` | `None` | Name of slow SMA indicator (e.g. `"sma_2000"`) |
 | `sma_multiplicator` | `float` | `0.997` | Multiplier applied to SMA values for comparison |
-| `avg_multiplicator` | `float` | `0.991` | Multiplier applied to average price filter |
+| `avg_multiplicator_day` | `float` | `0.991` | Multiplier applied to day average price for comparison |
+| `avg_multiplicator_week` | `float` | `0.991` | Multiplier applied to week average price for comparison |
 | `rsi_99_threshold` | `float` | `32.0` | RSI filter threshold |
 | `trend_lookback` | `int` | `3` | Number of ticks to confirm downtrend before reversal |
 
@@ -75,7 +76,7 @@ first tick and overrides them from the strategy's persistent config.
 |----------|------|
 | `MACDPeakStrategy` | All attributes |
 | `MACDCrossStrategy` | `last_macd`, `last_signal`, `last_histogram`, `macd_indicator_name`, `fast_period`, `slow_period`, `signal_period`, `min_relative_threshold` |
-| `MACDBuyStrategy` | All except `prev_macd`, `avg_multiplicator`, `rsi_99_threshold`, `trend_lookback` |
+| `MACDBuyStrategy` | All except `prev_macd`, `avg_multiplicator_day`, `avg_multiplicator_week`, `rsi_99_threshold`, `trend_lookback` |
 | `InfinityGridStrategy` | `grid_profit_pct`, `grid_quantity_absolute` (via config) |
 
 Strategies that do not reference these attributes (`SMACrossStrategy`,

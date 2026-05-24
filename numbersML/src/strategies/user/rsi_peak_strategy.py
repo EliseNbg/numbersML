@@ -1,13 +1,13 @@
-"""MACD Peak Strategy.
+"""RSI Peak Strategy.
 
-This strategy generates BUY-only signals based on MACD trend reversal detection.
-Instead of waiting for MACD/signal line crossovers, it detects when the MACD line
-itself reverses from a decline to an uptrend (local minimum / trough detection).
+This strategy generates BUY-only signals based on RSI_99 trend reversal detection.
+Instead of waiting for RSI threshold crossovers, it detects when the RSI_99 value
+reverses from a decline to an uptrend (local minimum / trough detection).
 
 Buy conditions:
-- MACD was declining (previous MACD < MACD before previous)
-- MACD is now rising (current MACD > previous MACD)
-- Current MACD value < bottom_border_macd_to_buy (ensures buying at dips)
+- RSI_99 was declining (previous RSI < RSI before previous)
+- RSI_99 is now rising (current RSI > previous RSI)
+- Current RSI_99 value < rsi_99_threshold (ensures buying at oversold levels)
 - Current close price < sma_fast * sma_multiplicator (if configured)
 - Current close price < sma_slow * sma_multiplicator (if configured)
 - Current close price < avg_day * avg_multiplicator_day (if configured)
@@ -17,12 +17,9 @@ No SELL signals are generated. The strategy includes expected_profit_price in si
 which is handled externally by the market or take-profit mechanism.
 
 Configuration:
-    - macd_indicator_name: Name of MACD indicator (default: macdindicator)
-    - fast_period: MACD fast EMA period (default: 12)
-    - slow_period: MACD slow EMA period (default: 26)
-    - signal_period: Signal line period (default: 9)
-    - min_relative_threshold: Minimum MACD change ratio to trigger signal (default: 0.001)
-    - bottom_border_macd_to_buy: Maximum MACD value to allow BUY signals (default: 0.0)
+    - rsi_99_indicator_name: Name of RSI_99 indicator (default: "rsiindicator_period99_rsi")
+    - rsi_99_threshold: Maximum RSI_99 value to allow BUY signals (default: 32.0)
+    - min_relative_threshold: Minimum absolute RSI change to trigger signal (default: 0.001)
     - grid_quantity_absolute: USDC amount to buy per signal (default: 100.0)
     - grid_profit_pct: Profit target percentage for take-profit (default: 0.85)
     - sma_fast: Name of fast SMA indicator for price filter (optional, e.g., "sma_800")
@@ -40,8 +37,8 @@ from src.domain.strategies.base import EnrichedTick, Signal, SignalType, Strateg
 logger = logging.getLogger(__name__)
 
 
-class MACDPeakStrategy(Strategy):
-    """MACD trend reversal BUY-only strategy with bottom border constraint."""
+class RSIPeakStrategy(Strategy):
+    """RSI_99 trend reversal BUY-only strategy with threshold constraint."""
 
     def __init__(
         self,
@@ -53,58 +50,54 @@ class MACDPeakStrategy(Strategy):
 
         self._tick_count: int = 0
         self._initialized: bool = False
-        self._macd_history: list[float] = []
+        self._rsi_history: list[float] = []
 
-        logger.info(f"MACDPeakStrategy {strategy_id} initialized")
+        logger.info(f"RSIPeakStrategy {strategy_id} initialized")
 
     def on_tick(self, tick: EnrichedTick) -> Signal | None:
-        """Process tick and generate MACD trend reversal BUY signals.
+        """Process tick and generate RSI_99 trend reversal BUY signals.
 
         Args:
-            tick: Enriched tick data with MACD indicators
+            tick: Enriched tick data with RSI_99 indicators
 
         Returns:
-            BUY signal if trend reversal detected below bottom border, None otherwise
+            BUY signal if trend reversal detected below threshold, None otherwise
         """
         if not self._initialized:
-            self._initialize_macd(tick)
+            self._initialize(tick)
             self._initialized = True
 
         self._tick_count += 1
 
-        macd_value, signal_value, histogram_value = self._get_macd_values(tick)
+        rsi_value = self._get_rsi_value(tick)
 
-        if macd_value is None or signal_value is None:
+        if rsi_value is None:
             return None
 
-        signal = self._detect_trend_reversal(macd_value, signal_value, tick)
+        signal = self._detect_trend_reversal(rsi_value, tick)
 
         if self._tick_count % 500 == 0:
             logger.info(
                 f"{tick.time} Tick {self._tick_count}: "
-                f"macd={macd_value:.10f}, signal={signal_value:.10f}, "
-                f"histogram={histogram_value:.10f}, signal_count={self.signal_count}"
+                f"avg_day={self.get_avg_price(tick.symbol, "day"):.8f}, "
+                f"avg_week={self.get_avg_price(tick.symbol, "week"):.8f}, "
+                f"rsi_99={rsi_value:.4f}, signal_count={self.signal_count}"
             )
 
-        self.prev_macd = self.last_macd
-        self.last_macd = macd_value
-        self.last_signal = signal_value
-        self.last_histogram = histogram_value
+        self._rsi_history.append(rsi_value)
+        if len(self._rsi_history) > self.trend_lookback + 1:
+            self._rsi_history.pop(0)
 
         return signal
 
-    def _initialize_macd(self, tick: EnrichedTick) -> None:
-        """Initialize MACD strategy configuration.
+    def _initialize(self, tick: EnrichedTick) -> None:
+        """Initialize RSI peak strategy configuration.
 
         Args:
             tick: First tick used to log available indicators
         """
-        self.macd_indicator_name = self.get_config("macd_indicator_name", "macdindicator")
-        self.fast_period = self.get_config("fast_period", 12)
-        self.slow_period = self.get_config("slow_period", 26)
-        self.signal_period = self.get_config("signal_period", 9)
+        self.rsi_99_threshold = self.get_config("rsi_99_threshold", 32.0)
         self.min_relative_threshold = self.get_config("min_relative_threshold", 0.001)
-        self.bottom_border_macd_to_buy = self.get_config("bottom_border_macd_to_buy", 0.0)
         self.grid_quantity_absolute = self.get_config("grid_quantity_absolute", 100.0)
         self.grid_profit_pct = self.get_config("grid_profit_pct", 0.85)
         self.sma_fast = self.get_config("sma_fast")
@@ -112,14 +105,11 @@ class MACDPeakStrategy(Strategy):
         self.sma_multiplicator = self.get_config("sma_multiplicator", 0.997)
         self.avg_multiplicator_day = self.get_config("avg_multiplicator_day", 0.991)
         self.avg_multiplicator_week = self.get_config("avg_multiplicator_week", 0.991)
-        self.rsi_99_threshold = self.get_config("rsi_99_threshold", 32.0)
         self.trend_lookback = self.get_config("trend_lookback", 3)
 
         logger.info(
-            f"[{self._strategy_id}] MACD: name={self.macd_indicator_name}, "
-            f"fast={self.fast_period}, slow={self.slow_period}, "
-            f"signal={self.signal_period}, min_relative_threshold={self.min_relative_threshold}, "
-            f"bottom_border={self.bottom_border_macd_to_buy}, "
+            f"[{self._strategy_id}] RSI_99: threshold={self.rsi_99_threshold}, "
+            f"min_change={self.min_relative_threshold}, "
             f"trend_lookback={self.trend_lookback}"
         )
         logger.info(
@@ -137,80 +127,31 @@ class MACDPeakStrategy(Strategy):
                 f"day_multiplicator={self.avg_multiplicator_day}, "
                 f"week_multiplicator={self.avg_multiplicator_week}"
             )
-        if self.rsi_99_threshold:
-            logger.info(
-                f"[{self._strategy_id}] RSI filter: "
-                f"threshold={self.rsi_99_threshold}"
-            )
 
         logger.info(f"[{self._strategy_id}] Config: {self._config}")
         logger.info(f"[{self._strategy_id}] Indicators: {tick.indicators}")
 
-    def _get_macd_values(self, tick: EnrichedTick) -> tuple[float | None, float | None, float | None]:
-        """Extract MACD, signal, and histogram values from tick.
+    def _get_rsi_value(self, tick: EnrichedTick) -> float | None:
+        """Extract RSI_99 value from tick.
 
         Args:
             tick: Enriched tick data with indicators
 
         Returns:
-            Tuple of (macd_value, signal_value, histogram_value) or (None, None, None) if not available
+            RSI_99 value or None if not available
         """
-        macd_value = tick.get_indicator(f"{self.macd_indicator_name}_macd", None)
-        signal_value = tick.get_indicator(f"{self.macd_indicator_name}_signal", None)
-        histogram_value = tick.get_indicator(f"{self.macd_indicator_name}_histogram", None)
+        indicator_name = self.get_config(
+            "rsi_99_indicator_name", "rsiindicator_period99_rsi"
+        )
+        rsi_value = tick.get_indicator(indicator_name, None)
+        if rsi_value is not None:
+            return rsi_value
 
-        if macd_value is not None and signal_value is not None:
-            if histogram_value is None:
-                histogram_value = macd_value - signal_value
-            return macd_value, signal_value, histogram_value
+        rsi_value = tick.get_indicator("rsi_99", None)
+        if rsi_value is not None:
+            return rsi_value
 
-        macd_value = tick.get_indicator("macd", None)
-        signal_value = tick.get_indicator("macd_signal", None)
-        histogram_value = tick.get_indicator("macd_histogram", None)
-
-        if macd_value is not None and signal_value is not None:
-            if histogram_value is None:
-                histogram_value = macd_value - signal_value
-            return macd_value, signal_value, histogram_value
-
-        macd_value, signal_value, histogram_value = self._autodetect_macd(tick.indicators)
-
-        return macd_value, signal_value, histogram_value
-
-    def _autodetect_macd(
-        self, indicators: dict[str, float]
-    ) -> tuple[float | None, float | None, float | None]:
-        """Auto-detect MACD indicators from available keys.
-
-        Looks for keys ending with _macd, _signal, _histogram that contain
-        'macd' in the base name.
-        """
-        macd_key = None
-        signal_key = None
-        histogram_key = None
-
-        for key in indicators:
-            key_lower = key.lower()
-            if "macd" not in key_lower:
-                continue
-
-            if key_lower.endswith("_macd"):
-                macd_key = key
-            elif key_lower.endswith("_signal"):
-                signal_key = key
-            elif key_lower.endswith("_histogram"):
-                histogram_key = key
-
-        macd_value = indicators.get(macd_key) if macd_key else None
-        signal_value = indicators.get(signal_key) if signal_key else None
-        histogram_value = indicators.get(histogram_key) if histogram_key else None
-
-        if macd_value is not None and signal_value is not None:
-            if histogram_value is None:
-                histogram_value = macd_value - signal_value
-            return macd_value, signal_value, histogram_value
-
-        return None, None, None
+        return tick.get_indicator("rsi", None)
 
     def _check_sma_filter(self, tick: EnrichedTick) -> bool:
         """Check if current price is below configured SMA indicators.
@@ -242,19 +183,17 @@ class MACDPeakStrategy(Strategy):
 
     def _detect_trend_reversal(
         self,
-        macd_value: float,
-        signal_value: float,
+        rsi_value: float,
         tick: EnrichedTick,
     ) -> Signal | None:
-        """Detect MACD trend reversal from decline to uptrend and generate BUY signal.
+        """Detect RSI_99 trend reversal from decline to uptrend and generate BUY signal.
 
         Args:
-            macd_value: Current MACD line value
-            signal_value: Current signal line value
+            rsi_value: Current RSI_99 value
             tick: Enriched tick data
 
         Returns:
-            BUY signal if trend reversal detected below bottom border, None otherwise
+            BUY signal if trend reversal detected below threshold, None otherwise
         """
         if not self._check_sma_filter(tick):
             return None
@@ -267,55 +206,49 @@ class MACDPeakStrategy(Strategy):
         if avg_week and float(tick.price) >= float(avg_week) * self.avg_multiplicator_week:
             return None
 
-        self._macd_history.append(macd_value)
-        if len(self._macd_history) > self.trend_lookback + 1:
-            self._macd_history.pop(0)
-
-        if len(self._macd_history) < self.trend_lookback + 1:
+        if len(self._rsi_history) < self.trend_lookback:
             return None
 
+        lookback_values = self._rsi_history[-(self.trend_lookback):]
+
         was_declining = all(
-            self._macd_history[i] > self._macd_history[i + 1]
-            for i in range(len(self._macd_history) - 2)
+            lookback_values[i] > lookback_values[i + 1]
+            for i in range(len(lookback_values) - 1)
         )
-        is_turning_up = macd_value > self._macd_history[-2]
+        is_turning_up = rsi_value > lookback_values[-1]
 
         if not was_declining or not is_turning_up:
             return None
 
-        macd_change = abs(macd_value - self._macd_history[-2])
-        signal_magnitude = abs(signal_value) if abs(signal_value) > 1e-10 else abs(macd_value)
-        if signal_magnitude > 1e-10 and (macd_change / signal_magnitude) < self.min_relative_threshold:
+        rsi_change = abs(rsi_value - lookback_values[-1])
+        if rsi_change < self.min_relative_threshold:
             return None
 
-        if macd_value > self.bottom_border_macd_to_buy:
+        if rsi_value >= self.rsi_99_threshold:
             return None
 
-        return self._signal_buy(tick, macd_value, signal_value)
+        return self._signal_buy(tick, rsi_value)
 
     def _signal_buy(
         self,
         tick: EnrichedTick,
-        macd_value: float,
-        signal_value: float,
+        rsi_value: float,
     ) -> Signal:
         """Generate BUY signal with take-profit price.
 
         Args:
             tick: Enriched tick data
-            macd_value: Current MACD line value
-            signal_value: Current signal line value
+            rsi_value: Current RSI_99 value
 
         Returns:
             BUY signal with expected profit price in metadata
         """
         self.signal_count += 1
         expected_profit_price = float(tick.price) * (1 + self.grid_profit_pct / 100.0)
-
+        
         logger.info(
             f"[{self._strategy_id}] BUY signal: "
-            f"MACD={macd_value:.4f}, Signal={signal_value:.4f}, "
-            f"histogram={macd_value - signal_value:.4f}, "
+            f"RSI_99={rsi_value:.4f}, "
             f"price={tick.price:.8f}, "
             f"expected_profit={expected_profit_price:.8f}"
         )
@@ -325,11 +258,10 @@ class MACDPeakStrategy(Strategy):
             symbol=tick.symbol,
             signal_type=SignalType.BUY,
             price=tick.price,
-            confidence=min(1.0, abs(macd_value - signal_value) / 10.0),
+            confidence=min(1.0, (self.rsi_99_threshold - rsi_value) / self.rsi_99_threshold),
             metadata={
-                "macd": macd_value,
-                "signal": signal_value,
-                "histogram": macd_value - signal_value,
+                "rsi_99": rsi_value,
+                "rsi_99_threshold": self.rsi_99_threshold,
                 "reversal_type": "decline_to_uptrend",
                 "signal_count": self.signal_count,
                 "expected_profit_price": expected_profit_price,
@@ -350,7 +282,7 @@ class MACDPeakStrategy(Strategy):
             symbol: Trading pair symbol
             price: Price at which position was closed
             exit_reason: Reason for closure
-            grid_index: Not used for MACD strategy
+            grid_index: Not used for RSI strategy
         """
         logger.info(
             f"[{self._strategy_id}] Position closed for {symbol}: "
@@ -362,18 +294,11 @@ class MACDPeakStrategy(Strategy):
         stats = super().get_stats()
         stats.update(
             {
-                "last_macd": self.last_macd,
-                "last_signal": self.last_signal,
-                "last_histogram": self.last_histogram,
-                "prev_macd": self.prev_macd,
+                "last_rsi": self._rsi_history[-1] if self._rsi_history else None,
                 "signal_count": self.signal_count,
                 "tick_count": self._tick_count,
-                "macd_indicator_name": self.macd_indicator_name,
-                "fast_period": self.fast_period,
-                "slow_period": self.slow_period,
-                "signal_period": self.signal_period,
+                "rsi_99_threshold": self.rsi_99_threshold,
                 "min_relative_threshold": self.min_relative_threshold,
-                "bottom_border_macd_to_buy": self.bottom_border_macd_to_buy,
                 "grid_quantity_absolute": self.grid_quantity_absolute,
                 "grid_profit_pct": self.grid_profit_pct,
                 "sma_fast": self.sma_fast,
@@ -381,7 +306,6 @@ class MACDPeakStrategy(Strategy):
                 "sma_multiplicator": self.sma_multiplicator,
                 "avg_multiplicator_day": self.avg_multiplicator_day,
                 "avg_multiplicator_week": self.avg_multiplicator_week,
-                "rsi_99_threshold": self.rsi_99_threshold,  
                 "trend_lookback": self.trend_lookback,
             }
         )
