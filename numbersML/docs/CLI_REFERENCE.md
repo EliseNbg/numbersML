@@ -20,6 +20,25 @@ python3 -m src.cli.recalculate --all --from "2026-03-25 00:00:00"
 
 ## Pipeline
 
+### CLI — Start Trade Pipeline
+
+Start the real-time data + strategy pipeline. Symbols are auto-detected from active strategy configs.
+
+```bash
+# Start with symbols from active strategies
+python3 -m src.cli.start_trade_pipeline
+
+# Start with specific symbols (overrides strategy configs)
+python3 -m src.cli.start_trade_pipeline --symbols BTC/USDC ETH/USDC
+
+# Custom database URL
+python3 -m src.cli.start_trade_pipeline --db-url "postgresql://user:pass@host:5432/db"
+```
+
+The pipeline connects to Binance WebSocket, aggregates 1-second candles, calculates indicators, and runs all active strategies. Signals are executed as paper trades via ``PaperMarketService``. No API keys required for paper mode.
+
+### Dashboard
+
 Start/stop via dashboard at `http://localhost:8000/dashboard/index.html`
 
 Or via API:

@@ -40,12 +40,14 @@ Pipeline Flow:
 ```python
 runner = StrategyRunner(
     db_pool=db_pool,              # asyncpg connection pool
-    market_service=market_svc,    # MarketService for order placement
+    market_service=market_svc,    # MarketService for order placement (default: None)
     timeout_seconds=0.5,          # per-strategy execution timeout
     reload_interval=5.0,          # seconds between hot-reload checks
     dedup_window_seconds=60,      # signal deduplication window
 )
 ```
+
+When configured via ``TradePipeline`` (``src/pipeline/service.py``), a ``PaperMarketService`` is automatically created and wired as the market service so signals are executed as paper trades. When ``market_service`` is ``None``, signals are persisted to the DB but rejected (no order placement).
 
 ### execute_tick()
 
@@ -113,7 +115,7 @@ stats = runner.get_stats()
 
 ## StrategyExecutor
 
-Wraps each strategy's `on_tick()` call in an isolated sandbox:
+Wraps each strategy's `process_tick()` call (not `on_tick()`) in an isolated sandbox so that TP/SL auto-close and `max_open_positions` enforcement are active in the production pipeline:
 
 - **stdout/stderr capture** via `contextlib.redirect_stdout` + `io.StringIO`
 - **Timeout enforcement** via `asyncio.wait_for()` (default 500ms)

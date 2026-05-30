@@ -14,6 +14,7 @@ A BUY signal is generated when **all** of the following are true:
 2. **Below bottom border**: Current MACD value < `bottom_border_macd_to_buy`
 3. **Noise filter**: `abs(current MACD - previous MACD) / signal_magnitude >= min_relative_threshold`
 4. **SMA price filter** (optional): Current close price < `sma_fast * sma_multiplicator` AND current close price < `sma_slow * sma_multiplicator`
+5. **Day/week average price filter** (optional, automatic): Current close price < `avg_price_day * avg_multiplicator_day` AND current close price < `avg_price_week * avg_multiplicator_week` (uses cached price statistics from the pipeline)
 
 ## Configuration
 
@@ -31,6 +32,8 @@ A BUY signal is generated when **all** of the following are true:
 | `sma_slow` | str | `None` | Name of slow SMA indicator for price filter (e.g., `"sma_2000"`) |
 | `sma_multiplicator` | float | `0.997` | Multiplier applied to SMA values for price comparison |
 | `trend_lookback` | int | `3` | Number of consecutive declining ticks required to confirm downtrend |
+| `avg_multiplicator_day` | float | `0.991` | Multiplier applied to daily average price for price filter |
+| `avg_multiplicator_week` | float | `0.991` | Multiplier applied to weekly average price for price filter |
 
 ### Trend Reversal Detection
 

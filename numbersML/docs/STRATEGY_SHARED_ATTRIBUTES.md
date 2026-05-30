@@ -54,7 +54,7 @@ Default values are set in `Strategy.__init__()`:
 | `avg_multiplicator_week` | `float` | `0.991` | Multiplier applied to week average price for comparison |
 | `rsi_99_threshold` | `float` | `32.0` | RSI filter threshold |
 | `trend_lookback` | `int` | `3` | Number of ticks to confirm downtrend before reversal |
-| `max_open_positions` | `int` | `5` | Maximum number of simultaneous open positions. Enforced by ``open_position()`` — returns ``None`` when the limit is reached. |
+| `max_open_positions` | `int` | `5` | Maximum number of simultaneous open positions. Enforced by ``open_position()`` (returns ``None`` when limit reached) and by ``process_tick()`` (skips ``on_tick()`` when limit reached). In backtesting, the engine calls ``register_open_position()`` / ``register_close_position()`` to keep the counter in sync. |
 
 ### Position Management (base class)
 
@@ -76,7 +76,19 @@ via ``process_tick()``.
    - Updates the position's current price
    - Tests ``is_take_profit_hit()`` / ``is_stop_loss_hit()``
    - If triggered, closes the position, calls ``on_position_closed()``, and returns a close ``Signal``
-4. Only if no TP/SL is triggered does ``on_tick()`` run, so the strategy can evaluate new entries.
+4. Then ``process_tick()`` checks ``self._open_positions_count >= self.max_open_positions`` and skips ``on_tick()`` if the limit is reached.
+5. Only if neither TP/SL is triggered nor the position limit is reached does ``on_tick()`` run.
+
+**Backtest engine integration:**
+
+The backtest engine manages positions independently (its own ``positions`` dict). To keep the strategy's ``max_open_positions`` counter in sync:
+
+- ``register_open_position()`` — increment counter (called by engine after opening)
+- ``register_close_position()`` — decrement counter (called by engine after closing via TP/SL, signal, or end_of_test)
+
+**Live pipeline integration:**
+
+The ``StrategyExecutor`` calls ``strategy.process_tick(tick)`` (not ``on_tick()``), so TP/SL auto-close and ``max_open_positions`` enforcement are active in the production pipeline.
 
 ## Usage From Subclasses
 
