@@ -588,3 +588,81 @@ class TestStrategyRunner:
         await runner.hot_reload()
         # _last_reload should NOT have been updated
         assert runner._last_reload == 0.0
+
+    @pytest.mark.asyncio
+    async def test_hot_plug_adds_new_strategy(self) -> None:
+        """A strategy newly appearing in the DB is hot-loaded and started."""
+        runner = self._make_runner()
+        sid = uuid4()
+
+        _, pool = self._make_fetch_mock([
+            {
+                "id": sid,
+                "name": "HotPlugStrategy",
+                "mode": "paper",
+                "status": "active",
+                "class_path": "tests.unit.pipeline.test_strategy_runner.MockStrategy",
+                "config": {"symbols": ["BTC/USDC"]},
+            },
+        ])
+        runner.db_pool = pool
+
+        await runner.hot_reload()
+
+        assert sid in runner._strategies
+        ctx = runner._strategies[sid]
+        assert ctx.is_active is True
+        assert ctx.strategy_name == "HotPlugStrategy"
+        assert ctx.mode == "paper"
+
+    @pytest.mark.asyncio
+    async def test_hot_unplug_removes_and_stops_strategy(self) -> None:
+        """A strategy removed from the DB is stopped and deactivated."""
+        runner = self._make_runner()
+        sid = uuid4()
+        strategy = MockStrategy()
+        strategy.stop = AsyncMock()  # spy on stop()
+
+        # Setup: strategy is currently active
+        ctx = self._make_context(sid, strategy)
+        runner._strategies[sid] = ctx
+
+        # DB returns empty
+        _, pool = self._make_fetch_mock([])
+        runner.db_pool = pool
+
+        await runner.hot_reload()
+
+        assert sid not in runner._strategies
+        strategy.stop.assert_awaited_once()
+        assert ctx.is_active is False
+
+    @pytest.mark.asyncio
+    async def test_hot_reload_no_change_leaves_strategies(self) -> None:
+        """hot_reload does nothing when DB matches current strategies."""
+        runner = self._make_runner()
+        sid = uuid4()
+        strategy = MockStrategy()
+        strategy.stop = AsyncMock()
+
+        ctx = self._make_context(sid, strategy)
+        runner._strategies[sid] = ctx
+
+        # DB returns the same strategy
+        _, pool = self._make_fetch_mock([
+            {
+                "id": sid,
+                "name": "TestStrategy",
+                "mode": "paper",
+                "status": "active",
+                "class_path": "tests.unit.pipeline.test_strategy_runner.MockStrategy",
+                "config": {"symbols": ["BTC/USDC"]},
+            },
+        ])
+        runner.db_pool = pool
+
+        await runner.hot_reload()
+
+        assert sid in runner._strategies
+        strategy.stop.assert_not_called()  # was NOT stopped
+        assert ctx.is_active is True
