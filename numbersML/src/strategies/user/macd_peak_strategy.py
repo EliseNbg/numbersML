@@ -88,7 +88,7 @@ class MACDPeakStrategy(Strategy):
             logger.info(
                 f"{tick.time} Tick {self._tick_count}: "
                 f" macd={macd_value:.10f}, fast={sma_fast_val:.10f}, slow={sma_slow_val:.10f},"
-                f" avg_day={avg_day}, avg_week={avg_week},"
+                f" avg_day={float(avg_day):.8f}, avg_week={float(avg_week):.8f},"
                 f" sig_cnt={self.signal_count}"
             )
 
