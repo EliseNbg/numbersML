@@ -291,6 +291,10 @@ class StrategyRunner:
         try:
             from src.domain.market.order import OrderRequest, OrderSide, OrderType
 
+            metadata = dict(signal.metadata)
+            if signal.order_type.upper() == "MARKET" and signal.price is not None:
+                metadata.setdefault("market_price", float(signal.price))
+
             order_request = OrderRequest(
                 symbol=signal.symbol,
                 side=OrderSide(signal.side),
@@ -298,10 +302,21 @@ class StrategyRunner:
                 quantity=signal.quantity,
                 limit_price=signal.price,
                 client_order_id=str(signal.signal_id),
-                metadata=signal.metadata,
+                metadata=metadata,
             )
 
             order = await self.market_service.place_order(order_request)
+
+            if order.status.value in ("REJECTED", "CANCELED"):
+                signal = TradeSignal(
+                    **{**signal.__dict__, "status": SignalStatus.FAILED}
+                )
+                self._stats["signals_failed"] += 1
+                await self._persist_signal(
+                    signal, order_id=str(order.id),
+                    error=f"Order {order.status.value}: {order.metadata.get('reason', 'unknown')}",
+                )
+                return
 
             signal = TradeSignal(
                 **{**signal.__dict__, "status": SignalStatus.EXECUTED}

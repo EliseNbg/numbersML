@@ -6,8 +6,10 @@ from uuid import uuid4
 
 import pytest
 
+from src.domain.market.order import OrderStatus
 from src.domain.strategies.base import EnrichedTick, Signal, SignalType, Strategy, StrategyState
-from src.domain.strategies.signal import TradeSignal
+from src.domain.strategies.signal import SignalStatus, TradeSignal
+from src.infrastructure.market.paper_market_service import PaperMarketService
 from src.pipeline.strategy_runner import StrategyContext, StrategyRunner
 
 
@@ -442,3 +444,63 @@ class TestStrategyRunner:
         await runner._route_signal(signal)
         assert mock_market.place_order.called
         assert runner._stats["signals_executed"] == 1
+
+    @pytest.mark.asyncio
+    async def test_route_signal_adds_market_price_for_market_orders(self) -> None:
+        """market_price is injected into metadata for MARKET order signals."""
+        mock_market = AsyncMock()
+        mock_order = MagicMock()
+        mock_order.id = uuid4()
+        mock_market.place_order.return_value = mock_order
+
+        runner = self._make_runner(market_service=mock_market)
+        signal = TradeSignal(
+            strategy_id=uuid4(),
+            strategy_name="Test",
+            symbol="BTC/USDC",
+            side="BUY",
+            order_type="MARKET",
+            quantity=Decimal("0.001"),
+            price=Decimal("50000"),
+        )
+        await runner._route_signal(signal)
+        call_kwargs = mock_market.place_order.call_args[0][0]
+        assert call_kwargs.metadata.get("market_price") == 50000.0
+
+    @pytest.mark.asyncio
+    async def test_paper_market_service_executes_market_signal(self) -> None:
+        """Signal is filled by PaperMarketService and persisted as EXECUTED."""
+        paper = PaperMarketService(initial_balance=Decimal("10000"))
+        runner = self._make_runner(market_service=paper)
+        signal = TradeSignal(
+            strategy_id=uuid4(),
+            strategy_name="Test",
+            symbol="BTC/USDC",
+            side="BUY",
+            order_type="MARKET",
+            quantity=Decimal("1"),
+            price=Decimal("100"),
+        )
+        await runner._route_signal(signal)
+        assert runner._stats["signals_executed"] == 1
+        # Balance should reflect the paper fill
+        balance = await paper.get_balance("USDC")
+        assert balance.free < Decimal("10000")
+
+    @pytest.mark.asyncio
+    async def test_paper_market_service_rejects_signal_on_insufficient_balance(self) -> None:
+        """Signal is failed when paper balance is insufficient."""
+        paper = PaperMarketService(initial_balance=Decimal("1"))
+        runner = self._make_runner(market_service=paper)
+        signal = TradeSignal(
+            strategy_id=uuid4(),
+            strategy_name="Test",
+            symbol="BTC/USDC",
+            side="BUY",
+            order_type="MARKET",
+            quantity=Decimal("1"),
+            price=Decimal("100"),
+        )
+        await runner._route_signal(signal)
+        assert runner._stats["signals_failed"] == 1
+        assert runner._stats["signals_executed"] == 0

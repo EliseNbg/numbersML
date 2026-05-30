@@ -19,6 +19,7 @@ from typing import Any
 
 import asyncpg
 
+from src.infrastructure.market.paper_market_service import PaperMarketService
 from src.pipeline.aggregator import MultiSymbolAggregator
 from src.pipeline.database_writer import MultiSymbolDatabaseWriter
 from src.pipeline.indicator_calculator import IndicatorCalculator
@@ -71,7 +72,8 @@ class TradePipeline:
         self._db_writer = MultiSymbolDatabaseWriter(db_pool)
         self._indicator_calculator = IndicatorCalculator(db_pool)
         self._wide_vector_service = WideVectorService(db_pool)
-        self._strategy_runner = StrategyRunner(db_pool=db_pool)
+        self._market_service = PaperMarketService()
+        self._strategy_runner = StrategyRunner(db_pool=db_pool, market_service=self._market_service)
         self._recovery_managers: dict[str, RecoveryManager] = {}
         self._ws_manager: BinanceWebSocketManager | None = None
 
