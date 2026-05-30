@@ -79,7 +79,7 @@ class MACDPeakStrategy(Strategy):
 
         signal = self._detect_trend_reversal(macd_value, signal_value, tick)
 
-        if self._tick_count % 500 == 0:
+        if self._tick_count < 50  or self._tick_count % 500 == 0:
             logger.info(
                 f"{tick.time} Tick {self._tick_count}: "
                 f"macd={macd_value:.10f}, signal={signal_value:.10f}, "
