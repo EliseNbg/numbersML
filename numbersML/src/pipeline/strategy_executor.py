@@ -186,7 +186,7 @@ class StrategyExecutor:
         if isinstance(quantity, (int, float)):
             quantity = Decimal(str(quantity))
 
-        price = signal.metadata.get("price")
+        price = signal.metadata.get("price", signal.price)
         if price is not None and not isinstance(price, Decimal):
             price = Decimal(str(price))
 

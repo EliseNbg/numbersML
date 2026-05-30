@@ -164,3 +164,130 @@ class TestStrategyExecutor:
         result = await executor.execute(strategy, self._make_tick())
         assert result.signal is not None
         assert result.signal.side == "BUY"
+
+    @pytest.mark.asyncio
+    async def test_market_buy_signal_has_price_from_signal_price(self) -> None:
+        """MARKET BUY: TradeSignal.price comes from Signal.price (not metadata)."""
+        strategy = MockStrategy()
+        strategy._state = StrategyState.RUNNING
+        strategy._signal_to_return = Signal(
+            strategy_id="test-1",
+            symbol="BTC/USDC",
+            signal_type=SignalType.BUY,
+            price=Decimal("67500"),
+            metadata={"quantity": Decimal("0.001")},
+        )
+        executor = StrategyExecutor(timeout_seconds=1.0)
+        result = await executor.execute(strategy, self._make_tick())
+        assert result.signal is not None
+        assert result.signal.price == Decimal("67500")
+        assert result.signal.order_type == "MARKET"
+
+    @pytest.mark.asyncio
+    async def test_market_sell_signal_has_price_from_signal_price(self) -> None:
+        """MARKET SELL: TradeSignal.price comes from Signal.price (not metadata)."""
+        strategy = MockStrategy()
+        strategy._state = StrategyState.RUNNING
+        strategy._signal_to_return = Signal(
+            strategy_id="test-1",
+            symbol="BTC/USDC",
+            signal_type=SignalType.SELL,
+            price=Decimal("67500"),
+            metadata={"quantity": Decimal("0.001")},
+        )
+        executor = StrategyExecutor(timeout_seconds=1.0)
+        result = await executor.execute(strategy, self._make_tick())
+        assert result.signal is not None
+        assert result.signal.price == Decimal("67500")
+        assert result.signal.order_type == "MARKET"
+
+    @pytest.mark.asyncio
+    async def test_market_signal_price_from_metadata_takes_precedence(self) -> None:
+        """When metadata has 'price', it overrides Signal.price."""
+        strategy = MockStrategy()
+        strategy._state = StrategyState.RUNNING
+        strategy._signal_to_return = Signal(
+            strategy_id="test-1",
+            symbol="BTC/USDC",
+            signal_type=SignalType.BUY,
+            price=Decimal("67500"),
+            metadata={"price": Decimal("68000"), "quantity": Decimal("0.001")},
+        )
+        executor = StrategyExecutor(timeout_seconds=1.0)
+        result = await executor.execute(strategy, self._make_tick())
+        assert result.signal is not None
+        assert result.signal.price == Decimal("68000")
+
+    @pytest.mark.asyncio
+    async def test_market_buy_signal_has_market_price_in_metadata_after_routing(self) -> None:
+        """Simulate the routing path: MARKET buy must have market_price in metadata."""
+        from src.domain.market.order import OrderRequest, OrderSide, OrderType
+
+        strategy = MockStrategy()
+        strategy._state = StrategyState.RUNNING
+        strategy._signal_to_return = Signal(
+            strategy_id="test-1",
+            symbol="BTC/USDC",
+            signal_type=SignalType.BUY,
+            price=Decimal("67500"),
+            metadata={"quantity": Decimal("0.001")},
+        )
+        executor = StrategyExecutor(timeout_seconds=1.0)
+        result = await executor.execute(strategy, self._make_tick())
+        assert result.signal is not None
+
+        # Replicate _route_signal logic
+        signal = result.signal
+        metadata = dict(signal.metadata)
+        if signal.order_type.upper() == "MARKET" and signal.price is not None:
+            metadata.setdefault("market_price", float(signal.price))
+
+        order_request = OrderRequest(
+            symbol=signal.symbol,
+            side=OrderSide(signal.side),
+            order_type=OrderType(signal.order_type),
+            quantity=signal.quantity,
+            limit_price=signal.price,
+            client_order_id=str(signal.signal_id),
+            metadata=metadata,
+        )
+
+        assert "market_price" in order_request.metadata
+        assert order_request.metadata["market_price"] == 67500.0
+
+    @pytest.mark.asyncio
+    async def test_market_sell_signal_has_market_price_in_metadata_after_routing(self) -> None:
+        """Simulate the routing path: MARKET sell must have market_price in metadata."""
+        from src.domain.market.order import OrderRequest, OrderSide, OrderType
+
+        strategy = MockStrategy()
+        strategy._state = StrategyState.RUNNING
+        strategy._signal_to_return = Signal(
+            strategy_id="test-1",
+            symbol="BTC/USDC",
+            signal_type=SignalType.SELL,
+            price=Decimal("68000"),
+            metadata={"quantity": Decimal("0.001")},
+        )
+        executor = StrategyExecutor(timeout_seconds=1.0)
+        result = await executor.execute(strategy, self._make_tick())
+        assert result.signal is not None
+
+        # Replicate _route_signal logic
+        signal = result.signal
+        metadata = dict(signal.metadata)
+        if signal.order_type.upper() == "MARKET" and signal.price is not None:
+            metadata.setdefault("market_price", float(signal.price))
+
+        order_request = OrderRequest(
+            symbol=signal.symbol,
+            side=OrderSide(signal.side),
+            order_type=OrderType(signal.order_type),
+            quantity=signal.quantity,
+            limit_price=signal.price,
+            client_order_id=str(signal.signal_id),
+            metadata=metadata,
+        )
+
+        assert "market_price" in order_request.metadata
+        assert order_request.metadata["market_price"] == 68000.0
