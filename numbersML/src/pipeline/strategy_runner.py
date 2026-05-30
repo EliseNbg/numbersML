@@ -408,6 +408,10 @@ class StrategyRunner:
                     config=config,
                 )
                 strategies[row["id"]] = ctx
+                logger.info(
+                    f"Loaded strategy: {row['name']} ({row['id']}) "
+                    f"mode={row['mode']} symbols={symbols}"
+                )
             except Exception as e:
                 logger.error(f"Failed to load strategy {row['id']}: {e}")
 
