@@ -1,4 +1,5 @@
 """Unit tests for StrategyRunner."""
+import time
 from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
@@ -45,6 +46,21 @@ class TestStrategyRunner:
             db_pool=mock_pool,
             market_service=market_service,
             reload_interval=1.0,
+        )
+
+    def _make_context(
+        self,
+        strategy_id,
+        strategy,
+        symbols=None,
+        is_active=True,
+    ) -> StrategyContext:
+        return StrategyContext(
+            strategy_id=strategy_id,
+            strategy_name="TestStrategy",
+            strategy=strategy,
+            symbols=symbols or ["BTC/USDC"],
+            is_active=is_active,
         )
 
     def _make_tick_time(self) -> datetime:
@@ -504,3 +520,71 @@ class TestStrategyRunner:
         await runner._route_signal(signal)
         assert runner._stats["signals_failed"] == 1
         assert runner._stats["signals_executed"] == 0
+
+    def _make_fetch_mock(self, rows: list[dict]) -> tuple[AsyncMock, MagicMock]:
+        """Create a mocked DB pool that returns given rows on fetch."""
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(return_value=rows)
+        acm = AsyncMock()
+        acm.__aenter__ = AsyncMock(return_value=mock_conn)
+        acm.__aexit__ = AsyncMock(return_value=False)
+        pool = MagicMock()
+        pool.acquire = MagicMock(return_value=acm)
+        return mock_conn, pool
+
+    @pytest.mark.asyncio
+    async def test_load_strategy_with_json_string_config_parses(self) -> None:
+        """String config is parsed as JSON before accessing config.get()."""
+        import json
+
+        runner = self._make_runner()
+        sid = uuid4()
+
+        _, pool = self._make_fetch_mock([
+            {
+                "id": sid,
+                "name": "TestStrategy",
+                "mode": "paper",
+                "status": "active",
+                "class_path": "tests.unit.pipeline.test_strategy_runner.MockStrategy",
+                "config": json.dumps({"symbols": ["BTC/USDC"]}),
+            },
+        ])
+        runner.db_pool = pool
+
+        strategies = await runner._load_active_strategies()
+        assert len(strategies) == 1
+        ctx = strategies[sid]
+        assert ctx.symbols == ["BTC/USDC"]
+
+    @pytest.mark.asyncio
+    async def test_load_strategy_with_string_config_skips_on_invalid_json(self) -> None:
+        """Invalid JSON string config is rejected and skipped."""
+        runner = self._make_runner()
+        sid = uuid4()
+
+        _, pool = self._make_fetch_mock([
+            {
+                "id": sid,
+                "name": "TestStrategy",
+                "mode": "paper",
+                "status": "active",
+                "class_path": "tests.unit.pipeline.test_strategy_runner.MockStrategy",
+                "config": "{invalid json}",
+            },
+        ])
+        runner.db_pool = pool
+
+        strategies = await runner._load_active_strategies()
+        assert len(strategies) == 0
+
+    @pytest.mark.asyncio
+    async def test_hot_reload_debounces_after_failure(self) -> None:
+        """hot_reload skips reload if a failure happened less than 30s ago."""
+        runner = self._make_runner()
+        runner._last_failed_reload = time.time() - 5.0  # 5 seconds ago
+
+        # Should skip because _last_failed_reload is within 30s
+        await runner.hot_reload()
+        # _last_reload should NOT have been updated
+        assert runner._last_reload == 0.0

@@ -14,6 +14,7 @@ Features:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from dataclasses import dataclass, field
@@ -101,6 +102,7 @@ class StrategyRunner:
             "deduplicated": 0,
         }
         self._prices_preloaded: bool = False
+        self._last_failed_reload: float = 0.0
 
     async def _preload_price_statistics(self, symbols: list[str]) -> None:
         """Load last 7 days of candle close prices from DB into price statistics.
@@ -340,11 +342,16 @@ class StrategyRunner:
         - Remove deactivated strategies (graceful stop)
         - Update config for changed strategies
         """
+        # Debounce: skip if a reload failed within the last 30s
+        if time.time() - self._last_failed_reload < 30.0:
+            return
+
         async with self._lock:
             try:
                 db_strategies = await self._load_active_strategies()
             except Exception as e:
                 logger.error(f"Hot-reload failed: {e}")
+                self._last_failed_reload = time.time()
                 return
 
             current_ids = set(self._strategies.keys())
@@ -394,7 +401,22 @@ class StrategyRunner:
         for row in rows:
             try:
                 strategy = self._instantiate_strategy(row["class_path"], str(row["id"]))
-                config = row["config"] or {}
+                raw_config = row["config"] or {}
+                config = raw_config
+                if isinstance(config, str):
+                    try:
+                        config = json.loads(config)
+                    except json.JSONDecodeError as je:
+                        logger.error(
+                            f"Strategy {row['id']}: config is a string but not valid JSON: {je}"
+                        )
+                        continue
+                if not isinstance(config, dict):
+                    logger.error(
+                        f"Strategy {row['id']}: config is {type(config).__name__}, expected dict"
+                    )
+                    self._last_failed_reload = time.time()
+                    continue
                 symbols = config.get("symbols", [])
                 if isinstance(symbols, str):
                     symbols = [symbols]
