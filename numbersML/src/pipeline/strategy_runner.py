@@ -11,6 +11,7 @@ Features:
 - Signal deduplication (same strategy+symbol+side within 60s)
 - DB persistence of all signals
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -103,6 +104,7 @@ class StrategyRunner:
         }
         self._prices_preloaded: bool = False
         self._last_failed_reload: float = 0.0
+        self._prices_loaded: set[str] = set()
 
     async def _preload_price_statistics(self, symbols: list[str]) -> None:
         """Load last 7 days of candle close prices from DB into price statistics.
@@ -119,13 +121,17 @@ class StrategyRunner:
 
         try:
             async with self.db_pool.acquire() as conn:
-                rows = await conn.fetch("""
+                rows = await conn.fetch(
+                    """
                     SELECT s.name AS symbol, c.time, c.close
                     FROM candles_1s c
                     JOIN symbols s ON s.id = c.symbol_id
                     WHERE s.name = ANY($1) AND c.time >= $2
                     ORDER BY s.name, c.time
-                """, symbols, cutoff)
+                """,
+                    symbols,
+                    cutoff,
+                )
         except Exception as e:
             logger.warning(f"Failed to preload price statistics: {e}")
             return
@@ -133,9 +139,7 @@ class StrategyRunner:
         grouped: dict[str, list[tuple[datetime, Decimal]]] = {}
         for row in rows:
             sym = row["symbol"]
-            grouped.setdefault(sym, []).append(
-                (row["time"], Decimal(str(row["close"])))
-            )
+            grouped.setdefault(sym, []).append((row["time"], Decimal(str(row["close"]))))
 
         for sym, prices in grouped.items():
             stats.load_historical_prices(sym, prices)
@@ -163,10 +167,7 @@ class StrategyRunner:
 
         # Preload historical prices on first tick
         if not self._prices_preloaded:
-            all_symbols = [
-                sym for ctx in self._strategies.values()
-                for sym in (ctx.symbols or [])
-            ]
+            all_symbols = [sym for ctx in self._strategies.values() for sym in (ctx.symbols or [])]
             if all_symbols:
                 await self._preload_price_statistics(list(set(all_symbols)))
             self._prices_preloaded = True
@@ -177,7 +178,8 @@ class StrategyRunner:
 
         # Filter strategies that trade this symbol
         eligible = [
-            ctx for ctx in self._strategies.values()
+            ctx
+            for ctx in self._strategies.values()
             if ctx.is_active and (not ctx.symbols or symbol in ctx.symbols)
         ]
 
@@ -217,7 +219,7 @@ class StrategyRunner:
                 signals.append(result.signal)
                 self._signal_history.append(result.signal)
                 if len(self._signal_history) > self._max_signal_history:
-                    self._signal_history = self._signal_history[-self._max_signal_history:]
+                    self._signal_history = self._signal_history[-self._max_signal_history :]
 
                 # Update strategy context
                 ctx = self._strategies.get(UUID(result.signal.strategy_id))
@@ -236,7 +238,7 @@ class StrategyRunner:
                     ctx.stdout_buffer.extend(result.stdout)
                     # Trim buffer
                     if len(ctx.stdout_buffer) > self.MAX_STDOUT_BUFFER:
-                        ctx.stdout_buffer = ctx.stdout_buffer[-self.MAX_STDOUT_BUFFER:]
+                        ctx.stdout_buffer = ctx.stdout_buffer[-self.MAX_STDOUT_BUFFER :]
 
         # Periodic logging every 500 ticks
         if self._tick_count % 500 == 0:
@@ -283,9 +285,7 @@ class StrategyRunner:
         """
         if self.market_service is None:
             logger.debug(f"No market service configured, signal {signal.signal_id} logged only")
-            signal = TradeSignal(
-                **{**signal.__dict__, "status": SignalStatus.REJECTED}
-            )
+            signal = TradeSignal(**{**signal.__dict__, "status": SignalStatus.REJECTED})
             self._stats["signals_rejected"] += 1
             await self._persist_signal(signal, reason="No market service configured")
             return
@@ -310,27 +310,22 @@ class StrategyRunner:
             order = await self.market_service.place_order(order_request)
 
             if order.status.value in ("REJECTED", "CANCELED"):
-                signal = TradeSignal(
-                    **{**signal.__dict__, "status": SignalStatus.FAILED}
-                )
+                signal = TradeSignal(**{**signal.__dict__, "status": SignalStatus.FAILED})
                 self._stats["signals_failed"] += 1
                 await self._persist_signal(
-                    signal, order_id=str(order.id),
+                    signal,
+                    order_id=str(order.id),
                     error=f"Order {order.status.value}: {order.metadata.get('reason', 'unknown')}",
                 )
                 return
 
-            signal = TradeSignal(
-                **{**signal.__dict__, "status": SignalStatus.EXECUTED}
-            )
+            signal = TradeSignal(**{**signal.__dict__, "status": SignalStatus.EXECUTED})
             self._stats["signals_executed"] += 1
             await self._persist_signal(signal, order_id=str(order.id))
 
         except Exception as e:
             logger.error(f"Failed to route signal {signal.signal_id}: {e}")
-            signal = TradeSignal(
-                **{**signal.__dict__, "status": SignalStatus.FAILED}
-            )
+            signal = TradeSignal(**{**signal.__dict__, "status": SignalStatus.FAILED})
             self._stats["signals_failed"] += 1
             await self._persist_signal(signal, error=str(e))
 
@@ -400,38 +395,48 @@ class StrategyRunner:
         strategies: dict[UUID, StrategyContext] = {}
         for row in rows:
             try:
-                strategy = self._instantiate_strategy(row["class_path"], str(row["id"]))
+                sid = row["id"]
+
                 raw_config = row["config"] or {}
                 config = raw_config
                 if isinstance(config, str):
                     try:
                         config = json.loads(config)
                     except json.JSONDecodeError as je:
-                        logger.error(
-                            f"Strategy {row['id']}: config is a string but not valid JSON: {je}"
-                        )
+                        logger.error(f"Strategy {sid}: config is a string but not valid JSON: {je}")
                         continue
                 if not isinstance(config, dict):
                     logger.error(
-                        f"Strategy {row['id']}: config is {type(config).__name__}, expected dict"
+                        f"Strategy {sid}: config is {type(config).__name__}, expected dict"
                     )
                     self._last_failed_reload = time.time()
                     continue
-                symbols = config.get("symbols", [])
+
+                symbols = config.get("universe", {}).get("symbols", [])
                 if isinstance(symbols, str):
                     symbols = [symbols]
 
+                # Reuse existing strategy instance to avoid redundant initialization
+                if sid in self._strategies:
+                    ctx = self._strategies[sid]
+                    ctx.config = config
+                    ctx.symbols = symbols
+                    strategies[sid] = ctx
+                    continue
+
+                strategy = self._instantiate_strategy(row["class_path"], str(sid), symbols)
+
                 ctx = StrategyContext(
-                    strategy_id=row["id"],
+                    strategy_id=sid,
                     strategy_name=row["name"],
                     strategy=strategy,
                     mode=row["mode"],
                     symbols=symbols,
                     config=config,
                 )
-                strategies[row["id"]] = ctx
+                strategies[sid] = ctx
                 logger.info(
-                    f"Loaded strategy: {row['name']} ({row['id']}) "
+                    f"Loaded strategy: {row['name']} ({sid}) "
                     f"mode={row['mode']} symbols={symbols}"
                 )
             except Exception as e:
@@ -440,12 +445,13 @@ class StrategyRunner:
         return strategies
 
     @staticmethod
-    def _instantiate_strategy(class_path: str, strategy_id: str) -> Strategy:
+    def _instantiate_strategy(class_path: str, strategy_id: str, symbols: list[str]) -> Strategy:
         """Dynamically import and instantiate a strategy class.
 
         Args:
             class_path: Fully qualified class path (e.g., 'src.strategies.user.macd_buy_strategy.MacdBuyStrategy')
             strategy_id: Strategy ID to pass to constructor
+            symbols: List of symbols for this strategy
 
         Returns:
             Strategy instance
@@ -456,9 +462,7 @@ class StrategyRunner:
         module = importlib.import_module(module_path)
         cls = getattr(module, class_name)
 
-        # Instantiate with strategy_id and a placeholder symbol list
-        # Symbols are loaded from config separately
-        return cls(strategy_id=strategy_id, symbols=["BTC/USDC"])
+        return cls(strategy_id=strategy_id, symbols=symbols)
 
     def _is_duplicate(self, signal: TradeSignal) -> bool:
         """Check if signal is a duplicate within the dedup window.
@@ -507,7 +511,11 @@ class StrategyRunner:
                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                     """,
                     signal.signal_id,
-                    UUID(signal.strategy_id) if isinstance(signal.strategy_id, str) else signal.strategy_id,
+                    (
+                        UUID(signal.strategy_id)
+                        if isinstance(signal.strategy_id, str)
+                        else signal.strategy_id
+                    ),
                     signal.symbol,
                     signal.side,
                     signal.order_type,
@@ -585,7 +593,9 @@ class StrategyRunner:
                     "name": ctx.strategy_name,
                     "mode": ctx.mode,
                     "signals_today": ctx.signals_today,
-                    "last_signal_at": ctx.last_signal_at.isoformat() if ctx.last_signal_at else None,
+                    "last_signal_at": (
+                        ctx.last_signal_at.isoformat() if ctx.last_signal_at else None
+                    ),
                     "stdout_lines": len(ctx.stdout_buffer),
                     "is_active": ctx.is_active,
                 }

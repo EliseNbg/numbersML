@@ -242,9 +242,14 @@ class WideVectorService:
                 }
 
             # 5. Forward-fill: use last known values for symbols without candles
-            if symbols_without_candles:
+            symbols_needing_fill = [
+                sname for sname in symbols_without_candles
+                if sname not in self._last_known
+            ]
+            if symbols_needing_fill:
                 missing_ids = [
-                    sid for sid, sname in self._active_symbols if sname in symbols_without_candles
+                    sid for sid, sname in self._active_symbols
+                    if sname in symbols_needing_fill
                 ]
                 # Last known candles
                 last_candle_rows = await conn.fetch(
@@ -291,6 +296,8 @@ class WideVectorService:
                     indicator_data[symbol_name] = {
                         k: float(v) if v is not None else 0.0 for k, v in values.items()
                     }
+
+
 
             # 4. Update forward-fill cache with current + fallback data
             for sname, cd in candle_data.items():

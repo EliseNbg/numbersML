@@ -547,7 +547,7 @@ class TestStrategyRunner:
                 "mode": "paper",
                 "status": "active",
                 "class_path": "tests.unit.pipeline.test_strategy_runner.MockStrategy",
-                "config": json.dumps({"symbols": ["BTC/USDC"]}),
+                "config": json.dumps({"universe": {"symbols": ["BTC/USDC"]}}),
             },
         ])
         runner.db_pool = pool

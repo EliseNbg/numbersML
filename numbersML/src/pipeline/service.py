@@ -181,10 +181,10 @@ class TradePipeline:
                 candle_time = tick_time - timedelta(seconds=1)
                 emitted = await self._aggregator.tick_all(tick_time)
 
-                # Debug: log on first tick and every 500 ticks
+                # Debug: log every tick for first 500, then every 500
                 self._stats.setdefault("ticks", 0)
                 self._stats["ticks"] += 1
-                if self._stats["ticks"] == 1 or self._stats["ticks"] % 500 == 0:
+                if self._stats["ticks"] <= 500 or self._stats["ticks"] % 500 == 0:
                     logger.info(
                         f"Ticker: tick={self._stats['ticks']}, "
                         f"emitted={len(emitted)}, "
@@ -391,7 +391,6 @@ class TradePipeline:
         # Fetch last known close price from DB for each symbol.
         async with self.db_pool.acquire() as conn:
             for symbol in self.symbols:
-                binance_symbol = symbol.replace("/", "")
                 row = await conn.fetchrow(
                     """
                     SELECT c.close
