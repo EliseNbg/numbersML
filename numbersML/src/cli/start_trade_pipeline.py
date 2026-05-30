@@ -85,18 +85,25 @@ async def run_pipeline(symbols: list[str], db_url: str) -> None:
     )
 
     try:
-        # Get active symbols if not specified
+        # Get symbols from active strategy configs if not specified
         if not symbols:
             async with db_pool.acquire() as conn:
                 rows = await conn.fetch("""
-                    SELECT symbol FROM symbols
-                    WHERE is_active = true
-                    AND is_allowed = true
+                    SELECT DISTINCT symbol
+                    FROM (
+                        SELECT jsonb_array_elements_text(
+                            COALESCE(sv.config#>'{universe,symbols}', sv.config->'symbols')
+                        ) AS symbol
+                        FROM strategies s
+                        JOIN strategy_versions sv ON sv.strategy_id = s.id AND sv.is_active = true
+                        WHERE s.status = 'active'
+                    ) sub
+                    WHERE symbol IS NOT NULL
                     ORDER BY symbol
                     """)
                 symbols = [row["symbol"] for row in rows]
 
-            logger.info(f"Using {len(symbols)} active symbols from database")
+            logger.info(f"Using {len(symbols)} symbols from active strategy configs")
 
         # Create and start pipeline
         pipeline = TradePipeline(
