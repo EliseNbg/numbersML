@@ -24,6 +24,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+import aiohttp
 import asyncpg
 
 from src.domain.strategies.base import EnrichedTick, Strategy, get_price_statistics
@@ -109,6 +110,9 @@ class StrategyRunner:
     async def _preload_price_statistics(self, symbols: list[str]) -> None:
         """Load last 7 days of candle close prices from DB into price statistics.
 
+        Falls back to Binance REST API when the DB has too few candles
+        for a meaningful average.
+
         Args:
             symbols: List of symbol names to preload (e.g. ["BTC/USDC", "ETH/USDC"])
         """
@@ -123,11 +127,11 @@ class StrategyRunner:
             async with self.db_pool.acquire() as conn:
                 rows = await conn.fetch(
                     """
-                    SELECT s.name AS symbol, c.time, c.close
+                    SELECT s.symbol, c.time, c.close
                     FROM candles_1s c
                     JOIN symbols s ON s.id = c.symbol_id
-                    WHERE s.name = ANY($1) AND c.time >= $2
-                    ORDER BY s.name, c.time
+                    WHERE s.symbol = ANY($1) AND c.time >= $2
+                    ORDER BY s.symbol, c.time
                 """,
                     symbols,
                     cutoff,
@@ -136,14 +140,172 @@ class StrategyRunner:
             logger.warning(f"Failed to preload price statistics: {e}")
             return
 
+        logger.info(f"Price stats DB preload: {len(rows)} rows for symbols {symbols}")
+
         grouped: dict[str, list[tuple[datetime, Decimal]]] = {}
         for row in rows:
             sym = row["symbol"]
             grouped.setdefault(sym, []).append((row["time"], Decimal(str(row["close"]))))
 
         for sym, prices in grouped.items():
-            stats.load_historical_prices(sym, prices)
-            self._prices_loaded.add(sym)
+            if len(prices) >= 3600:
+                logger.info(
+                    f"Using DB price data for {sym}: {len(prices)} candles (>= 3600 threshold)"
+                )
+                stats.load_historical_prices(sym, prices)
+                self._prices_loaded.add(sym)
+            else:
+                logger.info(
+                    f"Skipping DB price data for {sym}: only {len(prices)} candles "
+                    f"(< 3600 threshold) — will try Binance"
+                )
+
+        # Fall back to Binance for symbols with insufficient DB data
+        symbols_without_prices = [s for s in symbols if s not in self._prices_loaded]
+        if symbols_without_prices:
+            logger.info(f"Need Binance fallback for: {symbols_without_prices}")
+            await self._preload_from_binance(symbols_without_prices, now, cutoff, stats)
+        else:
+            logger.info("All symbols loaded from DB, no Binance fallback needed")
+
+    async def _preload_from_binance(
+        self,
+        symbols: list[str],
+        now: datetime,
+        cutoff: datetime,
+        stats: Any,
+    ) -> None:
+        """Fall-back: fetch up to 7 days of 1-minute klines from Binance REST API.
+
+        Args:
+            symbols: Symbols missing DB data
+            now: Current timestamp
+            cutoff: 7-day cut-off (used for interval calculation)
+            stats: The shared ``SymbolPriceStatistics`` instance
+        """
+        binance_symbols = [s.replace("/", "") for s in symbols]
+        logger.info(
+            f"Fetching {len(symbols)} symbols from Binance REST for "
+            f"price statistics preload: {symbols}"
+        )
+
+        async with aiohttp.ClientSession() as session:
+            for sym, binance_sym in zip(symbols, binance_symbols, strict=True):
+                try:
+                    prices = await self._fetch_binance_klines_to_prices(
+                        session,
+                        binance_sym,
+                        cutoff,
+                        now,
+                    )
+                    if prices:
+                        stats.load_historical_prices(sym, prices)
+                        self._prices_loaded.add(sym)
+                        logger.info(
+                            f"Loaded {len(prices)} Binance 1m klines into "
+                            f"price statistics for {sym}"
+                        )
+                    else:
+                        logger.warning(
+                            f"No Binance klines for {sym} — price averages will start empty"
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to fetch Binance klines for {sym}: {e}")
+
+    async def _fetch_binance_klines_to_prices(
+        self,
+        session: aiohttp.ClientSession,
+        binance_symbol: str,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[tuple[datetime, Decimal]]:
+        """Fetch 1-minute klines from Binance and convert to price tuples.
+
+        Args:
+            session: Shared aiohttp session
+            binance_symbol: Trading pair without separator (e.g. "BTCUSDC")
+            start_time: Start of time range (inclusive)
+            end_time: End of time range (exclusive)
+
+        Returns:
+            List of (timestamp, close_price) tuples
+        """
+        prices: list[tuple[datetime, Decimal]] = []
+        current_start = int(start_time.timestamp() * 1000)
+        end_ts = int(end_time.timestamp() * 1000)
+        consecutive_errors = 0
+        page = 0
+
+        logger.info(
+            f"Fetching Binance 1m klines for {binance_symbol} "
+            f"from {start_time.isoformat()} to {end_time.isoformat()} "
+            f"(start_ms={current_start}, end_ms={end_ts})"
+        )
+
+        while current_start < end_ts:
+            page += 1
+            try:
+                params = {
+                    "symbol": binance_symbol,
+                    "interval": "1m",
+                    "startTime": current_start,
+                    "limit": 1000,
+                }
+                async with session.get(
+                    "https://api.binance.com/api/v3/klines",
+                    params=params,  # type: ignore[arg-type]
+                    timeout=aiohttp.ClientTimeout(total=30),
+                ) as response:
+                    logger.info(
+                        f"Binance page {page} for {binance_symbol}: "
+                        f"HTTP {response.status}, startTime={current_start}"
+                    )
+                    if response.status != 200:
+                        consecutive_errors += 1
+                        if consecutive_errors >= 3:
+                            logger.warning(
+                                f"Binance API error {response.status} for "
+                                f"{binance_symbol} after {consecutive_errors} retries"
+                            )
+                            break
+                        await asyncio.sleep(0.5)
+                        continue
+
+                    consecutive_errors = 0
+                    klines = await response.json()
+                    if not klines:
+                        logger.info(f"Binance page {page}: empty response, done")
+                        break
+
+                    for k in klines:
+                        ts = datetime.fromtimestamp(k[0] / 1000, tz=UTC)
+                        close = Decimal(str(k[4]))
+                        prices.append((ts, close))
+
+                    logger.info(
+                        f"Binance page {page}: got {len(klines)} klines, "
+                        f"total so far: {len(prices)}"
+                    )
+
+                    current_start = int(klines[-1][0]) + 1  # next millisecond
+                    await asyncio.sleep(0.1)  # rate-limit courtesy
+
+            except Exception as e:
+                consecutive_errors += 1
+                logger.warning(f"Binance page {page} error (attempt {consecutive_errors}/3): {e}")
+                if consecutive_errors >= 3:
+                    logger.warning(
+                        f"Failed to fetch klines for {binance_symbol} "
+                        f"after {consecutive_errors} errors, got {len(prices)} klines"
+                    )
+                    break
+                await asyncio.sleep(0.5)
+
+        logger.info(
+            f"Binance klines fetch done for {binance_symbol}: "
+            f"{len(prices)} total klines in {page} pages"
+        )
+        return prices
 
     async def execute_tick(
         self,
@@ -165,16 +327,19 @@ class StrategyRunner:
         """
         self._tick_count += 1
 
-        # Preload historical prices on first tick
+        # Hot-reload on every tick until strategies are loaded (ensures
+        # strategies exist before the price-statistics preload runs).
+        if time.time() - self._last_reload > self.reload_interval:
+            await self.hot_reload()
+
+        # Preload historical prices on first tick (after hot_reload so
+        # self._strategies is populated).
         if not self._prices_preloaded:
             all_symbols = [sym for ctx in self._strategies.values() for sym in (ctx.symbols or [])]
+            logger.info(f"First tick: preloading price statistics for {all_symbols}")
             if all_symbols:
                 await self._preload_price_statistics(list(set(all_symbols)))
             self._prices_preloaded = True
-
-        # Hot-reload if interval elapsed
-        if time.time() - self._last_reload > self.reload_interval:
-            await self.hot_reload()
 
         # Filter strategies that trade this symbol
         eligible = [
@@ -421,10 +586,16 @@ class StrategyRunner:
                     ctx = self._strategies[sid]
                     ctx.config = config
                     ctx.symbols = symbols
+                    for k, v in config.items():
+                        ctx.strategy.set_config(k, v)
                     strategies[sid] = ctx
                     continue
 
                 strategy = self._instantiate_strategy(row["class_path"], str(sid), symbols)
+
+                # Transfer config to strategy so load_common_config can read it
+                for k, v in config.items():
+                    strategy.set_config(k, v)
 
                 ctx = StrategyContext(
                     strategy_id=sid,
@@ -436,8 +607,7 @@ class StrategyRunner:
                 )
                 strategies[sid] = ctx
                 logger.info(
-                    f"Loaded strategy: {row['name']} ({sid}) "
-                    f"mode={row['mode']} symbols={symbols}"
+                    f"Loaded strategy: {row['name']} ({sid}) mode={row['mode']} symbols={symbols}"
                 )
             except Exception as e:
                 logger.error(f"Failed to load strategy {row['id']}: {e}")

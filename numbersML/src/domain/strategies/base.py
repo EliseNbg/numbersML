@@ -4,6 +4,7 @@ Strategy Interface - Base class and types for trading strategies.
 Provides the foundation for implementing trading strategies that
 consume enriched tick data via Redis pub/sub.
 """
+
 from __future__ import annotations
 
 import logging
@@ -434,8 +435,7 @@ class Strategy(ABC):
         if signal:
             self._signals.append(signal)
             logger.info(
-                f"Signal generated: {signal.signal_type.value} "
-                f"{signal.symbol} @ {signal.price}"
+                f"Signal generated: {signal.signal_type.value} {signal.symbol} @ {signal.price}"
             )
 
         return signal
@@ -640,6 +640,53 @@ class Strategy(ABC):
         self.rsi_99_threshold = self.get_config("rsi_99_threshold", 32.0)
         self.trend_lookback = self.get_config("trend_lookback", 3)
         self.max_open_positions = self.get_config("max_open_positions", 5)
+
+    def _check_sma_filter(self, tick: EnrichedTick) -> bool:
+        """Check if current price is below configured SMA indicators.
+
+        Auto-detects SMA indicators from ``tick.indicators`` when
+        ``sma_fast`` / ``sma_slow`` are not explicitly configured.
+
+        Args:
+            tick: Enriched tick data with indicators
+
+        Returns:
+            True if price is below all configured SMAs, or if no SMA filter is configured
+        """
+        if not self.sma_fast and not self.sma_slow:
+            sma_keys = sorted(
+                [k for k in tick.indicators if k.startswith("sma_")],
+                key=lambda k: int(k.split("_")[1]),
+            )
+            if len(sma_keys) >= 2:
+                self.sma_fast = sma_keys[0]
+                self.sma_slow = sma_keys[-1]
+                logger.info(
+                    f"[{self._strategy_id}] Auto-detected SMA filter: "
+                    f"fast={self.sma_fast}, slow={self.sma_slow}"
+                )
+            elif len(sma_keys) == 1:
+                self.sma_fast = sma_keys[0]
+                logger.info(f"[{self._strategy_id}] Auto-detected SMA filter: fast={self.sma_fast}")
+
+        if not self.sma_fast and not self.sma_slow:
+            return True
+
+        price = float(tick.price)
+
+        if self.sma_fast:
+            if self.sma_fast in tick.indicators:
+                sma_fast_value = tick.indicators[self.sma_fast] * self.sma_multiplicator
+                if price >= sma_fast_value:
+                    return False
+
+        if self.sma_slow:
+            if self.sma_slow in tick.indicators:
+                sma_slow_value = tick.indicators[self.sma_slow] * self.sma_multiplicator
+                if price >= sma_slow_value:
+                    return False
+
+        return True
 
     def get_indicator(self, tick: EnrichedTick, name: str, default: float = 0.0) -> float:
         """Convenience method to get indicator value from tick.

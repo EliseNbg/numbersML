@@ -1,15 +1,22 @@
 """Unit tests for StrategyRunner."""
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
-from src.domain.market.order import OrderStatus
-from src.domain.strategies.base import EnrichedTick, Signal, SignalType, Strategy, StrategyState
-from src.domain.strategies.signal import SignalStatus, TradeSignal
+from src.domain.strategies.base import (
+    EnrichedTick,
+    Signal,
+    SignalType,
+    Strategy,
+    StrategyState,
+    get_price_statistics,
+    reset_price_statistics,
+)
+from src.domain.strategies.signal import TradeSignal
 from src.infrastructure.market.paper_market_service import PaperMarketService
 from src.pipeline.strategy_runner import StrategyContext, StrategyRunner
 
@@ -666,3 +673,131 @@ class TestStrategyRunner:
         assert sid in runner._strategies
         strategy.stop.assert_not_called()  # was NOT stopped
         assert ctx.is_active is True
+
+    @pytest.mark.asyncio
+    async def test_preload_price_statistics_fetches_from_binance_when_db_empty(self) -> None:
+        """When the DB has < 3600 candles, Binance fallback loads price stats."""
+        reset_price_statistics()
+
+        now = datetime.now(UTC)
+        # 7 days of 1-minute mock klines in ascending time order (oldest first),
+        # matching _fetch_binance_klines_to_prices output — recent prices lower
+        # than older ones so day average ≠ week average
+        mock_prices: list[tuple[datetime, Decimal]] = []
+        for i in range(10080):
+            t = now - timedelta(minutes=10079 - i)  # oldest first
+            if i < 10080 - 1440:
+                p = Decimal("2.08")  # older prices
+            else:
+                p = Decimal("2.03")  # last 24h
+            mock_prices.append((t, p))
+
+        runner = self._make_runner()
+
+        # Pre-populate a strategy so all_symbols is non-empty
+        strategy = MockStrategy(strategy_id="test-atom", symbols=["ATOM/USDC"])
+        strategy._state = StrategyState.RUNNING
+        strategy._signal_to_return = None
+        sid = uuid4()
+        ctx = self._make_context(sid, strategy, symbols=["ATOM/USDC"])
+        runner._strategies[sid] = ctx
+
+        # Bypass hot_reload (already populated strategies) and reset prices
+        runner._last_reload = time.time()
+        runner._prices_preloaded = False
+
+        # Mock DB query to return 0 rows from candles_1s
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(return_value=[])
+        acm = AsyncMock()
+        acm.__aenter__ = AsyncMock(return_value=mock_conn)
+        acm.__aexit__ = AsyncMock(return_value=False)
+        runner.db_pool.acquire = MagicMock(return_value=acm)
+
+        with patch.object(
+            runner, "_fetch_binance_klines_to_prices",
+            new=AsyncMock(return_value=mock_prices),
+        ) as mock_fetch:
+            _ = await runner.execute_tick(
+                symbol="ATOM/USDC",
+                candle_time=now,
+                tick_indicators={"sma_800": 2.055},
+                current_price=Decimal("2.05"),
+            )
+
+        # Binance was called with the right symbol (2nd positional arg)
+        mock_fetch.assert_called_once()
+        args, _ = mock_fetch.call_args
+        assert args[1] == "ATOMUSDC"
+
+        # Price statistics have data loaded
+        stats = get_price_statistics()
+        avg_day = stats.get_avg_price("ATOM/USDC", "day")
+        avg_week = stats.get_avg_price("ATOM/USDC", "week")
+        assert avg_day > 0
+        assert avg_week > 0
+        # With 7 days of data, day and week should differ
+        assert avg_day != avg_week
+
+        # Preload flag is set so second tick doesn't re-trigger
+        assert runner._prices_preloaded is True
+
+        reset_price_statistics()
+
+    @pytest.mark.asyncio
+    async def test_preload_price_statistics_uses_db_when_enough_data(self) -> None:
+        """When the DB has >= 3600 candles, Binance fallback is skipped."""
+        reset_price_statistics()
+
+        now = datetime.now(UTC)
+        # 4000 rows (above 3600 threshold)
+        db_rows = [
+            {
+                "symbol": "ATOM/USDC",
+                "time": now - timedelta(seconds=i),
+                "close": "2.05",
+            }
+            for i in range(4000)
+        ]
+
+        runner = self._make_runner()
+
+        # Pre-populate strategy
+        strategy = MockStrategy(strategy_id="test-atom", symbols=["ATOM/USDC"])
+        strategy._state = StrategyState.RUNNING
+        strategy._signal_to_return = None
+        sid = uuid4()
+        ctx = self._make_context(sid, strategy, symbols=["ATOM/USDC"])
+        runner._strategies[sid] = ctx
+
+        runner._last_reload = time.time()
+        runner._prices_preloaded = False
+
+        # Mock DB query to return 4000 rows
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(return_value=db_rows)
+        acm = AsyncMock()
+        acm.__aenter__ = AsyncMock(return_value=mock_conn)
+        acm.__aexit__ = AsyncMock(return_value=False)
+        runner.db_pool.acquire = MagicMock(return_value=acm)
+
+        with patch.object(
+            runner, "_fetch_binance_klines_to_prices",
+            new=AsyncMock(return_value=[]),
+        ) as mock_fetch:
+            _ = await runner.execute_tick(
+                symbol="ATOM/USDC",
+                candle_time=now,
+                tick_indicators={"sma_800": 2.055},
+                current_price=Decimal("2.05"),
+            )
+
+        # Binance was NOT called — DB had enough data
+        mock_fetch.assert_not_called()
+
+        # Price statistics loaded from DB data
+        stats = get_price_statistics()
+        avg = stats.get_avg_price("ATOM/USDC", "day")
+        assert avg == Decimal("2.05")
+
+        reset_price_statistics()

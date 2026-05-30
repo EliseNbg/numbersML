@@ -79,11 +79,15 @@ class MACDPeakStrategy(Strategy):
 
         signal = self._detect_trend_reversal(macd_value, signal_value, tick)
 
-        if self._tick_count < 50  or self._tick_count % 500 == 0:
+        avg_day = self.get_avg_price(tick.symbol, "day")
+        avg_week = self.get_avg_price(tick.symbol, "week")
+
+        if self._tick_count < 50 or self._tick_count % 500 == 0:
             logger.info(
                 f"{tick.time} Tick {self._tick_count}: "
-                f"macd={macd_value:.10f}, signal={signal_value:.10f}, "
-                f"histogram={histogram_value:.10f}, signal_count={self.signal_count}"
+                f" macd={macd_value:.10f}, fast={self.sma_fast}, slow={self.sma_slow},"
+                f" avg_day={avg_day}, avg_week={avg_week},"
+                f" sig_cnt={self.signal_count}"
             )
 
         self.prev_macd = self.last_macd
@@ -124,15 +128,14 @@ class MACDPeakStrategy(Strategy):
                 f"week_multiplicator={self.avg_multiplicator_week}"
             )
         if self.rsi_99_threshold:
-            logger.info(
-                f"[{self._strategy_id}] RSI filter: "
-                f"threshold={self.rsi_99_threshold}"
-            )
+            logger.info(f"[{self._strategy_id}] RSI filter: threshold={self.rsi_99_threshold}")
 
         logger.info(f"[{self._strategy_id}] Config: {self._config}")
         logger.info(f"[{self._strategy_id}] Indicators: {tick.indicators}")
 
-    def _get_macd_values(self, tick: EnrichedTick) -> tuple[float | None, float | None, float | None]:
+    def _get_macd_values(
+        self, tick: EnrichedTick
+    ) -> tuple[float | None, float | None, float | None]:
         """Extract MACD, signal, and histogram values from tick.
 
         Args:
@@ -198,34 +201,6 @@ class MACDPeakStrategy(Strategy):
 
         return None, None, None
 
-    def _check_sma_filter(self, tick: EnrichedTick) -> bool:
-        """Check if current price is below configured SMA indicators.
-
-        Args:
-            tick: Enriched tick data with indicators
-
-        Returns:
-            True if price is below all configured SMAs, or if no SMA filter is configured
-        """
-        if not self.sma_fast and not self.sma_slow:
-            return True
-
-        price = float(tick.price)
-
-        if self.sma_fast:
-            if self.sma_fast in tick.indicators:
-                sma_fast_value = tick.indicators[self.sma_fast] * self.sma_multiplicator
-                if price >= sma_fast_value:
-                    return False
-
-        if self.sma_slow:
-            if self.sma_slow in tick.indicators:
-                sma_slow_value = tick.indicators[self.sma_slow] * self.sma_multiplicator
-                if price >= sma_slow_value:
-                    return False
-
-        return True
-
     def _detect_trend_reversal(
         self,
         macd_value: float,
@@ -271,7 +246,10 @@ class MACDPeakStrategy(Strategy):
 
         macd_change = abs(macd_value - self._macd_history[-2])
         signal_magnitude = abs(signal_value) if abs(signal_value) > 1e-10 else abs(macd_value)
-        if signal_magnitude > 1e-10 and (macd_change / signal_magnitude) < self.min_relative_threshold:
+        if (
+            signal_magnitude > 1e-10
+            and (macd_change / signal_magnitude) < self.min_relative_threshold
+        ):
             return None
 
         if macd_value > self.bottom_border_macd_to_buy:
@@ -297,8 +275,8 @@ class MACDPeakStrategy(Strategy):
         """
         self.signal_count += 1
         expected_profit_price = float(tick.price) * (1 + self.grid_profit_pct / 100.0)
-        #avg_week = self.get_avg_price(tick.symbol, "week")
-        #expected_profit_price = avg_week
+        # avg_week = self.get_avg_price(tick.symbol, "week")
+        # expected_profit_price = avg_week
 
         logger.info(
             f"[{self._strategy_id}] BUY signal: "
@@ -369,7 +347,7 @@ class MACDPeakStrategy(Strategy):
                 "sma_multiplicator": self.sma_multiplicator,
                 "avg_multiplicator_day": self.avg_multiplicator_day,
                 "avg_multiplicator_week": self.avg_multiplicator_week,
-                "rsi_99_threshold": self.rsi_99_threshold,  
+                "rsi_99_threshold": self.rsi_99_threshold,
                 "trend_lookback": self.trend_lookback,
             }
         )
