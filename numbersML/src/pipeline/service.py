@@ -123,9 +123,10 @@ class TradePipeline:
                 self._stats["database_errors"] += 1
 
         # Step 2: Calculate indicators
+        indicator_results: dict[str, float] = {}
         if ticket.has(PipelineStep.INDICATOR):
             try:
-                count = await self._indicator_calculator.calculate_with_candle(
+                count, indicator_results = await self._indicator_calculator.calculate_with_candle(
                     symbol=symbol,
                     time=candle.time,
                     open=float(candle.open),
@@ -149,7 +150,7 @@ class TradePipeline:
                 signals = await self._strategy_runner.execute_tick(
                     symbol=symbol,
                     candle_time=candle.time,
-                    tick_indicators={},
+                    tick_indicators=indicator_results,
                     current_price=Decimal(str(candle.close)),
                 )
                 if signals:

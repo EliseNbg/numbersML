@@ -163,9 +163,10 @@ class TestIndicatorCalculator:
         mock_db_pool.acquire.return_value.__aenter__.return_value = mock_conn
 
         calc = IndicatorCalculator(mock_db_pool)
-        result = await calc.calculate("FAKE/USDC")
+        count, indicator_results = await calc.calculate("FAKE/USDC")
 
-        assert result == 0
+        assert count == 0
+        assert indicator_results == {}
 
     @pytest.mark.asyncio
     async def test_calculate_no_candles(self, mock_db_pool: MagicMock) -> None:
@@ -179,8 +180,9 @@ class TestIndicatorCalculator:
         with patch.object(IndicatorsBuffer, "initialization", new_callable=AsyncMock):
             buffer = calc._ensure_buffer("BTC/USDC")
             # Buffer is empty, should return 0
-            result = await calc.calculate("BTC/USDC")
-            assert result == 0
+            count, indicator_results = await calc.calculate("BTC/USDC")
+            assert count == 0
+            assert indicator_results == {}
 
     @pytest.mark.asyncio
     async def test_calculate_with_indicators(self, mock_db_pool: MagicMock) -> None:
@@ -210,8 +212,9 @@ class TestIndicatorCalculator:
             buffer.highs_buff = [101] * 20
             buffer.lows_buff = [99] * 20
 
-            result = await calc.calculate("BTC/USDC")
-            assert result == 1
+            count, indicator_results = await calc.calculate("BTC/USDC")
+            assert count == 1
+            assert "sma_5" in indicator_results
 
     @pytest.mark.asyncio
     async def test_calculate_bad_indicator_class(self, mock_db_pool: MagicMock) -> None:
@@ -237,8 +240,9 @@ class TestIndicatorCalculator:
         mock_buffer.lows_buff = [99] * 5
 
         with patch.object(calc, "_ensure_buffer", return_value=mock_buffer):
-            result = await calc.calculate("BTC/USDC")
-            assert result == 0
+            count, indicator_results = await calc.calculate("BTC/USDC")
+            assert count == 0
+            assert indicator_results == {}
 
     @pytest.mark.asyncio
     async def test_write_results(self, mock_db_pool: MagicMock) -> None:

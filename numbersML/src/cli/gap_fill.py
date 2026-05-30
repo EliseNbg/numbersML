@@ -326,7 +326,7 @@ async def _run(
 
             for sym_id, sym_name in symbols:
                 try:
-                    count = await indicator_calc.calculate(sym_name, sym_id)
+                    count, _indicator_results = await indicator_calc.calculate(sym_name, sym_id)
                     indicator_count += count
                 except Exception as e:
                     logger.error(f"Indicator error for {sym_name}: {e}")

@@ -147,7 +147,7 @@ class IndicatorCalculator:
         if len(buffer.closes_buff) == 0:
             await buffer.initialization(current_time=candle_time, current_candle=candle)
 
-    async def calculate(self, symbol: str, symbol_id: int | None = None) -> int:
+    async def calculate(self, symbol: str, symbol_id: int | None = None) -> tuple[int, dict[str, Any]]:
         """
         Calculate all active indicators for a symbol.
 
@@ -156,13 +156,13 @@ class IndicatorCalculator:
             symbol_id: Symbol ID (fetched if not provided)
 
         Returns:
-            Number of indicators calculated
+            Tuple of (number_of_indicators_calculated, indicator_values_dict)
         """
         if symbol_id is None:
             symbol_id = await self._get_symbol_id(symbol)
         if symbol_id is None:
             logger.warning(f"Symbol ID not found for {symbol}")
-            return 0
+            return 0, {}
 
         buffer = self._ensure_buffer(symbol)
         await self._init_buffer_for_candle(
@@ -171,7 +171,7 @@ class IndicatorCalculator:
 
         if len(buffer.closes_buff) < 2:
             logger.warning(f"Only {len(buffer.closes_buff)} candles for {symbol}, need >= 2")
-            return 0
+            return 0, {}
 
         prices = np.array(list(buffer.closes_buff))
         volumes = np.array(list(buffer.volumes_buff))
@@ -205,16 +205,19 @@ class IndicatorCalculator:
         close: float,
         volume: float,
         symbol_id: int | None = None,
-    ) -> int:
+    ) -> tuple[int, dict[str, Any]]:
         """
         Calculate indicators using historical data + current candle directly.
 
         Uses IndicatorsBuffer for O(1) updates and immediate indicator calculation.
+
+        Returns:
+            Tuple of (calculated_count, indicator_results_dict)
         """
         if symbol_id is None:
             symbol_id = await self._get_symbol_id(symbol)
         if symbol_id is None:
-            return 0
+            return 0, {}
 
         buffer = self._ensure_buffer(symbol)
 
@@ -260,11 +263,14 @@ class IndicatorCalculator:
         latest_time: datetime,
         latest_price: float,
         latest_volume: float,
-    ) -> int:
+    ) -> tuple[int, dict[str, Any]]:
         """
         Run all active indicators on prepared data arrays.
 
         Shared implementation used by both calculate() and calculate_with_candle().
+
+        Returns:
+            Tuple of (calculated_count, indicator_results_dict)
         """
         calculated = 0
         results: dict[str, Any] = {}
@@ -334,7 +340,7 @@ class IndicatorCalculator:
                 values=results,
             )
 
-        return calculated
+        return calculated, results
 
     async def _write_results(
         self,
