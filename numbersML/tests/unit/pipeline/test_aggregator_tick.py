@@ -191,9 +191,164 @@ class TestTradeAggregatorTick:
         assert agg._stats["candles_emitted"] == 0
         assert agg._stats["trades_aggregated"] == 2
 
+    @pytest.mark.asyncio
+    async def test_flat_candle_with_initial_last_close(self) -> None:
+        """Aggregator created with last_close emits flat candles immediately."""
+        agg = TradeAggregator(symbol="BTC/USDC", last_close=Decimal("123.45"))
+        t0 = datetime(2026, 3, 28, 12, 0, 0, tzinfo=UTC)
+
+        # First tick emits flat candle without any trades
+        flat = await agg.tick(t0 + timedelta(seconds=1))
+        assert flat is not None
+        assert flat.time == t0
+        assert flat.open == Decimal("123.45")
+        assert flat.close == Decimal("123.45")
+        assert flat.high == Decimal("123.45")
+        assert flat.low == Decimal("123.45")
+        assert flat.volume == Decimal("0")
+        assert flat.trade_count == 0
+
+    @pytest.mark.asyncio
+    async def test_consecutive_flat_candles_with_initial_last_close(self) -> None:
+        """Aggregator with last_close emits consecutive flat candles."""
+        agg = TradeAggregator(symbol="BTC/USDC", last_close=Decimal("500.00"))
+        t0 = datetime(2026, 3, 28, 12, 0, 0, tzinfo=UTC)
+
+        candles = []
+        for i in range(1, 4):
+            c = await agg.tick(t0 + timedelta(seconds=i))
+            candles.append(c)
+
+        assert len(candles) == 3
+        for i, candle in enumerate(candles):
+            assert candle.time == t0 + timedelta(seconds=i)
+            assert candle.close == Decimal("500.00")
+            assert candle.trade_count == 0
+
+    @pytest.mark.asyncio
+    async def test_flat_candle_from_last_close_then_updates_after_trade(self) -> None:
+        """After initial last_close, real trades update flat candle prices."""
+        agg = TradeAggregator(symbol="BTC/USDC", last_close=Decimal("100.00"))
+        t0 = datetime(2026, 3, 28, 12, 0, 0, tzinfo=UTC)
+
+        # Flat candle at t=0
+        flat = await agg.tick(t0 + timedelta(seconds=1))
+        assert flat.close == Decimal("100.00")
+
+        # Real trade at t=1s
+        await agg.add_trade(make_trade(price=200.0, trade_time=t0 + timedelta(seconds=1)))
+
+        # Tick at t=2s - emits real candle for [1s, 2s)
+        real = await agg.tick(t0 + timedelta(seconds=2))
+        assert real.trade_count == 1
+        assert real.close == Decimal("200.00")
+
+        # Tick at t=3s - flat candle uses new close
+        flat2 = await agg.tick(t0 + timedelta(seconds=3))
+        assert flat2.close == Decimal("200.00")
+
+
+class TestTradeAggregatorInit:
+    """Test TradeAggregator initialization variations."""
+
+    @pytest.mark.asyncio
+    async def test_init_without_last_close(self) -> None:
+        """Aggregator without last_close returns None on first tick."""
+        agg = TradeAggregator(symbol="BTC/USDC")
+        t0 = datetime(2026, 3, 28, 12, 0, 0, tzinfo=UTC)
+        candle = await agg.tick(t0 + timedelta(seconds=1))
+        assert candle is None
+
+    @pytest.mark.asyncio
+    async def test_init_with_last_close_emits_immediately(self) -> None:
+        """Aggregator with last_close emits flat candle on first tick."""
+        agg = TradeAggregator(symbol="BTC/USDC", last_close=Decimal("42.00"))
+        t0 = datetime(2026, 3, 28, 12, 0, 0, tzinfo=UTC)
+        candle = await agg.tick(t0 + timedelta(seconds=1))
+        assert candle is not None
+        assert candle.close == Decimal("42.00")
+
+    @pytest.mark.asyncio
+    async def test_init_last_close_none_returns_none(self) -> None:
+        """Explicit last_close=None behaves same as no argument."""
+        agg = TradeAggregator(symbol="BTC/USDC", last_close=None)
+        t0 = datetime(2026, 3, 28, 12, 0, 0, tzinfo=UTC)
+        candle = await agg.tick(t0 + timedelta(seconds=1))
+        assert candle is None
+
 
 class TestMultiSymbolAggregatorTickAll:
     """Test MultiSymbolAggregator tick_all."""
+
+    @pytest.mark.asyncio
+    async def test_tick_all_empty_when_no_symbols(self) -> None:
+        """tick_all returns empty dict when no symbols registered."""
+        agg = MultiSymbolAggregator()
+        t0 = datetime(2026, 3, 28, 12, 0, 0, tzinfo=UTC)
+        emitted = await agg.tick_all(t0 + timedelta(seconds=1))
+        assert emitted == {}
+
+    @pytest.mark.asyncio
+    async def test_ensure_symbol_creates_aggregator(self) -> None:
+        """ensure_symbol creates aggregator without requiring a trade."""
+        agg = MultiSymbolAggregator()
+        t0 = datetime(2026, 3, 28, 12, 0, 0, tzinfo=UTC)
+
+        agg.ensure_symbol("BTC/USDC")
+        stats = agg.get_stats()
+        assert stats["symbols"] == 1
+
+    @pytest.mark.asyncio
+    async def test_ensure_symbol_with_last_close_emits_flat_candles(self) -> None:
+        """ensure_symbol with last_close produces flat candles immediately."""
+        agg = MultiSymbolAggregator()
+        t0 = datetime(2026, 3, 28, 12, 0, 0, tzinfo=UTC)
+
+        agg.ensure_symbol("BTC/USDC", last_close=Decimal("999.99"))
+
+        emitted = await agg.tick_all(t0 + timedelta(seconds=1))
+        assert len(emitted) == 1
+        assert emitted["BTC/USDC"].close == Decimal("999.99")
+        assert emitted["BTC/USDC"].trade_count == 0
+
+    @pytest.mark.asyncio
+    async def test_ensure_symbol_without_last_close_returns_none(self) -> None:
+        """ensure_symbol without last_close: aggregator exists but tick returns None."""
+        agg = MultiSymbolAggregator()
+        t0 = datetime(2026, 3, 28, 12, 0, 0, tzinfo=UTC)
+
+        agg.ensure_symbol("BTC/USDC")
+        emitted = await agg.tick_all(t0 + timedelta(seconds=1))
+        assert emitted == {}
+
+    @pytest.mark.asyncio
+    async def test_ensure_symbol_is_idempotent(self) -> None:
+        """Calling ensure_symbol multiple times does not duplicate."""
+        agg = MultiSymbolAggregator()
+        agg.ensure_symbol("BTC/USDC", last_close=Decimal("10.00"))
+        agg.ensure_symbol("BTC/USDC", last_close=Decimal("20.00"))  # second call ignored
+        assert agg.get_stats()["symbols"] == 1
+
+        # Don't need to verify the close value - ensure_symbol is a no-op if exists
+
+    @pytest.mark.asyncio
+    async def test_mixed_ensure_and_add_trade(self) -> None:
+        """ensure_symbol + real trades work together correctly."""
+        agg = MultiSymbolAggregator()
+        t0 = datetime(2026, 3, 28, 12, 0, 0, tzinfo=UTC)
+
+        # Pre-create BTC, add trade for ETH
+        agg.ensure_symbol("BTC/USDC", last_close=Decimal("100.00"))
+        await agg.add_trade(
+            "ETH/USDC",
+            make_trade(symbol="ETH/USDC", price=50.0, trade_time=t0),
+        )
+
+        emitted = await agg.tick_all(t0 + timedelta(seconds=1))
+        assert len(emitted) == 2
+        assert emitted["BTC/USDC"].trade_count == 0  # flat
+        assert emitted["BTC/USDC"].close == Decimal("100.00")
+        assert emitted["ETH/USDC"].trade_count == 1  # real
 
     @pytest.mark.asyncio
     async def test_tick_all_returns_dict(self) -> None:

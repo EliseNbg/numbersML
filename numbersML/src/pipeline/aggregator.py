@@ -106,7 +106,7 @@ class TradeAggregator:
         >>> pending = aggregator.drain_pending()  # candles from add_trade transitions
     """
 
-    def __init__(self, symbol: str) -> None:
+    def __init__(self, symbol: str, last_close: Optional[Decimal] = None) -> None:
         self.symbol = symbol
 
         # Current aggregation window
@@ -114,7 +114,7 @@ class TradeAggregator:
         self._lock = asyncio.Lock()
 
         # Track last emitted state for flat candle generation
-        self._last_close: Optional[Decimal] = None
+        self._last_close: Optional[Decimal] = last_close
         self._last_emitted_time: Optional[datetime] = None
 
         # Candles pending emission (from window transitions during add_trade)
@@ -234,6 +234,19 @@ class MultiSymbolAggregator:
             return self._aggregators[symbol]
         self._aggregators[symbol] = TradeAggregator(symbol=symbol)
         return self._aggregators[symbol]
+
+    def ensure_symbol(self, symbol: str, last_close: Optional[Decimal] = None) -> None:
+        """Ensure an aggregator exists for symbol, even without trades.
+
+        This enables flat candle emission for symbols that may not have
+        received any trades yet (low-volume pairs, startup conditions).
+
+        Args:
+            symbol: Symbol (e.g., 'ATOM/USDC')
+            last_close: Last known close price for flat candle generation
+        """
+        if symbol not in self._aggregators:
+            self._aggregators[symbol] = TradeAggregator(symbol=symbol, last_close=last_close)
 
     async def add_trade(self, symbol: str, trade: AggTrade) -> None:
         """Add trade to symbol aggregator."""
