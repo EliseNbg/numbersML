@@ -296,7 +296,9 @@ class MACDPeakStrategy(Strategy):
             BUY signal with expected profit price in metadata
         """
         self.signal_count += 1
-        expected_profit_price = float(tick.price) * (1 + self.grid_profit_pct / 100.0)
+        #expected_profit_price = float(tick.price) * (1 + self.grid_profit_pct / 100.0)
+        avg_week = self.get_avg_price(tick.symbol, "week")
+        expected_profit_price = avg_week
 
         logger.info(
             f"[{self._strategy_id}] BUY signal: "
