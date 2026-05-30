@@ -83,9 +83,11 @@ class MACDPeakStrategy(Strategy):
         avg_week = self.get_avg_price(tick.symbol, "week")
 
         if self._tick_count < 50 or self._tick_count % 500 == 0:
+            sma_fast_val = tick.indicators.get(self.sma_fast, 0.0)
+            sma_slow_val = tick.indicators.get(self.sma_slow, 0.0)
             logger.info(
                 f"{tick.time} Tick {self._tick_count}: "
-                f" macd={macd_value:.10f}, fast={self.sma_fast}, slow={self.sma_slow},"
+                f" macd={macd_value:.10f}, fast={sma_fast_val:.10f}, slow={sma_slow_val:.10f},"
                 f" avg_day={avg_day}, avg_week={avg_week},"
                 f" sig_cnt={self.signal_count}"
             )
