@@ -413,38 +413,32 @@ class Strategy(ABC):
         if tick.symbol not in self._symbols:
             return None
 
-        try:
-            self._ticks_processed += 1
+        self._ticks_processed += 1
 
-            # Check TP/SL for positions on this symbol first
-            close_signal = self._check_positions(tick)
-            if close_signal:
-                self._signals.append(close_signal)
-                logger.info(
-                    f"Position auto-closed: {close_signal.signal_type.value} "
-                    f"{close_signal.symbol} @ {close_signal.price}"
-                )
-                return close_signal
+        # Check TP/SL for positions on this symbol first
+        close_signal = self._check_positions(tick)
+        if close_signal:
+            self._signals.append(close_signal)
+            logger.info(
+                f"Position auto-closed: {close_signal.signal_type.value} "
+                f"{close_signal.symbol} @ {close_signal.price}"
+            )
+            return close_signal
 
-            # Enforce max open positions — skip strategy logic when limit reached
-            if self._open_positions_count >= self.max_open_positions:
-                return None
-
-            signal = self.on_tick(tick)
-
-            if signal:
-                self._signals.append(signal)
-                logger.info(
-                    f"Signal generated: {signal.signal_type.value} "
-                    f"{signal.symbol} @ {signal.price}"
-                )
-
-            return signal
-
-        except Exception as e:
-            logger.error(f"Error processing tick in {self._strategy_id}: {e}")
-            self._errors += 1
+        # Enforce max open positions — skip strategy logic when limit reached
+        if self._open_positions_count >= self.max_open_positions:
             return None
+
+        signal = self.on_tick(tick)
+
+        if signal:
+            self._signals.append(signal)
+            logger.info(
+                f"Signal generated: {signal.signal_type.value} "
+                f"{signal.symbol} @ {signal.price}"
+            )
+
+        return signal
 
     def _check_positions(self, tick: EnrichedTick) -> Signal | None:
         """Check open positions for take-profit and stop-loss hits.

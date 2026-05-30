@@ -147,10 +147,10 @@ class StrategyExecutor:
         stdout_buf: io.StringIO,
         stderr_buf: io.StringIO,
     ) -> Signal | None:
-        """Run strategy.on_tick() directly with stdout/stderr redirected.
+        """Run strategy.process_tick() with stdout/stderr redirected.
 
-        We call on_tick() directly (not process_tick) so that exceptions
-        propagate to the executor for proper error handling.
+        Uses process_tick() so that TP/SL auto-close and max_open_positions
+        enforcement are active in the live pipeline.
 
         Args:
             strategy: Strategy instance
@@ -162,7 +162,7 @@ class StrategyExecutor:
             Signal if generated, None otherwise
         """
         with redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
-            return strategy.on_tick(tick)
+            return strategy.process_tick(tick)
 
     @staticmethod
     def _to_trade_signal(
