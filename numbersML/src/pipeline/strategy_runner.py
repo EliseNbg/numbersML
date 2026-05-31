@@ -488,6 +488,23 @@ class StrategyRunner:
             self._stats["signals_executed"] += 1
             await self._persist_signal(signal, order_id=str(order.id))
 
+            # Open a position on the strategy so TP/SL monitoring works
+            if signal.side.upper() == "BUY":
+                ctx = self._strategies.get(UUID(signal.strategy_id))
+                if ctx:
+                    tp_raw = signal.metadata.get(
+                        "take_profit_price", signal.metadata.get("expected_profit_price")
+                    )
+                    if tp_raw is not None and not isinstance(tp_raw, Decimal):
+                        tp_raw = Decimal(str(tp_raw))
+                    ctx.strategy.open_position(
+                        symbol=signal.symbol,
+                        side="LONG",
+                        quantity=signal.quantity,
+                        price=signal.price,
+                        take_profit_price=tp_raw,
+                    )
+
         except Exception as e:
             logger.error(f"Failed to route signal {signal.signal_id}: {e}")
             signal = TradeSignal(**{**signal.__dict__, "status": SignalStatus.FAILED})

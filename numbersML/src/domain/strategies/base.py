@@ -554,6 +554,17 @@ class Strategy(ABC):
         )
         return position
 
+    def get_position(self, symbol: str) -> Position | None:
+        """Get open position for a symbol, or None.
+
+        Args:
+            symbol: Trading pair
+
+        Returns:
+            Position if open, None otherwise
+        """
+        return self._positions.get(symbol)
+
     def close_position(self, symbol: str, price: Decimal) -> Position | None:
         """
         Close existing position.

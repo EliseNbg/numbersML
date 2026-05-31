@@ -801,3 +801,117 @@ class TestStrategyRunner:
         assert avg == Decimal("2.05")
 
         reset_price_statistics()
+
+    @pytest.mark.asyncio
+    async def test_route_buy_signal_opens_position_with_take_profit(self) -> None:
+        """Filled BUY opens a strategy position with take_profit from metadata."""
+        paper = PaperMarketService(initial_balance=Decimal("10000"))
+        runner = self._make_runner(market_service=paper)
+
+        strategy = MockStrategy(strategy_id="tp-test", symbols=["ATOM/USDC"])
+        strategy._state = StrategyState.RUNNING
+        sid = uuid4()
+        ctx = self._make_context(sid, strategy, symbols=["ATOM/USDC"])
+        runner._strategies[sid] = ctx
+
+        signal = TradeSignal(
+            strategy_id=str(sid),
+            strategy_name="MockStrategy",
+            symbol="ATOM/USDC",
+            side="BUY",
+            order_type="MARKET",
+            quantity=Decimal("10"),
+            price=Decimal("2.03"),
+            metadata={"expected_profit_price": 2.08},
+        )
+        await runner._route_signal(signal)
+
+        pos = ctx.strategy.get_position("ATOM/USDC")
+        assert pos is not None
+        assert pos.side == "LONG"
+        assert pos.entry_price == Decimal("2.03")
+        assert pos.take_profit_price == Decimal("2.08")
+
+    @pytest.mark.asyncio
+    async def test_route_buy_signal_opens_position_without_take_profit(self) -> None:
+        """Filled BUY without take_profit opens position with TP=None."""
+        paper = PaperMarketService(initial_balance=Decimal("10000"))
+        runner = self._make_runner(market_service=paper)
+
+        strategy = MockStrategy(strategy_id="no-tp-test", symbols=["ATOM/USDC"])
+        strategy._state = StrategyState.RUNNING
+        sid = uuid4()
+        ctx = self._make_context(sid, strategy, symbols=["ATOM/USDC"])
+        runner._strategies[sid] = ctx
+
+        signal = TradeSignal(
+            strategy_id=str(sid),
+            strategy_name="MockStrategy",
+            symbol="ATOM/USDC",
+            side="BUY",
+            order_type="MARKET",
+            quantity=Decimal("10"),
+            price=Decimal("2.03"),
+            metadata={},
+        )
+        await runner._route_signal(signal)
+
+        pos = ctx.strategy.get_position("ATOM/USDC")
+        assert pos is not None
+        assert pos.side == "LONG"
+        assert pos.take_profit_price is None
+
+    @pytest.mark.asyncio
+    async def test_route_sell_signal_does_not_open_position(self) -> None:
+        """Filled SELL does not open a new position."""
+        paper = PaperMarketService(initial_balance=Decimal("10000"))
+        runner = self._make_runner(market_service=paper)
+
+        strategy = MockStrategy(strategy_id="sell-test", symbols=["ATOM/USDC"])
+        strategy._state = StrategyState.RUNNING
+        sid = uuid4()
+        ctx = self._make_context(sid, strategy, symbols=["ATOM/USDC"])
+        runner._strategies[sid] = ctx
+
+        signal = TradeSignal(
+            strategy_id=str(sid),
+            strategy_name="MockStrategy",
+            symbol="ATOM/USDC",
+            side="SELL",
+            order_type="MARKET",
+            quantity=Decimal("10"),
+            price=Decimal("2.03"),
+            metadata={},
+        )
+        await runner._route_signal(signal)
+
+        pos = ctx.strategy.get_position("ATOM/USDC")
+        assert pos is None
+
+    @pytest.mark.asyncio
+    async def test_route_signal_does_not_open_position_on_rejected(self) -> None:
+        """When the market service rejects, no position is opened."""
+        paper = PaperMarketService(initial_balance=Decimal("1"))  # very low balance
+        runner = self._make_runner(market_service=paper)
+
+        strategy = MockStrategy(strategy_id="reject-test", symbols=["ATOM/USDC"])
+        strategy._state = StrategyState.RUNNING
+        sid = uuid4()
+        ctx = self._make_context(sid, strategy, symbols=["ATOM/USDC"])
+        runner._strategies[sid] = ctx
+
+        signal = TradeSignal(
+            strategy_id=str(sid),
+            strategy_name="MockStrategy",
+            symbol="ATOM/USDC",
+            side="BUY",
+            order_type="MARKET",
+            quantity=Decimal("10"),
+            price=Decimal("2.03"),
+            metadata={"expected_profit_price": 2.08},
+        )
+        await runner._route_signal(signal)
+
+        pos = ctx.strategy.get_position("ATOM/USDC")
+        assert pos is None
+        assert runner._stats["signals_failed"] == 1
