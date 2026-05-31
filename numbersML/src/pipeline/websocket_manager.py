@@ -251,10 +251,15 @@ class BinanceWebSocketManager:
         Args:
             message: Raw WebSocket message
         """
+        logger.debug(f"Binance WS raw message: {message[:500]}")
         trade = self._parse_message(message)
 
         if trade:
             self._stats["trades_received"] += 1
+            logger.debug(
+                f"Binance WS parsed trade: symbol={trade.symbol}, "
+                f"price={trade.price}, qty={trade.quantity}, id={trade.agg_trade_id}"
+            )
             await self.on_trade(trade)
 
     async def _message_loop(self) -> None:

@@ -100,12 +100,17 @@ class BinanceRESTClient:
 
         try:
             async with session.get(url, params=params) as response:
+                logger.debug(f"Binance REST request: {url} params={params}")
                 if response.status != 200:
                     error_text = await response.text()
                     logger.error(f"REST API error: {error_text}")
                     return []
 
                 data = await response.json()
+                raw_sample = data[:3] if data else []
+                logger.debug(
+                    f"Binance REST raw response: {len(data)} trades, " f"sample={raw_sample}"
+                )
 
                 # Parse trades
                 trades = []
