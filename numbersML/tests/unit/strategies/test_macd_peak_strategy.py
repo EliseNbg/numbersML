@@ -703,26 +703,93 @@ class TestMACDPeakStrategy:
 
         assert strategy.signal_count == 0
 
-    def test_multiple_ticks_same_macd_produces_one_signal(self, strategy):
-        """Simulate 3 rapid trades with the same MACD values:
-        only the first tick that detects the reversal should produce a signal.
+    def test_signal_cooldown_blocks_repeat_signals(self, strategy):
+        """After reversal, cooldown trend_lookback+1 ticks prevents any signal.
+        Cooldown = 4 when trend_lookback = 3.
         """
+        strategy.set_config("min_relative_threshold", 1e-9)
         strategy._initialize_macd(
             EnrichedTick(
                 symbol="ATOM/USDC",
-                price=Decimal("1.99"),
+                price=Decimal("2.0"),
                 volume=Decimal("10"),
                 time=datetime.now(UTC),
                 indicators={},
             )
         )
-        strategy.bottom_border_macd_to_buy = 0.0
-        strategy.min_relative_threshold = 1e-9
         strategy.trend_lookback = 3
 
-        macd_sequence = [-0.0010, -0.0015, -0.0020, -0.0018]
+        # Build declining history then fire reversal
+        for macd_val in [-0.0033, -0.0034, -0.0035]:
+            strategy.on_tick(
+                EnrichedTick(
+                    symbol="ATOM/USDC",
+                    price=Decimal("1.99"),
+                    volume=Decimal("10"),
+                    time=datetime.now(UTC),
+                    indicators={
+                        "macdindicator_macd": macd_val,
+                        "macdindicator_signal": macd_val - 0.0001,
+                    },
+                )
+            )
+        strategy.on_tick(
+            EnrichedTick(
+                symbol="ATOM/USDC",
+                price=Decimal("1.99"),
+                volume=Decimal("10"),
+                time=datetime.now(UTC),
+                indicators={"macdindicator_macd": -0.0036, "macdindicator_signal": -0.0037},
+            )
+        )
 
-        for macd_val in macd_sequence[:-1]:
+        signal1 = strategy.on_tick(
+            EnrichedTick(
+                symbol="ATOM/USDC",
+                price=Decimal("1.99"),
+                volume=Decimal("10"),
+                time=datetime.now(UTC),
+                indicators={"macdindicator_macd": -0.0035, "macdindicator_signal": -0.0036},
+            )
+        )
+        assert signal1 is not None
+        assert strategy._signal_cooldown == 4  # trend_lookback + 1
+        assert strategy.signal_count == 1
+
+        # Each of the next 4 ticks decrements cooldown and blocks signals
+        for remaining in [3, 2, 1, 0]:
+            sig = strategy.on_tick(
+                EnrichedTick(
+                    symbol="ATOM/USDC",
+                    price=Decimal("1.99"),
+                    volume=Decimal("10"),
+                    time=datetime.now(UTC),
+                    indicators={"macdindicator_macd": -0.0034, "macdindicator_signal": -0.0035},
+                )
+            )
+            assert sig is None
+            assert strategy._signal_cooldown == remaining
+
+        assert strategy.signal_count == 1
+
+    def test_macd_rising_each_tick_no_duplicate_signals(self, strategy):
+        """Real scenario: after reversal, MACD keeps rising slightly each tick
+        (-0.0033→-0.0032→-0.0032→-0.0031) but no more signals.
+        """
+        strategy.set_config("min_relative_threshold", 1e-9)
+        strategy._initialize_macd(
+            EnrichedTick(
+                symbol="ATOM/USDC",
+                price=Decimal("2.0"),
+                volume=Decimal("10"),
+                time=datetime.now(UTC),
+                indicators={},
+            )
+        )
+        strategy.trend_lookback = 3
+
+        # Build declining history: -0.0033, -0.0034, -0.0035, -0.0036
+        for macd_val in [-0.0033, -0.0034, -0.0035]:
             strategy.on_tick(
                 EnrichedTick(
                     symbol="ATOM/USDC",
@@ -736,47 +803,179 @@ class TestMACDPeakStrategy:
                 )
             )
 
-        signal1 = strategy.on_tick(
+        strategy.on_tick(
+            EnrichedTick(
+                symbol="ATOM/USDC",
+                price=Decimal("1.99"),
+                volume=Decimal("10"),
+                time=datetime.now(UTC),
+                indicators={"macdindicator_macd": -0.0036, "macdindicator_signal": -0.0037},
+            )
+        )
+
+        # Reversal: MACD=-0.0035 (up from -0.0036)
+        strategy.on_tick(
             EnrichedTick(
                 symbol="ATOM/USDC",
                 price=Decimal("1.997"),
                 volume=Decimal("25.08"),
                 time=datetime.now(UTC),
-                indicators={
-                    "macdindicator_macd": macd_sequence[-1],
-                    "macdindicator_signal": macd_sequence[-1] - 0.0001,
-                },
+                indicators={"macdindicator_macd": -0.0035, "macdindicator_signal": -0.0036},
             )
         )
-        assert signal1 is not None
-        assert signal1.signal_type == SignalType.BUY
+        assert strategy.signal_count == 1
+
+        # 3 more ticks with slowly rising MACD — should NOT produce signals
+        for macd_val in [-0.0034, -0.0033, -0.0032]:
+            sig = strategy.on_tick(
+                EnrichedTick(
+                    symbol="ATOM/USDC",
+                    price=Decimal("1.997"),
+                    volume=Decimal("10"),
+                    time=datetime.now(UTC),
+                    indicators={
+                        "macdindicator_macd": macd_val,
+                        "macdindicator_signal": macd_val - 0.0001,
+                    },
+                )
+            )
+            assert sig is None, f"Expected no signal at MACD={macd_val}"
+
+        assert strategy.signal_count == 1
+
+        # Phase 3 — slowly rising MACD (the real scenario from logs)
+        # Each of these would have is_turning_up=True, but _reversal_active blocks
+        for macd_val in [-0.0032, -0.0032, -0.0032, -0.0031, -0.0031]:
+            sig = strategy.on_tick(
+                EnrichedTick(
+                    symbol="ATOM/USDC",
+                    price=Decimal("1.99"),
+                    volume=Decimal("10"),
+                    time=datetime.now(UTC),
+                    indicators={
+                        "macdindicator_macd": macd_val,
+                        "macdindicator_signal": macd_val - 0.0001,
+                    },
+                )
+            )
+            assert sig is None, f"Expected no signal at MACD={macd_val}"
+            assert strategy._reversal_active is True, "Flag stays active until decline clears"
+
+        # Phase 4 — enough ticks pass that the old decline rolls out of the 4-value window
+        # Feed values that break the strict decline pattern, then a new decline → reversal
+        for macd_val in [-0.0030, -0.0029, -0.0028]:
+            sig = strategy.on_tick(
+                EnrichedTick(
+                    symbol="ATOM/USDC",
+                    price=Decimal("1.99"),
+                    volume=Decimal("10"),
+                    time=datetime.now(UTC),
+                    indicators={
+                        "macdindicator_macd": macd_val,
+                        "macdindicator_signal": macd_val - 0.0001,
+                    },
+                )
+            )
+            assert sig is None
+
+        # Now decline pattern should have cleared → _reversal_active reset to False
+        assert strategy._reversal_active is False, "Flag reset after decline pattern cleared"
+
+        # Phase 5 — a new decline then reversal should fire a new signal
+        for macd_val in [-0.0030, -0.0031, -0.0032]:
+            strategy.on_tick(
+                EnrichedTick(
+                    symbol="ATOM/USDC",
+                    price=Decimal("1.99"),
+                    volume=Decimal("10"),
+                    time=datetime.now(UTC),
+                    indicators={
+                        "macdindicator_macd": macd_val,
+                        "macdindicator_signal": macd_val - 0.0001,
+                    },
+                )
+            )
 
         signal2 = strategy.on_tick(
             EnrichedTick(
                 symbol="ATOM/USDC",
-                price=Decimal("1.997"),
-                volume=Decimal("17.10"),
+                price=Decimal("1.99"),
+                volume=Decimal("10"),
                 time=datetime.now(UTC),
-                indicators={
-                    "macdindicator_macd": macd_sequence[-1],
-                    "macdindicator_signal": macd_sequence[-1] - 0.0001,
-                },
+                indicators={"macdindicator_macd": -0.0030, "macdindicator_signal": -0.0031},
             )
         )
-        assert signal2 is None, "Same MACD should not trigger a second signal"
+        assert signal2 is not None, "New decline → reversal should fire again"
+        assert strategy.signal_count == 2
 
-        signal3 = strategy.on_tick(
+    def test_macd_rising_each_tick_no_duplicate_signals(self, strategy):
+        """Real scenario from logs: after reversal (MACD=-0.0035), MACD keeps
+        rising slowly (-0.0034→-0.0033→-0.0032) but no more signals.
+        """
+        strategy.set_config("min_relative_threshold", 1e-9)
+        strategy._initialize_macd(
             EnrichedTick(
                 symbol="ATOM/USDC",
-                price=Decimal("1.995"),
-                volume=Decimal("22.90"),
+                price=Decimal("2.0"),
+                volume=Decimal("10"),
                 time=datetime.now(UTC),
-                indicators={
-                    "macdindicator_macd": macd_sequence[-1],
-                    "macdindicator_signal": macd_sequence[-1] - 0.0001,
-                },
+                indicators={},
             )
         )
-        assert signal3 is None, "Same MACD should not trigger a third signal"
+        strategy.trend_lookback = 3
+
+        # Build declining history: each step is more negative
+        for macd_val in [-0.0033, -0.0034, -0.0035]:
+            strategy.on_tick(
+                EnrichedTick(
+                    symbol="ATOM/USDC",
+                    price=Decimal("1.99"),
+                    volume=Decimal("10"),
+                    time=datetime.now(UTC),
+                    indicators={
+                        "macdindicator_macd": macd_val,
+                        "macdindicator_signal": macd_val - 0.0001,
+                    },
+                )
+            )
+
+        # 4th tick: still declining (MACD=-0.0036), fills the history window
+        strategy.on_tick(
+            EnrichedTick(
+                symbol="ATOM/USDC",
+                price=Decimal("1.99"),
+                volume=Decimal("10"),
+                time=datetime.now(UTC),
+                indicators={"macdindicator_macd": -0.0036, "macdindicator_signal": -0.0037},
+            )
+        )
+
+        # Reversal: MACD goes up from -0.0036 to -0.0035
+        strategy.on_tick(
+            EnrichedTick(
+                symbol="ATOM/USDC",
+                price=Decimal("1.997"),
+                volume=Decimal("25.08"),
+                time=datetime.now(UTC),
+                indicators={"macdindicator_macd": -0.0035, "macdindicator_signal": -0.0036},
+            )
+        )
+        assert strategy.signal_count == 1
+
+        # 3 more ticks with slowly rising MACD — should NOT produce signals
+        for macd_val in [-0.0034, -0.0033, -0.0032]:
+            sig = strategy.on_tick(
+                EnrichedTick(
+                    symbol="ATOM/USDC",
+                    price=Decimal("1.997"),
+                    volume=Decimal("10"),
+                    time=datetime.now(UTC),
+                    indicators={
+                        "macdindicator_macd": macd_val,
+                        "macdindicator_signal": macd_val - 0.0001,
+                    },
+                )
+            )
+            assert sig is None, f"Expected no signal at MACD={macd_val}"
 
         assert strategy.signal_count == 1

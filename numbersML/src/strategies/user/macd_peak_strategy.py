@@ -54,6 +54,7 @@ class MACDPeakStrategy(Strategy):
         self._tick_count: int = 0
         self._initialized: bool = False
         self._macd_history: list[float] = []
+        self._signal_cooldown: int = 0
 
         logger.info(f"MACDPeakStrategy {strategy_id} initialized")
 
@@ -250,6 +251,15 @@ class MACDPeakStrategy(Strategy):
             )
             return None
 
+        # Cooldown after a signal: wait for old decline values to leave the window
+        if self._signal_cooldown > 0:
+            self._signal_cooldown -= 1
+            logger.debug(
+                f"[{self._strategy_id}] Reject: cooldown {self._signal_cooldown + 1}/"
+                f"{self.trend_lookback + 1} ticks remaining"
+            )
+            return None
+
         was_declining = all(
             self._macd_history[i] > self._macd_history[i + 1]
             for i in range(len(self._macd_history) - 2)
@@ -306,6 +316,7 @@ class MACDPeakStrategy(Strategy):
             BUY signal with expected profit price in metadata
         """
         self.signal_count += 1
+        self._signal_cooldown = self.trend_lookback + 1
         expected_profit_price = float(tick.price) * (1 + self.grid_profit_pct / 100.0)
         # avg_week = self.get_avg_price(tick.symbol, "week")
         # expected_profit_price = avg_week
@@ -381,6 +392,7 @@ class MACDPeakStrategy(Strategy):
                 "avg_multiplicator_week": self.avg_multiplicator_week,
                 "rsi_99_threshold": self.rsi_99_threshold,
                 "trend_lookback": self.trend_lookback,
+                "signal_cooldown": self._signal_cooldown,
             }
         )
         return stats
