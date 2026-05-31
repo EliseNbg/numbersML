@@ -1,6 +1,7 @@
 """
 Unit tests for InfinityGridStrategy.
 """
+
 import pytest
 from decimal import Decimal
 
@@ -70,7 +71,7 @@ class TestInfinityGridStrategy:
             50000.0 + 3 * expected_spacing,  # 50975.0
             50000.0 + 4 * expected_spacing,  # 51300.0
         ]
-        
+
         for i, expected in enumerate(expected_levels):
             assert abs(strategy.grid_levels[i] - expected) < 0.01
 
@@ -118,7 +119,7 @@ class TestInfinityGridStrategy:
         strategy._initialize_grid(50000.0)
         strategy.grid_spacing_pct = 0.65  # 325 spacing
         strategy.grid_profit_pct = 0.85
-        
+
         # Disable reference price reset for this test by using levels close to reference
         # that won't trigger the 2% threshold when we move around them
         strategy.set_config("grid_size", 8)
@@ -128,7 +129,7 @@ class TestInfinityGridStrategy:
         # Levels 4-7: above reference (indices 4,5,6,7)
         # Test with a level below reference (index 1) and a level above reference (index 4)
         # These levels are within 2% of reference price to avoid triggering reset
-        
+
         # Test level below reference (index 1)
         level_1 = strategy.grid_levels[1]  # Should be 50000 - 3*spacing = 49025
         last_price = level_1 + 1  # Above the level (small move to avoid 2% reset)
@@ -156,16 +157,16 @@ class TestInfinityGridStrategy:
 
         # Process the tick at/below level (should generate signal)
         signal_at = strategy.on_tick(tick_at)
-        
+
         assert signal_at is not None
         assert signal_at.signal_type == SignalType.BUY
         assert signal_at.metadata["grid_index"] == 1
-        
+
         # Test level above reference (index 4) - should also generate BUY signal when crossed from above
         level_4 = strategy.grid_levels[4]  # Should be 50000 + 1*spacing = 50325
         last_price = level_4 + 1  # Above the level (small move)
         current_price = level_4 - 1  # Below the level
-        
+
         # Process ticks for level 4
         tick_before_4 = EnrichedTick(
             symbol="BTC/USDT",
@@ -181,7 +182,7 @@ class TestInfinityGridStrategy:
             time=Decimal("1640995203"),
             indicators={},
         )
-        
+
         # Process the tick before (should not generate signal)
         # last_price was already set by Strategy.on_tick to last processed price
         signal_before_4 = strategy.on_tick(tick_before_4)
@@ -189,7 +190,7 @@ class TestInfinityGridStrategy:
 
         # Process the tick at/below level (should generate signal)
         signal_at_4 = strategy.on_tick(tick_at_4)
-        
+
         assert signal_at_4 is not None
         assert signal_at_4.signal_type == SignalType.BUY
         assert signal_at_4.metadata["grid_index"] == 4
@@ -205,10 +206,7 @@ class TestInfinityGridStrategy:
 
         # Close the position
         strategy.on_position_closed(
-            symbol="BTC/USDT",
-            price=Decimal("51000"),
-            exit_reason="take_profit",
-            grid_index=0
+            symbol="BTC/USDT", price=Decimal("51000"), exit_reason="take_profit", grid_index=0
         )
 
         # Check that state is cleaned up
@@ -229,7 +227,7 @@ class TestInfinityGridStrategy:
             symbol="BTC/USDT",
             price=Decimal("51000"),
             exit_reason="take_profit",
-            grid_index=None  # Should be looked up from _symbol_open_positions
+            grid_index=None,  # Should be looked up from _symbol_open_positions
         )
 
         # Check that state is cleaned up
@@ -240,14 +238,8 @@ class TestInfinityGridStrategy:
         """Test that multiple symbols are tracked independently."""
         # Add another symbol
         strategy._symbols = ["BTC/USDT", "ETH/USDT"]
-        strategy._symbol_used_buy_levels = {
-            "BTC/USDT": set(),
-            "ETH/USDT": set()
-        }
-        strategy._symbol_open_positions = {
-            "BTC/USDT": None,
-            "ETH/USDT": None
-        }
+        strategy._symbol_used_buy_levels = {"BTC/USDT": set(), "ETH/USDT": set()}
+        strategy._symbol_open_positions = {"BTC/USDT": None, "ETH/USDT": None}
 
         # Initialize grid
         strategy._initialize_grid(50000.0)
@@ -255,22 +247,19 @@ class TestInfinityGridStrategy:
         # Open positions for both symbols at different levels
         strategy._symbol_used_buy_levels["BTC/USDT"].add(0)
         strategy._symbol_open_positions["BTC/USDT"] = 0
-        
+
         strategy._symbol_used_buy_levels["ETH/USDT"].add(2)
         strategy._symbol_open_positions["ETH/USDT"] = 2
 
         # Close BTC position
         strategy.on_position_closed(
-            symbol="BTC/USDT",
-            price=Decimal("51000"),
-            exit_reason="take_profit",
-            grid_index=0
+            symbol="BTC/USDT", price=Decimal("51000"), exit_reason="take_profit", grid_index=0
         )
 
         # Check that only BTC state is cleaned up
         assert 0 not in strategy._symbol_used_buy_levels["BTC/USDT"]
         assert strategy._symbol_open_positions["BTC/USDT"] is None
-        
+
         # ETH position should remain open
         assert 2 in strategy._symbol_used_buy_levels["ETH/USDT"]
         assert strategy._symbol_open_positions["ETH/USDT"] == 2

@@ -292,7 +292,9 @@ class MeanReversionStrategy(Strategy):
             BUY signal with take-profit price in metadata
         """
         self.signal_count += 1
-        expected_profit_price = float(tick.price) * (1 + self.grid_profit_pct / 100.0)
+        expected_profit_price = tick.price * (
+            Decimal("1") + Decimal(str(self.grid_profit_pct)) / Decimal("100")
+        )
 
         logger.info(
             f"[{self._strategy_id}] BUY signal: "

@@ -79,8 +79,8 @@ class RSIPeakStrategy(Strategy):
         if self._tick_count % 500 == 0:
             logger.info(
                 f"{tick.time} Tick {self._tick_count}: "
-                f"avg_day={self.get_avg_price(tick.symbol, "day"):.8f}, "
-                f"avg_week={self.get_avg_price(tick.symbol, "week"):.8f}, "
+                f"avg_day={self.get_avg_price(tick.symbol, 'day'):.8f}, "
+                f"avg_week={self.get_avg_price(tick.symbol, 'week'):.8f}, "
                 f"rsi_99={rsi_value:.4f}, signal_count={self.signal_count}"
             )
 
@@ -131,9 +131,7 @@ class RSIPeakStrategy(Strategy):
         Returns:
             RSI_99 value or None if not available
         """
-        indicator_name = self.get_config(
-            "rsi_99_indicator_name", "rsiindicator_period99_rsi"
-        )
+        indicator_name = self.get_config("rsi_99_indicator_name", "rsiindicator_period99_rsi")
         rsi_value = tick.get_indicator(indicator_name, None)
         if rsi_value is not None:
             return rsi_value
@@ -200,11 +198,10 @@ class RSIPeakStrategy(Strategy):
         if len(self._rsi_history) < self.trend_lookback:
             return None
 
-        lookback_values = self._rsi_history[-(self.trend_lookback):]
+        lookback_values = self._rsi_history[-(self.trend_lookback) :]
 
         was_declining = all(
-            lookback_values[i] > lookback_values[i + 1]
-            for i in range(len(lookback_values) - 1)
+            lookback_values[i] > lookback_values[i + 1] for i in range(len(lookback_values) - 1)
         )
         is_turning_up = rsi_value > lookback_values[-1]
 
@@ -235,8 +232,10 @@ class RSIPeakStrategy(Strategy):
             BUY signal with expected profit price in metadata
         """
         self.signal_count += 1
-        expected_profit_price = float(tick.price) * (1 + self.grid_profit_pct / 100.0)
-        
+        expected_profit_price = tick.price * (
+            Decimal("1") + Decimal(str(self.grid_profit_pct)) / Decimal("100")
+        )
+
         logger.info(
             f"[{self._strategy_id}] BUY signal: "
             f"RSI_99={rsi_value:.4f}, "
@@ -245,13 +244,12 @@ class RSIPeakStrategy(Strategy):
         )
 
         quantity_multiplicator = 1
-        if(rsi_value < 25):
+        if rsi_value < 25:
             quantity_multiplicator = 1.5
-        if(rsi_value < 20):
+        if rsi_value < 20:
             quantity_multiplicator = 2.0
-        if(rsi_value < 15):
+        if rsi_value < 15:
             quantity_multiplicator = 2.5
-        
 
         return Signal(
             strategy_id=self._strategy_id,

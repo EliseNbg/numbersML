@@ -317,7 +317,9 @@ class MACDPeakStrategy(Strategy):
         """
         self.signal_count += 1
         self._signal_cooldown = self.trend_lookback + 1
-        expected_profit_price = float(tick.price) * (1 + self.grid_profit_pct / 100.0)
+        expected_profit_price = tick.price * (
+            Decimal("1") + Decimal(str(self.grid_profit_pct)) / Decimal("100")
+        )
         # avg_week = self.get_avg_price(tick.symbol, "week")
         # expected_profit_price = avg_week
 

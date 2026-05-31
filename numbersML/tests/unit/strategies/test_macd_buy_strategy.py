@@ -282,8 +282,9 @@ class TestMACDBuyStrategy:
 
         signal = strategy._signal_buy(sample_tick, macd_value, signal_value)
 
-        expected_profit_price = 50000 * (1 + 0.85 / 100.0)
+        expected_profit_price = Decimal("50000") * (Decimal("1") + Decimal("0.85") / Decimal("100"))
         assert signal.metadata["expected_profit_price"] == expected_profit_price
+        assert isinstance(signal.metadata["expected_profit_price"], Decimal)
 
     def test_signal_buy_quantity_usdc(self, strategy, sample_tick):
         """Test that BUY signal includes quantity in USDC."""

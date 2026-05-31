@@ -115,7 +115,9 @@ class MACDBuyStrategy(Strategy):
         logger.info(f"[{self._strategy_id}] Config: {self._config}")
         logger.info(f"[{self._strategy_id}] Indicators: {tick.indicators}")
 
-    def _get_macd_values(self, tick: EnrichedTick) -> tuple[float | None, float | None, float | None]:
+    def _get_macd_values(
+        self, tick: EnrichedTick
+    ) -> tuple[float | None, float | None, float | None]:
         """Extract MACD, signal, and histogram values from tick.
 
         Args:
@@ -234,7 +236,10 @@ class MACDBuyStrategy(Strategy):
         # Using signal_value instead of price ensures the threshold works
         # across all asset price ranges (BTC, DOGE, etc.)
         signal_magnitude = abs(signal_value) if abs(signal_value) > 1e-10 else abs(macd_value)
-        if signal_magnitude > 1e-10 and (histogram / signal_magnitude) < self.min_relative_threshold:
+        if (
+            signal_magnitude > 1e-10
+            and (histogram / signal_magnitude) < self.min_relative_threshold
+        ):
             return None
 
         if macd_value > self.bottom_border_macd_to_buy:
@@ -262,7 +267,9 @@ class MACDBuyStrategy(Strategy):
             BUY signal with expected profit price in metadata
         """
         self.cross_count += 1
-        expected_profit_price = float(tick.price) * (1 + self.grid_profit_pct / 100.0)
+        expected_profit_price = tick.price * (
+            Decimal("1") + Decimal(str(self.grid_profit_pct)) / Decimal("100")
+        )
 
         logger.info(
             f"[{self._strategy_id}] BUY signal: "

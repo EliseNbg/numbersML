@@ -578,8 +578,9 @@ class TestMeanReversionStrategy:
 
         signal = strategy._signal_buy(tick, 1.98, 2.00, 25.0)
 
-        expected_profit_price = 1.98 * (1 + 0.49 / 100.0)
+        expected_profit_price = Decimal("1.98") * (Decimal("1") + Decimal("0.49") / Decimal("100"))
         assert signal.metadata["expected_profit_price"] == expected_profit_price
+        assert isinstance(signal.metadata["expected_profit_price"], Decimal)
 
     def test_signal_buy_quantity_usdc(self, strategy: MeanReversionStrategy) -> None:
         """Test that BUY signal includes quantity in USDC."""

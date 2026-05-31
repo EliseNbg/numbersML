@@ -1,4 +1,5 @@
 """Unit tests for TradeSignal domain model."""
+
 from decimal import Decimal
 from uuid import UUID
 
