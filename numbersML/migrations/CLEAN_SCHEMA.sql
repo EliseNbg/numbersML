@@ -1239,6 +1239,44 @@ CREATE TABLE public.strategy_runs (
 ALTER TABLE public.strategy_runs OWNER TO crypto;
 
 --
+-- Name: strategy_signals; Type: TABLE; Schema: public; Owner: crypto
+--
+
+CREATE TABLE public.strategy_signals (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    strategy_id uuid NOT NULL,
+    symbol text NOT NULL,
+    side text NOT NULL,
+    order_type text NOT NULL,
+    quantity numeric(20,10) NOT NULL,
+    price numeric(20,10),
+    status text DEFAULT 'PENDING'::text NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    executed_at timestamp with time zone,
+    error_message text,
+    CONSTRAINT strategy_signals_order_type_check CHECK ((order_type = ANY (ARRAY['MARKET'::text, 'LIMIT'::text]))),
+    CONSTRAINT strategy_signals_side_check CHECK ((side = ANY (ARRAY['BUY'::text, 'SELL'::text]))),
+    CONSTRAINT strategy_signals_status_check CHECK ((status = ANY (ARRAY['PENDING'::text, 'EXECUTED'::text, 'REJECTED'::text, 'FAILED'::text])))
+);
+
+
+ALTER TABLE public.strategy_signals OWNER TO crypto;
+
+--
+-- Name: TABLE strategy_signals; Type: COMMENT; Schema: public; Owner: crypto
+--
+
+COMMENT ON TABLE public.strategy_signals IS 'Trade signals emitted by strategies during pipeline execution';
+
+--
+-- Name: COLUMN strategy_signals.metadata; Type: COMMENT; Schema: public; Owner: crypto
+--
+
+COMMENT ON COLUMN public.strategy_signals.metadata IS 'Additional context: expected_profit_price, reason, indicators_used, etc.';
+
+
+--
 -- Name: strategy_versions; Type: TABLE; Schema: public; Owner: crypto
 --
 
@@ -1698,6 +1736,22 @@ ALTER TABLE ONLY public.strategy_runs
 
 
 --
+-- Name: strategy_signals strategy_signals_pkey; Type: CONSTRAINT; Schema: public; Owner: crypto
+--
+
+ALTER TABLE ONLY public.strategy_signals
+    ADD CONSTRAINT strategy_signals_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: strategy_signals strategy_signals_strategy_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: crypto
+--
+
+ALTER TABLE ONLY public.strategy_signals
+    ADD CONSTRAINT strategy_signals_strategy_id_fkey FOREIGN KEY (strategy_id) REFERENCES public.strategies(id);
+
+
+--
 -- Name: strategy_versions strategy_versions_pkey; Type: CONSTRAINT; Schema: public; Owner: crypto
 --
 
@@ -2061,6 +2115,31 @@ CREATE INDEX idx_strategy_events_strategy_id ON public.strategy_events USING btr
 --
 
 CREATE INDEX idx_strategy_runs_strategy_id ON public.strategy_runs USING btree (strategy_id, started_at DESC);
+
+
+--
+-- Name: idx_strategy_signals_strategy_id; Type: INDEX; Schema: public; Owner: crypto
+--
+
+CREATE INDEX idx_strategy_signals_strategy_id ON public.strategy_signals USING btree (strategy_id);
+
+--
+-- Name: idx_strategy_signals_symbol; Type: INDEX; Schema: public; Owner: crypto
+--
+
+CREATE INDEX idx_strategy_signals_symbol ON public.strategy_signals USING btree (symbol);
+
+--
+-- Name: idx_strategy_signals_status; Type: INDEX; Schema: public; Owner: crypto
+--
+
+CREATE INDEX idx_strategy_signals_status ON public.strategy_signals USING btree (status);
+
+--
+-- Name: idx_strategy_signals_created; Type: INDEX; Schema: public; Owner: crypto
+--
+
+CREATE INDEX idx_strategy_signals_created ON public.strategy_signals USING btree (created_at DESC);
 
 
 --
