@@ -328,3 +328,54 @@ class TestStrategyExecutor:
         assert result.signal.price == Decimal("68000")
         assert result.signal.order_type == "LIMIT"
         assert result.signal.side == "SELL"
+
+    @pytest.mark.asyncio
+    async def test_quantity_computed_from_quantity_usdc(self) -> None:
+        """quantity_usdc in metadata is divided by price to get token quantity."""
+        strategy = MockStrategy()
+        strategy._state = StrategyState.RUNNING
+        strategy._signal_to_return = Signal(
+            strategy_id="test-1",
+            symbol="BTC/USDC",
+            signal_type=SignalType.BUY,
+            price=Decimal("50000"),
+            metadata={"quantity_usdc": 100, "expected_profit_price": 52000},
+        )
+        executor = StrategyExecutor(timeout_seconds=1.0)
+        result = await executor.execute(strategy, self._make_tick(price=50000))
+        assert result.signal is not None
+        assert result.signal.quantity == Decimal("0.002")  # 100 / 50000
+
+    @pytest.mark.asyncio
+    async def test_quantity_key_takes_precedence_over_quantity_usdc(self) -> None:
+        """When both quantity and quantity_usdc are in metadata, quantity wins."""
+        strategy = MockStrategy()
+        strategy._state = StrategyState.RUNNING
+        strategy._signal_to_return = Signal(
+            strategy_id="test-1",
+            symbol="BTC/USDC",
+            signal_type=SignalType.BUY,
+            price=Decimal("50000"),
+            metadata={"quantity": Decimal("0.005"), "quantity_usdc": 100},
+        )
+        executor = StrategyExecutor(timeout_seconds=1.0)
+        result = await executor.execute(strategy, self._make_tick(price=50000))
+        assert result.signal is not None
+        assert result.signal.quantity == Decimal("0.005")  # explicit quantity wins
+
+    @pytest.mark.asyncio
+    async def test_quantity_defaults_to_zero(self) -> None:
+        """Without quantity or quantity_usdc, quantity is 0."""
+        strategy = MockStrategy()
+        strategy._state = StrategyState.RUNNING
+        strategy._signal_to_return = Signal(
+            strategy_id="test-1",
+            symbol="BTC/USDC",
+            signal_type=SignalType.BUY,
+            price=Decimal("50000"),
+            metadata={},
+        )
+        executor = StrategyExecutor(timeout_seconds=1.0)
+        result = await executor.execute(strategy, self._make_tick(price=50000))
+        assert result.signal is not None
+        assert result.signal.quantity == Decimal("0")

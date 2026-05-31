@@ -182,17 +182,30 @@ class StrategyExecutor:
         """
         side = "BUY" if signal.signal_type.value in {"BUY", "CLOSE_SHORT"} else "SELL"
 
-        quantity = signal.metadata.get("quantity", Decimal("0"))
-        if isinstance(quantity, (int, float)):
-            quantity = Decimal(str(quantity))
+        order_type = signal.metadata.get("order_type", "MARKET")
+        if hasattr(order_type, "value"):
+            order_type = order_type.value
 
         price = signal.metadata.get("price", signal.price)
         if price is not None and not isinstance(price, Decimal):
             price = Decimal(str(price))
 
-        order_type = signal.metadata.get("order_type", "MARKET")
-        if hasattr(order_type, "value"):
-            order_type = order_type.value
+        quantity = signal.metadata.get("quantity")
+        if quantity is not None:
+            if isinstance(quantity, (int, float)):
+                quantity = Decimal(str(quantity))
+        else:
+            quantity_usdc = signal.metadata.get("quantity_usdc")
+            if quantity_usdc is not None:
+                ref_price = price if price is not None and price > 0 else signal.price
+                if ref_price is not None and ref_price > 0:
+                    if isinstance(quantity_usdc, (int, float)):
+                        quantity_usdc = Decimal(str(quantity_usdc))
+                    quantity = quantity_usdc / ref_price
+                else:
+                    quantity = Decimal("0")
+            else:
+                quantity = Decimal("0")
 
         # Handle strategy_id that may not be a valid UUID
         raw_sid = signal.strategy_id
