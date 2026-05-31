@@ -30,6 +30,7 @@ import asyncpg
 from src.domain.strategies.base import EnrichedTick, Strategy, get_price_statistics
 from src.domain.strategies.signal import SignalStatus, TradeSignal
 from src.pipeline.strategy_executor import StrategyExecutor, StrategyResult
+from src.pipeline.websocket_manager import AggTrade
 
 logger = logging.getLogger(__name__)
 
@@ -321,6 +322,7 @@ class StrategyRunner:
         candle_time: datetime,
         tick_indicators: dict[str, float],
         current_price: Decimal,
+        last_trade: AggTrade | None = None,
     ) -> list[TradeSignal]:
         """Run all active strategies for a symbol tick.
 
@@ -329,6 +331,7 @@ class StrategyRunner:
             candle_time: Time of the candle
             tick_indicators: Dictionary of indicator values
             current_price: Current market price
+            last_trade: Most recent AggTrade from WebSocket (for logging)
 
         Returns:
             List of TradeSignal emitted by strategies
@@ -393,6 +396,14 @@ class StrategyRunner:
                 self._signal_history.append(result.signal)
                 if len(self._signal_history) > self._max_signal_history:
                     self._signal_history = self._signal_history[-self._max_signal_history :]
+
+                # Log raw Binance trade data alongside the signal
+                if last_trade is not None:
+                    logger.info(
+                        f"Raw Binance trade: symbol={last_trade.symbol}, "
+                        f"price={last_trade.price}, qty={last_trade.quantity}, "
+                        f"id={last_trade.agg_trade_id}, time={last_trade.trade_time}"
+                    )
 
                 # Update strategy context
                 ctx = self._strategies.get(UUID(result.signal.strategy_id))

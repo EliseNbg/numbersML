@@ -127,12 +127,24 @@ class BinanceWebSocketManager:
         self._ws: Optional[websockets.WebSocketClientProtocol] = None
         self._running = False
         self._reconnect_delay = self.INITIAL_RECONNECT_DELAY
+        self._last_trade: AggTrade | None = None
+        self._last_raw_message: str | None = None
         self._stats = {
             "trades_received": 0,
             "errors": 0,
             "reconnections": 0,
             "start_time": None,
         }
+
+    @property
+    def last_trade(self) -> AggTrade | None:
+        """Last successfully parsed trade from WebSocket."""
+        return self._last_trade
+
+    @property
+    def last_raw_message(self) -> str | None:
+        """Last raw WebSocket message text."""
+        return self._last_raw_message
 
     def _get_ws_url(self) -> str:
         """
@@ -251,15 +263,12 @@ class BinanceWebSocketManager:
         Args:
             message: Raw WebSocket message
         """
-        logger.debug(f"Binance WS raw message: {message[:500]}")
         trade = self._parse_message(message)
 
         if trade:
+            self._last_trade = trade
+            self._last_raw_message = message
             self._stats["trades_received"] += 1
-            logger.debug(
-                f"Binance WS parsed trade: symbol={trade.symbol}, "
-                f"price={trade.price}, qty={trade.quantity}, id={trade.agg_trade_id}"
-            )
             await self.on_trade(trade)
 
     async def _message_loop(self) -> None:
