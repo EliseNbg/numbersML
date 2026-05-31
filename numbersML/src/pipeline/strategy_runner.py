@@ -256,11 +256,14 @@ class StrategyRunner:
                     params=params,  # type: ignore[arg-type]
                     timeout=aiohttp.ClientTimeout(total=30),
                 ) as response:
+                    logger.debug(f"Binance request URL: {response.url}")
                     logger.info(
                         f"Binance page {page} for {binance_symbol}: "
                         f"HTTP {response.status}, startTime={current_start}"
                     )
                     if response.status != 200:
+                        text = await response.text()
+                        logger.debug(f"Binance error response: {text[:500]}")
                         consecutive_errors += 1
                         if consecutive_errors >= 3:
                             logger.warning(
@@ -273,6 +276,11 @@ class StrategyRunner:
 
                     consecutive_errors = 0
                     klines = await response.json()
+                    raw_sample = klines[:3] if klines else []
+                    logger.debug(
+                        f"Binance raw response page {page}: "
+                        f"{len(klines)} klines, sample={raw_sample}"
+                    )
                     if not klines:
                         logger.info(f"Binance page {page}: empty response, done")
                         break
