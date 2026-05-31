@@ -291,3 +291,40 @@ class TestStrategyExecutor:
 
         assert "market_price" in order_request.metadata
         assert order_request.metadata["market_price"] == 68000.0
+
+    @pytest.mark.asyncio
+    async def test_limit_buy_signal_has_price(self) -> None:
+        """LIMIT BUY: TradeSignal.price comes from Signal.price."""
+        strategy = MockStrategy()
+        strategy._state = StrategyState.RUNNING
+        strategy._signal_to_return = Signal(
+            strategy_id="test-1",
+            symbol="BTC/USDC",
+            signal_type=SignalType.BUY,
+            price=Decimal("67000"),
+            metadata={"quantity": Decimal("0.001"), "order_type": "LIMIT"},
+        )
+        executor = StrategyExecutor(timeout_seconds=1.0)
+        result = await executor.execute(strategy, self._make_tick())
+        assert result.signal is not None
+        assert result.signal.price == Decimal("67000")
+        assert result.signal.order_type == "LIMIT"
+
+    @pytest.mark.asyncio
+    async def test_limit_sell_signal_has_price(self) -> None:
+        """LIMIT SELL: TradeSignal.price comes from Signal.price."""
+        strategy = MockStrategy()
+        strategy._state = StrategyState.RUNNING
+        strategy._signal_to_return = Signal(
+            strategy_id="test-1",
+            symbol="BTC/USDC",
+            signal_type=SignalType.SELL,
+            price=Decimal("68000"),
+            metadata={"quantity": Decimal("0.001"), "order_type": "LIMIT"},
+        )
+        executor = StrategyExecutor(timeout_seconds=1.0)
+        result = await executor.execute(strategy, self._make_tick())
+        assert result.signal is not None
+        assert result.signal.price == Decimal("68000")
+        assert result.signal.order_type == "LIMIT"
+        assert result.signal.side == "SELL"
