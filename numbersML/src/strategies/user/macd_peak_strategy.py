@@ -220,14 +220,23 @@ class MACDPeakStrategy(Strategy):
             BUY signal if trend reversal detected below bottom border, None otherwise
         """
         if not self._check_sma_filter(tick):
+            logger.debug(f"[{self._strategy_id}] Reject: SMA filter failed at price={tick.price}")
             return None
 
         avg_day = self.get_avg_price(tick.symbol, "day")
         if avg_day and float(tick.price) >= float(avg_day) * self.avg_multiplicator_day:
+            logger.debug(
+                f"[{self._strategy_id}] Reject: price {tick.price} >= "
+                f"avg_day {avg_day} * {self.avg_multiplicator_day}"
+            )
             return None
 
         avg_week = self.get_avg_price(tick.symbol, "week")
         if avg_week and float(tick.price) >= float(avg_week) * self.avg_multiplicator_week:
+            logger.debug(
+                f"[{self._strategy_id}] Reject: price {tick.price} >= "
+                f"avg_week {avg_week} * {self.avg_multiplicator_week}"
+            )
             return None
 
         self._macd_history.append(macd_value)
@@ -235,6 +244,10 @@ class MACDPeakStrategy(Strategy):
             self._macd_history.pop(0)
 
         if len(self._macd_history) < self.trend_lookback + 1:
+            logger.debug(
+                f"[{self._strategy_id}] Reject: building MACD history "
+                f"({len(self._macd_history)}/{self.trend_lookback + 1})"
+            )
             return None
 
         was_declining = all(
@@ -244,6 +257,10 @@ class MACDPeakStrategy(Strategy):
         is_turning_up = macd_value > self._macd_history[-2]
 
         if not was_declining or not is_turning_up:
+            logger.debug(
+                f"[{self._strategy_id}] Reject: no reversal (declining={was_declining}, "
+                f"turning_up={is_turning_up}, macd_history={self._macd_history})"
+            )
             return None
 
         macd_change = abs(macd_value - self._macd_history[-2])
@@ -252,11 +269,24 @@ class MACDPeakStrategy(Strategy):
             signal_magnitude > 1e-10
             and (macd_change / signal_magnitude) < self.min_relative_threshold
         ):
+            logger.debug(
+                f"[{self._strategy_id}] Reject: MACD change {macd_change:.6g} "
+                f"below threshold ({macd_change / signal_magnitude:.6g} < "
+                f"{self.min_relative_threshold})"
+            )
             return None
 
         if macd_value > self.bottom_border_macd_to_buy:
+            logger.debug(
+                f"[{self._strategy_id}] Reject: MACD {macd_value:.6f} > "
+                f"bottom_border {self.bottom_border_macd_to_buy}"
+            )
             return None
 
+        logger.debug(
+            f"[{self._strategy_id}] Accept: trend reversal at MACD={macd_value:.6f}, "
+            f"price={tick.price}"
+        )
         return self._signal_buy(tick, macd_value, signal_value)
 
     def _signal_buy(

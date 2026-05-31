@@ -702,3 +702,81 @@ class TestMACDPeakStrategy:
             strategy.on_tick(tick)
 
         assert strategy.signal_count == 0
+
+    def test_multiple_ticks_same_macd_produces_one_signal(self, strategy):
+        """Simulate 3 rapid trades with the same MACD values:
+        only the first tick that detects the reversal should produce a signal.
+        """
+        strategy._initialize_macd(
+            EnrichedTick(
+                symbol="ATOM/USDC",
+                price=Decimal("1.99"),
+                volume=Decimal("10"),
+                time=datetime.now(UTC),
+                indicators={},
+            )
+        )
+        strategy.bottom_border_macd_to_buy = 0.0
+        strategy.min_relative_threshold = 1e-9
+        strategy.trend_lookback = 3
+
+        macd_sequence = [-0.0010, -0.0015, -0.0020, -0.0018]
+
+        for macd_val in macd_sequence[:-1]:
+            strategy.on_tick(
+                EnrichedTick(
+                    symbol="ATOM/USDC",
+                    price=Decimal("1.99"),
+                    volume=Decimal("10"),
+                    time=datetime.now(UTC),
+                    indicators={
+                        "macdindicator_macd": macd_val,
+                        "macdindicator_signal": macd_val - 0.0001,
+                    },
+                )
+            )
+
+        signal1 = strategy.on_tick(
+            EnrichedTick(
+                symbol="ATOM/USDC",
+                price=Decimal("1.997"),
+                volume=Decimal("25.08"),
+                time=datetime.now(UTC),
+                indicators={
+                    "macdindicator_macd": macd_sequence[-1],
+                    "macdindicator_signal": macd_sequence[-1] - 0.0001,
+                },
+            )
+        )
+        assert signal1 is not None
+        assert signal1.signal_type == SignalType.BUY
+
+        signal2 = strategy.on_tick(
+            EnrichedTick(
+                symbol="ATOM/USDC",
+                price=Decimal("1.997"),
+                volume=Decimal("17.10"),
+                time=datetime.now(UTC),
+                indicators={
+                    "macdindicator_macd": macd_sequence[-1],
+                    "macdindicator_signal": macd_sequence[-1] - 0.0001,
+                },
+            )
+        )
+        assert signal2 is None, "Same MACD should not trigger a second signal"
+
+        signal3 = strategy.on_tick(
+            EnrichedTick(
+                symbol="ATOM/USDC",
+                price=Decimal("1.995"),
+                volume=Decimal("22.90"),
+                time=datetime.now(UTC),
+                indicators={
+                    "macdindicator_macd": macd_sequence[-1],
+                    "macdindicator_signal": macd_sequence[-1] - 0.0001,
+                },
+            )
+        )
+        assert signal3 is None, "Same MACD should not trigger a third signal"
+
+        assert strategy.signal_count == 1

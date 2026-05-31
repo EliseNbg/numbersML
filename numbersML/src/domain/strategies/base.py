@@ -409,9 +409,14 @@ class Strategy(ABC):
             Signal if generated, None otherwise
         """
         if self._state != StrategyState.RUNNING:
+            logger.debug(
+                f"[{self._strategy_id}] Skip tick: strategy not running "
+                f"(state={self._state.value})"
+            )
             return None
 
         if tick.symbol not in self._symbols:
+            logger.debug(f"[{self._strategy_id}] Skip tick: symbol {tick.symbol} not in strategy")
             return None
 
         self._ticks_processed += 1
@@ -428,6 +433,10 @@ class Strategy(ABC):
 
         # Enforce max open positions — skip strategy logic when limit reached
         if self._open_positions_count >= self.max_open_positions:
+            logger.debug(
+                f"[{self._strategy_id}] Skip logic: "
+                f"{self._open_positions_count} >= {self.max_open_positions} max open positions"
+            )
             return None
 
         signal = self.on_tick(tick)
@@ -436,6 +445,10 @@ class Strategy(ABC):
             self._signals.append(signal)
             logger.info(
                 f"Signal generated: {signal.signal_type.value} {signal.symbol} @ {signal.price}"
+            )
+        else:
+            logger.debug(
+                f"[{self._strategy_id}] No signal from on_tick for {tick.symbol} @ {tick.price}"
             )
 
         return signal
