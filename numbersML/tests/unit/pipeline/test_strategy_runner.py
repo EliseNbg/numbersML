@@ -363,6 +363,49 @@ class TestStrategyRunner:
         await runner._persist_signal(signal)
         assert mock_conn.execute.called
 
+    @pytest.mark.asyncio
+    async def test_signal_persisted_with_json_serialized_metadata(self) -> None:
+        """Metadata dict must be JSON-serialized before passing to asyncpg."""
+        import json
+
+        mock_conn = AsyncMock()
+        acm = AsyncMock()
+        acm.__aenter__ = AsyncMock(return_value=mock_conn)
+        acm.__aexit__ = AsyncMock(return_value=False)
+        mock_pool = AsyncMock()
+        mock_pool.acquire = MagicMock(return_value=acm)
+
+        runner = StrategyRunner(db_pool=mock_pool, reload_interval=1.0)
+
+        metadata = {
+            "macd": -0.004310119062817641,
+            "signal": -0.0043,
+            "histogram": -0.0001,
+            "reversal_type": "decline_to_uptrend",
+            "signal_count": 1,
+        }
+        signal = TradeSignal(
+            strategy_id=uuid4(),
+            strategy_name="TestStrategy",
+            symbol="ATOM/USDC",
+            side="BUY",
+            quantity=Decimal("10"),
+            price=Decimal("1.982"),
+            metadata=metadata,
+        )
+        await runner._persist_signal(signal)
+
+        # Verify conn.execute was called with JSON-string metadata (not raw dict)
+        call_args = mock_conn.execute.call_args
+        assert call_args is not None
+        sql, *params = call_args[0]
+        # $9 is the metadata parameter (0-indexed: params[8])
+        metadata_param = params[8]
+        assert isinstance(metadata_param, str), (
+            f"Expected metadata as JSON string, got {type(metadata_param).__name__}"
+        )
+        assert json.loads(metadata_param) == metadata
+
     def test_stdout_capture_and_retrieve(self) -> None:
         runner = self._make_runner()
         sid = uuid4()

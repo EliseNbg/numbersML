@@ -727,7 +727,7 @@ class StrategyRunner:
                     signal.quantity,
                     signal.price,
                     signal.status.value,
-                    signal.metadata,
+                    json.dumps(signal.metadata),
                     signal.timestamp,
                     datetime.now(UTC) if signal.status == SignalStatus.EXECUTED else None,
                     error or reason,
