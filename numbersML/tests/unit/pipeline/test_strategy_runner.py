@@ -972,3 +972,430 @@ class TestStrategyRunner:
 
         pos = ctx.strategy.get_position("ATOM/USDC")
         assert pos is None
+
+    # ── Comprehensive dedup tests ──────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_dedup_same_signal_on_three_consecutive_ticks(self) -> None:
+        """Only the first of three identical signals within the window passes dedup."""
+        runner = self._make_runner()
+        strategy = MockStrategy()
+        strategy._state = StrategyState.RUNNING
+        fixed_sid = uuid4()
+        strategy._strategy_id = str(fixed_sid)
+        strategy._signal_to_return = Signal(
+            strategy_id=str(fixed_sid),
+            symbol="BTC/USDC",
+            signal_type=SignalType.BUY,
+            price=Decimal("67500"),
+            metadata={"quantity": Decimal("0.001")},
+        )
+        ctx = StrategyContext(
+            strategy_id=fixed_sid,
+            strategy_name="TestStrategy",
+            strategy=strategy,
+            symbols=["BTC/USDC"],
+        )
+        runner._strategies[ctx.strategy_id] = ctx
+
+        s1 = await runner.execute_tick(
+            symbol="BTC/USDC", candle_time=self._make_tick_time(),
+            tick_indicators={}, current_price=Decimal("67500"),
+        )
+        assert len(s1) == 1
+        s2 = await runner.execute_tick(
+            symbol="BTC/USDC", candle_time=self._make_tick_time(),
+            tick_indicators={}, current_price=Decimal("67500"),
+        )
+        assert len(s2) == 0, "2nd consecutive duplicate should be deduped"
+        s3 = await runner.execute_tick(
+            symbol="BTC/USDC", candle_time=self._make_tick_time(),
+            tick_indicators={}, current_price=Decimal("67500"),
+        )
+        assert len(s3) == 0, "3rd consecutive duplicate should be deduped"
+
+    @pytest.mark.asyncio
+    async def test_dedup_different_symbol_not_duplicate(self) -> None:
+        """Same strategy, same side, different symbols → both pass dedup."""
+        runner = self._make_runner()
+        strategy = MockStrategy(strategy_id="multi-sym", symbols=["BTC/USDC", "ETH/USDC"])
+        strategy._state = StrategyState.RUNNING
+        fixed_sid = uuid4()
+        strategy._strategy_id = str(fixed_sid)
+        ctx = StrategyContext(
+            strategy_id=fixed_sid,
+            strategy_name="MultiSymbol",
+            strategy=strategy,
+            symbols=["BTC/USDC", "ETH/USDC"],
+        )
+        runner._strategies[ctx.strategy_id] = ctx
+
+        strategy._signal_to_return = Signal(
+            strategy_id=str(fixed_sid), symbol="BTC/USDC",
+            signal_type=SignalType.BUY, price=Decimal("67500"),
+            metadata={"quantity": Decimal("0.001")},
+        )
+        s1 = await runner.execute_tick(
+            symbol="BTC/USDC", candle_time=self._make_tick_time(),
+            tick_indicators={}, current_price=Decimal("67500"),
+        )
+        assert len(s1) == 1
+
+        strategy._signal_to_return = Signal(
+            strategy_id=str(fixed_sid), symbol="ETH/USDC",
+            signal_type=SignalType.BUY, price=Decimal("3200"),
+            metadata={"quantity": Decimal("0.1")},
+        )
+        s2 = await runner.execute_tick(
+            symbol="ETH/USDC", candle_time=self._make_tick_time(),
+            tick_indicators={}, current_price=Decimal("3200"),
+        )
+        assert len(s2) == 1, "Different symbol should NOT be deduped"
+
+    @pytest.mark.asyncio
+    async def test_dedup_different_side_not_duplicate(self) -> None:
+        """Same strategy, same symbol, different sides → both pass dedup."""
+        runner = self._make_runner()
+        strategy = MockStrategy()
+        strategy._state = StrategyState.RUNNING
+        fixed_sid = uuid4()
+        strategy._strategy_id = str(fixed_sid)
+        ctx = StrategyContext(
+            strategy_id=fixed_sid,
+            strategy_name="TestStrategy",
+            strategy=strategy,
+            symbols=["BTC/USDC"],
+        )
+        runner._strategies[ctx.strategy_id] = ctx
+
+        strategy._signal_to_return = Signal(
+            strategy_id=str(fixed_sid), symbol="BTC/USDC",
+            signal_type=SignalType.BUY, price=Decimal("67500"),
+            metadata={"quantity": Decimal("0.001")},
+        )
+        s1 = await runner.execute_tick(
+            symbol="BTC/USDC", candle_time=self._make_tick_time(),
+            tick_indicators={}, current_price=Decimal("67500"),
+        )
+        assert len(s1) == 1
+
+        strategy._signal_to_return = Signal(
+            strategy_id=str(fixed_sid), symbol="BTC/USDC",
+            signal_type=SignalType.SELL, price=Decimal("68000"),
+            metadata={"quantity": Decimal("0.001")},
+        )
+        s2 = await runner.execute_tick(
+            symbol="BTC/USDC", candle_time=self._make_tick_time(),
+            tick_indicators={}, current_price=Decimal("68000"),
+        )
+        assert len(s2) == 1, "Different side (SELL vs BUY) should NOT be deduped"
+
+    @pytest.mark.asyncio
+    async def test_dedup_different_strategy_not_duplicate(self) -> None:
+        """Different strategies, same symbol, same side → both pass dedup."""
+        runner = self._make_runner()
+        for i in range(2):
+            strategy = MockStrategy(strategy_id=f"strat-{i}")
+            strategy._state = StrategyState.RUNNING
+            sid = uuid4()
+            strategy._strategy_id = str(sid)
+            strategy._signal_to_return = Signal(
+                strategy_id=str(sid), symbol="BTC/USDC",
+                signal_type=SignalType.BUY, price=Decimal("67500"),
+                metadata={"quantity": Decimal("0.001")},
+            )
+            ctx = StrategyContext(
+                strategy_id=sid, strategy_name=f"Strategy{i}",
+                strategy=strategy, symbols=["BTC/USDC"],
+            )
+            runner._strategies[sid] = ctx
+
+        signals = await runner.execute_tick(
+            symbol="BTC/USDC", candle_time=self._make_tick_time(),
+            tick_indicators={}, current_price=Decimal("67500"),
+        )
+        assert len(signals) == 2, "Two different strategies should both emit"
+
+    @pytest.mark.asyncio
+    async def test_dedup_outside_window_allows_signal(self) -> None:
+        """Same signal past the dedup window passes."""
+        runner = self._make_runner()
+        runner.dedup_window_seconds = 60
+        strategy = MockStrategy()
+        strategy._state = StrategyState.RUNNING
+        fixed_sid = uuid4()
+        strategy._strategy_id = str(fixed_sid)
+        strategy._signal_to_return = Signal(
+            strategy_id=str(fixed_sid), symbol="BTC/USDC",
+            signal_type=SignalType.BUY, price=Decimal("67500"),
+            metadata={"quantity": Decimal("0.001")},
+        )
+        ctx = StrategyContext(
+            strategy_id=fixed_sid, strategy_name="TestStrategy",
+            strategy=strategy, symbols=["BTC/USDC"],
+        )
+        runner._strategies[ctx.strategy_id] = ctx
+
+        s1 = await runner.execute_tick(
+            symbol="BTC/USDC", candle_time=self._make_tick_time(),
+            tick_indicators={}, current_price=Decimal("67500"),
+        )
+        assert len(s1) == 1
+
+        # Manually age the signal history out of the window
+        runner._signal_history[0] = TradeSignal(
+            strategy_id=str(fixed_sid), symbol="BTC/USDC", side="BUY",
+            timestamp=datetime.now(UTC) - timedelta(seconds=120),
+        )
+
+        s2 = await runner.execute_tick(
+            symbol="BTC/USDC", candle_time=self._make_tick_time(),
+            tick_indicators={}, current_price=Decimal("67500"),
+        )
+        assert len(s2) == 1, "Signal outside dedup window should NOT be deduped"
+
+    @pytest.mark.asyncio
+    async def test_dedup_stats_tracked_correctly(self) -> None:
+        """Dedup count and signals_emitted count are tracked correctly."""
+        runner = self._make_runner()
+        strategy = MockStrategy()
+        strategy._state = StrategyState.RUNNING
+        fixed_sid = uuid4()
+        strategy._strategy_id = str(fixed_sid)
+        strategy._signal_to_return = Signal(
+            strategy_id=str(fixed_sid), symbol="BTC/USDC",
+            signal_type=SignalType.BUY, price=Decimal("67500"),
+            metadata={"quantity": Decimal("0.001")},
+        )
+        ctx = StrategyContext(
+            strategy_id=fixed_sid, strategy_name="TestStrategy",
+            strategy=strategy, symbols=["BTC/USDC"],
+        )
+        runner._strategies[ctx.strategy_id] = ctx
+
+        assert runner._stats["deduplicated"] == 0
+        assert runner._stats["signals_emitted"] == 0
+
+        await runner.execute_tick(
+            symbol="BTC/USDC", candle_time=self._make_tick_time(),
+            tick_indicators={}, current_price=Decimal("67500"),
+        )
+        assert runner._stats["signals_emitted"] == 1
+        assert runner._stats["deduplicated"] == 0
+
+        await runner.execute_tick(
+            symbol="BTC/USDC", candle_time=self._make_tick_time(),
+            tick_indicators={}, current_price=Decimal("67500"),
+        )
+        assert runner._stats["signals_emitted"] == 1
+        assert runner._stats["deduplicated"] == 1
+
+        await runner.execute_tick(
+            symbol="BTC/USDC", candle_time=self._make_tick_time(),
+            tick_indicators={}, current_price=Decimal("67500"),
+        )
+        assert runner._stats["signals_emitted"] == 1
+        assert runner._stats["deduplicated"] == 2
+
+    @pytest.mark.asyncio
+    async def test_dedup_strategy_context_updated_only_on_emit(self) -> None:
+        """signals_today and last_signal_at update only on emit, not on dedup."""
+        runner = self._make_runner()
+        strategy = MockStrategy()
+        strategy._state = StrategyState.RUNNING
+        fixed_sid = uuid4()
+        strategy._strategy_id = str(fixed_sid)
+        signal = Signal(
+            strategy_id=str(fixed_sid), symbol="BTC/USDC",
+            signal_type=SignalType.BUY, price=Decimal("67500"),
+            metadata={"quantity": Decimal("0.001")},
+        )
+        strategy._signal_to_return = signal
+        ctx = StrategyContext(
+            strategy_id=fixed_sid, strategy_name="TestStrategy",
+            strategy=strategy, symbols=["BTC/USDC"],
+        )
+        runner._strategies[ctx.strategy_id] = ctx
+        assert ctx.signals_today == 0
+
+        await runner.execute_tick(
+            symbol="BTC/USDC", candle_time=self._make_tick_time(),
+            tick_indicators={}, current_price=Decimal("67500"),
+        )
+        assert ctx.signals_today == 1
+
+        await runner.execute_tick(
+            symbol="BTC/USDC", candle_time=self._make_tick_time(),
+            tick_indicators={}, current_price=Decimal("67500"),
+        )
+        assert ctx.signals_today == 1, "signals_today should NOT increment on dedup"
+
+    @pytest.mark.asyncio
+    async def test_dedup_signal_history_pruned_at_max(self) -> None:
+        """Signal history pruned to max_signal_history, keeping most recent."""
+        runner = self._make_runner()
+        runner._max_signal_history = 3
+
+        strategy = MockStrategy()
+        strategy._state = StrategyState.RUNNING
+        fixed_sid = uuid4()
+        strategy._strategy_id = str(fixed_sid)
+        ctx = StrategyContext(
+            strategy_id=fixed_sid, strategy_name="TestStrategy",
+            strategy=strategy, symbols=["BTC/USDC"],
+        )
+        runner._strategies[ctx.strategy_id] = ctx
+
+        prices = [Decimal("100"), Decimal("200"), Decimal("300"), Decimal("400")]
+        for p in prices:
+            strategy._signal_to_return = Signal(
+                strategy_id=str(fixed_sid), symbol="BTC/USDC",
+                signal_type=SignalType.BUY, price=p,
+                metadata={"quantity": Decimal("0.001")},
+            )
+            await runner.execute_tick(
+                symbol="BTC/USDC", candle_time=self._make_tick_time(),
+                tick_indicators={}, current_price=p,
+            )
+
+        assert len(runner._signal_history) == 3, "History should be pruned to max=3"
+        assert runner._signal_history[-1].price == Decimal("400"), "Most recent should be last"
+
+    @pytest.mark.asyncio
+    async def test_dedup_signal_with_no_history_passes(self) -> None:
+        """When signal_history is empty, any signal passes dedup."""
+        runner = self._make_runner()
+        assert runner._signal_history == []
+
+        strategy = MockStrategy()
+        strategy._state = StrategyState.RUNNING
+        fixed_sid = uuid4()
+        strategy._strategy_id = str(fixed_sid)
+        strategy._signal_to_return = Signal(
+            strategy_id=str(fixed_sid), symbol="BTC/USDC",
+            signal_type=SignalType.BUY, price=Decimal("67500"),
+            metadata={"quantity": Decimal("0.001")},
+        )
+        ctx = StrategyContext(
+            strategy_id=fixed_sid, strategy_name="TestStrategy",
+            strategy=strategy, symbols=["BTC/USDC"],
+        )
+        runner._strategies[ctx.strategy_id] = ctx
+
+        signals = await runner.execute_tick(
+            symbol="BTC/USDC", candle_time=self._make_tick_time(),
+            tick_indicators={}, current_price=Decimal("67500"),
+        )
+        assert len(signals) == 1, "First signal should always pass"
+
+    @pytest.mark.asyncio
+    async def test_dedup_buy_and_sell_from_same_strategy_both_emitted(self) -> None:
+        """BUY and SELL signals from same strategy on same symbol both emit (different side)."""
+        runner = self._make_runner()
+        strategy = MockStrategy()
+        strategy._state = StrategyState.RUNNING
+        fixed_sid = uuid4()
+        strategy._strategy_id = str(fixed_sid)
+        # Same strategy returns BUY first, SELL next (different on_tick logic)
+        ctx = StrategyContext(
+            strategy_id=fixed_sid, strategy_name="TestStrategy",
+            strategy=strategy, symbols=["BTC/USDC"],
+        )
+        runner._strategies[ctx.strategy_id] = ctx
+
+        strategy._signal_to_return = Signal(
+            strategy_id=str(fixed_sid), symbol="BTC/USDC",
+            signal_type=SignalType.BUY, price=Decimal("100"),
+            metadata={"quantity": Decimal("0.001")},
+        )
+        s1 = await runner.execute_tick(
+            symbol="BTC/USDC", candle_time=self._make_tick_time(),
+            tick_indicators={}, current_price=Decimal("100"),
+        )
+        assert len(s1) == 1 and s1[0].side == "BUY"
+
+        strategy._signal_to_return = Signal(
+            strategy_id=str(fixed_sid), symbol="BTC/USDC",
+            signal_type=SignalType.SELL, price=Decimal("110"),
+            metadata={"quantity": Decimal("0.001")},
+        )
+        s2 = await runner.execute_tick(
+            symbol="BTC/USDC", candle_time=self._make_tick_time(),
+            tick_indicators={}, current_price=Decimal("110"),
+        )
+        assert len(s2) == 1 and s2[0].side == "SELL", "SELL after BUY should emit"
+
+    # ── Persist failure / position opening edge cases ─────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_persist_failure_still_opens_position(self) -> None:
+        """When _persist_signal throws (e.g. table missing), position still opens."""
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock(
+            side_effect=Exception("relation \"strategy_signals\" does not exist"),
+        )
+        acm = AsyncMock()
+        acm.__aenter__ = AsyncMock(return_value=mock_conn)
+        acm.__aexit__ = AsyncMock(return_value=False)
+        mock_pool = MagicMock()
+        mock_pool.acquire = MagicMock(return_value=acm)
+
+        paper = PaperMarketService(initial_balance=Decimal("10000"))
+        runner = StrategyRunner(db_pool=mock_pool, market_service=paper, reload_interval=1.0)
+
+        strategy = MockStrategy(strategy_id="persist-fail-test", symbols=["ATOM/USDC"])
+        strategy._state = StrategyState.RUNNING
+        sid = uuid4()
+        ctx = StrategyContext(
+            strategy_id=sid, strategy_name="MockStrategy",
+            strategy=strategy, symbols=["ATOM/USDC"],
+        )
+        runner._strategies[sid] = ctx
+
+        signal = TradeSignal(
+            strategy_id=str(sid), strategy_name="MockStrategy",
+            symbol="ATOM/USDC", side="BUY", order_type="MARKET",
+            quantity=Decimal("10"), price=Decimal("2.03"),
+            metadata={"expected_profit_price": 2.08},
+        )
+        await runner._route_signal(signal)
+
+        pos = ctx.strategy.get_position("ATOM/USDC")
+        assert pos is not None, "Position should open even when persist fails"
+        assert pos.side == "LONG"
+        assert pos.take_profit_price == Decimal("2.08")
+
+    @pytest.mark.asyncio
+    async def test_persist_and_order_failure_leaves_no_position(self) -> None:
+        """When order is rejected (insufficient balance) AND persist also fails, no position."""
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock(side_effect=Exception("DB error"))
+        acm = AsyncMock()
+        acm.__aenter__ = AsyncMock(return_value=mock_conn)
+        acm.__aexit__ = AsyncMock(return_value=False)
+        mock_pool = MagicMock()
+        mock_pool.acquire = MagicMock(return_value=acm)
+
+        paper = PaperMarketService(initial_balance=Decimal("1"))
+        runner = StrategyRunner(db_pool=mock_pool, market_service=paper, reload_interval=1.0)
+
+        strategy = MockStrategy(strategy_id="reject-persist-fail", symbols=["ATOM/USDC"])
+        strategy._state = StrategyState.RUNNING
+        sid = uuid4()
+        ctx = StrategyContext(
+            strategy_id=sid, strategy_name="MockStrategy",
+            strategy=strategy, symbols=["ATOM/USDC"],
+        )
+        runner._strategies[sid] = ctx
+
+        signal = TradeSignal(
+            strategy_id=str(sid), strategy_name="MockStrategy",
+            symbol="ATOM/USDC", side="BUY", order_type="MARKET",
+            quantity=Decimal("10"), price=Decimal("2.03"),
+            metadata={"expected_profit_price": 2.08},
+        )
+        await runner._route_signal(signal)
+
+        pos = ctx.strategy.get_position("ATOM/USDC")
+        assert pos is None, "Position should NOT open when order rejected"
+        assert runner._stats["signals_failed"] == 1

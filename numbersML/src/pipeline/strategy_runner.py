@@ -654,6 +654,13 @@ class StrategyRunner:
     def _is_duplicate(self, signal: TradeSignal) -> bool:
         """Check if signal is a duplicate within the dedup window.
 
+        A duplicate is a signal from the same strategy, for the same symbol,
+        same side, and within ``dedup_window_seconds`` that also has the
+        **same price** (± 1e-8 tolerance).
+
+        Signals at different prices (e.g. a new entry level) are NOT
+        considered duplicates.
+
         Args:
             signal: Signal to check
 
@@ -668,6 +675,9 @@ class StrategyRunner:
                 past.strategy_id == signal.strategy_id
                 and past.symbol == signal.symbol
                 and past.side == signal.side
+                and past.price is not None
+                and signal.price is not None
+                and abs(past.price - signal.price) < Decimal("1e-8")
             ):
                 return True
         return False
