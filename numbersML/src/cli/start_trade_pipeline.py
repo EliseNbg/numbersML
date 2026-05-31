@@ -23,11 +23,27 @@ import asyncpg
 from src.infrastructure.database import _init_utc
 from src.pipeline.service import TradePipeline
 
-# Configure logging
+# Configure logging — root at INFO; Binance loggers get DEBUG with their own handler
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+
+for _name in (
+    "src.pipeline.websocket_manager",
+    "src.pipeline.recovery",
+    "src.pipeline.strategy_runner",
+    "src.infrastructure.exchanges.binance_client",
+    "src.infrastructure.exchanges.binance_rest_client",
+):
+    _log = logging.getLogger(_name)
+    _log.setLevel(logging.DEBUG)
+    _log.propagate = False
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+    _handler.setLevel(logging.DEBUG)
+    _log.addHandler(_handler)
 
 # Database configuration
 DATABASE_URL = "postgresql://crypto:crypto_secret@localhost:5432/crypto_trading"
