@@ -21,6 +21,9 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 import asyncpg
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from src.domain.services.market_service import LiveExchangeClient
 from src.infrastructure.database import _init_utc
@@ -69,10 +72,10 @@ Examples:
   # Start with custom database
   python -m src.cli.start_trade_pipeline --db-url postgresql://user:pass@host/db
 
-  # Start in live mode (requires BINANCE_LIVE_API_KEY/SECRET env vars)
-  python -m src.cli.start_trade_pipeline --mode live --execution-enabled
+  # Enable live order execution (mode auto-detected from active strategies)
+  python -m src.cli.start_trade_pipeline --execution-enabled
 
-  # Paper mode (default, no API keys needed)
+  # Override mode explicitly
   python -m src.cli.start_trade_pipeline --mode paper
         """,
     )
@@ -91,9 +94,9 @@ Examples:
     parser.add_argument(
         "--mode",
         type=str,
-        default="paper",
+        default=None,
         choices=["paper", "live"],
-        help="Trading mode: paper (default) or live",
+        help="Trading mode (auto-detected from active strategies if omitted)",
     )
 
     parser.add_argument(
@@ -109,7 +112,7 @@ Examples:
 async def run_pipeline(
     symbols: list[str],
     db_url: str,
-    mode: str = "paper",
+    mode: str | None = None,
     execution_enabled: bool = False,
 ) -> None:
     """
@@ -118,7 +121,7 @@ async def run_pipeline(
     Args:
         symbols: List of symbols to process
         db_url: Database URL
-        mode: Trading mode ('paper' or 'live')
+        mode: Trading mode ('paper' or 'live'); auto-detected if None
         execution_enabled: Enable live order execution
     """
     # Create database pool
@@ -133,25 +136,29 @@ async def run_pipeline(
     )
 
     try:
-        # Get symbols from active strategy configs if not specified
-        if not symbols:
+        # Get symbols and detect mode from active strategies if not specified
+        if not symbols or mode is None:
             async with db_pool.acquire() as conn:
                 rows = await conn.fetch("""
-                    SELECT DISTINCT symbol
-                    FROM (
-                        SELECT jsonb_array_elements_text(
-                            COALESCE(sv.config#>'{universe,symbols}', sv.config->'symbols')
-                        ) AS symbol
-                        FROM strategies s
-                        JOIN strategy_versions sv ON sv.strategy_id = s.id AND sv.is_active = true
-                        WHERE s.status = 'active'
-                    ) sub
-                    WHERE symbol IS NOT NULL
-                    ORDER BY symbol
+                    SELECT jsonb_array_elements_text(
+                        COALESCE(sv.config#>'{universe,symbols}', sv.config->'symbols')
+                    ) AS symbol, s.mode
+                    FROM strategies s
+                    JOIN strategy_versions sv ON sv.strategy_id = s.id AND sv.is_active = true
+                    WHERE s.status = 'active'
                     """)
-                symbols = [row["symbol"] for row in rows]
+                if not symbols:
+                    symbols = sorted({r["symbol"] for r in rows if r["symbol"]})
+                if mode is None:
+                    has_live = any(r["mode"] == "live" for r in rows)
+                    mode = "live" if has_live else "paper"
 
-            logger.info(f"Using {len(symbols)} symbols from active strategy configs")
+            if not symbols:
+                logger.info("No active strategies found — no symbols to process")
+                await db_pool.close()
+                return
+
+            logger.info(f"Using {len(symbols)} symbols from active strategy configs, mode: {mode}")
 
         # Build exchange client for live mode
         exchange_client: LiveExchangeClient | None = None
