@@ -321,6 +321,7 @@ class StrategyRunner:
         candle_time: datetime,
         tick_indicators: dict[str, float],
         current_price: Decimal,
+        last_raw_message: str | None = None,
     ) -> list[TradeSignal]:
         """Run all active strategies for a symbol tick.
 
@@ -329,6 +330,7 @@ class StrategyRunner:
             candle_time: Time of the candle
             tick_indicators: Dictionary of indicator values
             current_price: Current market price
+            last_raw_message: Raw JSON from last Binance WS message (for audit)
 
         Returns:
             List of TradeSignal emitted by strategies
@@ -393,6 +395,10 @@ class StrategyRunner:
                 self._signal_history.append(result.signal)
                 if len(self._signal_history) > self._max_signal_history:
                     self._signal_history = self._signal_history[-self._max_signal_history :]
+
+                # Log raw Binance WS message for audit
+                if last_raw_message is not None:
+                    logger.info(f"Binance raw: {last_raw_message}")
 
                 # Update strategy context
                 ctx = self._strategies.get(UUID(result.signal.strategy_id))
