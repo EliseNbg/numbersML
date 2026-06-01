@@ -648,10 +648,10 @@ class AuditLogger:
                     event.target_id,
                     event.action,
                     event.description,
-                    json.dumps(event.old_value) if event.old_value else None,
-                    json.dumps(event.new_value) if event.new_value else None,
+                    json.dumps(event.old_value, default=str) if event.old_value else None,
+                    json.dumps(event.new_value, default=str) if event.new_value else None,
                     event.session_id,
-                    json.dumps(event.metadata),
+                    json.dumps(event.metadata, default=str),
                     event.checksum,
                 )
         except Exception as e:
@@ -681,7 +681,7 @@ class AuditLogger:
                     f"{event.target_type}\t{event.target_id or ''}\t"
                     f"{event.action}\t{event.description}\t"
                     f"{old_val}\t{new_val}\t{session_val}\t"
-                    f"{json.dumps(event.metadata)}\t{checksum_val}\n"
+                    f"{json.dumps(event.metadata, default=str)}\t{checksum_val}\n"
                 )
 
             buffer.seek(0)
