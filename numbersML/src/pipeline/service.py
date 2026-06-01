@@ -147,17 +147,11 @@ class TradePipeline:
         # Step 5: Execute strategies
         if ticket.has(PipelineStep.STRATEGY):
             try:
-                raw_msg = (
-                    self._ws_manager.last_raw_message
-                    if self._ws_manager
-                    else None
-                )
                 signals = await self._strategy_runner.execute_tick(
                     symbol=symbol,
                     candle_time=candle.time,
                     tick_indicators=indicator_results,
                     current_price=Decimal(str(candle.close)),
-                    last_raw_message=raw_msg,
                 )
                 if signals:
                     self._stats["strategy_signals"] += len(signals)
