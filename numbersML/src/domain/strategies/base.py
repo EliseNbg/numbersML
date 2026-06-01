@@ -443,9 +443,17 @@ class Strategy(ABC):
 
         if signal:
             self._signals.append(signal)
-            logger.info(
-                f"Signal generated: {signal.signal_type.value} {signal.symbol} @ {signal.price}"
-            )
+            qty_usdc = signal.metadata.get("quantity_usdc")
+            if qty_usdc is not None:
+                qty = Decimal(str(qty_usdc)) / signal.price
+                logger.info(
+                    f"Signal generated: {signal.signal_type.value} {signal.symbol} @ {signal.price}, "
+                    f"qty={qty:.8f}, sum={float(qty_usdc):.2f} USDC"
+                )
+            else:
+                logger.info(
+                    f"Signal generated: {signal.signal_type.value} {signal.symbol} @ {signal.price}"
+                )
         else:
             logger.debug(
                 f"[{self._strategy_id}] No signal from on_tick for {tick.symbol} @ {tick.price}"
