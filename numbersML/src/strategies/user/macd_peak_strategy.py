@@ -323,11 +323,13 @@ class MACDPeakStrategy(Strategy):
         # avg_week = self.get_avg_price(tick.symbol, "week")
         # expected_profit_price = avg_week
 
+        qty = Decimal(str(self.grid_quantity_absolute)) / tick.price
         logger.info(
             f"[{self._strategy_id}] BUY signal: "
             f"MACD={macd_value:.4f}, Signal={signal_value:.4f}, "
             f"histogram={macd_value - signal_value:.4f}, "
             f"price={tick.price:.8f}, "
+            f"qty={qty:.8f}, "
             f"expected_profit={expected_profit_price:.8f}"
         )
 
