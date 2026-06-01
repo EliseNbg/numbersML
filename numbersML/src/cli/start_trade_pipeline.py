@@ -5,11 +5,13 @@ Start Real-Time Trade Pipeline CLI.
 Usage:
     python -m src.cli.start_trade_pipeline
     python -m src.cli.start_trade_pipeline --symbols BTC/USDT ETH/USDT
+    python -m src.cli.start_trade_pipeline --mode live
 """
 
 import argparse
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -20,7 +22,9 @@ if str(project_root) not in sys.path:
 
 import asyncpg
 
+from src.domain.services.market_service import LiveExchangeClient
 from src.infrastructure.database import _init_utc
+from src.infrastructure.market.binance_exchange_client import BINANCE_PROD, BinanceExchangeClient
 from src.pipeline.service import TradePipeline
 
 # Configure logging — root at INFO; Binance loggers get DEBUG with their own handler
@@ -64,6 +68,12 @@ Examples:
 
   # Start with custom database
   python -m src.cli.start_trade_pipeline --db-url postgresql://user:pass@host/db
+
+  # Start in live mode (requires BINANCE_LIVE_API_KEY/SECRET env vars)
+  python -m src.cli.start_trade_pipeline --mode live --execution-enabled
+
+  # Paper mode (default, no API keys needed)
+  python -m src.cli.start_trade_pipeline --mode paper
         """,
     )
 
@@ -78,16 +88,38 @@ Examples:
         "--db-url", type=str, default=DATABASE_URL, help=f"Database URL (default: {DATABASE_URL})"
     )
 
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default="paper",
+        choices=["paper", "live"],
+        help="Trading mode: paper (default) or live",
+    )
+
+    parser.add_argument(
+        "--execution-enabled",
+        action="store_true",
+        default=False,
+        help="Enable live order execution (only applies in live mode)",
+    )
+
     return parser.parse_args()
 
 
-async def run_pipeline(symbols: list[str], db_url: str) -> None:
+async def run_pipeline(
+    symbols: list[str],
+    db_url: str,
+    mode: str = "paper",
+    execution_enabled: bool = False,
+) -> None:
     """
     Run trade pipeline.
 
     Args:
         symbols: List of symbols to process
         db_url: Database URL
+        mode: Trading mode ('paper' or 'live')
+        execution_enabled: Enable live order execution
     """
     # Create database pool
     logger.info(f"Connecting to database: {db_url.split('@')[-1]}")
@@ -121,13 +153,33 @@ async def run_pipeline(symbols: list[str], db_url: str) -> None:
 
             logger.info(f"Using {len(symbols)} symbols from active strategy configs")
 
+        # Build exchange client for live mode
+        exchange_client: LiveExchangeClient | None = None
+        if mode == "live":
+            api_key = os.getenv("BINANCE_LIVE_API_KEY", "")
+            api_secret = os.getenv("BINANCE_LIVE_API_SECRET", "")
+            if not api_key or not api_secret:
+                logger.error(
+                    "Live mode requires BINANCE_LIVE_API_KEY and BINANCE_LIVE_API_SECRET environment variables"
+                )
+                return
+            exchange_client = BinanceExchangeClient(
+                api_key=api_key,
+                api_secret=api_secret,
+                environment=BINANCE_PROD,
+            )
+            logger.info("Live exchange client initialized")
+
         # Create and start pipeline
         pipeline = TradePipeline(
             db_pool=db_pool,
             symbols=symbols,
+            mode=mode,
+            exchange_client=exchange_client,
+            execution_enabled=execution_enabled,
         )
 
-        logger.info(f"Starting pipeline with symbols: {symbols}")
+        logger.info(f"Starting pipeline with symbols: {symbols}, mode: {mode}")
         await pipeline.start()
 
     except KeyboardInterrupt:
@@ -151,7 +203,12 @@ def main() -> int:
     logger.info("=" * 60)
 
     try:
-        asyncio.run(run_pipeline(args.symbols or [], args.db_url))
+        asyncio.run(run_pipeline(
+            symbols=args.symbols or [],
+            db_url=args.db_url,
+            mode=args.mode,
+            execution_enabled=args.execution_enabled,
+        ))
         return 0
     except Exception as e:
         logger.error(f"Failed to start pipeline: {e}", exc_info=True)

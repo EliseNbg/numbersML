@@ -397,3 +397,172 @@ class TestUpdateActiveVersion:
             assert update_resp.status_code == 404
 
         set_db_pool(None)  # Clean up
+
+
+class TestUpdateStrategyMode:
+    """Test toggling strategy mode between paper and live."""
+
+    @pytest.mark.asyncio
+    async def test_toggle_from_paper_to_live(
+        self, mock_pool: MagicMock, mock_connection: AsyncMock, auth_headers
+    ):
+        """Test switching strategy mode from paper to live."""
+        from src.infrastructure.api.app import app
+        from src.infrastructure.database import set_db_pool
+
+        strategy_id = uuid4()
+        now = datetime.now(UTC)
+
+        # Mock strategy row
+        strategy_row = {
+            "id": strategy_id,
+            "name": "Test Strategy",
+            "description": "Test strategy for mode toggle",
+            "mode": "paper",
+            "status": "draft",
+            "current_version": 1,
+            "created_by": "system",
+            "created_at": now,
+            "updated_at": now,
+        }
+
+        # Updated strategy row (after mode change)
+        updated_strategy_row = {
+            "id": strategy_id,
+            "name": "Test Strategy",
+            "description": "Test strategy for mode toggle",
+            "mode": "live",
+            "status": "draft",
+            "current_version": 2,
+            "created_by": "system",
+            "created_at": now,
+            "updated_at": now,
+        }
+
+        # Version row
+        version_row = {
+            "strategy_id": strategy_id,
+            "version": 1,
+            "schema_version": 1,
+            "config": {
+                "meta": {"name": "Test Strategy", "schema_version": 1},
+                "universe": {"symbols": ["BTC/USDC"], "timeframe": "1M"},
+                "signal": {"type": "rsi", "params": {"period": 14, "overbought": 70, "oversold": 30}},
+                "risk": {"max_position_size_pct": 10, "max_daily_loss_pct": 5, "stop_loss_pct": 2, "take_profit_pct": 5},
+                "execution": {"order_type": "market", "slippage_bps": 10, "fee_bps": 5},
+                "mode": "paper",
+                "status": "draft",
+            },
+            "is_active": True,
+            "created_by": "system",
+            "created_at": now,
+        }
+
+        mock_connection.fetchrow.side_effect = [
+            strategy_row,  # get_by_id (check exists)
+            updated_strategy_row,  # save (INSERT ... RETURNING)
+            strategy_row,  # get_by_id (inside create_version FOR UPDATE)
+            {"max_ver": 1},  # MAX(version)
+            {"id": uuid4(), "strategy_id": strategy_id, "version": 2, "schema_version": 1,
+             "config": {}, "is_active": True, "created_by": "api", "created_at": now},  # INSERT RETURNING
+            {"id": uuid4()},  # set_active_version: SELECT target version
+        ]
+        mock_connection.fetch.side_effect = [
+            [version_row],  # list_versions
+        ]
+
+        set_db_pool(mock_pool)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                f"/api/strategies/{strategy_id}/mode",
+                json={"mode": "live"},
+                headers=auth_headers,
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["mode"] == "live"
+
+        set_db_pool(None)
+
+    @pytest.mark.asyncio
+    async def test_toggle_same_mode_returns_400(
+        self, mock_pool: MagicMock, mock_connection: AsyncMock, auth_headers
+    ):
+        """Test that toggling to the same mode returns 400."""
+        from src.infrastructure.api.app import app
+        from src.infrastructure.database import set_db_pool
+
+        strategy_id = uuid4()
+        now = datetime.now(UTC)
+
+        strategy_row = {
+            "id": strategy_id,
+            "name": "Test Strategy",
+            "description": "Test strategy",
+            "mode": "paper",
+            "status": "draft",
+            "current_version": 1,
+            "created_by": "system",
+            "created_at": now,
+            "updated_at": now,
+        }
+
+        mock_connection.fetchrow.return_value = strategy_row
+
+        set_db_pool(mock_pool)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                f"/api/strategies/{strategy_id}/mode",
+                json={"mode": "paper"},
+                headers=auth_headers,
+            )
+            assert resp.status_code == 400
+            assert "already" in resp.json()["detail"]
+
+        set_db_pool(None)
+
+    @pytest.mark.asyncio
+    async def test_toggle_mode_not_found(
+        self, mock_pool: MagicMock, mock_connection: AsyncMock, auth_headers
+    ):
+        """Test toggling mode on non-existent strategy returns 404."""
+        from src.infrastructure.api.app import app
+        from src.infrastructure.database import set_db_pool
+
+        fake_id = uuid4()
+        mock_connection.fetchrow.return_value = None
+
+        set_db_pool(mock_pool)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                f"/api/strategies/{fake_id}/mode",
+                json={"mode": "live"},
+                headers=auth_headers,
+            )
+            assert resp.status_code == 404
+
+        set_db_pool(None)
+
+    @pytest.mark.asyncio
+    async def test_toggle_mode_invalid_payload(
+        self, mock_pool: MagicMock, mock_connection: AsyncMock, auth_headers
+    ):
+        """Test that invalid mode value returns 422."""
+        from src.infrastructure.api.app import app
+        from src.infrastructure.database import set_db_pool
+
+        strategy_id = uuid4()
+        set_db_pool(mock_pool)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                f"/api/strategies/{strategy_id}/mode",
+                json={"mode": "invalid"},
+                headers=auth_headers,
+            )
+            assert resp.status_code == 422
+
+        set_db_pool(None)

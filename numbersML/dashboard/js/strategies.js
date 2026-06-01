@@ -17,6 +17,7 @@ let strategies = [];
 let currentStrategyId = null;
 let currentStrategy = null;
 let userStrategyClasses = [];
+let _pendingToggleMode = null; // 'live' | 'paper' | null
 
 // Bootstrap Modals
 let createModal, detailModal, modifyModal, liveConfirmModal;
@@ -71,10 +72,18 @@ function bindEventListeners() {
     document.getElementById('btn-save-strategy').addEventListener('click', createStrategy);
 
     // Detail actions
+    console.log('[bind] binding detail action buttons');
     document.getElementById('btn-activate').addEventListener('click', () => activateStrategy(false));
     document.getElementById('btn-deactivate').addEventListener('click', deactivateStrategy);
     document.getElementById('btn-pause').addEventListener('click', pauseStrategy);
     document.getElementById('btn-resume').addEventListener('click', resumeStrategy);
+    const toggleBtn = document.getElementById('btn-toggle-mode');
+    console.log('[bind] btn-toggle-mode element:', toggleBtn);
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', toggleMode);
+    } else {
+        console.error('[bind] btn-toggle-mode NOT FOUND in DOM');
+    }
     document.getElementById('btn-delete').addEventListener('click', deleteStrategy);
     document.getElementById('btn-modify').addEventListener('click', () => {
         openModifyModal();
@@ -105,9 +114,18 @@ function bindEventListeners() {
         document.getElementById('btn-confirm-live').disabled = e.target.value !== 'LIVE';
     });
 
-    document.getElementById('btn-confirm-live').addEventListener('click', () => {
+    document.getElementById('btn-confirm-live').addEventListener('click', async () => {
+        console.log('[confirm-live] clicked, _pendingToggleMode:', _pendingToggleMode);
         liveConfirmModal.hide();
-        activateStrategy(true);
+        if (_pendingToggleMode) {
+            const mode = _pendingToggleMode;
+            _pendingToggleMode = null;
+            console.log('[confirm-live] executing mode toggle to:', mode);
+            await executeToggleMode(mode);
+        } else {
+            console.log('[confirm-live] executing activate strategy');
+            await activateStrategy(true);
+        }
     });
 }
 
@@ -384,6 +402,10 @@ async function viewStrategy(strategyId) {
 
     document.getElementById('detail-title').textContent = currentStrategy.name;
 
+    // Store strategy ID on the toggle button for direct access
+    const toggleBtn = document.getElementById('btn-toggle-mode');
+    if (toggleBtn) toggleBtn.dataset.strategyId = strategyId;
+
     // Load runtime status
     await loadRuntimeStatus(strategyId);
 
@@ -549,12 +571,14 @@ function updateActionButtons(status) {
     const btnDeactivate = document.getElementById('btn-deactivate');
     const btnPause = document.getElementById('btn-pause');
     const btnResume = document.getElementById('btn-resume');
+    const btnToggleMode = document.getElementById('btn-toggle-mode');
 
     // Reset all
     btnActivate.disabled = true;
     btnDeactivate.disabled = true;
     btnPause.disabled = true;
     btnResume.disabled = true;
+    btnToggleMode.disabled = false;
 
     switch (status) {
         case 'draft':
@@ -569,6 +593,22 @@ function updateActionButtons(status) {
             btnDeactivate.disabled = false;
             btnResume.disabled = false;
             break;
+    }
+
+    // Update toggle button text based on current mode
+    updateToggleButtonText();
+}
+
+function updateToggleButtonText() {
+    const btnText = document.getElementById('btn-toggle-mode-text');
+    if (currentStrategy) {
+        if (currentStrategy.mode === 'paper') {
+            btnText.textContent = 'Switch to Live';
+            document.getElementById('btn-toggle-mode').className = 'btn btn-outline-danger';
+        } else {
+            btnText.textContent = 'Switch to Paper';
+            document.getElementById('btn-toggle-mode').className = 'btn btn-outline-success';
+        }
     }
 }
 
@@ -791,6 +831,9 @@ async function activateStrategy(confirmed = false) {
 
     // Check for live mode confirmation
     if (currentStrategy.mode === 'live' && !confirmed) {
+        document.getElementById('live-confirm-input').value = '';
+        document.getElementById('btn-confirm-live').disabled = true;
+        document.getElementById('btn-confirm-live').textContent = 'Activate Live Strategy';
         liveConfirmModal.show();
         return;
     }
@@ -825,6 +868,9 @@ async function quickActivate(strategyId) {
     if (strategy.mode === 'live') {
         currentStrategyId = strategyId;
         currentStrategy = strategy;
+        document.getElementById('live-confirm-input').value = '';
+        document.getElementById('btn-confirm-live').disabled = true;
+        document.getElementById('btn-confirm-live').textContent = 'Activate Live Strategy';
         liveConfirmModal.show();
         return;
     }
@@ -939,6 +985,94 @@ async function resumeStrategy() {
         viewStrategy(currentStrategyId);
     } catch (error) {
         showAlert('danger', `Resume failed: ${error.message}`);
+    }
+}
+
+/**
+ * Toggle strategy mode between paper and live
+ */
+async function toggleMode() {
+    console.log('[toggleMode] clicked, currentStrategyId:', currentStrategyId, 'currentStrategy:', currentStrategy ? currentStrategy.mode : null);
+
+    if (!currentStrategyId) {
+        console.warn('[toggleMode] No currentStrategyId set, trying from button data');
+        const btn = document.getElementById('btn-toggle-mode');
+        const sid = btn ? btn.dataset.strategyId : null;
+        console.log('[toggleMode] from button data-strategy-id:', sid);
+        if (sid) currentStrategyId = sid;
+    }
+
+    if (!currentStrategyId) {
+        showAlert('danger', 'Cannot toggle mode: no strategy selected');
+        return;
+    }
+
+    // Fetch fresh strategy data from API to ensure we have the current mode
+    let strategy = null;
+    try {
+        console.log('[toggleMode] fetching strategy', currentStrategyId, 'from API');
+        const resp = await fetch(`${API_BASE_URL}/strategies/${currentStrategyId}`);
+        if (resp.ok) {
+            strategy = await resp.json();
+            console.log('[toggleMode] fetched strategy mode:', strategy.mode);
+        } else {
+            console.warn('[toggleMode] API fetch failed:', resp.status);
+        }
+    } catch (e) {
+        console.error('[toggleMode] Failed to fetch strategy:', e);
+    }
+
+    if (!strategy) {
+        showAlert('danger', 'Could not load strategy data for mode toggle');
+        return;
+    }
+
+    const newMode = strategy.mode === 'paper' ? 'live' : 'paper';
+    console.log('[toggleMode] current mode:', strategy.mode, 'new mode:', newMode);
+
+    // Live confirmation for switching to live
+    if (newMode === 'live') {
+        console.log('[toggleMode] showing live confirmation modal');
+        _pendingToggleMode = 'live';
+        document.getElementById('live-confirm-input').value = '';
+        document.getElementById('btn-confirm-live').disabled = true;
+        document.getElementById('btn-confirm-live').textContent = 'Switch to Live Mode';
+        liveConfirmModal.show();
+        return;
+    }
+
+    console.log('[toggleMode] executing toggle (no confirmation needed)');
+    await executeToggleMode(newMode);
+}
+
+// Expose globally so inline onclick="toggleMode()" works
+window.toggleMode = toggleMode;
+
+/**
+ * Execute mode toggle API call
+ */
+async function executeToggleMode(newMode) {
+    console.log('[executeToggleMode] calling API for', currentStrategyId, 'mode:', newMode);
+    try {
+        const response = await fetch(`${API_BASE_URL}/strategies/${currentStrategyId}/mode`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: newMode })
+        });
+
+        console.log('[executeToggleMode] API response:', response.status);
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || `HTTP ${response.status}`);
+        }
+
+        showAlert('success', `Strategy mode changed to "${newMode}"`);
+        detailModal.hide();
+        await new Promise(r => setTimeout(r, 300));
+        loadStrategies();
+    } catch (error) {
+        console.error('[executeToggleMode] error:', error);
+        showAlert('danger', `Mode toggle failed: ${error.message}`);
     }
 }
 

@@ -23,8 +23,8 @@ from pydantic import BaseModel, Field
 from src.application.services.llm_strategy_service import LLMStrategyService
 from src.domain.repositories.runtime_event_repository import StrategyRuntimeEventRepository
 from src.domain.repositories.strategy_repository import StrategyRepository
-from src.domain.strategies.strategy_config import StrategyConfigVersion, StrategyDefinition
 from src.domain.strategies.config_schema import validate_strategy_config
+from src.domain.strategies.strategy_config import StrategyConfigVersion, StrategyDefinition
 from src.infrastructure.database import get_db_pool_async
 from src.infrastructure.repositories.runtime_event_repository_pg import (
     StrategyRuntimeEventRepositoryPG,
@@ -112,6 +112,10 @@ class StrategyActivateRequest(BaseModel):
     metadata: dict[str, Any] | None = None
 
 
+class StrategyModeUpdateRequest(BaseModel):
+    mode: str = Field(..., pattern="^(paper|live)$")
+
+
 # Response models
 class StrategyResponse(BaseModel):
     id: UUID
@@ -127,7 +131,7 @@ class StrategyResponse(BaseModel):
     updated_at: datetime
 
     @classmethod
-    def from_domain(cls, s: StrategyDefinition) -> "StrategyResponse":
+    def from_domain(cls, s: StrategyDefinition) -> StrategyResponse:
         return cls(
             id=s.id,
             name=s.name,
@@ -153,7 +157,7 @@ class StrategyVersionResponse(BaseModel):
     created_at: datetime
 
     @classmethod
-    def from_domain(cls, v: StrategyConfigVersion) -> "StrategyVersionResponse":
+    def from_domain(cls, v: StrategyConfigVersion) -> StrategyVersionResponse:
         return cls(
             strategy_id=v.strategy_id,
             version=v.version,
@@ -741,6 +745,47 @@ async def resume_strategy(
         raise HTTPException(status_code=500, detail=f"Resume failed: {e}")
 
 
+@router.post("/{strategy_id}/mode", response_model=StrategyResponse)
+async def update_strategy_mode(
+    strategy_id: UUID,
+    req: StrategyModeUpdateRequest,
+    repo: StrategyRepository = Depends(get_strategy_repo),
+) -> StrategyResponse:
+    """Toggle strategy mode between paper and live.
+
+    Updates both the strategy's mode field and the active version config's mode field.
+    """
+    s = await repo.get_by_id(strategy_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"Strategy {strategy_id} not found")
+
+    old_mode = s.mode
+    new_mode = req.mode
+    if old_mode == new_mode:
+        raise HTTPException(status_code=400, detail=f"Strategy mode is already '{new_mode}'")
+
+    # Update strategy-level mode
+    s.mode = new_mode
+    saved = await repo.save(s)
+
+    # Also update the active version config's mode field
+    versions = await repo.list_versions(strategy_id)
+    active_version = next((v for v in versions if v.is_active), None)
+    if active_version:
+        updated_config = dict(active_version.config)
+        updated_config["mode"] = new_mode
+        new_version = await repo.create_version(
+            strategy_id=strategy_id,
+            config=updated_config,
+            schema_version=active_version.schema_version,
+            created_by="api",
+        )
+        await repo.set_active_version(strategy_id, new_version.version)
+
+    logger.info(f"Strategy {strategy_id} mode changed: {old_mode} → {new_mode}")
+    return StrategyResponse.from_domain(saved)
+
+
 # ============================================================================
 # User Strategy Classes
 # ============================================================================
@@ -982,11 +1027,11 @@ async def debug_strategy_status(
             from src.infrastructure.database import get_db_pool_async
 
             pool = await get_db_pool_async()
-            from src.infrastructure.repositories.strategy_repository_pg import StrategyRepositoryPG
+            from src.application.services.strategy_lifecycle import StrategyLifecycleService
             from src.infrastructure.repositories.runtime_event_repository_pg import (
                 StrategyRuntimeEventRepositoryPG,
             )
-            from src.application.services.strategy_lifecycle import StrategyLifecycleService
+            from src.infrastructure.repositories.strategy_repository_pg import StrategyRepositoryPG
 
             repo = StrategyRepositoryPG(pool)
             evt_repo = StrategyRuntimeEventRepositoryPG(pool)
