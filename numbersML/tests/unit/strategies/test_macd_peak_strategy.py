@@ -361,6 +361,43 @@ class TestMACDPeakStrategy:
         assert signal.metadata["expected_profit_price"] == expected
         assert isinstance(signal.metadata["expected_profit_price"], Decimal)
 
+    def test_signal_buy_entry_sum_equals_tp_sum(self, strategy):
+        """Entry sum (qty × price) equals TP sum ÷ (1 + profit_pct/100).
+
+        The same quantity bought at entry price is sold at take-profit
+        price — the total sum must scale by exactly grid_profit_pct.
+        """
+        strategy.grid_profit_pct = 0.5
+        strategy.grid_quantity_absolute = Decimal("25")
+        tick = EnrichedTick(
+            symbol="ATOM/USDC",
+            price=Decimal("1.962"),
+            volume=Decimal("10"),
+            time=datetime.now(UTC),
+            indicators={},
+        )
+        signal = strategy._signal_buy(tick, -0.0003, -0.0003)
+
+        entry_sum = Decimal(str(signal.metadata["quantity_usdc"]))
+        assert entry_sum == Decimal("25")
+
+        qty = entry_sum / signal.price
+        tp_price = signal.metadata["expected_profit_price"]
+
+        # Verify: entry_sum = qty × price
+        assert (qty * signal.price).quantize(Decimal("0.00000001")) == entry_sum.quantize(
+            Decimal("0.00000001")
+        )
+
+        # Verify: tp_sum = entry_sum × (1 + profit_pct/100)
+        tp_sum = qty * tp_price
+        expected_tp_sum = entry_sum * (
+            Decimal("1") + Decimal(str(strategy.grid_profit_pct)) / Decimal("100")
+        )
+        assert tp_sum.quantize(Decimal("0.00000001")) == expected_tp_sum.quantize(
+            Decimal("0.00000001")
+        ), f"TP sum {tp_sum} ≠ entry_sum × (1 + profit_pct/100) = {expected_tp_sum}"
+
     def test_signal_buy_quantity_usdc(self, strategy, sample_tick):
         """Test that BUY signal includes quantity in USDC."""
         strategy.grid_quantity_absolute = 250.0
