@@ -6,13 +6,17 @@ import hashlib
 import hmac
 import time
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
 from typing import Any
 from urllib.parse import urlencode
+
+import logging
 
 import aiohttp
 
 from src.domain.services.market_service import LiveExchangeClient
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -42,12 +46,96 @@ class BinanceExchangeClient(LiveExchangeClient):
         self._environment = environment
         self._timeout_seconds = timeout_seconds
         self._session: aiohttp.ClientSession | None = None
+        self._filter_cache: dict[str, dict[str, Decimal]] = {}
 
     async def close(self) -> None:
         """Close underlying HTTP session."""
         if self._session is not None and not self._session.closed:
             await self._session.close()
             self._session = None
+
+    def _default_filters(self) -> dict[str, Decimal]:
+        """Return safe default filters when exchangeInfo is unavailable."""
+        return {
+            "step_size": Decimal("0.00001"),
+            "min_qty": Decimal("0"),
+            "max_qty": Decimal("9999999999"),
+            "market_step_size": Decimal("0.00001"),
+            "market_min_qty": Decimal("0"),
+            "market_max_qty": Decimal("9999999999"),
+            "tick_size": Decimal("0.01"),
+            "min_price": Decimal("0"),
+            "max_price": Decimal("9999999999"),
+        }
+
+    async def _load_filters(self, symbol: str) -> dict[str, Decimal]:
+        """Fetch and cache LOT_SIZE + PRICE_FILTER values for a symbol."""
+        normalized = self._normalize_symbol(symbol)
+        if normalized in self._filter_cache:
+            cached = self._filter_cache[normalized]
+            logger.info(f"[FILTERS] cache hit for {normalized}: step_size={cached.get('step_size')}, tick_size={cached.get('tick_size')}")
+            return cached
+
+        logger.info(f"[FILTERS] fetching exchangeInfo for {normalized}")
+        try:
+            exchange_info = await self.get_exchange_info()
+            logger.info(f"[FILTERS] exchangeInfo returned {len(exchange_info.get('symbols', []))} symbols")
+        except Exception as exc:
+            logger.warning(f"[FILTERS] failed to fetch exchangeInfo: {exc} — using defaults")
+            defaults = self._default_filters()
+            self._filter_cache[normalized] = defaults
+            return defaults
+
+        for sym_data in exchange_info.get("symbols", []):
+            if sym_data.get("symbol") != normalized:
+                continue
+            filters: dict[str, Decimal] = {}
+            for f in sym_data.get("filters", []):
+                ft = f.get("filterType")
+                if ft == "LOT_SIZE":
+                    filters["step_size"] = Decimal(f.get("stepSize", "0.00001"))
+                    filters["min_qty"] = Decimal(f.get("minQty", "0"))
+                    filters["max_qty"] = Decimal(f.get("maxQty", "9999999999"))
+                    logger.info(f"[FILTERS] {normalized} LOT_SIZE step_size={filters['step_size']}")
+                elif ft == "MARKET_LOT_SIZE":
+                    filters["market_step_size"] = Decimal(f.get("stepSize", "0.00001"))
+                    filters["market_min_qty"] = Decimal(f.get("minQty", "0"))
+                    filters["market_max_qty"] = Decimal(f.get("maxQty", "9999999999"))
+                    logger.info(f"[FILTERS] {normalized} MARKET_LOT_SIZE step_size={filters['market_step_size']}")
+                elif ft == "PRICE_FILTER":
+                    filters["tick_size"] = Decimal(f.get("tickSize", "0.01"))
+                    filters["min_price"] = Decimal(f.get("minPrice", "0"))
+                    filters["max_price"] = Decimal(f.get("maxPrice", "9999999999"))
+                    logger.info(f"[FILTERS] {normalized} PRICE_FILTER tick_size={filters['tick_size']}")
+            self._filter_cache[normalized] = filters
+            logger.info(f"[FILTERS] cached filters for {normalized}: keys={list(filters.keys())}")
+            return filters
+
+        logger.warning(f"[FILTERS] symbol {normalized} not found in exchangeInfo — using defaults")
+        defaults = self._default_filters()
+        self._filter_cache[normalized] = defaults
+        return defaults
+
+    def _normalize_qty(self, symbol: str, quantity: Decimal, is_market: bool) -> Decimal:
+        """Round quantity down to step size."""
+        filters = self._filter_cache.get(self._normalize_symbol(symbol))
+        if filters is None:
+            logger.warning(f"[NORM] no cached filters for {symbol}, rounding to 5 decimal places")
+            return quantity.quantize(Decimal("0.00001"), rounding=ROUND_DOWN)
+        step_size = filters.get("market_step_size" if is_market else "step_size")
+        if step_size is None or step_size == 0:
+            return quantity
+        return quantity.quantize(step_size, rounding=ROUND_DOWN)
+
+    def _normalize_price(self, symbol: str, price: Decimal) -> Decimal:
+        """Round price to tick size."""
+        filters = self._filter_cache.get(self._normalize_symbol(symbol))
+        if filters is None:
+            return price
+        tick_size = filters.get("tick_size")
+        if tick_size is None or tick_size == 0:
+            return price
+        return price.quantize(tick_size, rounding=ROUND_HALF_UP)
 
     async def create_order(
         self,
@@ -61,26 +149,36 @@ class BinanceExchangeClient(LiveExchangeClient):
     ) -> dict:
         """Place signed order against selected Binance environment."""
         self._require_credentials()
+        await self._load_filters(symbol)
+        is_market = order_type.upper() == "MARKET"
+        normalized_qty = self._normalize_qty(symbol, quantity, is_market)
+        normalized_price = self._normalize_price(symbol, price) if price is not None else None
+
+        logger.info(
+            f"[ORDER] {symbol} {side} {order_type} qty: {quantity} -> {normalized_qty}"
+            f"{' price: ' + str(price) + ' -> ' + str(normalized_price) if price is not None else ''}"
+        )
+
         payload: dict[str, Any] = {
             "symbol": self._normalize_symbol(symbol),
             "side": side.upper(),
             "type": order_type.upper(),
-            "quantity": str(quantity),
+            "quantity": str(normalized_qty),
             "newClientOrderId": client_order_id,
             "timestamp": self._timestamp_ms(),
         }
         order_type_upper = payload["type"]
         if order_type_upper == "LIMIT":
-            if price is None:
+            if normalized_price is None:
                 raise ValueError("price is required for LIMIT orders.")
-            payload["price"] = str(price)
+            payload["price"] = str(normalized_price)
             payload["timeInForce"] = "GTC"
         elif order_type_upper in ("STOP_LOSS_LIMIT", "TAKE_PROFIT_LIMIT"):
-            if price is None:
+            if normalized_price is None:
                 raise ValueError(f"price is required for {order_type_upper} orders.")
             if stop_price is None:
                 raise ValueError(f"stop_price is required for {order_type_upper} orders.")
-            payload["price"] = str(price)
+            payload["price"] = str(normalized_price)
             payload["stopPrice"] = str(stop_price)
             payload["timeInForce"] = "GTC"
         elif order_type_upper in ("STOP_LOSS", "TAKE_PROFIT_MARKET"):
@@ -88,6 +186,7 @@ class BinanceExchangeClient(LiveExchangeClient):
                 raise ValueError(f"stop_price is required for {order_type_upper} orders.")
             payload["stopPrice"] = str(stop_price)
         signed = self._sign_payload(payload)
+        logger.info(f"[ORDER] sending payload: symbol={payload['symbol']} qty={payload['quantity']} type={payload['type']}")
         return await self._request("POST", "/api/v3/order", params=signed, signed=True)
 
     async def cancel_order(self, symbol: str, exchange_order_id: str) -> bool:
@@ -181,26 +280,31 @@ class BinanceExchangeClient(LiveExchangeClient):
             Test order response dict.
         """
         self._require_credentials()
+        await self._load_filters(symbol)
+        is_market = order_type.upper() == "MARKET"
+        normalized_qty = self._normalize_qty(symbol, quantity, is_market)
+        normalized_price = self._normalize_price(symbol, price) if price is not None else None
+
         payload: dict[str, Any] = {
             "symbol": self._normalize_symbol(symbol),
             "side": side.upper(),
             "type": order_type.upper(),
-            "quantity": str(quantity),
+            "quantity": str(normalized_qty),
             "newClientOrderId": client_order_id,
             "timestamp": self._timestamp_ms(),
         }
         order_type_upper = payload["type"]
         if order_type_upper == "LIMIT":
-            if price is None:
+            if normalized_price is None:
                 raise ValueError("price is required for LIMIT orders.")
-            payload["price"] = str(price)
+            payload["price"] = str(normalized_price)
             payload["timeInForce"] = "GTC"
         elif order_type_upper in ("STOP_LOSS_LIMIT", "TAKE_PROFIT_LIMIT"):
-            if price is None:
+            if normalized_price is None:
                 raise ValueError(f"price is required for {order_type_upper} orders.")
             if stop_price is None:
                 raise ValueError(f"stop_price is required for {order_type_upper} orders.")
-            payload["price"] = str(price)
+            payload["price"] = str(normalized_price)
             payload["stopPrice"] = str(stop_price)
             payload["timeInForce"] = "GTC"
         elif order_type_upper in ("STOP_LOSS", "TAKE_PROFIT_MARKET"):
