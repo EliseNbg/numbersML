@@ -463,6 +463,15 @@ class StrategyRunner:
             await self._persist_signal(signal, reason="No market service configured")
             return
 
+        if signal.quantity is None or signal.quantity <= 0:
+            logger.warning(
+                f"Signal {signal.signal_id} has non-positive quantity {signal.quantity}, rejecting"
+            )
+            signal = TradeSignal(**{**signal.__dict__, "status": SignalStatus.REJECTED})
+            self._stats["signals_rejected"] += 1
+            await self._persist_signal(signal, reason=f"Non-positive quantity: {signal.quantity}")
+            return
+
         try:
             from src.domain.market.order import OrderRequest, OrderSide, OrderType
 

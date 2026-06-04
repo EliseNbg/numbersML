@@ -512,6 +512,40 @@ class TestStrategyRunner:
         assert runner._stats["signals_executed"] == 1
 
     @pytest.mark.asyncio
+    async def test_route_signal_rejects_zero_quantity(self) -> None:
+        """Signal with quantity 0 is rejected without calling market_service."""
+        mock_market = AsyncMock()
+        runner = self._make_runner(market_service=mock_market)
+        signal = TradeSignal(
+            strategy_id=uuid4(),
+            strategy_name="Test",
+            symbol="BTC/USDC",
+            side="SELL",
+            order_type="MARKET",
+            quantity=Decimal("0"),
+            price=Decimal("50000"),
+        )
+        await runner._route_signal(signal)
+        assert runner._stats["signals_rejected"] == 1
+        assert mock_market.place_order.call_count == 0
+
+    async def test_route_signal_rejects_negative_quantity(self) -> None:
+        """Signal with negative quantity is rejected."""
+        mock_market = AsyncMock()
+        runner = self._make_runner(market_service=mock_market)
+        signal = TradeSignal(
+            strategy_id=uuid4(),
+            strategy_name="Test",
+            symbol="BTC/USDC",
+            side="SELL",
+            order_type="MARKET",
+            quantity=Decimal("-1"),
+            price=Decimal("50000"),
+        )
+        await runner._route_signal(signal)
+        assert runner._stats["signals_rejected"] == 1
+        assert mock_market.place_order.call_count == 0
+
     async def test_route_signal_adds_market_price_for_market_orders(self) -> None:
         """market_price is injected into metadata for MARKET order signals."""
         mock_market = AsyncMock()
