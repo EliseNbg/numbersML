@@ -116,6 +116,10 @@ class BinanceExchangeClient(LiveExchangeClient):
                     filters["min_price"] = self._normalize_decimal(f.get("minPrice", "0"))
                     filters["max_price"] = self._normalize_decimal(f.get("maxPrice", "9999999999"))
                     logger.info(f"[FILTERS] {normalized} PRICE_FILTER tick_size={filters['tick_size']}")
+            # Fill in defaults for any missing filter keys
+            defaults = self._default_filters()
+            for key, val in defaults.items():
+                filters.setdefault(key, val)
             self._filter_cache[normalized] = filters
             logger.info(f"[FILTERS] cached filters for {normalized}: keys={list(filters.keys())}")
             return filters
@@ -131,15 +135,20 @@ class BinanceExchangeClient(LiveExchangeClient):
         if filters is None:
             logger.warning(f"[NORM] no cached filters for {symbol}, rounding to 5 decimal places")
             return quantity.quantize(Decimal("0.00001"), rounding=ROUND_DOWN)
-        step_size = filters.get("market_step_size" if is_market else "step_size")
+        # For MARKET orders try MARKET_LOT_SIZE first, fall back to LOT_SIZE
+        if is_market:
+            step_size = filters.get("market_step_size") or filters.get("step_size")
+        else:
+            step_size = filters.get("step_size")
         if step_size is None or step_size == 0:
             return quantity
         return quantity.quantize(step_size, rounding=ROUND_DOWN)
 
     def _normalize_price(self, symbol: str, price: Decimal) -> Decimal:
-        """Round price to tick size."""
+        """Round price to tick size (nearest representable price)."""
         filters = self._filter_cache.get(self._normalize_symbol(symbol))
         if filters is None:
+            logger.warning(f"[NORM] no cached filters for {symbol}, skipping price rounding")
             return price
         tick_size = filters.get("tick_size")
         if tick_size is None or tick_size == 0:
