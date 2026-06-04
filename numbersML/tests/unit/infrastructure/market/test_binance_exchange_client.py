@@ -413,3 +413,41 @@ class TestLoadFilters:
                           AsyncMock(side_effect=RuntimeError("timeout"))):
             filters = await client._load_filters("ATOM/USDC")
         assert filters["step_size"] == Decimal("0.00001")
+
+
+class TestValidateNotional:
+    """MIN_NOTIONAL validation via _validate_notional."""
+
+    @pytest.fixture
+    def client(self) -> BinanceExchangeClient:
+        c = BinanceExchangeClient(api_key="test", api_secret="test")
+        c._filter_cache["ATOMUSDC"] = {"notional_min": Decimal("5")}
+        c._filter_cache["BTCUSDC"] = {"notional_min": Decimal("10")}
+        return c
+
+    def test_passes_when_notional_above_min(self, client: BinanceExchangeClient) -> None:
+        client._validate_notional("ATOM/USDC", Decimal("10"), Decimal("1"))
+        # No exception = pass
+
+    def test_raises_when_notional_below_min(self, client: BinanceExchangeClient) -> None:
+        with pytest.raises(ValueError, match="Order notional 4.5 < minimum 5"):
+            client._validate_notional("ATOM/USDC", Decimal("3"), Decimal("1.5"))
+
+    def test_passes_when_no_price(self, client: BinanceExchangeClient) -> None:
+        # MARKET orders may not have a price set
+        client._validate_notional("ATOM/USDC", Decimal("0.001"), None)
+        # No exception = pass
+
+    def test_passes_when_no_cache(self, client: BinanceExchangeClient) -> None:
+        client2 = BinanceExchangeClient(api_key="test", api_secret="test")
+        client2._validate_notional("ATOM/USDC", Decimal("0.001"), Decimal("1000"))
+        # No exception = pass
+
+    def test_passes_when_min_notional_zero(self, client: BinanceExchangeClient) -> None:
+        client._filter_cache["ETHUSDC"] = {"notional_min": Decimal("0")}
+        client._validate_notional("ETH/USDC", Decimal("0.001"), Decimal("1"))
+        # No exception = pass
+
+    def test_raises_with_btc_min_notional(self, client: BinanceExchangeClient) -> None:
+        with pytest.raises(ValueError, match="Order notional .* < minimum 10"):
+            client._validate_notional("BTC/USDC", Decimal("0.5"), Decimal("10"))

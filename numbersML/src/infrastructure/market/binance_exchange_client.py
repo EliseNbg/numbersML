@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import time
 from dataclasses import dataclass
 from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
 from typing import Any
 from urllib.parse import urlencode
-
-import logging
 
 import aiohttp
 
@@ -66,6 +65,7 @@ class BinanceExchangeClient(LiveExchangeClient):
             "tick_size": Decimal("0.01"),
             "min_price": Decimal("0"),
             "max_price": Decimal("9999999999"),
+            "notional_min": Decimal("0"),
         }
 
     @staticmethod
@@ -116,6 +116,9 @@ class BinanceExchangeClient(LiveExchangeClient):
                     filters["min_price"] = self._normalize_decimal(f.get("minPrice", "0"))
                     filters["max_price"] = self._normalize_decimal(f.get("maxPrice", "9999999999"))
                     logger.info(f"[FILTERS] {normalized} PRICE_FILTER tick_size={filters['tick_size']}")
+                elif ft == "MIN_NOTIONAL":
+                    filters["notional_min"] = self._normalize_decimal(f.get("minNotional", "0"))
+                    logger.info(f"[FILTERS] {normalized} MIN_NOTIONAL minNotional={filters['notional_min']}")
             # Fill in defaults for any missing filter keys
             defaults = self._default_filters()
             for key, val in defaults.items():
@@ -155,6 +158,42 @@ class BinanceExchangeClient(LiveExchangeClient):
             return price
         return price.quantize(tick_size, rounding=ROUND_HALF_UP)
 
+    def _validate_notional(
+        self, symbol: str, quantity: Decimal, price: Decimal | None
+    ) -> None:
+        """Raise ValueError if notional value is below MIN_NOTIONAL.
+
+        Uses the last available price if no limit price is provided
+        (e.g. for MARKET orders).
+
+        Args:
+            symbol: Trading pair symbol.
+            quantity: Normalized order quantity.
+            price: Limit price, or None for MARKET orders.
+
+        Raises:
+            ValueError: If notional < min_notional.
+        """
+        filters = self._filter_cache.get(self._normalize_symbol(symbol))
+        if filters is None:
+            return
+        min_notional = filters.get("notional_min")
+        if min_notional is None or min_notional <= 0:
+            return
+        if price is not None:
+            notional = quantity * price
+        else:
+            logger.warning(
+                f"[VALIDATE] no price for {symbol} — skipping MIN_NOTIONAL check "
+                f"(qty={quantity})"
+            )
+            return
+        if notional < min_notional:
+            raise ValueError(
+                f"Order notional {notional} < minimum {min_notional} for {symbol}. "
+                f"qty={quantity} price={price}"
+            )
+
     async def create_order(
         self,
         symbol: str,
@@ -171,6 +210,8 @@ class BinanceExchangeClient(LiveExchangeClient):
         is_market = order_type.upper() == "MARKET"
         normalized_qty = self._normalize_qty(symbol, quantity, is_market)
         normalized_price = self._normalize_price(symbol, price) if price is not None else None
+
+        self._validate_notional(symbol, normalized_qty, normalized_price)
 
         logger.info(
             f"[ORDER] {symbol} {side} {order_type} qty: {quantity} -> {normalized_qty}"
@@ -302,6 +343,8 @@ class BinanceExchangeClient(LiveExchangeClient):
         is_market = order_type.upper() == "MARKET"
         normalized_qty = self._normalize_qty(symbol, quantity, is_market)
         normalized_price = self._normalize_price(symbol, price) if price is not None else None
+
+        self._validate_notional(symbol, normalized_qty, normalized_price)
 
         payload: dict[str, Any] = {
             "symbol": self._normalize_symbol(symbol),
