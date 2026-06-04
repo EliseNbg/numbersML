@@ -22,12 +22,16 @@ document.addEventListener('DOMContentLoaded', function() {
     loadCollectorStatus();
     loadQuickStats();
     loadSLAMetrics();
+    loadPositions();
+    loadRecentOrders();
     
     // Auto-refresh every 5 seconds
     setInterval(() => {
         loadCollectorStatus();
         loadQuickStats();
         loadSLAMetrics();
+        loadPositions();
+        loadRecentOrders();
     }, 5000);
     
     // Setup button handlers
@@ -397,4 +401,139 @@ function getComplianceColor(compliance) {
     if (compliance >= 99) return 'text-success';
     if (compliance >= 95) return 'text-warning';
     return 'text-danger';
+}
+
+/**
+ * Load open positions with unrealized P&L
+ */
+async function loadPositions() {
+    try {
+        const response = await fetch(`${API_BASE}/market/positions`);
+        if (!response.ok) {
+            document.getElementById('positions-body').innerHTML =
+                `<tr><td colspan="4" class="text-center text-muted">API unavailable</td></tr>`;
+            return;
+        }
+        const positions = await response.json();
+        renderPositions(positions);
+    } catch (error) {
+        console.error('Failed to load positions:', error);
+        document.getElementById('positions-body').innerHTML =
+            `<tr><td colspan="4" class="text-center text-muted">Failed to load</td></tr>`;
+    }
+}
+
+/**
+ * Render open positions
+ */
+function renderPositions(positions) {
+    const tbody = document.getElementById('positions-body');
+
+    if (!positions || positions.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted">No open positions</td></tr>`;
+        document.getElementById('total-pnl').textContent = '$0.00';
+        return;
+    }
+
+    let totalPnL = 0;
+    tbody.innerHTML = positions.map(p => {
+        const pnl = parseFloat(p.unrealized_pnl) || 0;
+        totalPnL += pnl;
+        const pnlClass = pnl >= 0 ? 'text-success' : 'text-danger';
+        const pnlIcon = pnl >= 0 ? 'bi-arrow-up-short' : 'bi-arrow-down-short';
+        return `
+            <tr>
+                <td>${escapeHtml(p.symbol)}</td>
+                <td><span class="badge bg-${p.side === 'LONG' ? 'success' : 'danger'}">${escapeHtml(p.side)}</span></td>
+                <td>${formatNumber(p.quantity)}</td>
+                <td class="${pnlClass}"><i class="bi ${pnlIcon}"></i> $${formatNumber(Math.abs(pnl))}</td>
+            </tr>
+        `;
+    }).join('');
+
+    const totalClass = totalPnL >= 0 ? 'text-success' : 'text-danger';
+    document.getElementById('total-pnl').innerHTML =
+        `<span class="${totalClass}">${totalPnL >= 0 ? '+' : '-'}$${formatNumber(Math.abs(totalPnL))}</span>`;
+}
+
+/**
+ * Load recent orders
+ */
+async function loadRecentOrders() {
+    try {
+        const response = await fetch(`${API_BASE}/orders/dashboard`);
+        if (!response.ok) {
+            document.getElementById('orders-body').innerHTML =
+                `<tr><td colspan="4" class="text-center text-muted">API unavailable</td></tr>`;
+            return;
+        }
+        const data = await response.json();
+        renderRecentOrders(data.orders || []);
+        renderOrderStats(data.stats || {});
+    } catch (error) {
+        console.error('Failed to load orders:', error);
+        document.getElementById('orders-body').innerHTML =
+            `<tr><td colspan="4" class="text-center text-muted">Failed to load</td></tr>`;
+    }
+}
+
+/**
+ * Render recent orders table
+ */
+function renderRecentOrders(orders) {
+    const tbody = document.getElementById('orders-body');
+
+    if (orders.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted">No orders yet</td></tr>`;
+        return;
+    }
+
+    // Show latest 5 orders
+    tbody.innerHTML = orders.slice(0, 5).map(o => {
+        const statusColors = {
+            FILLED: 'success', REJECTED: 'danger', CANCELED: 'warning',
+            PENDING: 'info', PARTIALLY_FILLED: 'primary', NEW: 'info',
+        };
+        const statusColor = statusColors[o.status] || 'secondary';
+        return `
+            <tr>
+                <td>${escapeHtml(o.symbol)}</td>
+                <td><span class="badge bg-${o.side === 'BUY' ? 'success' : 'danger'}">${escapeHtml(o.side)}</span></td>
+                <td>${formatNumber(o.quantity)}</td>
+                <td><span class="badge bg-${statusColor}">${escapeHtml(o.status)}</span></td>
+            </tr>
+        `;
+    }).join('');
+}
+
+/**
+ * Render order stats footer
+ */
+function renderOrderStats(stats) {
+    document.getElementById('orders-filled').textContent = `${stats.filled || 0} filled`;
+    document.getElementById('orders-rejected').textContent = `${stats.rejected || 0} rejected`;
+    document.getElementById('orders-cancelled').textContent = `${stats.cancelled || 0} cancelled`;
+}
+
+/**
+ * Format number with commas and decimals
+ */
+function formatNumber(value, decimals = 4) {
+    if (value === null || value === undefined) return '-';
+    const num = parseFloat(value);
+    if (isNaN(num)) return '-';
+    return num.toLocaleString('en-US', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: decimals,
+    });
+}
+
+/**
+ * Escape HTML entities
+ */
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
