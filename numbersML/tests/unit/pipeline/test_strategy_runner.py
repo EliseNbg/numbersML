@@ -880,10 +880,18 @@ class TestStrategyRunner:
         reset_price_statistics()
 
     @pytest.mark.asyncio
-    async def test_route_buy_signal_opens_position_with_take_profit(self) -> None:
-        """Filled BUY opens a strategy position with take_profit from metadata."""
-        paper = PaperMarketService(initial_balance=Decimal("10000"))
-        runner = self._make_runner(market_service=paper)
+    async def test_route_buy_signal_places_sell_limit_with_take_profit(self) -> None:
+        """Filled BUY places a SELL LIMIT at the take_profit price."""
+        mock_market = AsyncMock()
+        mock_buy_order = MagicMock()
+        mock_buy_order.id = uuid4()
+        mock_sell_order = MagicMock()
+        mock_sell_order.id = uuid4()
+        mock_sell_order.status.value = "FILLED"
+        mock_market.place_order = AsyncMock()
+        mock_market.place_order.side_effect = [mock_buy_order, mock_sell_order]
+
+        runner = self._make_runner(market_service=mock_market)
 
         strategy = MockStrategy(strategy_id="tp-test", symbols=["ATOM/USDC"])
         strategy._state = StrategyState.RUNNING
@@ -903,17 +911,28 @@ class TestStrategyRunner:
         )
         await runner._route_signal(signal)
 
-        pos = ctx.strategy.get_position("ATOM/USDC")
-        assert pos is not None
-        assert pos.side == "LONG"
-        assert pos.entry_price == Decimal("2.03")
-        assert pos.take_profit_price == Decimal("2.08")
+        # Should have placed two orders: BUY MARKET + SELL LIMIT
+        assert mock_market.place_order.call_count == 2
+        buy_call, sell_call = mock_market.place_order.call_args_list
+        buy_order = buy_call[0][0]
+        sell_order = sell_call[0][0]
+        assert buy_order.side.value == "BUY"
+        assert sell_order.side.value == "SELL"
+        assert sell_order.order_type.value == "LIMIT"
+        assert sell_order.limit_price == Decimal("2.08")
+        assert sell_order.quantity == Decimal("10")
 
     @pytest.mark.asyncio
-    async def test_route_buy_signal_opens_position_without_take_profit(self) -> None:
-        """Filled BUY without take_profit opens position with TP=None."""
-        paper = PaperMarketService(initial_balance=Decimal("10000"))
-        runner = self._make_runner(market_service=paper)
+    async def test_route_buy_signal_skips_sell_limit_without_take_profit(self) -> None:
+        """Filled BUY without take_profit does not place SELL LIMIT."""
+        mock_market = AsyncMock()
+        mock_buy_order = MagicMock()
+        mock_buy_order.id = uuid4()
+        mock_buy_order.status.value = "FILLED"
+        mock_market.place_order = AsyncMock()
+        mock_market.place_order.side_effect = [mock_buy_order]
+
+        runner = self._make_runner(market_service=mock_market)
 
         strategy = MockStrategy(strategy_id="no-tp-test", symbols=["ATOM/USDC"])
         strategy._state = StrategyState.RUNNING
@@ -933,10 +952,8 @@ class TestStrategyRunner:
         )
         await runner._route_signal(signal)
 
-        pos = ctx.strategy.get_position("ATOM/USDC")
-        assert pos is not None
-        assert pos.side == "LONG"
-        assert pos.take_profit_price is None
+        # Only BUY MARKET placed, no SELL LIMIT
+        assert mock_market.place_order.call_count == 1
 
     @pytest.mark.asyncio
     async def test_route_sell_signal_does_not_open_position(self) -> None:
@@ -994,10 +1011,19 @@ class TestStrategyRunner:
         assert runner._stats["signals_failed"] == 1
 
     @pytest.mark.asyncio
-    async def test_route_limit_buy_signal_opens_position_with_take_profit(self) -> None:
-        """Filled LIMIT BUY opens a strategy position with take_profit."""
-        paper = PaperMarketService(initial_balance=Decimal("10000"))
-        runner = self._make_runner(market_service=paper)
+    async def test_route_limit_buy_signal_places_sell_limit_with_take_profit(self) -> None:
+        """Filled LIMIT BUY places a SELL LIMIT at take_profit."""
+        mock_market = AsyncMock()
+        mock_buy_order = MagicMock()
+        mock_buy_order.id = uuid4()
+        mock_buy_order.status.value = "FILLED"
+        mock_sell_order = MagicMock()
+        mock_sell_order.id = uuid4()
+        mock_sell_order.status.value = "FILLED"
+        mock_market.place_order = AsyncMock()
+        mock_market.place_order.side_effect = [mock_buy_order, mock_sell_order]
+
+        runner = self._make_runner(market_service=mock_market)
 
         strategy = MockStrategy(strategy_id="limit-tp-test", symbols=["ATOM/USDC"])
         strategy._state = StrategyState.RUNNING
@@ -1017,11 +1043,13 @@ class TestStrategyRunner:
         )
         await runner._route_signal(signal)
 
-        pos = ctx.strategy.get_position("ATOM/USDC")
-        assert pos is not None
-        assert pos.side == "LONG"
-        assert pos.entry_price == Decimal("2.01")
-        assert pos.take_profit_price == Decimal("2.06")
+        # Should have placed two orders: BUY LIMIT + SELL LIMIT
+        assert mock_market.place_order.call_count == 2
+        buy_call, sell_call = mock_market.place_order.call_args_list
+        sell_order = sell_call[0][0]
+        assert sell_order.side.value == "SELL"
+        assert sell_order.order_type.value == "LIMIT"
+        assert sell_order.limit_price == Decimal("2.06")
 
     @pytest.mark.asyncio
     async def test_route_limit_sell_signal_does_not_open_position(self) -> None:
@@ -1405,8 +1433,8 @@ class TestStrategyRunner:
     # ── Persist failure / position opening edge cases ─────────────────────────
 
     @pytest.mark.asyncio
-    async def test_persist_failure_still_opens_position(self) -> None:
-        """When _persist_signal throws (e.g. table missing), position still opens."""
+    async def test_persist_failure_still_places_sell_limit(self) -> None:
+        """When _persist_signal throws, SELL LIMIT still placed."""
         mock_conn = AsyncMock()
         mock_conn.execute = AsyncMock(
             side_effect=Exception("relation \"strategy_signals\" does not exist"),
@@ -1417,8 +1445,17 @@ class TestStrategyRunner:
         mock_pool = MagicMock()
         mock_pool.acquire = MagicMock(return_value=acm)
 
-        paper = PaperMarketService(initial_balance=Decimal("10000"))
-        runner = StrategyRunner(db_pool=mock_pool, market_service=paper, reload_interval=1.0)
+        mock_market = AsyncMock()
+        mock_buy_order = MagicMock()
+        mock_buy_order.id = uuid4()
+        mock_buy_order.status.value = "FILLED"
+        mock_sell_order = MagicMock()
+        mock_sell_order.id = uuid4()
+        mock_sell_order.status.value = "FILLED"
+        mock_market.place_order = AsyncMock()
+        mock_market.place_order.side_effect = [mock_buy_order, mock_sell_order]
+
+        runner = StrategyRunner(db_pool=mock_pool, market_service=mock_market, reload_interval=1.0)
 
         strategy = MockStrategy(strategy_id="persist-fail-test", symbols=["ATOM/USDC"])
         strategy._state = StrategyState.RUNNING
@@ -1437,14 +1474,16 @@ class TestStrategyRunner:
         )
         await runner._route_signal(signal)
 
-        pos = ctx.strategy.get_position("ATOM/USDC")
-        assert pos is not None, "Position should open even when persist fails"
-        assert pos.side == "LONG"
-        assert pos.take_profit_price == Decimal("2.08")
+        # SELL LIMIT should be placed even when persist fails
+        assert mock_market.place_order.call_count == 2
+        sell_call = mock_market.place_order.call_args_list[1]
+        sell_order = sell_call[0][0]
+        assert sell_order.side.value == "SELL"
+        assert sell_order.order_type.value == "LIMIT"
 
     @pytest.mark.asyncio
-    async def test_persist_and_order_failure_leaves_no_position(self) -> None:
-        """When order is rejected (insufficient balance) AND persist also fails, no position."""
+    async def test_persist_and_order_failure_skips_sell_limit(self) -> None:
+        """When BUY order is rejected, no SELL LIMIT is placed."""
         mock_conn = AsyncMock()
         mock_conn.execute = AsyncMock(side_effect=Exception("DB error"))
         acm = AsyncMock()
@@ -1453,8 +1492,14 @@ class TestStrategyRunner:
         mock_pool = MagicMock()
         mock_pool.acquire = MagicMock(return_value=acm)
 
-        paper = PaperMarketService(initial_balance=Decimal("1"))
-        runner = StrategyRunner(db_pool=mock_pool, market_service=paper, reload_interval=1.0)
+        mock_market = AsyncMock()
+        mock_rejected_order = MagicMock()
+        mock_rejected_order.id = uuid4()
+        mock_rejected_order.status.value = "REJECTED"
+        mock_rejected_order.metadata = {"reason": "insufficient_balance"}
+        mock_market.place_order = AsyncMock(return_value=mock_rejected_order)
+
+        runner = StrategyRunner(db_pool=mock_pool, market_service=mock_market, reload_interval=1.0)
 
         strategy = MockStrategy(strategy_id="reject-persist-fail", symbols=["ATOM/USDC"])
         strategy._state = StrategyState.RUNNING
@@ -1473,6 +1518,6 @@ class TestStrategyRunner:
         )
         await runner._route_signal(signal)
 
-        pos = ctx.strategy.get_position("ATOM/USDC")
-        assert pos is None, "Position should NOT open when order rejected"
+        # Only the BUY order was placed (rejected), no SELL LIMIT
+        assert mock_market.place_order.call_count == 1
         assert runner._stats["signals_failed"] == 1

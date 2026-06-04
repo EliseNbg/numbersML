@@ -512,6 +512,7 @@ class Strategy(ABC):
             confidence=1.0,
             metadata={
                 "reason": exit_reason,
+                "quantity": closed.quantity,
                 "entry_price": float(closed.entry_price),
                 "pnl": float(closed.unrealized_pnl),
                 "pnl_percent": closed.pnl_percent,

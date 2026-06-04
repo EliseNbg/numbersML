@@ -505,22 +505,33 @@ class StrategyRunner:
             self._stats["signals_executed"] += 1
             await self._persist_signal(signal, order_id=str(order.id))
 
-            # Open a position on the strategy so TP/SL monitoring works
+            # Place a SELL LIMIT at the take-profit price immediately
             if signal.side.upper() == "BUY":
-                ctx = self._strategies.get(UUID(signal.strategy_id))
-                if ctx:
-                    tp_raw = signal.metadata.get(
-                        "take_profit_price", signal.metadata.get("expected_profit_price")
-                    )
-                    if tp_raw is not None and not isinstance(tp_raw, Decimal):
+                tp_raw = signal.metadata.get(
+                    "take_profit_price", signal.metadata.get("expected_profit_price")
+                )
+                if tp_raw is not None:
+                    if not isinstance(tp_raw, Decimal):
                         tp_raw = Decimal(str(tp_raw))
-                    ctx.strategy.open_position(
+                    tp_order = OrderRequest(
                         symbol=signal.symbol,
-                        side="LONG",
+                        side=OrderSide.SELL,
+                        order_type=OrderType.LIMIT,
                         quantity=signal.quantity,
-                        price=signal.price,
-                        take_profit_price=tp_raw,
+                        limit_price=tp_raw,
+                        client_order_id=f"tp-{signal.signal_id}",
+                        metadata={"reason": "take_profit"},
                     )
+                    try:
+                        tp_result = await self.market_service.place_order(tp_order)
+                        logger.info(
+                            f"Take-profit SELL LIMIT placed for {signal.symbol} "
+                            f"at {tp_raw} — status={tp_result.status.value}"
+                        )
+                    except Exception as tp_e:
+                        logger.error(
+                            f"Failed to place take-profit SELL LIMIT for {signal.symbol}: {tp_e}"
+                        )
 
         except Exception as e:
             logger.error(f"Failed to route signal {signal.signal_id}: {e}")
