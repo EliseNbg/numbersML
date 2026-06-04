@@ -68,6 +68,15 @@ class BinanceExchangeClient(LiveExchangeClient):
             "max_price": Decimal("9999999999"),
         }
 
+    @staticmethod
+    def _normalize_decimal(value: str) -> Decimal:
+        """Parse a string to Decimal and strip trailing zeros.
+
+        Binance returns stepSize/tickSize like '0.01000000' which would make
+        Decimal.quantize round to 8 decimal places instead of the intended 2.
+        """
+        return Decimal(value).normalize()
+
     async def _load_filters(self, symbol: str) -> dict[str, Decimal]:
         """Fetch and cache LOT_SIZE + PRICE_FILTER values for a symbol."""
         normalized = self._normalize_symbol(symbol)
@@ -93,19 +102,19 @@ class BinanceExchangeClient(LiveExchangeClient):
             for f in sym_data.get("filters", []):
                 ft = f.get("filterType")
                 if ft == "LOT_SIZE":
-                    filters["step_size"] = Decimal(f.get("stepSize", "0.00001"))
-                    filters["min_qty"] = Decimal(f.get("minQty", "0"))
-                    filters["max_qty"] = Decimal(f.get("maxQty", "9999999999"))
+                    filters["step_size"] = self._normalize_decimal(f.get("stepSize", "0.00001"))
+                    filters["min_qty"] = self._normalize_decimal(f.get("minQty", "0"))
+                    filters["max_qty"] = self._normalize_decimal(f.get("maxQty", "9999999999"))
                     logger.info(f"[FILTERS] {normalized} LOT_SIZE step_size={filters['step_size']}")
                 elif ft == "MARKET_LOT_SIZE":
-                    filters["market_step_size"] = Decimal(f.get("stepSize", "0.00001"))
-                    filters["market_min_qty"] = Decimal(f.get("minQty", "0"))
-                    filters["market_max_qty"] = Decimal(f.get("maxQty", "9999999999"))
+                    filters["market_step_size"] = self._normalize_decimal(f.get("stepSize", "0.00001"))
+                    filters["market_min_qty"] = self._normalize_decimal(f.get("minQty", "0"))
+                    filters["market_max_qty"] = self._normalize_decimal(f.get("maxQty", "9999999999"))
                     logger.info(f"[FILTERS] {normalized} MARKET_LOT_SIZE step_size={filters['market_step_size']}")
                 elif ft == "PRICE_FILTER":
-                    filters["tick_size"] = Decimal(f.get("tickSize", "0.01"))
-                    filters["min_price"] = Decimal(f.get("minPrice", "0"))
-                    filters["max_price"] = Decimal(f.get("maxPrice", "9999999999"))
+                    filters["tick_size"] = self._normalize_decimal(f.get("tickSize", "0.01"))
+                    filters["min_price"] = self._normalize_decimal(f.get("minPrice", "0"))
+                    filters["max_price"] = self._normalize_decimal(f.get("maxPrice", "9999999999"))
                     logger.info(f"[FILTERS] {normalized} PRICE_FILTER tick_size={filters['tick_size']}")
             self._filter_cache[normalized] = filters
             logger.info(f"[FILTERS] cached filters for {normalized}: keys={list(filters.keys())}")
