@@ -1078,6 +1078,82 @@ class TestStrategyRunner:
         pos = ctx.strategy.get_position("ATOM/USDC")
         assert pos is None
 
+    @pytest.mark.asyncio
+    async def test_sell_limit_client_order_id_format(self) -> None:
+        """SELL LIMIT client_order_id starts with 'tp-'."""
+        mock_market = AsyncMock()
+        mock_buy_order = MagicMock()
+        mock_buy_order.id = uuid4()
+        mock_buy_order.status.value = "FILLED"
+        mock_sell_order = MagicMock()
+        mock_sell_order.id = uuid4()
+        mock_sell_order.status.value = "FILLED"
+        mock_market.place_order = AsyncMock()
+        mock_market.place_order.side_effect = [mock_buy_order, mock_sell_order]
+
+        runner = self._make_runner(market_service=mock_market)
+        signal = TradeSignal(
+            strategy_id=uuid4(), strategy_name="Test",
+            symbol="ATOM/USDC", side="BUY", order_type="MARKET",
+            quantity=Decimal("10"), price=Decimal("2.03"),
+            metadata={"expected_profit_price": 2.08},
+        )
+        await runner._route_signal(signal)
+
+        sell_call = mock_market.place_order.call_args_list[1]
+        sell_order = sell_call[0][0]
+        assert sell_order.client_order_id.startswith("tp-")
+        assert str(signal.signal_id) in sell_order.client_order_id
+
+    @pytest.mark.asyncio
+    async def test_sell_limit_failure_does_not_crash_route(self) -> None:
+        """If SELL LIMIT placement fails, the BUY is still marked executed."""
+        mock_market = AsyncMock()
+        mock_buy_order = MagicMock()
+        mock_buy_order.id = uuid4()
+        mock_buy_order.status.value = "FILLED"
+        mock_market.place_order = AsyncMock()
+        mock_market.place_order.side_effect = [mock_buy_order, RuntimeError("Binance error")]
+
+        runner = self._make_runner(market_service=mock_market)
+        signal = TradeSignal(
+            strategy_id=uuid4(), strategy_name="Test",
+            symbol="ATOM/USDC", side="BUY", order_type="MARKET",
+            quantity=Decimal("10"), price=Decimal("2.03"),
+            metadata={"expected_profit_price": 2.08},
+        )
+        await runner._route_signal(signal)
+
+        # BUY still marked executed even though SELL LIMIT failed
+        assert runner._stats["signals_executed"] == 1
+
+    @pytest.mark.asyncio
+    async def test_sell_limit_uses_take_profit_price_key(self) -> None:
+        """SELL LIMIT also works with 'take_profit_price' metadata key."""
+        mock_market = AsyncMock()
+        mock_buy_order = MagicMock()
+        mock_buy_order.id = uuid4()
+        mock_buy_order.status.value = "FILLED"
+        mock_sell_order = MagicMock()
+        mock_sell_order.id = uuid4()
+        mock_sell_order.status.value = "FILLED"
+        mock_market.place_order = AsyncMock()
+        mock_market.place_order.side_effect = [mock_buy_order, mock_sell_order]
+
+        runner = self._make_runner(market_service=mock_market)
+        signal = TradeSignal(
+            strategy_id=uuid4(), strategy_name="Test",
+            symbol="ATOM/USDC", side="BUY", order_type="MARKET",
+            quantity=Decimal("5"), price=Decimal("2.03"),
+            metadata={"take_profit_price": 2.15},
+        )
+        await runner._route_signal(signal)
+
+        assert mock_market.place_order.call_count == 2
+        sell_call = mock_market.place_order.call_args_list[1]
+        sell_order = sell_call[0][0]
+        assert sell_order.limit_price == Decimal("2.15")
+
     # ── Comprehensive dedup tests ──────────────────────────────────────────────
 
     @pytest.mark.asyncio

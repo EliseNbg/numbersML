@@ -496,3 +496,117 @@ class SimpleTestStrategy(Strategy):
     ) -> None:
         """Handle position closure."""
         pass
+
+
+class TestCheckPositions:
+    """Tests for Strategy._check_positions TP/SL auto-close."""
+
+    @pytest.fixture
+    def strategy(self) -> SimpleTestStrategy:
+        s = SimpleTestStrategy(strategy_id="check-pos-test", symbols=["BTC/USDT"])
+        s._state = StrategyState.RUNNING
+        return s
+
+    def _make_tick(self, price: Decimal) -> EnrichedTick:
+        return EnrichedTick(
+            symbol="BTC/USDT",
+            price=price,
+            volume=Decimal("1.0"),
+            time=datetime.now(UTC),
+        )
+
+    def test_take_profit_hit_includes_quantity_in_metadata(
+        self, strategy: SimpleTestStrategy
+    ) -> None:
+        """TP-triggered signal includes closed position quantity."""
+        strategy.open_position(
+            symbol="BTC/USDT", side="LONG",
+            quantity=Decimal("0.5"), price=Decimal("100"),
+            take_profit_price=Decimal("110"),
+        )
+        tick = self._make_tick(Decimal("110"))
+        signal = strategy.process_tick(tick)
+        assert signal is not None
+        assert signal.metadata["quantity"] == Decimal("0.5")
+        assert signal.metadata["reason"] == "take_profit"
+
+    def test_stop_loss_hit_includes_quantity_in_metadata(
+        self, strategy: SimpleTestStrategy
+    ) -> None:
+        """SL-triggered signal includes closed position quantity."""
+        strategy.open_position(
+            symbol="BTC/USDT", side="LONG",
+            quantity=Decimal("1.2"), price=Decimal("100"),
+            stop_loss_price=Decimal("90"),
+        )
+        tick = self._make_tick(Decimal("90"))
+        signal = strategy.process_tick(tick)
+        assert signal is not None
+        assert signal.metadata["quantity"] == Decimal("1.2")
+        assert signal.metadata["reason"] == "stop_loss"
+
+    def test_take_profit_hit_with_non_default_quantity(
+        self, strategy: SimpleTestStrategy
+    ) -> None:
+        """Quantities other than 1 are correctly reflected in metadata."""
+        strategy.open_position(
+            symbol="BTC/USDT", side="LONG",
+            quantity=Decimal("0.001"), price=Decimal("50000"),
+            take_profit_price=Decimal("55000"),
+        )
+        tick = self._make_tick(Decimal("55000"))
+        signal = strategy.process_tick(tick)
+        assert signal is not None
+        assert signal.metadata["quantity"] == Decimal("0.001")
+
+    def test_position_closed_after_tp_hit(
+        self, strategy: SimpleTestStrategy
+    ) -> None:
+        """Position is removed from strategy after TP hit."""
+        strategy.open_position(
+            symbol="BTC/USDT", side="LONG",
+            quantity=Decimal("2"), price=Decimal("100"),
+            take_profit_price=Decimal("120"),
+        )
+        assert strategy.get_position("BTC/USDT") is not None
+        tick = self._make_tick(Decimal("120"))
+        strategy.process_tick(tick)
+        assert strategy.get_position("BTC/USDT") is None
+
+    def test_tp_not_hit_returns_on_tick_signal(
+        self, strategy: SimpleTestStrategy
+    ) -> None:
+        """Below TP price, process_tick delegates to on_tick (HOLD)."""
+        strategy.open_position(
+            symbol="BTC/USDT", side="LONG",
+            quantity=Decimal("1"), price=Decimal("100"),
+            take_profit_price=Decimal("120"),
+        )
+        tick = self._make_tick(Decimal("110"))
+        signal = strategy.process_tick(tick)
+        assert signal is not None
+        assert signal.signal_type == SignalType.HOLD
+        assert strategy.get_position("BTC/USDT") is not None
+
+    def test_sl_not_hit_returns_on_tick_signal(
+        self, strategy: SimpleTestStrategy
+    ) -> None:
+        """Above SL price, process_tick delegates to on_tick (HOLD)."""
+        strategy.open_position(
+            symbol="BTC/USDT", side="LONG",
+            quantity=Decimal("1"), price=Decimal("100"),
+            stop_loss_price=Decimal("90"),
+        )
+        tick = self._make_tick(Decimal("95"))
+        signal = strategy.process_tick(tick)
+        assert signal is not None
+        assert signal.signal_type == SignalType.HOLD
+
+    def test_no_position_returns_on_tick_signal(
+        self, strategy: SimpleTestStrategy
+    ) -> None:
+        """No open position, process_tick delegates to on_tick (HOLD)."""
+        tick = self._make_tick(Decimal("100"))
+        signal = strategy.process_tick(tick)
+        assert signal is not None
+        assert signal.signal_type == SignalType.HOLD

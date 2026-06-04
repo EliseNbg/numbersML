@@ -379,3 +379,28 @@ class TestStrategyExecutor:
         result = await executor.execute(strategy, self._make_tick(price=50000))
         assert result.signal is not None
         assert result.signal.quantity == Decimal("0")
+
+    @pytest.mark.asyncio
+    async def test_quantity_from_metadata_used_when_present(self) -> None:
+        """quantity in metadata is used as the TradeSignal quantity."""
+        strategy = MockStrategy()
+        strategy._state = StrategyState.RUNNING
+        strategy._signal_to_return = Signal(
+            strategy_id="test-1",
+            symbol="BTC/USDC",
+            signal_type=SignalType.SELL,
+            price=Decimal("55000"),
+            metadata={
+                "quantity": Decimal("0.5"),
+                "reason": "take_profit",
+                "entry_price": 50000.0,
+                "pnl": 2500.0,
+                "pnl_percent": 10.0,
+            },
+        )
+        executor = StrategyExecutor(timeout_seconds=1.0)
+        result = await executor.execute(strategy, self._make_tick(price=55000))
+        assert result.signal is not None
+        assert result.signal.quantity == Decimal("0.5")
+        assert result.signal.side == "SELL"
+        assert result.signal.price == Decimal("55000")
