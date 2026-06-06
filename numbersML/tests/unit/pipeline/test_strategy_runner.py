@@ -1079,6 +1079,98 @@ class TestStrategyRunner:
         assert pos is None
 
     @pytest.mark.asyncio
+    async def test_entry_order_client_order_id_within_binance_limit(self) -> None:
+        """Entry order client_order_id must be ≤ 36 chars (Binance constraint)."""
+        mock_market = AsyncMock()
+        mock_order = MagicMock()
+        mock_order.id = uuid4()
+        mock_order.status.value = "FILLED"
+        mock_market.place_order = AsyncMock(return_value=mock_order)
+
+        runner = self._make_runner(market_service=mock_market)
+        signal = TradeSignal(
+            strategy_id=uuid4(), strategy_name="Test",
+            symbol="ATOM/USDC", side="BUY", order_type="MARKET",
+            quantity=Decimal("10"), price=Decimal("2.03"),
+            metadata={"expected_profit_price": 2.08},
+        )
+        await runner._route_signal(signal)
+
+        buy_call = mock_market.place_order.call_args_list[0]
+        buy_order = buy_call[0][0]
+        assert len(buy_order.client_order_id) <= 36, (
+            f"Entry client_order_id ({buy_order.client_order_id}) "
+            f"length {len(buy_order.client_order_id)} exceeds 36"
+        )
+
+    @pytest.mark.asyncio
+    async def test_tp_order_client_order_id_within_binance_limit(self) -> None:
+        """Take-profit SELL LIMIT client_order_id must be ≤ 36 chars."""
+        mock_market = AsyncMock()
+        mock_buy_order = MagicMock()
+        mock_buy_order.id = uuid4()
+        mock_buy_order.status.value = "FILLED"
+        mock_sell_order = MagicMock()
+        mock_sell_order.id = uuid4()
+        mock_sell_order.status.value = "FILLED"
+        mock_market.place_order = AsyncMock()
+        mock_market.place_order.side_effect = [mock_buy_order, mock_sell_order]
+
+        runner = self._make_runner(market_service=mock_market)
+        signal = TradeSignal(
+            strategy_id=uuid4(), strategy_name="Test",
+            symbol="ATOM/USDC", side="BUY", order_type="MARKET",
+            quantity=Decimal("10"), price=Decimal("2.03"),
+            metadata={"expected_profit_price": 2.08},
+        )
+        await runner._route_signal(signal)
+
+        sell_call = mock_market.place_order.call_args_list[1]
+        sell_order = sell_call[0][0]
+        assert len(sell_order.client_order_id) <= 36, (
+            f"Take-profit client_order_id ({sell_order.client_order_id}) "
+            f"length {len(sell_order.client_order_id)} exceeds 36"
+        )
+
+    @pytest.mark.asyncio
+    async def test_client_order_ids_contain_only_valid_binance_chars(self) -> None:
+        """Both entry and TP client_order_ids must match ^[a-zA-Z0-9-_]{1,36}$."""
+        import re
+
+        mock_market = AsyncMock()
+        mock_buy_order = MagicMock()
+        mock_buy_order.id = uuid4()
+        mock_buy_order.status.value = "FILLED"
+        mock_sell_order = MagicMock()
+        mock_sell_order.id = uuid4()
+        mock_sell_order.status.value = "FILLED"
+        mock_market.place_order = AsyncMock()
+        mock_market.place_order.side_effect = [mock_buy_order, mock_sell_order]
+
+        runner = self._make_runner(market_service=mock_market)
+        signal = TradeSignal(
+            strategy_id=uuid4(), strategy_name="Test",
+            symbol="ATOM/USDC", side="BUY", order_type="MARKET",
+            quantity=Decimal("10"), price=Decimal("2.03"),
+            metadata={"expected_profit_price": 2.08},
+        )
+        await runner._route_signal(signal)
+
+        pattern = re.compile(r"^[a-zA-Z0-9-_]{1,36}$")
+
+        buy_call = mock_market.place_order.call_args_list[0]
+        buy_order = buy_call[0][0]
+        assert pattern.match(buy_order.client_order_id), (
+            f"Entry client_order_id '{buy_order.client_order_id}' contains illegal chars"
+        )
+
+        sell_call = mock_market.place_order.call_args_list[1]
+        sell_order = sell_call[0][0]
+        assert pattern.match(sell_order.client_order_id), (
+            f"TP client_order_id '{sell_order.client_order_id}' contains illegal chars"
+        )
+
+    @pytest.mark.asyncio
     async def test_sell_limit_client_order_id_format(self) -> None:
         """SELL LIMIT client_order_id starts with 'tp-'."""
         mock_market = AsyncMock()
@@ -1103,7 +1195,8 @@ class TestStrategyRunner:
         sell_call = mock_market.place_order.call_args_list[1]
         sell_order = sell_call[0][0]
         assert sell_order.client_order_id.startswith("tp-")
-        assert str(signal.signal_id) in sell_order.client_order_id
+        assert signal.signal_id.hex in sell_order.client_order_id
+        assert len(sell_order.client_order_id) <= 36
 
     @pytest.mark.asyncio
     async def test_sell_limit_failure_does_not_crash_route(self) -> None:

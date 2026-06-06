@@ -485,7 +485,7 @@ class StrategyRunner:
                 order_type=OrderType(signal.order_type),
                 quantity=signal.quantity,
                 limit_price=signal.price,
-                client_order_id=str(signal.signal_id),
+                client_order_id=signal.signal_id.hex,
                 metadata=metadata,
             )
 
@@ -519,7 +519,7 @@ class StrategyRunner:
                         order_type=OrderType.LIMIT,
                         quantity=signal.quantity,
                         limit_price=tp_raw,
-                        client_order_id=f"tp-{signal.signal_id}",
+                        client_order_id=f"tp-{signal.signal_id.hex}",
                         metadata={"reason": "take_profit"},
                     )
                     try:
