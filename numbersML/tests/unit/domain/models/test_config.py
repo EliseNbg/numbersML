@@ -216,7 +216,7 @@ class TestIndicatorConfig:
         """Test display name for MACD."""
         indicator = IndicatorConfig(
             name="macd_12_26_9",
-            class_name="MACDIndicator",
+            class_name="MACDSMAIndicator",
             module_path="src.indicators.trend",
             category="trend",
         )

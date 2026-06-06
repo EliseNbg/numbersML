@@ -219,8 +219,8 @@ class MACDStrategy(Strategy):
             Signal if crossover detected, None otherwise
         """
         # Get MACD values from indicators
-        macd_key = f"macdindicator_fast_period{self.fast_period}_slow_period{self.slow_period}_signal_period{self.signal_period}_macd"
-        signal_key = f"macdindicator_fast_period{self.fast_period}_slow_period{self.slow_period}_signal_period{self.signal_period}_signal"
+        macd_key = f"macdsmaindicator_fast_period{self.fast_period}_slow_period{self.slow_period}_signal_period{self.signal_period}_macd"
+        signal_key = f"macdsmaindicator_fast_period{self.fast_period}_slow_period{self.slow_period}_signal_period{self.signal_period}_signal"
 
         macd = tick.get_indicator(macd_key)
         signal_line = tick.get_indicator(signal_key)
@@ -641,11 +641,11 @@ class MultiIndicatorStrategy(Strategy):
 
         # Get MACD
         macd_key = (
-            f"macdindicator_fast_period{self.macd_fast}_"
+            f"macdsmaindicator_fast_period{self.macd_fast}_"
             f"slow_period{self.macd_slow}_signal_period{self.macd_signal_param}_macd"
         )
         signal_key = (
-            f"macdindicator_fast_period{self.macd_fast}_"
+            f"macdsmaindicator_fast_period{self.macd_fast}_"
             f"slow_period{self.macd_slow}_signal_period{self.macd_signal_param}_signal"
         )
         macd = tick.get_indicator(macd_key)

@@ -176,8 +176,8 @@ class TestMACDStrategy:
                 volume=Decimal("1.0"),
                 time=datetime.now(UTC),
                 indicators={
-                    "macdindicator_fast_period12_slow_period26_signal_period9_macd": macd,
-                    "macdindicator_fast_period12_slow_period26_signal_period9_signal": signal,
+                    "macdsmaindicator_fast_period12_slow_period26_signal_period9_macd": macd,
+                    "macdsmaindicator_fast_period12_slow_period26_signal_period9_signal": signal,
                 },
             )
 

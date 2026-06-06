@@ -73,7 +73,7 @@ class TestMACDPeakStrategy:
         """Test MACD initialization with default values."""
         strategy._initialize_macd(sample_tick)
 
-        assert strategy.macd_indicator_name == "macdindicator"
+        assert strategy.macd_indicator_name == "macdsmaindicator"
         assert strategy.fast_period == 12
         assert strategy.slow_period == 26
         assert strategy.signal_period == 9
@@ -92,8 +92,8 @@ class TestMACDPeakStrategy:
             volume=Decimal("1.5"),
             time=datetime.now(UTC),
             indicators={
-                "macdindicator_macd": -0.0015,
-                "macdindicator_signal": -0.0020,
+                "macdsmaindicator_macd": -0.0015,
+                "macdsmaindicator_signal": -0.0020,
             },
         )
 
@@ -158,8 +158,8 @@ class TestMACDPeakStrategy:
                 volume=Decimal("1.5"),
                 time=datetime.now(UTC),
                 indicators={
-                    "macdindicator_macd": macd_val,
-                    "macdindicator_signal": macd_val - 0.0001,
+                    "macdsmaindicator_macd": macd_val,
+                    "macdsmaindicator_signal": macd_val - 0.0001,
                 },
             )
             strategy.on_tick(tick)
@@ -170,8 +170,8 @@ class TestMACDPeakStrategy:
             volume=Decimal("1.5"),
             time=datetime.now(UTC),
             indicators={
-                "macdindicator_macd": macd_sequence[-1],
-                "macdindicator_signal": macd_sequence[-1] - 0.0001,
+                "macdsmaindicator_macd": macd_sequence[-1],
+                "macdsmaindicator_signal": macd_sequence[-1] - 0.0001,
             },
         )
 
@@ -199,8 +199,8 @@ class TestMACDPeakStrategy:
                 volume=Decimal("1.5"),
                 time=datetime.now(UTC),
                 indicators={
-                    "macdindicator_macd": macd_val,
-                    "macdindicator_signal": macd_val - 0.0001,
+                    "macdsmaindicator_macd": macd_val,
+                    "macdsmaindicator_signal": macd_val - 0.0001,
                 },
             )
             strategy.on_tick(tick)
@@ -211,8 +211,8 @@ class TestMACDPeakStrategy:
             volume=Decimal("1.5"),
             time=datetime.now(UTC),
             indicators={
-                "macdindicator_macd": macd_sequence[-1],
-                "macdindicator_signal": macd_sequence[-1] - 0.0001,
+                "macdsmaindicator_macd": macd_sequence[-1],
+                "macdsmaindicator_signal": macd_sequence[-1] - 0.0001,
             },
         )
 
@@ -237,8 +237,8 @@ class TestMACDPeakStrategy:
                 volume=Decimal("1.5"),
                 time=datetime.now(UTC),
                 indicators={
-                    "macdindicator_macd": macd_val,
-                    "macdindicator_signal": macd_val - 0.0001,
+                    "macdsmaindicator_macd": macd_val,
+                    "macdsmaindicator_signal": macd_val - 0.0001,
                 },
             )
             strategy.on_tick(tick)
@@ -261,8 +261,8 @@ class TestMACDPeakStrategy:
                 volume=Decimal("1.5"),
                 time=datetime.now(UTC),
                 indicators={
-                    "macdindicator_macd": macd_val,
-                    "macdindicator_signal": macd_val - 0.0001,
+                    "macdsmaindicator_macd": macd_val,
+                    "macdsmaindicator_signal": macd_val - 0.0001,
                 },
             )
             strategy.on_tick(tick)
@@ -273,8 +273,8 @@ class TestMACDPeakStrategy:
             volume=Decimal("1.5"),
             time=datetime.now(UTC),
             indicators={
-                "macdindicator_macd": macd_sequence[-1],
-                "macdindicator_signal": macd_sequence[-1] - 0.0001,
+                "macdsmaindicator_macd": macd_sequence[-1],
+                "macdsmaindicator_signal": macd_sequence[-1] - 0.0001,
             },
         )
 
@@ -291,8 +291,8 @@ class TestMACDPeakStrategy:
             volume=Decimal("1.5"),
             time=datetime.now(UTC),
             indicators={
-                "macdindicator_macd": -0.0015,
-                "macdindicator_signal": -0.0020,
+                "macdsmaindicator_macd": -0.0015,
+                "macdsmaindicator_signal": -0.0020,
             },
         )
 
@@ -324,8 +324,8 @@ class TestMACDPeakStrategy:
                 volume=Decimal("1.5"),
                 time=datetime.now(UTC),
                 indicators={
-                    "macdindicator_macd": macd_val,
-                    "macdindicator_signal": macd_val - 0.0001,
+                    "macdsmaindicator_macd": macd_val,
+                    "macdsmaindicator_signal": macd_val - 0.0001,
                 },
             )
             strategy.on_tick(tick)
@@ -445,7 +445,7 @@ class TestMACDPeakStrategy:
         assert stats["prev_macd"] == -0.0018
         assert stats["signal_count"] == 3
         assert stats["tick_count"] == 500
-        assert stats["macd_indicator_name"] == "macdindicator"
+        assert stats["macd_indicator_name"] == "macdsmaindicator"
         assert stats["fast_period"] == 12
         assert stats["slow_period"] == 26
         assert stats["signal_period"] == 9
@@ -470,8 +470,8 @@ class TestMACDPeakStrategy:
                 volume=Decimal("1.5"),
                 time=datetime.now(UTC),
                 indicators={
-                    "macdindicator_macd": macd_val,
-                    "macdindicator_signal": macd_val - 0.1,
+                    "macdsmaindicator_macd": macd_val,
+                    "macdsmaindicator_signal": macd_val - 0.1,
                 },
             )
             strategy.on_tick(tick)
@@ -482,8 +482,8 @@ class TestMACDPeakStrategy:
             volume=Decimal("1.5"),
             time=datetime.now(UTC),
             indicators={
-                "macdindicator_macd": macd_sequence[-1],
-                "macdindicator_signal": macd_sequence[-1] - 0.1,
+                "macdsmaindicator_macd": macd_sequence[-1],
+                "macdsmaindicator_signal": macd_sequence[-1] - 0.1,
             },
         )
 
@@ -509,8 +509,8 @@ class TestMACDPeakStrategy:
                 volume=Decimal("1.5"),
                 time=datetime.now(UTC),
                 indicators={
-                    "macdindicator_macd": macd_val,
-                    "macdindicator_signal": macd_val - 0.0001,
+                    "macdsmaindicator_macd": macd_val,
+                    "macdsmaindicator_signal": macd_val - 0.0001,
                     "sma_800": 50000.0,
                     "sma_2000": 55000.0,
                 },
@@ -523,8 +523,8 @@ class TestMACDPeakStrategy:
             volume=Decimal("1.5"),
             time=datetime.now(UTC),
             indicators={
-                "macdindicator_macd": macd_sequence[-1],
-                "macdindicator_signal": macd_sequence[-1] - 0.0001,
+                "macdsmaindicator_macd": macd_sequence[-1],
+                "macdsmaindicator_signal": macd_sequence[-1] - 0.0001,
                 "sma_800": 50000.0,
                 "sma_2000": 55000.0,
             },
@@ -554,8 +554,8 @@ class TestMACDPeakStrategy:
                 volume=Decimal("1.5"),
                 time=datetime.now(UTC),
                 indicators={
-                    "macdindicator_macd": macd_val,
-                    "macdindicator_signal": macd_val - 0.0001,
+                    "macdsmaindicator_macd": macd_val,
+                    "macdsmaindicator_signal": macd_val - 0.0001,
                     "sma_800": 50000.0,
                     "sma_2000": 55000.0,
                 },
@@ -568,8 +568,8 @@ class TestMACDPeakStrategy:
             volume=Decimal("1.5"),
             time=datetime.now(UTC),
             indicators={
-                "macdindicator_macd": macd_sequence[-1],
-                "macdindicator_signal": macd_sequence[-1] - 0.0001,
+                "macdsmaindicator_macd": macd_sequence[-1],
+                "macdsmaindicator_signal": macd_sequence[-1] - 0.0001,
                 "sma_800": 50000.0,
                 "sma_2000": 55000.0,
             },
@@ -599,8 +599,8 @@ class TestMACDPeakStrategy:
                 volume=Decimal("1.5"),
                 time=datetime.now(UTC),
                 indicators={
-                    "macdindicator_macd": macd_val,
-                    "macdindicator_signal": macd_val - 0.0001,
+                    "macdsmaindicator_macd": macd_val,
+                    "macdsmaindicator_signal": macd_val - 0.0001,
                     "sma_800": 50000.0,
                     "sma_2000": 55000.0,
                 },
@@ -613,8 +613,8 @@ class TestMACDPeakStrategy:
             volume=Decimal("1.5"),
             time=datetime.now(UTC),
             indicators={
-                "macdindicator_macd": macd_sequence[-1],
-                "macdindicator_signal": macd_sequence[-1] - 0.0001,
+                "macdsmaindicator_macd": macd_sequence[-1],
+                "macdsmaindicator_signal": macd_sequence[-1] - 0.0001,
                 "sma_800": 50000.0,
                 "sma_2000": 55000.0,
             },
@@ -643,8 +643,8 @@ class TestMACDPeakStrategy:
                 volume=Decimal("1.5"),
                 time=datetime.now(UTC),
                 indicators={
-                    "macdindicator_macd": macd_val,
-                    "macdindicator_signal": macd_val - 0.0001,
+                    "macdsmaindicator_macd": macd_val,
+                    "macdsmaindicator_signal": macd_val - 0.0001,
                     "sma_800": 60000.0,
                     "sma_2000": 55000.0,
                 },
@@ -657,8 +657,8 @@ class TestMACDPeakStrategy:
             volume=Decimal("1.5"),
             time=datetime.now(UTC),
             indicators={
-                "macdindicator_macd": macd_sequence[-1],
-                "macdindicator_signal": macd_sequence[-1] - 0.0001,
+                "macdsmaindicator_macd": macd_sequence[-1],
+                "macdsmaindicator_signal": macd_sequence[-1] - 0.0001,
                 "sma_800": 60000.0,
                 "sma_2000": 55000.0,
             },
@@ -725,8 +725,8 @@ class TestMACDPeakStrategy:
                 volume=Decimal("1.5"),
                 time=datetime.now(UTC),
                 indicators={
-                    "macdindicator_macd": macd_val,
-                    "macdindicator_signal": macd_val - 0.0001,
+                    "macdsmaindicator_macd": macd_val,
+                    "macdsmaindicator_signal": macd_val - 0.0001,
                 },
             )
             strategy.on_tick(tick)
@@ -749,8 +749,8 @@ class TestMACDPeakStrategy:
                 volume=Decimal("1.5"),
                 time=datetime.now(UTC),
                 indicators={
-                    "macdindicator_macd": macd_val,
-                    "macdindicator_signal": macd_val - 0.0001,
+                    "macdsmaindicator_macd": macd_val,
+                    "macdsmaindicator_signal": macd_val - 0.0001,
                 },
             )
             strategy.on_tick(tick)
@@ -782,8 +782,8 @@ class TestMACDPeakStrategy:
                     volume=Decimal("10"),
                     time=datetime.now(UTC),
                     indicators={
-                        "macdindicator_macd": macd_val,
-                        "macdindicator_signal": macd_val - 0.0001,
+                        "macdsmaindicator_macd": macd_val,
+                        "macdsmaindicator_signal": macd_val - 0.0001,
                     },
                 )
             )
@@ -793,7 +793,7 @@ class TestMACDPeakStrategy:
                 price=Decimal("1.99"),
                 volume=Decimal("10"),
                 time=datetime.now(UTC),
-                indicators={"macdindicator_macd": -0.0036, "macdindicator_signal": -0.0037},
+                indicators={"macdsmaindicator_macd": -0.0036, "macdsmaindicator_signal": -0.0037},
             )
         )
 
@@ -803,7 +803,7 @@ class TestMACDPeakStrategy:
                 price=Decimal("1.99"),
                 volume=Decimal("10"),
                 time=datetime.now(UTC),
-                indicators={"macdindicator_macd": -0.0035, "macdindicator_signal": -0.0036},
+                indicators={"macdsmaindicator_macd": -0.0035, "macdsmaindicator_signal": -0.0036},
             )
         )
         assert signal1 is not None
@@ -818,7 +818,7 @@ class TestMACDPeakStrategy:
                     price=Decimal("1.99"),
                     volume=Decimal("10"),
                     time=datetime.now(UTC),
-                    indicators={"macdindicator_macd": -0.0034, "macdindicator_signal": -0.0035},
+                    indicators={"macdsmaindicator_macd": -0.0034, "macdsmaindicator_signal": -0.0035},
                 )
             )
             assert sig is None
@@ -851,8 +851,8 @@ class TestMACDPeakStrategy:
                     volume=Decimal("10"),
                     time=datetime.now(UTC),
                     indicators={
-                        "macdindicator_macd": macd_val,
-                        "macdindicator_signal": macd_val - 0.0001,
+                        "macdsmaindicator_macd": macd_val,
+                        "macdsmaindicator_signal": macd_val - 0.0001,
                     },
                 )
             )
@@ -863,7 +863,7 @@ class TestMACDPeakStrategy:
                 price=Decimal("1.99"),
                 volume=Decimal("10"),
                 time=datetime.now(UTC),
-                indicators={"macdindicator_macd": -0.0036, "macdindicator_signal": -0.0037},
+                indicators={"macdsmaindicator_macd": -0.0036, "macdsmaindicator_signal": -0.0037},
             )
         )
 
@@ -874,7 +874,7 @@ class TestMACDPeakStrategy:
                 price=Decimal("1.997"),
                 volume=Decimal("25.08"),
                 time=datetime.now(UTC),
-                indicators={"macdindicator_macd": -0.0035, "macdindicator_signal": -0.0036},
+                indicators={"macdsmaindicator_macd": -0.0035, "macdsmaindicator_signal": -0.0036},
             )
         )
         assert strategy.signal_count == 1
@@ -888,8 +888,8 @@ class TestMACDPeakStrategy:
                     volume=Decimal("10"),
                     time=datetime.now(UTC),
                     indicators={
-                        "macdindicator_macd": macd_val,
-                        "macdindicator_signal": macd_val - 0.0001,
+                        "macdsmaindicator_macd": macd_val,
+                        "macdsmaindicator_signal": macd_val - 0.0001,
                     },
                 )
             )
@@ -907,8 +907,8 @@ class TestMACDPeakStrategy:
                     volume=Decimal("10"),
                     time=datetime.now(UTC),
                     indicators={
-                        "macdindicator_macd": macd_val,
-                        "macdindicator_signal": macd_val - 0.0001,
+                        "macdsmaindicator_macd": macd_val,
+                        "macdsmaindicator_signal": macd_val - 0.0001,
                     },
                 )
             )
@@ -924,8 +924,8 @@ class TestMACDPeakStrategy:
                     volume=Decimal("10"),
                     time=datetime.now(UTC),
                     indicators={
-                        "macdindicator_macd": macd_val,
-                        "macdindicator_signal": macd_val - 0.0001,
+                        "macdsmaindicator_macd": macd_val,
+                        "macdsmaindicator_signal": macd_val - 0.0001,
                     },
                 )
             )
@@ -943,8 +943,8 @@ class TestMACDPeakStrategy:
                     volume=Decimal("10"),
                     time=datetime.now(UTC),
                     indicators={
-                        "macdindicator_macd": macd_val,
-                        "macdindicator_signal": macd_val - 0.0001,
+                        "macdsmaindicator_macd": macd_val,
+                        "macdsmaindicator_signal": macd_val - 0.0001,
                     },
                 )
             )
@@ -955,7 +955,7 @@ class TestMACDPeakStrategy:
                 price=Decimal("1.99"),
                 volume=Decimal("10"),
                 time=datetime.now(UTC),
-                indicators={"macdindicator_macd": -0.0030, "macdindicator_signal": -0.0031},
+                indicators={"macdsmaindicator_macd": -0.0030, "macdsmaindicator_signal": -0.0031},
             )
         )
         assert signal2 is not None, "New decline → reversal should fire again"
@@ -984,8 +984,8 @@ class TestMACDPeakStrategy:
                     volume=Decimal("10"),
                     time=datetime.now(UTC),
                     indicators={
-                        "macdindicator_macd": macd_val,
-                        "macdindicator_signal": macd_val - 0.0001,
+                        "macdsmaindicator_macd": macd_val,
+                        "macdsmaindicator_signal": macd_val - 0.0001,
                     },
                 )
             )
@@ -995,7 +995,7 @@ class TestMACDPeakStrategy:
                 price=Decimal("1.99"),
                 volume=Decimal("10"),
                 time=datetime.now(UTC),
-                indicators={"macdindicator_macd": -0.0039, "macdindicator_signal": -0.0040},
+                indicators={"macdsmaindicator_macd": -0.0039, "macdsmaindicator_signal": -0.0040},
             )
         )
 
@@ -1005,7 +1005,7 @@ class TestMACDPeakStrategy:
                 price=Decimal("1.99"),
                 volume=Decimal("10"),
                 time=datetime.now(UTC),
-                indicators={"macdindicator_macd": -0.0033, "macdindicator_signal": -0.0034},
+                indicators={"macdsmaindicator_macd": -0.0033, "macdsmaindicator_signal": -0.0034},
             )
         )
         assert signal1 is not None
@@ -1018,7 +1018,7 @@ class TestMACDPeakStrategy:
                     price=Decimal("1.99"),
                     volume=Decimal("10"),
                     time=datetime.now(UTC),
-                    indicators={"macdindicator_macd": -0.0033, "macdindicator_signal": -0.0034},
+                    indicators={"macdsmaindicator_macd": -0.0033, "macdsmaindicator_signal": -0.0034},
                 )
             )
             assert sig is None, "Flat MACD should not produce signals"
@@ -1047,8 +1047,8 @@ class TestMACDPeakStrategy:
                     volume=Decimal("10"),
                     time=datetime.now(UTC),
                     indicators={
-                        "macdindicator_macd": macd_val,
-                        "macdindicator_signal": macd_val - 0.0001,
+                        "macdsmaindicator_macd": macd_val,
+                        "macdsmaindicator_signal": macd_val - 0.0001,
                     },
                 )
             )
@@ -1058,7 +1058,7 @@ class TestMACDPeakStrategy:
                 price=Decimal("1.99"),
                 volume=Decimal("10"),
                 time=datetime.now(UTC),
-                indicators={"macdindicator_macd": -0.0033, "macdindicator_signal": -0.0034},
+                indicators={"macdsmaindicator_macd": -0.0033, "macdsmaindicator_signal": -0.0034},
             )
         )
 
@@ -1069,7 +1069,7 @@ class TestMACDPeakStrategy:
                     price=Decimal("1.99"),
                     volume=Decimal("10"),
                     time=datetime.now(UTC),
-                    indicators={"macdindicator_macd": -0.0033, "macdindicator_signal": -0.0034},
+                    indicators={"macdsmaindicator_macd": -0.0033, "macdsmaindicator_signal": -0.0034},
                 )
             )
             assert sig is None
@@ -1100,8 +1100,8 @@ class TestMACDPeakStrategy:
                         volume=Decimal("10"),
                         time=datetime.now(UTC),
                         indicators={
-                            "macdindicator_macd": base - step * 0.0001,
-                            "macdindicator_signal": base - step * 0.0001 - 0.0001,
+                            "macdsmaindicator_macd": base - step * 0.0001,
+                            "macdsmaindicator_signal": base - step * 0.0001 - 0.0001,
                         },
                     )
                 )
@@ -1112,8 +1112,8 @@ class TestMACDPeakStrategy:
                     volume=Decimal("10"),
                     time=datetime.now(UTC),
                     indicators={
-                        "macdindicator_macd": base - 0.0003,
-                        "macdindicator_signal": base - 0.0003 - 0.0001,
+                        "macdsmaindicator_macd": base - 0.0003,
+                        "macdsmaindicator_signal": base - 0.0003 - 0.0001,
                     },
                 )
             )
@@ -1125,8 +1125,8 @@ class TestMACDPeakStrategy:
                     volume=Decimal("10"),
                     time=datetime.now(UTC),
                     indicators={
-                        "macdindicator_macd": base - 0.0002,
-                        "macdindicator_signal": base - 0.0002 - 0.0001,
+                        "macdsmaindicator_macd": base - 0.0002,
+                        "macdsmaindicator_signal": base - 0.0002 - 0.0001,
                     },
                 )
             )
@@ -1141,8 +1141,8 @@ class TestMACDPeakStrategy:
                         volume=Decimal("10"),
                         time=datetime.now(UTC),
                         indicators={
-                            "macdindicator_macd": base - 0.0002 + (step + 1) * 0.0001,
-                            "macdindicator_signal": base - 0.0002 + (step + 1) * 0.0001 - 0.0001,
+                            "macdsmaindicator_macd": base - 0.0002 + (step + 1) * 0.0001,
+                            "macdsmaindicator_signal": base - 0.0002 + (step + 1) * 0.0001 - 0.0001,
                         },
                     )
                 )

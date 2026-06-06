@@ -17,7 +17,7 @@ No SELL signals are generated. The strategy includes expected_profit_price in si
 which is handled externally by the market or take-profit mechanism.
 
 Configuration:
-    - macd_indicator_name: Name of MACD indicator (default: macdindicator)
+    - macd_indicator_name: Name of MACD indicator (default: macdsmaindicator)
     - fast_period: MACD fast EMA period (default: 12)
     - slow_period: MACD slow EMA period (default: 26)
     - signal_period: Signal line period (default: 9)

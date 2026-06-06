@@ -38,7 +38,7 @@ class TestIndicatorSchema:
                 },
                 {
                     "name": "macd_12_26_9",
-                    "class_name": "MACDIndicator",
+                    "class_name": "MACDSMAIndicator",
                     "params": '{"fast_period": 12, "slow_period": 26, "signal_period": 9}',
                 },
                 {"name": "rsi_14", "class_name": "RSIIndicator", "params": '{"period": 14}'},
@@ -149,7 +149,7 @@ class TestIndicatorSchema:
                 {"name": "ema_12", "class_name": "EMAIndicator", "params": '{"period": 12}'},
                 {
                     "name": "macd_12_26_9",
-                    "class_name": "MACDIndicator",
+                    "class_name": "MACDSMAIndicator",
                     "params": '{"fast_period": 12, "slow_period": 26, "signal_period": 9}',
                 },
                 {

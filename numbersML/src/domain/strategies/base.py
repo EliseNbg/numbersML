@@ -283,7 +283,7 @@ class Strategy(ABC):
         self.last_histogram: float = 0.0
         self.prev_macd: float = 0.0
         self.signal_count: int = 0
-        self.macd_indicator_name: str = "macdindicator"
+        self.macd_indicator_name: str = "macdsmaindicator"
         self.fast_period: int = 12
         self.slow_period: int = 26
         self.signal_period: int = 9
@@ -657,7 +657,7 @@ class Strategy(ABC):
         classes can call this once at initialisation instead of repeating the
         same ``self.xxx = self.get_config("xxx", default)`` lines.
         """
-        self.macd_indicator_name = self.get_config("macd_indicator_name", "macdindicator")
+        self.macd_indicator_name = self.get_config("macd_indicator_name", "macdsmaindicator")
         self.fast_period = self.get_config("fast_period", 12)
         self.slow_period = self.get_config("slow_period", 26)
         self.signal_period = self.get_config("signal_period", 9)

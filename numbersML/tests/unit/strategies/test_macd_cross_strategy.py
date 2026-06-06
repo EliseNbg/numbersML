@@ -62,7 +62,7 @@ class TestMACDCrossStrategy:
         """Test MACD initialization with default values."""
         strategy._initialize_macd(sample_tick)
 
-        assert strategy.macd_indicator_name == "macdindicator"
+        assert strategy.macd_indicator_name == "macdsmaindicator"
         assert strategy.fast_period == 12
         assert strategy.slow_period == 26
         assert strategy.signal_period == 9
@@ -77,8 +77,8 @@ class TestMACDCrossStrategy:
             volume=Decimal("1.5"),
             time=datetime.now(UTC),
             indicators={
-                "macdindicator_macd": 0.0015,
-                "macdindicator_signal": 0.0010,
+                "macdsmaindicator_macd": 0.0015,
+                "macdsmaindicator_signal": 0.0010,
             },
         )
 
@@ -207,8 +207,8 @@ class TestMACDCrossStrategy:
             volume=Decimal("1.5"),
             time=datetime.now(UTC),
             indicators={
-                "macdindicator_macd": 0.0015,
-                "macdindicator_signal": 0.0010,
+                "macdsmaindicator_macd": 0.0015,
+                "macdsmaindicator_signal": 0.0010,
             },
         )
 
@@ -241,8 +241,8 @@ class TestMACDCrossStrategy:
             volume=Decimal("1.5"),
             time=datetime.now(UTC),
             indicators={
-                "macdindicator_macd": 0.0015,
-                "macdindicator_signal": 0.0010,
+                "macdsmaindicator_macd": 0.0015,
+                "macdsmaindicator_signal": 0.0010,
             },
         )
 
@@ -268,8 +268,8 @@ class TestMACDCrossStrategy:
             volume=Decimal("1.5"),
             time=datetime.now(UTC),
             indicators={
-                "macdindicator_macd": 0.0008,
-                "macdindicator_signal": 0.0012,
+                "macdsmaindicator_macd": 0.0008,
+                "macdsmaindicator_signal": 0.0012,
             },
         )
 
@@ -291,8 +291,8 @@ class TestMACDCrossStrategy:
             volume=Decimal("1.5"),
             time=datetime.now(UTC),
             indicators={
-                "macdindicator_macd": 0.0015,
-                "macdindicator_signal": 0.0010,
+                "macdsmaindicator_macd": 0.0015,
+                "macdsmaindicator_signal": 0.0010,
             },
         )
 
@@ -333,7 +333,7 @@ class TestMACDCrossStrategy:
         assert stats["in_position"] is True
         assert stats["cross_count"] == 3
         assert stats["tick_count"] == 500
-        assert stats["macd_indicator_name"] == "macdindicator"
+        assert stats["macd_indicator_name"] == "macdsmaindicator"
         assert stats["fast_period"] == 12
         assert stats["slow_period"] == 26
         assert stats["signal_period"] == 9

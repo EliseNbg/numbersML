@@ -39,7 +39,7 @@ The strategy maintains the following state:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `macd_indicator_name` | str | `"macdindicator"` | Base name of the pre-calculated MACD indicator to use |
+| `macd_indicator_name` | str | `"macdsmaindicator"` | Base name of the pre-calculated MACD indicator to use |
 | `fast_period` | int | `12` | Fast EMA period for MACD calculation |
 | `slow_period` | int | `26` | Slow EMA period for MACD calculation |
 | `signal_period` | int | `9` | Signal line EMA period |

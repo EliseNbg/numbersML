@@ -114,7 +114,7 @@ class WideVectorService:
                             f"{base}_std",
                         ]
                     )
-                elif class_name == "MACDIndicator":
+                elif class_name in ("MACDIndicator", "MACDSMAIndicator"):
                     # Produces: macd, signal, histogram (3 sub-keys, no base 'value')
                     params = r["params"]
                     if isinstance(params, str):

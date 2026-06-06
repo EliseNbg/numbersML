@@ -37,7 +37,7 @@ from src.indicators.trend import (
     ADXIndicator,
     AroonIndicator,
     EMAIndicator,
-    MACDIndicator,
+    MACDSMAIndicator,
     SMAIndicator,
 )
 from src.indicators.volatility_volume import (
@@ -123,7 +123,7 @@ async def test_01_indicators_configured() -> TestResult:
             ADXIndicator,
             AroonIndicator,
             EMAIndicator,
-            MACDIndicator,
+            MACDSMAIndicator,
             SMAIndicator,
         )
         from src.indicators.volatility_volume import (
@@ -148,7 +148,7 @@ async def test_01_indicators_configured() -> TestResult:
             "bbindicator_period20_std_dev2.0": lambda: BollingerBandsIndicator(
                 period=20, std_dev=2.0
             ),
-            "macdindicator_fast_period12_slow_period26_signal_period9": MACDIndicator,
+            "macdsmaindicator_fast_period12_slow_period26_signal_period9": MACDSMAIndicator,
             "stochasticindicator_k_period14_d_period3": StochasticIndicator,
             "adxindicator_period14": ADXIndicator,
             "aroonindicator_period25": AroonIndicator,
@@ -221,7 +221,7 @@ async def test_02_all_indicators_calculable() -> TestResult:
             (SMAIndicator, {"period": 200}),
             (EMAIndicator, {"period": 12}),
             (EMAIndicator, {"period": 26}),
-            (MACDIndicator, {"fast_period": 12, "slow_period": 26, "signal_period": 9}),
+            (MACDSMAIndicator, {"fast_period": 12, "slow_period": 26, "signal_period": 9}),
             (ADXIndicator, {"period": 14}),
             (AroonIndicator, {"period": 25}),
             (BollingerBandsIndicator, {"period": 20, "std_dev": 2.0}),
