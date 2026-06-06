@@ -19,6 +19,21 @@ from .base import Indicator, IndicatorResult
 logger = logging.getLogger(__name__)
 
 
+def _calculate_sma(prices: np.ndarray, period: int) -> np.ndarray:
+    """Vectorised SMA via cumulative sum."""
+    valid = prices[~np.isnan(prices)]
+    if len(valid) < period:
+        return np.full(len(prices), np.nan)
+
+    cumsum = np.cumsum(valid)
+    sma = np.full(len(prices), np.nan)
+    start_idx = len(prices) - len(valid)
+    sma[start_idx + period - 1 :] = (
+        cumsum[period - 1 :] - np.concatenate([[0], cumsum[:-period]])
+    ) / period
+    return sma
+
+
 class SMAIndicator(Indicator):
     """
     Simple Moving Average.
@@ -57,19 +72,7 @@ class SMAIndicator(Indicator):
     ) -> IndicatorResult:
         """Calculate SMA values."""
         period = self.params["period"]
-
-        if len(prices) < period:
-            return IndicatorResult(
-                name=self.name,
-                values={"sma": np.full(len(prices), np.nan)},
-                metadata={"period": period},
-            )
-
-        # Calculate SMA
-        sma = np.full(len(prices), np.nan)
-        for i in range(period - 1, len(prices)):
-            sma[i] = np.mean(prices[i - period + 1 : i + 1])
-
+        sma = _calculate_sma(prices, period)
         return IndicatorResult(name=self.name, values={"sma": sma}, metadata={"period": period})
 
 
@@ -168,18 +171,8 @@ class MACDSMAIndicator(Indicator):
         }
 
     def _calculate_sma(self, prices: np.ndarray, period: int) -> np.ndarray:
-        """Vectorised SMA via cumulative sum."""
-        valid = prices[~np.isnan(prices)]
-        if len(valid) < period:
-            return np.full(len(prices), np.nan)
-
-        cumsum = np.cumsum(valid)
-        sma = np.full(len(prices), np.nan)
-        start_idx = len(prices) - len(valid)
-        sma[start_idx + period - 1 :] = (
-            cumsum[period - 1 :] - np.concatenate([[0], cumsum[:-period]])
-        ) / period
-        return sma
+        """Vectorised SMA via cumulative sum (delegates to module-level helper)."""
+        return _calculate_sma(prices, period)
 
     def calculate(
         self,
