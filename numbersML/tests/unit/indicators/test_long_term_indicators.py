@@ -147,6 +147,98 @@ class TestMACDIndicator:
         assert result.metadata["signal_period"] == 9
 
 
+class TestMACDIndicatorBufferGuard:
+    """Test MACD buffer-size guard (_check_buffer_size / metadata)."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_logger(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Capture log output for every test in this class."""
+        caplog.set_level("WARNING", logger="src.indicators.trend")
+
+    def _make_prices(self, n: int) -> np.ndarray:
+        """Helper — monotonically increasing prices."""
+        return np.array([50.0 + i * 0.1 for i in range(n)])
+
+    # ── sufficient buffer ────────────────────────────────────────────
+
+    def test_sufficient_buffer_standard(self) -> None:
+        """slow_period * 3 → guard passes, no warning."""
+        macd = MACDIndicator(fast_period=12, slow_period=26, signal_period=9)
+        prices = self._make_prices(26 * 3)  # 78
+        result = macd.calculate(prices, np.ones(78))
+        assert result.metadata.get("buffer_insufficient") is False
+
+    def test_sufficient_buffer_large_periods(self) -> None:
+        """macd_980_1960_100 with enough data → guard passes."""
+        macd = MACDIndicator(fast_period=980, slow_period=1960, signal_period=100)
+        prices = self._make_prices(1960 * 3)  # 5880
+        result = macd.calculate(prices, np.ones(5880))
+        assert result.metadata.get("buffer_insufficient") is False
+
+    def test_sufficient_buffer_exact_boundary(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Exactly slow_period * 3 → guard passes, no warning."""
+        macd = MACDIndicator(fast_period=12, slow_period=26, signal_period=9)
+        prices = self._make_prices(26 * 3)
+        macd.calculate(prices, np.ones(26 * 3))
+        assert "insufficient" not in caplog.text
+
+    # ── insufficient buffer ──────────────────────────────────────────
+
+    def test_insufficient_buffer_standard(self, caplog: pytest.LogCaptureFixture) -> None:
+        """short data → guard triggers, metadata flag set, warning logged."""
+        macd = MACDIndicator(fast_period=12, slow_period=26, signal_period=9)
+        prices = self._make_prices(26 * 2)  # 52 — not enough for convergence
+        result = macd.calculate(prices, np.ones(26 * 2))
+        assert result.metadata.get("buffer_insufficient") is True
+        assert "insufficient" in caplog.text
+        assert "zig" in caplog.text
+
+    def test_insufficient_buffer_one_short(self, caplog: pytest.LogCaptureFixture) -> None:
+        """One element short of slow_period * 3 → still triggers."""
+        macd = MACDIndicator(fast_period=12, slow_period=26, signal_period=9)
+        prices = self._make_prices(26 * 3 - 1)  # 77
+        result = macd.calculate(prices, np.ones(26 * 3 - 1))
+        assert result.metadata.get("buffer_insufficient") is True
+        assert "insufficient" in caplog.text
+
+    def test_insufficient_buffer_large_periods(self, caplog: pytest.LogCaptureFixture) -> None:
+        """macd_980_1960_100 with old buffer size → guard triggers."""
+        macd = MACDIndicator(fast_period=980, slow_period=1960, signal_period=100)
+        # old buffer size was 1960 + 100 + 50 = 2110 — far from 1960*3 = 5880
+        prices = self._make_prices(2110)
+        result = macd.calculate(prices, np.ones(2110))
+        assert result.metadata.get("buffer_insufficient") is True
+        assert "insufficient" in caplog.text
+        assert "saw‑tooth" in caplog.text
+
+    def test_insufficient_buffer_bare_minimum(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Just-enough for EMA seed (slow_period) but no convergence → triggers."""
+        macd = MACDIndicator(fast_period=12, slow_period=26, signal_period=9)
+        prices = self._make_prices(26)  # only enough for the SMA seed
+        result = macd.calculate(prices, np.ones(26))
+        assert result.metadata.get("buffer_insufficient") is True
+
+    def test_warning_message_contains_periods(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Warning message should mention the actual periods."""
+        macd = MACDIndicator(fast_period=12, slow_period=26, signal_period=9)
+        prices = self._make_prices(26 * 2)
+        macd.calculate(prices, np.ones(26 * 2))
+        assert "12" in caplog.text and "26" in caplog.text and "9" in caplog.text
+
+    # ── still calculates valid values even when buffer is small ───────
+
+    def test_still_returns_values_when_insufficient(self) -> None:
+        """MACD values should still be computed (the guard only warns)."""
+        macd = MACDIndicator(fast_period=12, slow_period=26, signal_period=9)
+        prices = self._make_prices(26 * 2)
+        result = macd.calculate(prices, np.ones(26 * 2))
+        assert "macd" in result.values
+        assert "signal" in result.values
+        assert "histogram" in result.values
+        # Last value should be valid (not NaN) since we have at least slow_period data
+        assert not np.isnan(result.values["macd"][-1])
+
+
 class TestADXIndicator:
     """Test ADX indicator."""
 

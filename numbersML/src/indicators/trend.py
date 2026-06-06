@@ -9,11 +9,14 @@ Includes:
 - Aroon Indicator
 """
 
+import logging
 from typing import Any, Optional
 
 import numpy as np
 
 from .base import Indicator, IndicatorResult
+
+logger = logging.getLogger(__name__)
 
 
 class SMAIndicator(Indicator):
@@ -131,7 +134,17 @@ class MACDIndicator(Indicator):
     Moving Average Convergence Divergence.
 
     Long-term momentum and trend indicator.
+
+    The slow EMA needs at least ``slow_period * 3`` data points for the
+    seed influence to drop below ~2 % (the convergence requirement for
+    smooth output).  If fewer points are supplied a warning is logged and
+    ``metadata["buffer_insufficient"]`` is set to ``True``.
     """
+
+    #: Minimum convergence factor for the slow EMA.  The data array must
+    #: have at least ``slow_period * MIN_CONVERGENCE_FACTOR`` elements for
+    #: the indicator output to be smooth and reliable.
+    MIN_CONVERGENCE_FACTOR = 3
 
     category = "trend"
     description = "MACD - Long-term momentum and trend indicator"
@@ -161,6 +174,32 @@ class MACDIndicator(Indicator):
             "required": ["fast_period", "slow_period", "signal_period"],
         }
 
+    def _check_buffer_size(self, prices: np.ndarray) -> bool:
+        """Check whether the data array is large enough for a smooth MACD.
+
+        The slow EMA's seed still influences the output significantly when
+        fewer than ``slow_period * MIN_CONVERGENCE_FACTOR`` data points are
+        available.  Every tick shifts the seed and the output becomes
+        saw-toothed (the original zig‑zag root cause).
+
+        Returns ``True`` when the buffer is insufficient.
+        """
+        slow_period = self.params["slow_period"]
+        required = slow_period * self.MIN_CONVERGENCE_FACTOR
+        valid = prices[~np.isnan(prices)]
+        if len(valid) < required:
+            logger.warning(
+                f"MACD({self.params['fast_period']}, {slow_period}, "
+                f"{self.params['signal_period']}): data length "
+                f"{len(valid)} < {required} ({slow_period} × "
+                f"{self.MIN_CONVERGENCE_FACTOR}).  The slow EMA has "
+                f"insufficient room to converge — output may show "
+                f"saw‑tooth / zig‑zag artefacts.  Increase the ring‑buffer "
+                f"capacity to at least {required}."
+            )
+            return True
+        return False
+
     def calculate(
         self,
         prices: np.ndarray,
@@ -171,6 +210,8 @@ class MACDIndicator(Indicator):
         fast_period = self.params["fast_period"]
         slow_period = self.params["slow_period"]
         signal_period = self.params["signal_period"]
+
+        buffer_insufficient = self._check_buffer_size(prices)
 
         # Calculate EMAs
         fast_ema = self._calculate_ema(prices, fast_period)
@@ -202,6 +243,7 @@ class MACDIndicator(Indicator):
                 "fast_period": fast_period,
                 "slow_period": slow_period,
                 "signal_period": signal_period,
+                "buffer_insufficient": buffer_insufficient,
             },
         )
 

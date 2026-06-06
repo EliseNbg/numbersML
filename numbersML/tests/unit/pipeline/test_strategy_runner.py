@@ -1154,6 +1154,41 @@ class TestStrategyRunner:
         sell_order = sell_call[0][0]
         assert sell_order.limit_price == Decimal("2.15")
 
+    @pytest.mark.asyncio
+    async def test_sell_limit_quantity_matches_buy_with_grid_profit_pct(self) -> None:
+        """SELL LIMIT quantity matches BUY quantity when grid_profit_pct is set."""
+        mock_market = AsyncMock()
+        mock_buy_order = MagicMock()
+        mock_buy_order.id = uuid4()
+        mock_buy_order.status.value = "FILLED"
+        mock_sell_order = MagicMock()
+        mock_sell_order.id = uuid4()
+        mock_sell_order.status.value = "FILLED"
+        mock_market.place_order = AsyncMock()
+        mock_market.place_order.side_effect = [mock_buy_order, mock_sell_order]
+
+        runner = self._make_runner(market_service=mock_market)
+
+        price = Decimal("100.00")
+        grid_profit_pct = Decimal("2.49")
+        expected_profit_price = price * (Decimal("1") + grid_profit_pct / Decimal("100"))
+
+        signal = TradeSignal(
+            strategy_id=uuid4(), strategy_name="Test",
+            symbol="ATOM/USDC", side="BUY", order_type="MARKET",
+            quantity=Decimal("7.5"), price=price,
+            metadata={"expected_profit_price": expected_profit_price},
+        )
+        await runner._route_signal(signal)
+
+        assert mock_market.place_order.call_count == 2
+        sell_call = mock_market.place_order.call_args_list[1]
+        sell_order = sell_call[0][0]
+        assert sell_order.side.value == "SELL"
+        assert sell_order.order_type.value == "LIMIT"
+        assert sell_order.quantity == signal.quantity
+        assert sell_order.limit_price == expected_profit_price
+
     # ── Comprehensive dedup tests ──────────────────────────────────────────────
 
     @pytest.mark.asyncio

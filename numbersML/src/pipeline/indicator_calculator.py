@@ -96,7 +96,14 @@ class IndicatorCalculator:
             return None
 
     def _calculate_max_period(self) -> int:
-        """Calculate the maximum period needed from all indicator definitions."""
+        """Calculate the maximum period needed from all indicator definitions.
+
+        The slow EMA in MACD needs ~3× the period to converge (seed influence
+        drops below 5%). The +50/20 paddings are only safety margins and are
+        insufficient for large periods (e.g. MACD 980/1960/100). For MACD the
+        buffer is sized to ``slow_period * 3 + signal_period + 200`` so the
+        EMA has enough room to stabilise.
+        """
         import re
 
         max_period = self.DEFAULT_CANDLE_WINDOW
@@ -106,11 +113,11 @@ class IndicatorCalculator:
             for key, value in params.items():
                 if isinstance(value, int | float):
                     if "macd" in class_name.lower():
-                        if "slow" in key or "fast" in key:
+                        if "slow" in key:
                             signal = params.get("signal_period", 9)
-                            total = int(value) + int(signal) + 50
+                            total = int(value) * 3 + int(signal) + 200
                             max_period = max(max_period, total)
-                        elif "signal" in key:
+                        elif "fast" in key or "signal" in key:
                             max_period = max(max_period, int(value) + 50)
                     else:
                         max_period = max(max_period, int(value) + 20)
