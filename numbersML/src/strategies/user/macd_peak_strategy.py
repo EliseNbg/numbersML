@@ -133,6 +133,20 @@ class MACDPeakStrategy(Strategy):
         if self.rsi_99_threshold:
             logger.info(f"[{self._strategy_id}] RSI filter: threshold={self.rsi_99_threshold}")
 
+        # Resolve and log which MACD indicator is actually being used
+        macd_val, sig_val, _ = self._get_macd_values(tick)
+        if macd_val is not None:
+            logger.info(
+                f"[{self._strategy_id}] Resolved MACD indicator: "
+                f"{self.macd_indicator_name} → macd={macd_val:.10f}, signal={sig_val:.10f}"
+            )
+        else:
+            logger.warning(
+                f"[{self._strategy_id}] No MACD indicator resolved: "
+                f"configured name={self.macd_indicator_name}, "
+                f"available={list(tick.indicators.keys())}"
+            )
+
         logger.info(f"[{self._strategy_id}] Config: {self._config}")
         logger.info(f"[{self._strategy_id}] Indicators: {tick.indicators}")
 

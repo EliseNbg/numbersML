@@ -115,7 +115,7 @@ class IndicatorCalculator:
                     if "macd" in class_name.lower():
                         if "slow" in key:
                             signal = params.get("signal_period", 9)
-                            total = int(value) * 3 + int(signal) + 200
+                            total = int(value) * 3 + int(signal) + 500
                             max_period = max(max_period, total)
                         elif "fast" in key or "signal" in key:
                             max_period = max(max_period, int(value) + 50)

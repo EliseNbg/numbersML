@@ -73,8 +73,6 @@ class DataQualityGuard:
     CRITICAL_INDICATORS = {
         "atr_499",
         "atr_999",
-        "ema_800",
-        "ema_2000",
         "rsi_99",
         "sma_800",
         "sma_2000",
@@ -86,12 +84,12 @@ class DataQualityGuard:
         "bb_990_2_lower",
         "bb_990_2_upper",
         "bb_990_2_middle",
-        "macd_280_590_29_macd",
-        "macd_280_590_29_signal",
-        "macd_280_590_29_histogram",
         "macd_450_960_100_macd",
         "macd_450_960_100_signal",
         "macd_450_960_100_histogram",
+        "macd_980_1960_100_macd",
+        "macd_980_1960_100_signal",
+        "macd_980_1960_100_histogram",
     }
 
     def __init__(self) -> None:
