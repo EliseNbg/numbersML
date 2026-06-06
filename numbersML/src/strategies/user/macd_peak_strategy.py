@@ -108,10 +108,17 @@ class MACDPeakStrategy(Strategy):
         """
         self.load_common_config()
 
+        macd_keys = sorted(k for k in tick.indicators if k.endswith("_macd"))
+
         logger.info(
-            f"[{self._strategy_id}] MACD: name={self.macd_indicator_name}, "
-            f"fast={self.fast_period}, slow={self.slow_period}, "
-            f"signal={self.signal_period}, min_relative_threshold={self.min_relative_threshold}, "
+            f"[{self._strategy_id}] >>> MACD indicator: "
+            f"configured='{self.macd_indicator_name}', "
+            f"available bases: {[k.replace('_macd', '') for k in macd_keys]}"
+        )
+        logger.info(
+            f"[{self._strategy_id}] MACD params: fast={self.fast_period}, "
+            f"slow={self.slow_period}, signal={self.signal_period}, "
+            f"min_relative_threshold={self.min_relative_threshold}, "
             f"bottom_border={self.bottom_border_macd_to_buy}, "
             f"trend_lookback={self.trend_lookback}"
         )
@@ -132,20 +139,6 @@ class MACDPeakStrategy(Strategy):
             )
         if self.rsi_99_threshold:
             logger.info(f"[{self._strategy_id}] RSI filter: threshold={self.rsi_99_threshold}")
-
-        # Resolve and log which MACD indicator is actually being used
-        macd_val, sig_val, _ = self._get_macd_values(tick)
-        if macd_val is not None:
-            logger.info(
-                f"[{self._strategy_id}] Resolved MACD indicator: "
-                f"{self.macd_indicator_name} → macd={macd_val:.10f}, signal={sig_val:.10f}"
-            )
-        else:
-            logger.warning(
-                f"[{self._strategy_id}] No MACD indicator resolved: "
-                f"configured name={self.macd_indicator_name}, "
-                f"available={list(tick.indicators.keys())}"
-            )
 
         logger.info(f"[{self._strategy_id}] Config: {self._config}")
         logger.info(f"[{self._strategy_id}] Indicators: {tick.indicators}")
