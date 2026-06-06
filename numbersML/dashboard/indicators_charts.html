@@ -304,16 +304,15 @@
             // 1. Price + EMA / SMA
             const priceChart = createChartCard(`${symbol} Price with EMA / SMA`, container);
             const priceSeries = priceChart.addLineSeries({
-                 color: '#2196F3',
-                 lineStyle: 2,
-                        priceScaleId: 'sma',
-                        priceFormat: {
-                            type: 'custom',
-                            formatter: (price) => price.toFixed(8)
-                        },
-                 lineWidth: 2,
-                 title: 'Close'
-                });
+                color: '#2196F3',
+                lineStyle: 2,
+                priceFormat: {
+                    type: 'custom',
+                    formatter: (price) => price.toFixed(8)
+                },
+                lineWidth: 2,
+                title: 'Close'
+            });
             const priceData = indicatorRows.map(r => ({ time: r.time, value: r.price })).filter(p => p.value != null);
             priceSeries.setData(priceData);
 
