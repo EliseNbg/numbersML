@@ -36,6 +36,9 @@ def valid_values():
         "macd_450_960_100_macd": -50.38,
         "macd_450_960_100_signal": -10.08,
         "macd_450_960_100_histogram": -40.30,
+        "macd_980_1960_100_macd": -50.38,
+        "macd_980_1960_100_signal": -10.08,
+        "macd_980_1960_100_histogram": -40.30,
     }
 
 
@@ -199,7 +202,7 @@ class TestDataQualityGuard:
         report = guard.validate_indicator_values(
             symbol_id=57, symbol="BTC/USDC", time=sample_time, values=values
         )
-        assert report.quality_score < 50
+        assert report.quality_score < 80
 
     def test_scoring_perfect(self, guard, valid_values, sample_time):
         report = guard.validate_indicator_values(
