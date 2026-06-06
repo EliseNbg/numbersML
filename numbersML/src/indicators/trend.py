@@ -267,6 +267,93 @@ class MACDIndicator(Indicator):
         return ema
 
 
+class MACDSMAIndicator(Indicator):
+    """
+    MACD using Simple Moving Averages instead of EMAs.
+
+    More computationally efficient than EMA-based MACD for large periods
+    (fast vectorised cumsum vs Python for-loop), and requires no
+    convergence buffer — SMA is deterministic from any data length >=
+    slow_period.
+    """
+
+    category = "trend"
+    description = "MACD-SMA - Efficient MACD using Simple Moving Averages"
+
+    def __init__(
+        self,
+        fast_period: int = 12,
+        slow_period: int = 26,
+        signal_period: int = 9,
+    ) -> None:
+        """Initialize MACD-SMA indicator."""
+        super().__init__(
+            fast_period=fast_period, slow_period=slow_period, signal_period=signal_period
+        )
+
+    @classmethod
+    def params_schema(cls) -> dict[str, Any]:
+        """Return parameter schema with large max for 1s data."""
+        return {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+                "fast_period": {"type": "integer", "minimum": 2, "maximum": 100000, "default": 12},
+                "slow_period": {"type": "integer", "minimum": 2, "maximum": 100000, "default": 26},
+                "signal_period": {"type": "integer", "minimum": 2, "maximum": 100000, "default": 9},
+            },
+            "required": ["fast_period", "slow_period", "signal_period"],
+        }
+
+    def _calculate_sma(self, prices: np.ndarray, period: int) -> np.ndarray:
+        """Vectorised SMA via cumulative sum."""
+        valid = prices[~np.isnan(prices)]
+        if len(valid) < period:
+            return np.full(len(prices), np.nan)
+
+        cumsum = np.cumsum(valid)
+        sma = np.full(len(prices), np.nan)
+        start_idx = len(prices) - len(valid)
+        sma[start_idx + period - 1 :] = (
+            cumsum[period - 1 :] - np.concatenate([[0], cumsum[:-period]])
+        ) / period
+        return sma
+
+    def calculate(
+        self,
+        prices: np.ndarray,
+        volumes: np.ndarray,
+        **kwargs: Any,
+    ) -> IndicatorResult:
+        """Calculate MACD-SMA values."""
+        fast_period = self.params["fast_period"]
+        slow_period = self.params["slow_period"]
+        signal_period = self.params["signal_period"]
+
+        # SMAs
+        fast_sma = self._calculate_sma(prices, fast_period)
+        slow_sma = self._calculate_sma(prices, slow_period)
+
+        # MACD Line
+        macd_line = fast_sma - slow_sma
+
+        # Signal Line (SMA of MACD)
+        signal_line = self._calculate_sma(macd_line, signal_period)
+
+        # Histogram
+        histogram = macd_line - signal_line
+
+        return IndicatorResult(
+            name=self.name,
+            values={"macd": macd_line, "signal": signal_line, "histogram": histogram},
+            metadata={
+                "fast_period": fast_period,
+                "slow_period": slow_period,
+                "signal_period": signal_period,
+            },
+        )
+
+
 class ADXIndicator(Indicator):
     """
     Average Directional Index.

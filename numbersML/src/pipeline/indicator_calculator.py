@@ -112,7 +112,15 @@ class IndicatorCalculator:
             class_name = defn.get("class_name", "")
             for key, value in params.items():
                 if isinstance(value, int | float):
-                    if "macd" in class_name.lower():
+                    if "macdsma" in class_name.lower():
+                        # SMA-based MACD needs no convergence buffer
+                        if "slow" in key:
+                            signal = params.get("signal_period", 9)
+                            total = int(value) + int(signal) + 50
+                            max_period = max(max_period, total)
+                        elif "fast" in key or "signal" in key:
+                            max_period = max(max_period, int(value) + 50)
+                    elif "macd" in class_name.lower():
                         if "slow" in key:
                             signal = params.get("signal_period", 9)
                             total = int(value) * 3 + int(signal) + 500
