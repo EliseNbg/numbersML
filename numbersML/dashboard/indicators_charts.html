@@ -31,11 +31,11 @@
     <div class="container-fluid mt-3">
         <!-- Controls -->
         <div class="row mb-4">
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label">Symbol</label>
                 <select class="form-select" id="symbol-select"></select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label">From (UTC)</label>
                 <input type="text" class="form-control" id="time-from" placeholder="2026-05-11 17:41:00">
             </div>
@@ -52,7 +52,17 @@
                     <option value="20">20</option>
                 </select>
             </div>
-            <div class="col-md-3 d-flex align-items-end gap-2">
+            <div class="col-md-3 d-flex align-items-end gap-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="chk-volume">
+                    <label class="form-check-label" for="chk-volume">Volume Indicators</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="chk-bbstd">
+                    <label class="form-check-label" for="chk-bbstd">BB Std Dev</label>
+                </div>
+            </div>
+            <div class="col-md-2 d-flex align-items-end gap-2">
                 <button class="btn btn-primary" id="btn-load">
                     <i class="bi bi-play-fill"></i> Load
                 </button>
@@ -122,45 +132,31 @@
             if (typeof secs !== 'number') return '';
             const d = new Date(secs * 1000);
             const loc = locale || undefined;
+            const opts = { timeZone: 'UTC', hour12: false };
             if (tickMarkType === 3) {
-                return d.toLocaleTimeString(loc, {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: false,
-                });
+                return d.toLocaleTimeString(loc, { ...opts, hour: '2-digit', minute: '2-digit' });
             }
             if (tickMarkType === 4) {
-                return d.toLocaleTimeString(loc, {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                    hour12: false,
-                });
+                return d.toLocaleTimeString(loc, { ...opts, hour: '2-digit', minute: '2-digit', second: '2-digit' });
             }
             return [
-                d.toLocaleDateString(loc, {
-                    weekday: 'short',
-                    month: 'short',
-                    day: 'numeric',
-                }),
-                d.toLocaleTimeString(loc, {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: false,
-                }),
+                d.toLocaleDateString(loc, { ...opts, weekday: 'short', month: 'short', day: 'numeric' }),
+                d.toLocaleTimeString(loc, { ...opts, hour: '2-digit', minute: '2-digit' }),
             ].join(' ');
         }
 
         function syncTimeScale(sourceChart, timeRange) {
-            if (!timeRange) return;
+            if (!timeRange || timeRange.from == null || timeRange.to == null) return;
             if (syncTimer) clearTimeout(syncTimer);
             const rangeKey = `${timeRange.from}-${timeRange.to}`;
             if (rangeKey === lastRange) return;
             lastRange = rangeKey;
+            const from = timeRange.from;
+            const to = timeRange.to;
             syncTimer = setTimeout(() => {
                 charts.forEach(chart => {
-                    if (chart !== sourceChart) {
-                        chart.timeScale().setVisibleRange(timeRange);
+                    if (chart !== sourceChart && chart.timeScale) {
+                        chart.timeScale().setVisibleRange({ from, to });
                     }
                 });
             }, 50);
@@ -449,60 +445,61 @@
                     atrColorIdx++;
                 });
 
-            // 5. Volume Indicators
-            const volumeChart = createChartCard(`${symbol} Volume Indicators`, container);
-            const volumeSeries = volumeChart.addHistogramSeries({ color: '#2196F3', title: 'Volume' });
-            volumeSeries.setData(candles.map(c => ({ time: c.time, value: c.volume })));
+            // 5. Volume Indicators (optional)
+            if (document.getElementById('chk-volume').checked) {
+                const volumeChart = createChartCard(`${symbol} Volume Indicators`, container);
+                const volumeSeries = volumeChart.addHistogramSeries({ color: '#2196F3', title: 'Volume' });
+                volumeSeries.setData(candles.map(c => ({ time: c.time, value: c.volume })));
 
-            // Add volume indicators (excluding ATR - moved to separate chart)
-            const volumeColors = ['#9C27B0', '#00BCD4', '#FF9800', '#673AB7'];
-            let volColorIdx = 0;
+                const volumeColors = ['#9C27B0', '#00BCD4', '#FF9800', '#673AB7'];
+                let volColorIdx = 0;
 
-            Object.keys(indicators)
-                .filter(k => ['obv', 'cmf', 'mfi', 'adi'].includes(k.split('_')[0]))
-                .forEach(name => {
-                    const series = volumeChart.addLineSeries({
-                        lineWidth: 1, title: name,
-                        color: volumeColors[volColorIdx % volumeColors.length],
-                        priceScaleId: 'right'
+                Object.keys(indicators)
+                    .filter(k => ['obv', 'cmf', 'mfi', 'adi'].includes(k.split('_')[0]))
+                    .forEach(name => {
+                        const series = volumeChart.addLineSeries({
+                            lineWidth: 1, title: name,
+                            color: volumeColors[volColorIdx % volumeColors.length],
+                            priceScaleId: 'right'
+                        });
+
+                        series.setData(indicators[name].map(p => ({ time: p.time, value: p.value })));
+
+                        volColorIdx++;
                     });
 
-                    series.setData(indicators[name].map(p => ({ time: p.time, value: p.value })));
-                    
-                    volColorIdx++;
+                volumeChart.priceScale('right').applyOptions({
+                    borderColor: '#9C27B0'
+                });
+            }
+
+            // 6. Bollinger Bands Standard Deviation (optional)
+            if (document.getElementById('chk-bbstd').checked) {
+                const bbStdChart = createChartCard(`${symbol} Bollinger Bands Std Dev`, container);
+                bbStdChart.priceScale('right').applyOptions({
+                    borderColor: '#9C27B0',
+                    mode: 0
                 });
 
-            // Fix right scale for volume indicators
-            volumeChart.priceScale('right').applyOptions({
-                borderColor: '#9C27B0'
-            });
-
-
-            // 6. Bollinger Bands Standard Deviation
-            const bbStdChart = createChartCard(`${symbol} Bollinger Bands Std Dev`, container);
-            bbStdChart.priceScale('right').applyOptions({
-                borderColor: '#9C27B0',
-                mode: 0
-            });
-
-            Object.keys(indicators)
-                .filter(k => k.startsWith('bb_') && k.endsWith('_std'))
-                .forEach(name => {
-                    const series = bbStdChart.addLineSeries({
-                        lineWidth: 2,
-                        title: name,
-                        color: '#9C27B0',
-                        priceFormat: {
-                            type: 'price',
-                            precision: 8,
-                            minMove: 0.00000001
-                        }
+                Object.keys(indicators)
+                    .filter(k => k.startsWith('bb_') && k.endsWith('_std'))
+                    .forEach(name => {
+                        const series = bbStdChart.addLineSeries({
+                            lineWidth: 2,
+                            title: name,
+                            color: '#9C27B0',
+                            priceFormat: {
+                                type: 'price',
+                                precision: 8,
+                                minMove: 0.00000001
+                            }
+                        });
+                        series.setData(indicators[name].map(p => ({
+                            time: p.time,
+                            value: p.value
+                        })));
                     });
-                    series.setData(indicators[name].map(p => ({
-                        time: p.time,
-                        value: p.value
-                    })));
-                });
+            }
 
 
             // 7. RSI
@@ -597,6 +594,16 @@
         document.getElementById('btn-load').addEventListener('click', loadData);
         document.getElementById('btn-clear').addEventListener('click', clearCharts);
         document.getElementById('step-select').addEventListener('change', () => {
+            if (lastSymbol && lastCandles && lastIndicatorRows) {
+                renderCharts(lastSymbol, lastCandles, lastIndicatorRows);
+            }
+        });
+        document.getElementById('chk-volume').addEventListener('change', () => {
+            if (lastSymbol && lastCandles && lastIndicatorRows) {
+                renderCharts(lastSymbol, lastCandles, lastIndicatorRows);
+            }
+        });
+        document.getElementById('chk-bbstd').addEventListener('change', () => {
             if (lastSymbol && lastCandles && lastIndicatorRows) {
                 renderCharts(lastSymbol, lastCandles, lastIndicatorRows);
             }
