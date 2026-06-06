@@ -774,6 +774,10 @@ class BacktestEngine:
                                     )
                                 )
                                 pos_list.remove(pos_to_close)
+                                market_service.unregister_position(
+                                    signal.symbol,
+                                    Decimal(str(pos_to_close["entry_price"])),
+                                )
                                 strategy.register_close_position()
                                 strategy.on_position_closed(
                                     signal.symbol,
@@ -1091,7 +1095,8 @@ class BacktestEngine:
     ) -> tuple[float, dict[str, Any] | None]:
         """Open a new position."""
         risk_config = config.get("risk", {})
-        grid_quantity_absolute = config.get("grid_quantity_absolute")
+        execution_config = config.get("execution", {})
+        grid_quantity_absolute = execution_config.get("grid_quantity_absolute", config.get("grid_quantity_absolute"))
 
         price = float(candle["close"])
 

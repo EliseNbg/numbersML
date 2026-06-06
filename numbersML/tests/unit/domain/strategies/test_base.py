@@ -377,6 +377,39 @@ class TestStrategy:
         assert strategy.get_config("threshold") == 30
         assert strategy.get_config("nonexistent", "default") == "default"
 
+    def test_load_common_config_reads_execution_subdict(self) -> None:
+        """load_common_config reads grid_quantity_absolute from execution sub-dict."""
+        strategy = SimpleTestStrategy(
+            strategy_id="test",
+            symbols=["BTC/USDT"],
+        )
+        strategy._config["execution"] = {"grid_quantity_absolute": 1000, "grid_profit_pct": 2.5}
+        strategy.load_common_config()
+        assert strategy.grid_quantity_absolute == 1000
+        assert strategy.grid_profit_pct == 2.5
+
+    def test_load_common_config_falls_back_to_top_level(self) -> None:
+        """load_common_config falls back to top-level key when execution sub-dict missing."""
+        strategy = SimpleTestStrategy(
+            strategy_id="test",
+            symbols=["BTC/USDT"],
+        )
+        strategy.set_config("grid_quantity_absolute", 500)
+        strategy.set_config("grid_profit_pct", 1.5)
+        strategy.load_common_config()
+        assert strategy.grid_quantity_absolute == 500
+        assert strategy.grid_profit_pct == 1.5
+
+    def test_load_common_config_uses_defaults(self) -> None:
+        """load_common_config uses defaults when no config is set."""
+        strategy = SimpleTestStrategy(
+            strategy_id="test",
+            symbols=["BTC/USDT"],
+        )
+        strategy.load_common_config()
+        assert strategy.grid_quantity_absolute == 100.0
+        assert strategy.grid_profit_pct == 0.85
+
 
 class TestStrategyManager:
     """Test StrategyManager."""

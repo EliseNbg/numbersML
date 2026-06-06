@@ -663,8 +663,15 @@ class Strategy(ABC):
         self.signal_period = self.get_config("signal_period", 9)
         self.min_relative_threshold = self.get_config("min_relative_threshold", 0.001)
         self.bottom_border_macd_to_buy = self.get_config("bottom_border_macd_to_buy", 0.0)
-        self.grid_quantity_absolute = self.get_config("grid_quantity_absolute", 100.0)
-        self.grid_profit_pct = self.get_config("grid_profit_pct", 0.85)
+        execution_config = self._config.get("execution", {})
+        self.grid_quantity_absolute = execution_config.get(
+            "grid_quantity_absolute",
+            self.get_config("grid_quantity_absolute", 100.0),
+        )
+        self.grid_profit_pct = execution_config.get(
+            "grid_profit_pct",
+            self.get_config("grid_profit_pct", 0.85),
+        )
         self.sma_fast = self.get_config("sma_fast")
         self.sma_slow = self.get_config("sma_slow")
         self.sma_multiplicator = self.get_config("sma_multiplicator", 0.997)

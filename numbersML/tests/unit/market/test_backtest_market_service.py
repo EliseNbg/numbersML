@@ -476,3 +476,62 @@ class TestTPSLTracking:
         assert len(closed) == 1
         assert closed[0].exit_reason == "stop_loss"
         assert closed[0].pnl < 0
+
+    @pytest.mark.asyncio
+    async def test_unregister_position_removes_tracked_position(self) -> None:
+        service = self._make_service()
+        entry_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
+
+        service.register_position(
+            symbol="BTC/USDC",
+            side="LONG",
+            quantity=Decimal("0.1"),
+            entry_price=Decimal("50000"),
+            entry_time=entry_time,
+        )
+        assert len(service.get_tracked_positions()) == 1
+
+        result = service.unregister_position("BTC/USDC", Decimal("50000"))
+        assert result is True
+        assert len(service.get_tracked_positions()) == 0
+
+    @pytest.mark.asyncio
+    async def test_unregister_position_not_found(self) -> None:
+        service = self._make_service()
+        entry_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
+
+        service.register_position(
+            symbol="BTC/USDC",
+            side="LONG",
+            quantity=Decimal("0.1"),
+            entry_price=Decimal("50000"),
+            entry_time=entry_time,
+        )
+
+        result = service.unregister_position("BTC/USDC", Decimal("99999"))
+        assert result is False
+        assert len(service.get_tracked_positions()) == 1
+
+    @pytest.mark.asyncio
+    async def test_unregister_position_unknown_symbol(self) -> None:
+        service = self._make_service()
+
+        result = service.unregister_position("NONEXISTENT", Decimal("50000"))
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_unregister_position_removes_empty_list(self) -> None:
+        """Removing the last position deletes the symbol key entirely."""
+        service = self._make_service()
+        entry_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
+
+        service.register_position(
+            symbol="BTC/USDC",
+            side="LONG",
+            quantity=Decimal("0.1"),
+            entry_price=Decimal("50000"),
+            entry_time=entry_time,
+        )
+        service.unregister_position("BTC/USDC", Decimal("50000"))
+
+        assert "BTC/USDC" not in service._tracked_positions

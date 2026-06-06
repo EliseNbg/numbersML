@@ -283,6 +283,27 @@ class BacktestMarketService(MarketService):
         self._tracked_positions[symbol].append(pos)
         return pos
 
+    def unregister_position(self, symbol: str, entry_price: Decimal) -> bool:
+        """Remove a tracked position for a symbol at the given entry price.
+
+        Args:
+            symbol: Trading pair (e.g. "BTC/USDC").
+            entry_price: Entry price used to identify the position.
+
+        Returns:
+            True if a position was found and removed, False otherwise.
+        """
+        pos_list = self._tracked_positions.get(symbol)
+        if not pos_list:
+            return False
+        for i, pos in enumerate(pos_list):
+            if pos.entry_price == entry_price:
+                pos_list.pop(i)
+                if not pos_list:
+                    del self._tracked_positions[symbol]
+                return True
+        return False
+
     def check_positions(
         self,
         current_prices: dict[str, Decimal],
