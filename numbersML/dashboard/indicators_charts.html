@@ -8,7 +8,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <style>
-        .chart-container { width: 100%; height: 380px; margin-bottom: 1rem; }
+        .chart-container { width: 100%; height: 450px; margin-bottom: 1rem; }
         .card { margin-bottom: 1.5rem; }
     </style>
 </head>
@@ -70,7 +70,6 @@
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script>
         let charts = [];
-        let isSyncing = false;
 
         const API_BASE = '/api';
 
@@ -91,18 +90,63 @@
             return isNaN(d.getTime()) ? null : d;
         }
 
+        let syncTimer = null;
+        let lastRange = null;
+
+        function tickMarkFormatter(originalTime, tickMarkType, locale) {
+            let secs;
+            if (typeof originalTime === 'number') {
+                secs = originalTime;
+            } else if (originalTime && typeof originalTime._internal_timestamp === 'number') {
+                secs = originalTime._internal_timestamp;
+            } else if (typeof originalTime === 'object') {
+                secs = originalTime._internal_timestamp;
+            }
+            if (typeof secs !== 'number') return '';
+            const d = new Date(secs * 1000);
+            const loc = locale || undefined;
+            if (tickMarkType === 3) {
+                return d.toLocaleTimeString(loc, {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false,
+                });
+            }
+            if (tickMarkType === 4) {
+                return d.toLocaleTimeString(loc, {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false,
+                });
+            }
+            return [
+                d.toLocaleDateString(loc, {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                }),
+                d.toLocaleTimeString(loc, {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false,
+                }),
+            ].join(' ');
+        }
+
         function syncTimeScale(sourceChart, timeRange) {
-            if (isSyncing || !timeRange) return;
-            isSyncing = true;
-            try {
+            if (!timeRange) return;
+            if (syncTimer) clearTimeout(syncTimer);
+            const rangeKey = `${timeRange.from}-${timeRange.to}`;
+            if (rangeKey === lastRange) return;
+            lastRange = rangeKey;
+            syncTimer = setTimeout(() => {
                 charts.forEach(chart => {
                     if (chart !== sourceChart) {
                         chart.timeScale().setVisibleRange(timeRange);
                     }
                 });
-            } finally {
-                isSyncing = false;
-            }
+            }, 50);
         }
 
         // Load symbols on page load
@@ -145,7 +189,14 @@
                 },
                 crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
                 rightPriceScale: { borderColor: 'rgba(197, 203, 206, 0.8)' },
-                timeScale: { borderColor: 'rgba(197, 203, 206, 0.8)', timeVisible: true, secondsVisible: true },
+                timeScale: {
+                    borderColor: 'rgba(197, 203, 206, 0.8)',
+                    timeVisible: true,
+                    secondsVisible: false,
+                    tickMarkFormatter,
+                },
+                handleScroll: { vertTouchDrag: true, horzTouchDrag: true },
+                handleScale: { axisPressedMouseMove: true },
             });
 
             charts.push(chart);
