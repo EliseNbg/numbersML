@@ -43,7 +43,16 @@
                 <label class="form-label">To (UTC)</label>
                 <input type="text" class="form-control" id="time-to" placeholder="2026-05-14 17:41:00">
             </div>
-            <div class="col-md-4 d-flex align-items-end gap-2">
+            <div class="col-md-1">
+                <label class="form-label">Step</label>
+                <select class="form-select" id="step-select">
+                    <option value="1">1</option>
+                    <option value="4">4</option>
+                    <option value="10" selected>10</option>
+                    <option value="20">20</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex align-items-end gap-2">
                 <button class="btn btn-primary" id="btn-load">
                     <i class="bi bi-play-fill"></i> Load
                 </button>
@@ -92,6 +101,14 @@
 
         let syncTimer = null;
         let lastRange = null;
+        let lastSymbol = null;
+        let lastCandles = null;
+        let lastIndicatorRows = null;
+
+        function downsample(arr, step) {
+            if (step <= 1 || !arr || arr.length <= 1) return arr;
+            return arr.filter((_, i) => i % step === 0);
+        }
 
         function tickMarkFormatter(originalTime, tickMarkType, locale) {
             let secs;
@@ -240,10 +257,11 @@
                         fetch(indicatorsUrl)
                     ]);
 
-                    const candles = await candlesRes.json();
-                    const indicatorRows = await indicatorsRes.json();
+                    lastCandles = await candlesRes.json();
+                    lastIndicatorRows = await indicatorsRes.json();
+                    lastSymbol = symbol;
 
-                    renderCharts(symbol, candles, indicatorRows);
+                    renderCharts(symbol, lastCandles, lastIndicatorRows);
                 } else {
                     const range = 86400;
                     const [candlesRes, indicatorsRes] = await Promise.all([
@@ -251,10 +269,11 @@
                         fetch(`${API_BASE}/candles/indicators?symbol=${encodeURIComponent(symbol)}&seconds=${range}`)
                     ]);
 
-                    const candles = await candlesRes.json();
-                    const indicatorRows = await indicatorsRes.json();
+                    lastCandles = await candlesRes.json();
+                    lastIndicatorRows = await indicatorsRes.json();
+                    lastSymbol = symbol;
 
-                    renderCharts(symbol, candles, indicatorRows);
+                    renderCharts(symbol, lastCandles, lastIndicatorRows);
                 }
 
                 status.textContent = 'Loaded successfully';
@@ -268,6 +287,10 @@
         function renderCharts(symbol, candles, indicatorRows) {
             const container = document.getElementById('charts-container');
             container.innerHTML = '';
+
+            const step = parseInt(document.getElementById('step-select').value) || 10;
+            candles = downsample(candles, step);
+            indicatorRows = downsample(indicatorRows, step);
 
             // Format indicators
             const indicators = {};
@@ -511,6 +534,9 @@
         function clearCharts() {
             charts.forEach(c => c.remove());
             charts = [];
+            lastSymbol = null;
+            lastCandles = null;
+            lastIndicatorRows = null;
             document.getElementById('charts-container').innerHTML = '';
             document.getElementById('status').textContent = '';
         }
@@ -571,6 +597,11 @@
         });
         document.getElementById('btn-load').addEventListener('click', loadData);
         document.getElementById('btn-clear').addEventListener('click', clearCharts);
+        document.getElementById('step-select').addEventListener('change', () => {
+            if (lastSymbol && lastCandles && lastIndicatorRows) {
+                renderCharts(lastSymbol, lastCandles, lastIndicatorRows);
+            }
+        });
     </script>
 </body>
 </html>
