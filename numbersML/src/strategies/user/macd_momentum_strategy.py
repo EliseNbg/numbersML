@@ -61,7 +61,6 @@ class MACDMomentumStrategy(Strategy):
         self.in_position: bool = False
 
         logger.info(f"MACDMomentumStrategy {strategy_id} initialized")
-        logger.debug(f"[{strategy_id}] MACD indicator: {self.macd_indicator_name}")
 
     def on_tick(self, tick: EnrichedTick) -> Signal | None:
         """Process tick and generate MACD momentum signals.
@@ -113,10 +112,17 @@ class MACDMomentumStrategy(Strategy):
         """
         self.load_common_config()
 
+        macd_keys = sorted(k for k in tick.indicators if k.endswith("_macd"))
+
         logger.info(
-            f"[{self._strategy_id}] MACD: name={self.macd_indicator_name}, "
-            f"fast={self.fast_period}, slow={self.slow_period}, "
-            f"signal={self.signal_period}, min_relative_threshold={self.min_relative_threshold}, "
+            f"[{self._strategy_id}] >>> MACD indicator: "
+            f"configured='{self.macd_indicator_name}', "
+            f"available bases: {[k.replace('_macd', '') for k in macd_keys]}"
+        )
+        logger.info(
+            f"[{self._strategy_id}] MACD params: fast={self.fast_period}, "
+            f"slow={self.slow_period}, signal={self.signal_period}, "
+            f"min_relative_threshold={self.min_relative_threshold}, "
             f"bottom_border={self.bottom_border_macd_to_buy}"
         )
         logger.info(
