@@ -30,8 +30,8 @@ class TestIndicatorBase:
             RSIIndicator(period=1)
 
         # Invalid period (too large)
-        with pytest.raises(ValueError, match="must be <= 100"):
-            RSIIndicator(period=101)
+        with pytest.raises(ValueError, match="must be <= 500"):
+            RSIIndicator(period=501)
 
     def test_indicator_code_hash(self) -> None:
         """Test code hash generation."""

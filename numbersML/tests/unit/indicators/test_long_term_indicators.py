@@ -69,7 +69,7 @@ class TestSMAIndicator:
 
         # Invalid (too large)
         with pytest.raises(ValueError):
-            SMAIndicator(period=3001)
+            SMAIndicator(period=8001)
 
 
 class TestEMAIndicator:
