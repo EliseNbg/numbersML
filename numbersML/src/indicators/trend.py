@@ -115,19 +115,24 @@ class EMAIndicator(Indicator):
         return IndicatorResult(name=self.name, values={"ema": ema}, metadata={"period": period})
 
     def _calculate_ema(self, prices: np.ndarray, period: int) -> np.ndarray:
-        """Calculate EMA."""
-        if len(prices) < period:
-            return np.full(len(prices), np.nan)
+        """Calculate EMA using lfilter (compiled C, ~50x faster than Python loop)."""
+        n = len(prices)
+        if n < period:
+            return np.full(n, np.nan)
 
-        ema = np.full(len(prices), np.nan)
+        from scipy.signal import lfilter
+
+        ema = np.full(n, np.nan)
         multiplier = 2 / (period + 1)
 
         # First EMA is SMA
         ema[period - 1] = np.mean(prices[:period])
 
-        # Calculate rest
-        for i in range(period, len(prices)):
-            ema[i] = (prices[i] - ema[i - 1]) * multiplier + ema[i - 1]
+        # Apply IIR filter for remaining elements
+        # EMA: ema[i] = price[i] * multiplier + ema[i-1] * (1 - multiplier)
+        b = np.array([multiplier])
+        a = np.array([1.0, -(1 - multiplier)])
+        ema[period:] = lfilter(b, a, prices[period:], zi=[ema[period - 1]])[0]
 
         return ema
 
@@ -266,7 +271,7 @@ class ADXIndicator(Indicator):
         closes: np.ndarray,
         period: int,
     ) -> tuple:
-        """Calculate ADX, +DI, -DI."""
+        """Calculate ADX, +DI, -DI using vectorized operations."""
         n = len(closes)
         adx = np.full(n, np.nan)
         plus_di = np.full(n, np.nan)
@@ -275,23 +280,24 @@ class ADXIndicator(Indicator):
         if n < period * 2:
             return adx, plus_di, minus_di
 
-        # Calculate TR, +DM, -DM
+        # Vectorized TR, +DM, -DM calculation
         tr = np.zeros(n)
         plus_dm = np.zeros(n)
         minus_dm = np.zeros(n)
 
-        for i in range(1, n):
-            tr[i] = max(
-                highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1])
-            )
+        # True Range (vectorized)
+        tr[1:] = np.maximum(
+            highs[1:] - lows[1:],
+            np.maximum(np.abs(highs[1:] - closes[:-1]), np.abs(lows[1:] - closes[:-1])),
+        )
 
-            up_move = highs[i] - highs[i - 1]
-            down_move = lows[i - 1] - lows[i]
+        # Directional Movement (vectorized)
+        up_move = highs[1:] - highs[:-1]
+        down_move = lows[:-1] - lows[1:]
+        plus_dm[1:] = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
+        minus_dm[1:] = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
 
-            plus_dm[i] = up_move if (up_move > down_move and up_move > 0) else 0
-            minus_dm[i] = down_move if (down_move > up_move and down_move > 0) else 0
-
-        # Smooth
+        # Smoothed sums (vectorized initial sum)
         tr_smooth = np.zeros(n)
         plus_dm_smooth = np.zeros(n)
         minus_dm_smooth = np.zeros(n)
@@ -300,6 +306,7 @@ class ADXIndicator(Indicator):
         plus_dm_smooth[period] = np.sum(plus_dm[1 : period + 1])
         minus_dm_smooth[period] = np.sum(minus_dm[1 : period + 1])
 
+        # Smoothing loop (inherently sequential)
         for i in range(period + 1, n):
             tr_smooth[i] = tr_smooth[i - 1] - tr_smooth[i - 1] / period + tr[i]
             plus_dm_smooth[i] = plus_dm_smooth[i - 1] - plus_dm_smooth[i - 1] / period + plus_dm[i]
@@ -307,20 +314,20 @@ class ADXIndicator(Indicator):
                 minus_dm_smooth[i - 1] - minus_dm_smooth[i - 1] / period + minus_dm[i]
             )
 
-        # Calculate +DI, -DI
-        for i in range(period, n):
-            if tr_smooth[i] > 0:
-                plus_di[i] = 100 * plus_dm_smooth[i] / tr_smooth[i]
-                minus_di[i] = 100 * minus_dm_smooth[i] / tr_smooth[i]
+        # Calculate +DI, -DI (vectorized)
+        valid = tr_smooth[period:] > 0
+        plus_di[period:] = np.where(valid, 100 * plus_dm_smooth[period:] / tr_smooth[period:], 0)
+        minus_di[period:] = np.where(valid, 100 * minus_dm_smooth[period:] / tr_smooth[period:], 0)
 
-        # Calculate DX and ADX
+        # Calculate DX (vectorized)
+        di_sum = plus_di[period:] + minus_di[period:]
         dx = np.zeros(n)
-        for i in range(period, n):
-            di_sum = plus_di[i] + minus_di[i]
-            if di_sum > 0:
-                dx[i] = 100 * abs(plus_di[i] - minus_di[i]) / di_sum
+        dx[period:] = np.where(di_sum > 0, 100 * np.abs(plus_di[period:] - minus_di[period:]) / di_sum, 0)
 
+        # ADX: first value is SMA of DX
         adx[period * 2 - 1] = np.mean(dx[period : period * 2])
+
+        # ADX smoothing loop (inherently sequential)
         for i in range(period * 2, n):
             adx[i] = (adx[i - 1] * (period - 1) + dx[i]) / period
 
@@ -383,19 +390,25 @@ class AroonIndicator(Indicator):
         lows: np.ndarray,
         period: int,
     ) -> tuple:
-        """Calculate Aroon Up and Down."""
+        """Calculate Aroon Up and Down using vectorized sliding window operations."""
         n = len(highs)
         aroon_up = np.full(n, np.nan)
         aroon_down = np.full(n, np.nan)
 
-        for i in range(period - 1, n):
-            highest = np.max(highs[i - period + 1 : i + 1])
-            highest_day = np.argmax(highs[i - period + 1 : i + 1])
+        if n < period:
+            return aroon_up, aroon_down
 
-            lowest = np.min(lows[i - period + 1 : i + 1])
-            lowest_day = np.argmin(lows[i - period + 1 : i + 1])
+        # Vectorized sliding window argmax/argmin
+        high_windows = np.lib.stride_tricks.sliding_window_view(highs, period)
+        low_windows = np.lib.stride_tricks.sliding_window_view(lows, period)
 
-            aroon_up[i] = 100 * (period - 1 - highest_day) / (period - 1)
-            aroon_down[i] = 100 * (period - 1 - lowest_day) / (period - 1)
+        # argmax/argmin give position within window (0 = oldest, period-1 = newest)
+        high_argmax = np.argmax(high_windows, axis=1)
+        low_argmin = np.argmin(low_windows, axis=1)
+
+        # Aroon: 100 * (period - 1 - position) / (period - 1)
+        # position 0 (oldest) -> aroon = 100, position period-1 (newest) -> aroon = 0
+        aroon_up[period - 1 :] = 100 * (period - 1 - high_argmax) / (period - 1)
+        aroon_down[period - 1 :] = 100 * (period - 1 - low_argmin) / (period - 1)
 
         return aroon_up, aroon_down

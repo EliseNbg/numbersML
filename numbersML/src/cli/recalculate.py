@@ -226,6 +226,24 @@ async def recalculate_indicators(
         logger.warning("No valid symbols found for given IDs")
         return 0
 
+    # Pre-fetch all existing indicator timestamps to avoid N+1 queries in main loop
+    logger.info("Pre-fetching existing indicator timestamps...")
+    existing_times_by_sid: dict[int, set[datetime]] = {}
+    async with db_pool.acquire() as conn:
+        for sid in valid_sids:
+            rows = await conn.fetch(
+                """
+                SELECT time FROM candle_indicators
+                WHERE symbol_id = $1 AND time >= $2 AND time < $3
+                """,
+                sid,
+                from_time,
+                to_time,
+            )
+            existing_times_by_sid[sid] = {r["time"] for r in rows}
+    total_existing = sum(len(v) for v in existing_times_by_sid.values())
+    logger.info(f"Pre-fetched {total_existing} existing indicator timestamps")
+
     # Initialize buffers for each valid symbol
     buffers = {}
     initialized_sids = set()
@@ -289,14 +307,8 @@ async def recalculate_indicators(
                     print(f"_{t}", end="", flush=True)
                 continue
 
-            # Check existing indicators for this time point
-            async with db_pool.acquire() as conn:
-                existing = await conn.fetch(
-                    "SELECT symbol_id FROM candle_indicators WHERE time = $1 AND symbol_id = ANY($2)",
-                    t,
-                    sids_at_t,
-                )
-            existing_sids = {r["symbol_id"] for r in existing}
+            # Check existing indicators for this time point (pre-fetched, no DB query)
+            existing_sids = {sid for sid in sids_at_t if t in existing_times_by_sid.get(sid, set())}
 
             # Skip if all symbols at this time have existing indicators
             all_exist = all(sid in existing_sids for sid in sids_at_t)
@@ -424,7 +436,6 @@ async def recalculate_indicators(
 
     logger.info(f"Processed {total_processed} candles, {total_indicators} indicators")
     return total_indicators
-
 
 async def recalculate_wide_vectors(
     db_pool: asyncpg.Pool,

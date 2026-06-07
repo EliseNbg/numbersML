@@ -74,15 +74,18 @@ class BollingerBandsIndicator(Indicator):
                 metadata={"period": period, "std_dev": std_dev},
             )
 
-        # Middle band (SMA)
-        middle = np.full(len(prices), np.nan)
-        for i in range(period - 1, len(prices)):
-            middle[i] = np.mean(prices[i - period + 1 : i + 1])
+        n = len(prices)
 
-        # Standard deviation
-        std = np.full(len(prices), np.nan)
-        for i in range(period - 1, len(prices)):
-            std[i] = np.std(prices[i - period + 1 : i + 1])
+        # Vectorized rolling mean and std using sliding_window_view
+        windows = np.lib.stride_tricks.sliding_window_view(prices, period)
+        rolling_mean = np.mean(windows, axis=1)
+        rolling_std = np.std(windows, axis=1)
+
+        # Build full arrays with NaN padding
+        middle = np.full(n, np.nan)
+        std = np.full(n, np.nan)
+        middle[period - 1 :] = rolling_mean
+        std[period - 1 :] = rolling_std
 
         # Upper and lower bands
         upper = middle + (std * std_dev)
@@ -152,22 +155,22 @@ class ATRIndicator(Indicator):
         closes: np.ndarray,
         period: int,
     ) -> np.ndarray:
-        """Calculate ATR."""
+        """Calculate ATR using vectorized operations."""
         n = len(closes)
         atr = np.full(n, np.nan)
         tr = np.zeros(n)
 
-        # Calculate True Range
-        for i in range(1, n):
-            tr[i] = max(
-                highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1])
-            )
+        # Vectorized True Range
+        tr[1:] = np.maximum(
+            highs[1:] - lows[1:],
+            np.maximum(np.abs(highs[1:] - closes[:-1]), np.abs(lows[1:] - closes[:-1])),
+        )
 
         # First ATR is simple average
         if n > period:
             atr[period] = np.mean(tr[1 : period + 1])
 
-            # Smoothed ATR
+            # Smoothed ATR (inherently sequential)
             for i in range(period + 1, n):
                 atr[i] = (atr[i - 1] * (period - 1) + tr[i]) / period
 
@@ -208,16 +211,16 @@ class OBVIndicator(Indicator):
         volumes: np.ndarray,
         **kwargs: Any,
     ) -> IndicatorResult:
-        """Calculate OBV."""
-        obv = np.zeros(len(prices))
+        """Calculate OBV using vectorized operations."""
+        n = len(prices)
+        obv = np.zeros(n)
 
-        for i in range(1, len(prices)):
-            if prices[i] > prices[i - 1]:
-                obv[i] = obv[i - 1] + volumes[i]
-            elif prices[i] < prices[i - 1]:
-                obv[i] = obv[i - 1] - volumes[i]
-            else:
-                obv[i] = obv[i - 1]
+        # Vectorized: compare consecutive prices
+        price_diff = np.diff(prices)
+        signs = np.zeros(n - 1)
+        signs[price_diff > 0] = 1.0
+        signs[price_diff < 0] = -1.0
+        obv[1:] = np.cumsum(signs * volumes[1:])
 
         return IndicatorResult(name=self.name, values={"obv": obv}, metadata={})
 
@@ -330,33 +333,33 @@ class MFIIndicator(Indicator):
         volumes: np.ndarray,
         period: int,
     ) -> np.ndarray:
-        """Calculate MFI."""
+        """Calculate MFI using vectorized operations."""
         n = len(closes)
         mfi = np.full(n, np.nan)
 
         if n < period + 1:
             return mfi
 
-        # Typical price
+        # Typical price (vectorized)
         typical_price = (highs + lows + closes) / 3
 
-        # Money flow
+        # Money flow (vectorized)
         money_flow = typical_price * volumes
 
-        # Positive and negative money flow
+        # Positive and negative money flow (vectorized)
+        tp_diff = np.diff(typical_price)
         positive_flow = np.zeros(n)
         negative_flow = np.zeros(n)
+        positive_flow[1:] = np.where(tp_diff > 0, money_flow[1:], 0)
+        negative_flow[1:] = np.where(tp_diff < 0, money_flow[1:], 0)
 
-        for i in range(1, n):
-            if typical_price[i] > typical_price[i - 1]:
-                positive_flow[i] = money_flow[i]
-            elif typical_price[i] < typical_price[i - 1]:
-                negative_flow[i] = money_flow[i]
+        # Money ratio and MFI using cumsum for rolling sums
+        pos_cumsum = np.cumsum(positive_flow)
+        neg_cumsum = np.cumsum(negative_flow)
 
-        # Money ratio and MFI
         for i in range(period, n):
-            positive_sum = np.sum(positive_flow[i - period + 1 : i + 1])
-            negative_sum = np.sum(negative_flow[i - period + 1 : i + 1])
+            positive_sum = pos_cumsum[i] - (pos_cumsum[i - period] if i >= period else 0)
+            negative_sum = neg_cumsum[i] - (neg_cumsum[i - period] if i >= period else 0)
 
             if negative_sum > 0:
                 money_ratio = positive_sum / negative_sum
