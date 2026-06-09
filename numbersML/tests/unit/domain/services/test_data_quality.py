@@ -19,13 +19,9 @@ def valid_values():
         "atr_999": 6.38,
         "ema_800": 534.44,
         "ema_2000": 584.83,
-        "rsi_99": 65.3,
-        "sma_800": 600.03,
+        "rsi_299": 65.3,
         "sma_2000": 600.03,
-        "bb_500_2_std": 137.66,
-        "bb_500_2_lower": 324.71,
-        "bb_500_2_upper": 875.34,
-        "bb_500_2_middle": 600.03,
+        "sma_6000": 600.03,
         "bb_990_2_std": 137.66,
         "bb_990_2_lower": 324.71,
         "bb_990_2_upper": 875.34,
@@ -33,9 +29,9 @@ def valid_values():
         "macd_280_590_29_macd": -50.38,
         "macd_280_590_29_signal": -10.08,
         "macd_280_590_29_histogram": -40.30,
-        "macd_450_960_100_macd": -50.38,
-        "macd_450_960_100_signal": -10.08,
-        "macd_450_960_100_histogram": -40.30,
+        "macd_8590_13800_195_macd": -50.38,
+        "macd_8590_13800_195_signal": -10.08,
+        "macd_8590_13800_195_histogram": -40.30,
         "macd_980_1960_100_macd": -50.38,
         "macd_980_1960_100_signal": -10.08,
         "macd_980_1960_100_histogram": -40.30,
@@ -86,7 +82,7 @@ class TestDataQualityGuard:
 
     def test_validate_null_value(self, guard, valid_values, sample_time):
         values = valid_values.copy()
-        values["rsi_99"] = None
+        values["rsi_299"] = None
         report = guard.validate_indicator_values(
             symbol_id=57, symbol="BTC/USDC", time=sample_time, values=values
         )
@@ -107,7 +103,7 @@ class TestDataQualityGuard:
 
     def test_validate_nan(self, guard, valid_values, sample_time):
         values = valid_values.copy()
-        values["rsi_99"] = float("nan")
+        values["rsi_299"] = float("nan")
         report = guard.validate_indicator_values(
             symbol_id=57, symbol="BTC/USDC", time=sample_time, values=values
         )
@@ -116,7 +112,7 @@ class TestDataQualityGuard:
 
     def test_validate_inf(self, guard, valid_values, sample_time):
         values = valid_values.copy()
-        values["rsi_99"] = float("inf")
+        values["rsi_299"] = float("inf")
         report = guard.validate_indicator_values(
             symbol_id=57, symbol="BTC/USDC", time=sample_time, values=values
         )
@@ -125,7 +121,7 @@ class TestDataQualityGuard:
 
     def test_validate_out_of_range(self, guard, valid_values, sample_time):
         values = valid_values.copy()
-        values["rsi_99"] = 150
+        values["rsi_299"] = 150
         report = guard.validate_indicator_values(
             symbol_id=57, symbol="BTC/USDC", time=sample_time, values=values
         )
@@ -153,9 +149,9 @@ class TestDataQualityGuard:
         for i in range(5):
             values = valid_values.copy()
             if i == 0:
-                values["rsi_99"] = None
+                values["rsi_299"] = None
             if i == 1:
-                values["rsi_99"] = float("nan")
+                values["rsi_299"] = float("nan")
             reports.append(
                 guard.validate_indicator_values(
                     symbol_id=57, symbol="BTC/USDC", time=sample_time, values=values
@@ -197,7 +193,7 @@ class TestDataQualityGuard:
 
     def test_scoring_critical(self, guard, valid_values, sample_time):
         values = valid_values.copy()
-        values["rsi_99"] = None
+        values["rsi_299"] = None
         values["ema_800"] = None
         report = guard.validate_indicator_values(
             symbol_id=57, symbol="BTC/USDC", time=sample_time, values=values
