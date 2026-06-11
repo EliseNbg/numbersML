@@ -11,7 +11,7 @@ Buy conditions:
 - Current close price < sma_fast * sma_multiplicator (if configured)
 - Current close price < sma_slow * sma_multiplicator (if configured)
 - Current close price < avg_day * avg_multiplicator_day (if configured)
-- Current close price < avg_week * avg_multiplicator_week (if configured)
+- Current close price < avg_week * avg_multiplicator_week (if configured and > 0)
 
 No SELL signals are generated. The strategy includes expected_profit_price in signal metadata,
 which is handled externally by the market or take-profit mechanism.
@@ -239,13 +239,14 @@ class MACDPeakStrategy(Strategy):
             )
             return None
 
-        avg_week = self.get_avg_price(tick.symbol, "week")
-        if avg_week and float(tick.price) >= float(avg_week) * self.avg_multiplicator_week:
-            logger.debug(
-                f"[{self._strategy_id}] Reject: price {tick.price} >= "
-                f"avg_week {avg_week} * {self.avg_multiplicator_week}"
-            )
-            return None
+        if self.avg_multiplicator_week:
+            avg_week = self.get_avg_price(tick.symbol, "week")
+            if avg_week and float(tick.price) >= float(avg_week) * self.avg_multiplicator_week:
+                logger.debug(
+                    f"[{self._strategy_id}] Reject: price {tick.price} >= "
+                    f"avg_week {avg_week} * {self.avg_multiplicator_week}"
+                )
+                return None
 
         self._macd_history.append(macd_value)
         if len(self._macd_history) > self.trend_lookback + 1:
