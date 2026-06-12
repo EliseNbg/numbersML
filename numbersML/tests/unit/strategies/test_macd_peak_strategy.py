@@ -1307,39 +1307,39 @@ class TestMACDPeakStrategy:
         assert signal is None
         assert strategy.signal_count == 0
 
-    def test_quantity_multiplier_at_avg_day(self, strategy):
-        """Test multiplier is 1.0 when price equals avg_day."""
+    def test_quantity_multiplier_at_avg_week(self, strategy):
+        """Test multiplier is 1.0 when price equals avg_week."""
         assert strategy._calculate_quantity_multiplier("BTC/USDT", Decimal("100")) == 1.0
 
     def test_quantity_multiplier_1pct_below(self, strategy):
-        """Test multiplier is ~1.5 when price is 1% below avg_day."""
+        """Test multiplier is ~1.5 when price is 1% below avg_week."""
         with pytest.MonkeyPatch.context() as m:
             m.setattr(strategy, "get_avg_price", lambda s, p: Decimal("100"))
             mult = strategy._calculate_quantity_multiplier("BTC/USDT", Decimal("99"))
             assert abs(mult - 1.5) < 0.01
 
     def test_quantity_multiplier_2pct_below(self, strategy):
-        """Test multiplier is ~2.0 when price is 2% below avg_day."""
+        """Test multiplier is ~2.0 when price is 2% below avg_week."""
         with pytest.MonkeyPatch.context() as m:
             m.setattr(strategy, "get_avg_price", lambda s, p: Decimal("100"))
             mult = strategy._calculate_quantity_multiplier("BTC/USDT", Decimal("98"))
             assert abs(mult - 2.0) < 0.01
 
     def test_quantity_multiplier_4pct_below(self, strategy):
-        """Test multiplier is ~3.0 when price is 4% below avg_day."""
+        """Test multiplier is ~3.0 when price is 4% below avg_week."""
         with pytest.MonkeyPatch.context() as m:
             m.setattr(strategy, "get_avg_price", lambda s, p: Decimal("100"))
             mult = strategy._calculate_quantity_multiplier("BTC/USDT", Decimal("96"))
             assert abs(mult - 3.0) < 0.01
 
-    def test_quantity_multiplier_above_avg_day(self, strategy):
-        """Test multiplier is 1.0 when price is above avg_day."""
+    def test_quantity_multiplier_above_avg_week(self, strategy):
+        """Test multiplier is 1.0 when price is above avg_week."""
         with pytest.MonkeyPatch.context() as m:
             m.setattr(strategy, "get_avg_price", lambda s, p: Decimal("100"))
             assert strategy._calculate_quantity_multiplier("BTC/USDT", Decimal("105")) == 1.0
 
-    def test_quantity_multiplier_no_avg_day(self, strategy):
-        """Test multiplier is 1.0 when avg_day is not available."""
+    def test_quantity_multiplier_no_avg_week(self, strategy):
+        """Test multiplier is 1.0 when avg_week is not available."""
         with pytest.MonkeyPatch.context() as m:
             m.setattr(strategy, "get_avg_price", lambda s, p: None)
             assert strategy._calculate_quantity_multiplier("BTC/USDT", Decimal("100")) == 1.0

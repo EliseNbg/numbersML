@@ -30,6 +30,11 @@ Configuration:
     - sma_slow: Name of slow SMA indicator for price filter (optional, e.g., "sma_2000")
     - sma_multiplicator: Multiplier applied to SMA values for price comparison (default: 0.997)
     - trend_lookback: Number of ticks to confirm downtrend before reversal (default: 3)
+
+Quantity multiplier:
+    Order size is scaled by distance below avg_week (7-day average).
+    Formula: multiplier = max(1.0, 1.0 + diff_pct / 2) where diff_pct = (avg_week - price) / avg_week * 100.
+    At 2% below avg_week the multiplier is ~2.0. Never goes below 1.0.
 """
 
 import logging
@@ -320,10 +325,10 @@ class MACDPeakStrategy(Strategy):
         return self._signal_buy(tick, macd_value, signal_value)
 
     def _calculate_quantity_multiplier(self, symbol: str, price: Decimal) -> float:
-        """Calculate quantity multiplier based on distance below avg_day.
+        """Calculate quantity multiplier based on distance below avg_week.
 
-        The further the price is below the daily average, the larger the order.
-        At 2% below avg_day the multiplier is ~2.0, at 1% it is ~1.5.
+        The further the price is below the weekly average, the larger the order.
+        At 2% below avg_week the multiplier is ~2.0, at 1% it is ~1.5.
         Never goes below 1.0.
 
         Args:
@@ -333,11 +338,11 @@ class MACDPeakStrategy(Strategy):
         Returns:
             Multiplier >= 1.0
         """
-        avg_day = self.get_avg_price(symbol, "day")
-        if not avg_day or avg_day <= 0:
+        avg_week = self.get_avg_price(symbol, "week")
+        if not avg_week or avg_week <= 0:
             return 1.0
 
-        diff_pct = (float(avg_day) - float(price)) / float(avg_day) * 100.0
+        diff_pct = (float(avg_week) - float(price)) / float(avg_week) * 100.0
         return max(1.0, 1.0 + diff_pct / 2.0)
 
     def _signal_buy(
@@ -365,6 +370,7 @@ class MACDPeakStrategy(Strategy):
         quantity_multiplier = self._calculate_quantity_multiplier(tick.symbol, tick.price)
         effective_quantity = Decimal(str(self.grid_quantity_absolute)) * Decimal(str(quantity_multiplier))
         qty = effective_quantity / tick.price
+        avg_week = self.get_avg_price(tick.symbol, "week")
         logger.info(
             f"[{self._strategy_id}] BUY signal: "
             f"MACD={macd_value:.4f}, Signal={signal_value:.4f}, "
@@ -373,6 +379,7 @@ class MACDPeakStrategy(Strategy):
             f"qty={qty:.8f}, "
             f"quantity_usdc={effective_quantity:.2f}, "
             f"quantity_multiplier={quantity_multiplier:.2f}, "
+            f"avg_week={avg_week}, "
             f"expected_profit={expected_profit_price:.8f}"
         )
 
