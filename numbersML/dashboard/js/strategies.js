@@ -289,7 +289,7 @@ function renderStrategies() {
             <td>
                 <strong>${escapeHtml(strategy.name)}</strong>
                 ${strategy.description ? `<br><small class="text-muted">${escapeHtml(strategy.description)}</small>` : ''}
-                ${strategy.strategy_type ? `<br><span class="badge bg-info">${strategy.strategy_type}</span>` : ''}
+                <br><code class="text-muted" style="font-size: 0.75em;">${strategy.id}</code>
             </td>
             <td>${getSignalType(strategy)}</td>
             <td>${getSymbols(strategy)}</td>
@@ -400,7 +400,7 @@ async function viewStrategy(strategyId) {
         return;
     }
 
-    document.getElementById('detail-title').textContent = currentStrategy.name;
+    document.getElementById('detail-title').innerHTML = `${escapeHtml(currentStrategy.name)} <code class="text-muted" style="font-size: 0.7em;">${strategyId}</code>`;
 
     // Store strategy ID on the toggle button for direct access
     const toggleBtn = document.getElementById('btn-toggle-mode');
