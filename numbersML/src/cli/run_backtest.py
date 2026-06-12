@@ -409,11 +409,13 @@ def print_results(result: dict):
         print("TRADES")
         print("-" * 60)
         for i, trade in enumerate(result["trades"], 1):
+            quantity_usdc = trade['quantity'] * trade['entry_price']
             print(
                 f"{i:3d}. {trade['entry_time']} -> {trade['exit_time'] or 'OPEN'} "
                 f"{trade['symbol']} {trade['side']} "
                 f"@{trade['entry_price']:.4f} -> {trade['exit_price'] or 'N/A':>8} "
                 f"PnL: ${trade['pnl']:>8.2f} ({trade['pnl_pct']:+.2f}%) "
+                f"qty_usdc=${quantity_usdc:.2f} "
                 f"[{trade['exit_reason']}]"
             )
 

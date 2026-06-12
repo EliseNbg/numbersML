@@ -371,6 +371,7 @@ class MACDPeakStrategy(Strategy):
             f"histogram={macd_value - signal_value:.4f}, "
             f"price={tick.price:.8f}, "
             f"qty={qty:.8f}, "
+            f"quantity_usdc={effective_quantity:.2f}, "
             f"quantity_multiplier={quantity_multiplier:.2f}, "
             f"expected_profit={expected_profit_price:.8f}"
         )

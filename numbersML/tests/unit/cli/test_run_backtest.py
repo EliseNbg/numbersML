@@ -326,6 +326,7 @@ class TestPrintResults:
                     "side": "BUY",
                     "entry_price": 50000.0,
                     "exit_price": 51000.0,
+                    "quantity": 0.2,
                     "pnl": 1000.0,
                     "pnl_pct": 2.0,
                     "exit_reason": "take_profit",
