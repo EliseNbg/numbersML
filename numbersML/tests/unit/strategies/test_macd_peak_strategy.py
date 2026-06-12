@@ -1148,3 +1148,242 @@ class TestMACDPeakStrategy:
                 )
 
         assert strategy.signal_count == 3
+
+    def test_slow_macd_positive_blocks_buy(self, strategy, sample_tick):
+        """Test BUY is blocked when slow MACD >= 0."""
+        strategy._initialize_macd(sample_tick)
+        strategy.bottom_border_macd_to_buy = 0.0
+        strategy.min_relative_threshold = 1e-9
+        strategy.trend_lookback = 3
+
+        macd_sequence = [-0.0010, -0.0015, -0.0020, -0.0018]
+
+        for macd_val in macd_sequence[:-1]:
+            tick = EnrichedTick(
+                symbol="BTC/USDT",
+                price=Decimal("50000"),
+                volume=Decimal("1.5"),
+                time=datetime.now(UTC),
+                indicators={
+                    "macdsmaindicator_macd": macd_val,
+                    "macdsmaindicator_signal": macd_val - 0.0001,
+                    "macd_8590_13800_195_macd": 0.001,
+                },
+            )
+            strategy.on_tick(tick)
+
+        tick = EnrichedTick(
+            symbol="BTC/USDT",
+            price=Decimal("50000"),
+            volume=Decimal("1.5"),
+            time=datetime.now(UTC),
+            indicators={
+                "macdsmaindicator_macd": macd_sequence[-1],
+                "macdsmaindicator_signal": macd_sequence[-1] - 0.0001,
+                "macd_8590_13800_195_macd": 0.001,
+            },
+        )
+
+        signal = strategy.on_tick(tick)
+        assert signal is None
+        assert strategy.signal_count == 0
+
+    def test_slow_macd_negative_allows_buy(self, strategy, sample_tick):
+        """Test BUY is allowed when slow MACD < 0."""
+        strategy._initialize_macd(sample_tick)
+        strategy.bottom_border_macd_to_buy = 0.0
+        strategy.min_relative_threshold = 1e-9
+        strategy.trend_lookback = 3
+
+        macd_sequence = [-0.0010, -0.0015, -0.0020, -0.0018]
+
+        for macd_val in macd_sequence[:-1]:
+            tick = EnrichedTick(
+                symbol="BTC/USDT",
+                price=Decimal("50000"),
+                volume=Decimal("1.5"),
+                time=datetime.now(UTC),
+                indicators={
+                    "macdsmaindicator_macd": macd_val,
+                    "macdsmaindicator_signal": macd_val - 0.0001,
+                    "macd_8590_13800_195_macd": -0.001,
+                },
+            )
+            strategy.on_tick(tick)
+
+        tick = EnrichedTick(
+            symbol="BTC/USDT",
+            price=Decimal("50000"),
+            volume=Decimal("1.5"),
+            time=datetime.now(UTC),
+            indicators={
+                "macdsmaindicator_macd": macd_sequence[-1],
+                "macdsmaindicator_signal": macd_sequence[-1] - 0.0001,
+                "macd_8590_13800_195_macd": -0.001,
+            },
+        )
+
+        signal = strategy.on_tick(tick)
+        assert signal is not None
+        assert signal.signal_type == SignalType.BUY
+        assert strategy.signal_count == 1
+
+    def test_slow_macd_not_in_indicators_allows_buy(self, strategy, sample_tick):
+        """Test BUY is allowed when slow MACD indicator is not in data (backward compatible)."""
+        strategy._initialize_macd(sample_tick)
+        strategy.bottom_border_macd_to_buy = 0.0
+        strategy.min_relative_threshold = 1e-9
+        strategy.trend_lookback = 3
+
+        macd_sequence = [-0.0010, -0.0015, -0.0020, -0.0018]
+
+        for macd_val in macd_sequence[:-1]:
+            tick = EnrichedTick(
+                symbol="BTC/USDT",
+                price=Decimal("50000"),
+                volume=Decimal("1.5"),
+                time=datetime.now(UTC),
+                indicators={
+                    "macdsmaindicator_macd": macd_val,
+                    "macdsmaindicator_signal": macd_val - 0.0001,
+                },
+            )
+            strategy.on_tick(tick)
+
+        tick = EnrichedTick(
+            symbol="BTC/USDT",
+            price=Decimal("50000"),
+            volume=Decimal("1.5"),
+            time=datetime.now(UTC),
+            indicators={
+                "macdsmaindicator_macd": macd_sequence[-1],
+                "macdsmaindicator_signal": macd_sequence[-1] - 0.0001,
+            },
+        )
+
+        signal = strategy.on_tick(tick)
+        assert signal is not None
+        assert signal.signal_type == SignalType.BUY
+        assert strategy.signal_count == 1
+
+    def test_slow_macd_custom_indicator_name(self, strategy, sample_tick):
+        """Test slow MACD filter uses custom indicator name from config."""
+        strategy._initialize_macd(sample_tick)
+        strategy._initialized = True
+        strategy.macd_slow_indicator_name = "macd_custom"
+        strategy.bottom_border_macd_to_buy = 0.0
+        strategy.min_relative_threshold = 1e-9
+        strategy.trend_lookback = 3
+
+        macd_sequence = [-0.0010, -0.0015, -0.0020, -0.0018]
+
+        for macd_val in macd_sequence[:-1]:
+            tick = EnrichedTick(
+                symbol="BTC/USDT",
+                price=Decimal("50000"),
+                volume=Decimal("1.5"),
+                time=datetime.now(UTC),
+                indicators={
+                    "macdsmaindicator_macd": macd_val,
+                    "macdsmaindicator_signal": macd_val - 0.0001,
+                    "macd_custom_macd": 0.005,
+                },
+            )
+            strategy.on_tick(tick)
+
+        tick = EnrichedTick(
+            symbol="BTC/USDT",
+            price=Decimal("50000"),
+            volume=Decimal("1.5"),
+            time=datetime.now(UTC),
+            indicators={
+                "macdsmaindicator_macd": macd_sequence[-1],
+                "macdsmaindicator_signal": macd_sequence[-1] - 0.0001,
+                "macd_custom_macd": 0.005,
+            },
+        )
+
+        signal = strategy.on_tick(tick)
+        assert signal is None
+        assert strategy.signal_count == 0
+
+    def test_quantity_multiplier_at_avg_day(self, strategy):
+        """Test multiplier is 1.0 when price equals avg_day."""
+        assert strategy._calculate_quantity_multiplier("BTC/USDT", Decimal("100")) == 1.0
+
+    def test_quantity_multiplier_1pct_below(self, strategy):
+        """Test multiplier is ~1.5 when price is 1% below avg_day."""
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr(strategy, "get_avg_price", lambda s, p: Decimal("100"))
+            mult = strategy._calculate_quantity_multiplier("BTC/USDT", Decimal("99"))
+            assert abs(mult - 1.5) < 0.01
+
+    def test_quantity_multiplier_2pct_below(self, strategy):
+        """Test multiplier is ~2.0 when price is 2% below avg_day."""
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr(strategy, "get_avg_price", lambda s, p: Decimal("100"))
+            mult = strategy._calculate_quantity_multiplier("BTC/USDT", Decimal("98"))
+            assert abs(mult - 2.0) < 0.01
+
+    def test_quantity_multiplier_4pct_below(self, strategy):
+        """Test multiplier is ~3.0 when price is 4% below avg_day."""
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr(strategy, "get_avg_price", lambda s, p: Decimal("100"))
+            mult = strategy._calculate_quantity_multiplier("BTC/USDT", Decimal("96"))
+            assert abs(mult - 3.0) < 0.01
+
+    def test_quantity_multiplier_above_avg_day(self, strategy):
+        """Test multiplier is 1.0 when price is above avg_day."""
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr(strategy, "get_avg_price", lambda s, p: Decimal("100"))
+            assert strategy._calculate_quantity_multiplier("BTC/USDT", Decimal("105")) == 1.0
+
+    def test_quantity_multiplier_no_avg_day(self, strategy):
+        """Test multiplier is 1.0 when avg_day is not available."""
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr(strategy, "get_avg_price", lambda s, p: None)
+            assert strategy._calculate_quantity_multiplier("BTC/USDT", Decimal("100")) == 1.0
+
+    def test_quantity_multiplier_in_signal_metadata(self, strategy, sample_tick):
+        """Test that quantity_multiplier and effective_quantity_usdc appear in signal metadata."""
+        strategy._initialize_macd(sample_tick)
+        strategy._initialized = True
+        strategy.bottom_border_macd_to_buy = 0.0
+        strategy.min_relative_threshold = 1e-9
+        strategy.trend_lookback = 3
+
+        macd_sequence = [-0.0010, -0.0015, -0.0020, -0.0018]
+
+        for macd_val in macd_sequence[:-1]:
+            tick = EnrichedTick(
+                symbol="BTC/USDT",
+                price=Decimal("50000"),
+                volume=Decimal("1.5"),
+                time=datetime.now(UTC),
+                indicators={
+                    "macdsmaindicator_macd": macd_val,
+                    "macdsmaindicator_signal": macd_val - 0.0001,
+                },
+            )
+            strategy.on_tick(tick)
+
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr(strategy, "get_avg_price", lambda s, p: Decimal("51000"))
+            tick = EnrichedTick(
+                symbol="BTC/USDT",
+                price=Decimal("50000"),
+                volume=Decimal("1.5"),
+                time=datetime.now(UTC),
+                indicators={
+                    "macdsmaindicator_macd": macd_sequence[-1],
+                    "macdsmaindicator_signal": macd_sequence[-1] - 0.0001,
+                },
+            )
+            signal = strategy.on_tick(tick)
+
+        assert signal is not None
+        assert signal.signal_type == SignalType.BUY
+        assert "quantity_multiplier" in signal.metadata
+        assert "effective_quantity_usdc" in signal.metadata
+        assert signal.metadata["quantity_multiplier"] > 1.0
+        assert signal.metadata["effective_quantity_usdc"] > signal.metadata["quantity_usdc"]

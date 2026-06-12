@@ -18,6 +18,7 @@ which is handled externally by the market or take-profit mechanism.
 
 Configuration:
     - macd_indicator_name: Name of MACD indicator (default: macdsmaindicator)
+    - macd_slow_indicator_name: Name of slow MACD indicator for trend filter (optional, default: macd_8590_13800_195)
     - fast_period: MACD fast EMA period (default: 12)
     - slow_period: MACD slow EMA period (default: 26)
     - signal_period: Signal line period (default: 9)
@@ -126,6 +127,9 @@ class MACDPeakStrategy(Strategy):
             f"[{self._strategy_id}] Trade: quantity={self.grid_quantity_absolute} USDC, "
             f"profit_target={self.grid_profit_pct}%"
         )
+        logger.info(
+            f"[{self._strategy_id}] Slow MACD filter: indicator='{self.macd_slow_indicator_name}'"
+        )
         if self.sma_fast or self.sma_slow:
             logger.info(
                 f"[{self._strategy_id}] SMA filter: fast={self.sma_fast}, slow={self.sma_slow}, "
@@ -231,6 +235,14 @@ class MACDPeakStrategy(Strategy):
             logger.debug(f"[{self._strategy_id}] Reject: SMA filter failed at price={tick.price}")
             return None
 
+        slow_macd_value = tick.indicators.get(f"{self.macd_slow_indicator_name}_macd")
+        if slow_macd_value is not None:
+            if slow_macd_value >= 0:
+                logger.debug(
+                    f"[{self._strategy_id}] Reject BUY: slow MACD {slow_macd_value:.6f} >= 0"
+                )
+                return None
+
         avg_day = self.get_avg_price(tick.symbol, "day")
         if avg_day and float(tick.price) >= float(avg_day) * self.avg_multiplicator_day:
             logger.debug(
@@ -307,6 +319,27 @@ class MACDPeakStrategy(Strategy):
         )
         return self._signal_buy(tick, macd_value, signal_value)
 
+    def _calculate_quantity_multiplier(self, symbol: str, price: Decimal) -> float:
+        """Calculate quantity multiplier based on distance below avg_day.
+
+        The further the price is below the daily average, the larger the order.
+        At 2% below avg_day the multiplier is ~2.0, at 1% it is ~1.5.
+        Never goes below 1.0.
+
+        Args:
+            symbol: Trading pair symbol
+            price: Current price
+
+        Returns:
+            Multiplier >= 1.0
+        """
+        avg_day = self.get_avg_price(symbol, "day")
+        if not avg_day or avg_day <= 0:
+            return 1.0
+
+        diff_pct = (float(avg_day) - float(price)) / float(avg_day) * 100.0
+        return max(1.0, 1.0 + diff_pct / 2.0)
+
     def _signal_buy(
         self,
         tick: EnrichedTick,
@@ -328,16 +361,17 @@ class MACDPeakStrategy(Strategy):
         expected_profit_price = tick.price * (
             Decimal("1") + Decimal(str(self.grid_profit_pct)) / Decimal("100")
         )
-        # avg_week = self.get_avg_price(tick.symbol, "week")
-        # expected_profit_price = avg_week
 
-        qty = Decimal(str(self.grid_quantity_absolute)) / tick.price
+        quantity_multiplier = self._calculate_quantity_multiplier(tick.symbol, tick.price)
+        effective_quantity = Decimal(str(self.grid_quantity_absolute)) * Decimal(str(quantity_multiplier))
+        qty = effective_quantity / tick.price
         logger.info(
             f"[{self._strategy_id}] BUY signal: "
             f"MACD={macd_value:.4f}, Signal={signal_value:.4f}, "
             f"histogram={macd_value - signal_value:.4f}, "
             f"price={tick.price:.8f}, "
             f"qty={qty:.8f}, "
+            f"quantity_multiplier={quantity_multiplier:.2f}, "
             f"expected_profit={expected_profit_price:.8f}"
         )
 
@@ -355,6 +389,8 @@ class MACDPeakStrategy(Strategy):
                 "signal_count": self.signal_count,
                 "expected_profit_price": expected_profit_price,
                 "quantity_usdc": self.grid_quantity_absolute,
+                "quantity_multiplier": quantity_multiplier,
+                "effective_quantity_usdc": float(effective_quantity),
             },
         )
 

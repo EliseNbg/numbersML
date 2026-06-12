@@ -6,9 +6,11 @@ Runs a strategy backtest from the command line.
 
 Usage:
     python -m src.cli.run_backtest --strategy-id UUID [options]
+    python -m src.cli.run_backtest --strategy-name "Name" [options]
 
 Options:
-    --strategy-id UUID      Strategy ID to backtest (required)
+    --strategy-id UUID      Strategy ID to backtest
+    --strategy-name TEXT    Strategy name to backtest (looked up by name)
     --version INT           Specific strategy version (defaults to active)
     --symbol SYMBOL         Symbol to backtest (e.g., BTC/USDC)
     --start-time TIMESTAMP  Start time (ISO format, defaults to 7 days ago)
@@ -101,7 +103,10 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Run backtest with defaults (last 7 days)
+  # Run backtest by strategy name
+  python3 -m src.cli.run_backtest --strategy-name "MACD_Momentum_ATOM"
+
+  # Run backtest by strategy ID (last 7 days)
   python3 -m src.cli.run_backtest --strategy-id 123e4567-e89b-12d3-a456-426614174000
 
   # Run backtest with specific parameters
@@ -115,7 +120,7 @@ Examples:
 
   # Run backtest and save results to file
   python3 -m src.cli.run_backtest \\
-    --strategy-id 123e4567-e89b-12d3-a456-426614174000 \\
+    --strategy-name "MACD_Momentum_ATOM" \\
     --output backtest_results.json
         """,
     )
@@ -123,8 +128,13 @@ Examples:
     parser.add_argument(
         "--strategy-id",
         type=str,
-        required=True,
-        help="Strategy ID to backtest (required)",
+        help="Strategy ID to backtest",
+    )
+
+    parser.add_argument(
+        "--strategy-name",
+        type=str,
+        help="Strategy name to backtest (looked up by name instead of ID)",
     )
 
     parser.add_argument(
@@ -225,13 +235,7 @@ async def run_backtest_async(args: argparse.Namespace) -> dict:
         Backtest results dictionary
     """
     try:
-        # Parse strategy ID
-        try:
-            strategy_id = UUID(args.strategy_id)
-        except ValueError:
-            raise ValueError(f"Invalid strategy ID format: {args.strategy_id}")
-
-        # Parse timestamps
+        # Parse timestamps first (no DB needed)
         if args.start_time:
             try:
                 start_time = datetime.fromisoformat(args.start_time.replace("Z", "+00:00"))
@@ -252,9 +256,26 @@ async def run_backtest_async(args: argparse.Namespace) -> dict:
         if end_time <= start_time:
             raise ValueError("End time must be after start time")
 
+        # Validate strategy-id early (no DB needed) or resolve by name (needs DB)
+        if args.strategy_name:
+            db_pool = await get_db_pool_async()
+            strategy_repo = StrategyRepositoryPG(db_pool)
+            strategy = await strategy_repo.get_by_name(args.strategy_name)
+            if strategy is None:
+                raise ValueError(f"Strategy not found with name: {args.strategy_name}")
+            strategy_id = strategy.id
+            logger.info(f"Resolved strategy '{args.strategy_name}' to ID {strategy_id}")
+        elif args.strategy_id:
+            try:
+                strategy_id = UUID(args.strategy_id)
+            except ValueError:
+                raise ValueError(f"Invalid strategy ID format: {args.strategy_id}")
+        else:
+            raise ValueError("Either --strategy-id or --strategy-name is required")
+
         # Initialize services
-        db_pool = await get_db_pool_async()
-        strategy_repo = StrategyRepositoryPG(db_pool)
+        if not args.strategy_name:
+            db_pool = await get_db_pool_async()
         backtest_repo = StrategyBacktestRepositoryPG(db_pool)
 
         binance_test_client = None

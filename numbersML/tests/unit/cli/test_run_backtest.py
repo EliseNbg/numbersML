@@ -8,7 +8,7 @@ Tests:
 - Error handling
 """
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -19,10 +19,11 @@ class TestParseArgs:
     """Test argument parsing."""
 
     def test_required_strategy_id(self):
-        """Test that strategy-id is required."""
+        """Test that at least one of --strategy-id or --strategy-name is required."""
         with patch("sys.argv", ["run_backtest"]):
-            with pytest.raises(SystemExit):
-                parse_args()
+            args = parse_args()
+            assert args.strategy_id is None
+            assert args.strategy_name is None
 
     def test_strategy_id_parsing(self):
         """Test strategy ID is parsed correctly."""
@@ -31,6 +32,14 @@ class TestParseArgs:
         ):
             args = parse_args()
             assert args.strategy_id == "dcb32c52-cc78-4e2f-91e6-76287cc345ee"
+
+    def test_strategy_name_parsing(self):
+        """Test strategy name is parsed correctly."""
+        with patch(
+            "sys.argv", ["run_backtest", "--strategy-name", "MACD_Momentum_ATOM"]
+        ):
+            args = parse_args()
+            assert args.strategy_name == "MACD_Momentum_ATOM"
 
     def test_version_parsing(self):
         """Test version parsing."""
@@ -211,6 +220,59 @@ class TestRunBacktestAsync:
             args = parse_args()
             # No mock for db_pool, should raise RuntimeError
             with pytest.raises(RuntimeError, match="Database pool not initialized"):
+                await run_backtest_async(args)
+
+    @pytest.mark.asyncio
+    async def test_strategy_name_resolves_to_id(self):
+        """Test --strategy-name resolves to a strategy ID via repository."""
+        from uuid import uuid4
+
+        mock_strategy = MagicMock()
+        mock_strategy.id = uuid4()
+
+        mock_repo = AsyncMock()
+        mock_repo.get_by_name.return_value = mock_strategy
+
+        mock_pool = MagicMock()
+
+        async def mock_get_db_pool():
+            return mock_pool
+
+        mock_backtest_service = AsyncMock()
+        mock_backtest_service.run_backtest.side_effect = RuntimeError("Database pool not initialized")
+
+        with patch("sys.argv", ["run_backtest", "--strategy-name", "TestStrategy"]):
+            args = parse_args()
+            with (
+                patch("src.cli.run_backtest.get_db_pool_async", side_effect=mock_get_db_pool),
+                patch("src.cli.run_backtest.StrategyRepositoryPG", return_value=mock_repo),
+                patch("src.cli.run_backtest.StrategyBacktestService", return_value=mock_backtest_service),
+            ):
+                with pytest.raises(RuntimeError, match="Database pool not initialized"):
+                    await run_backtest_async(args)
+                mock_repo.get_by_name.assert_called_once_with("TestStrategy")
+
+    @pytest.mark.asyncio
+    async def test_strategy_name_not_found(self):
+        """Test --strategy-name with nonexistent name raises ValueError."""
+        mock_repo = AsyncMock()
+        mock_repo.get_by_name.return_value = None
+
+        with patch("sys.argv", ["run_backtest", "--strategy-name", "NonexistentStrategy"]):
+            args = parse_args()
+            with (
+                patch("src.cli.run_backtest.get_db_pool_async", new_callable=AsyncMock),
+                patch("src.cli.run_backtest.StrategyRepositoryPG", return_value=mock_repo),
+            ):
+                with pytest.raises(ValueError, match="Strategy not found with name"):
+                    await run_backtest_async(args)
+
+    @pytest.mark.asyncio
+    async def test_neither_id_nor_name_raises(self):
+        """Test that providing neither --strategy-id nor --strategy-name raises error."""
+        with patch("sys.argv", ["run_backtest"]):
+            args = parse_args()
+            with pytest.raises(ValueError, match="Either --strategy-id or --strategy-name"):
                 await run_backtest_async(args)
 
 
