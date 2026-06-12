@@ -1096,17 +1096,16 @@ class BacktestEngine:
         """Open a new position."""
         risk_config = config.get("risk", {})
         execution_config = config.get("execution", {})
-        grid_quantity_absolute = execution_config.get("grid_quantity_absolute", config.get("grid_quantity_absolute"))
 
         price = float(candle["close"])
 
-        if grid_quantity_absolute:
-            position_value = grid_quantity_absolute
-            quantity = position_value / price
+        signal_usdc = signal.metadata.get("effective_quantity_usdc") if signal.metadata else None
+        if signal_usdc:
+            position_value = signal_usdc
         else:
-            max_position_pct = risk_config.get("max_position_pct", 10) / 100
-            position_value = cash * max_position_pct
-            quantity = position_value / price
+            grid_quantity_absolute = execution_config.get("grid_quantity_absolute", config.get("grid_quantity_absolute"))
+            position_value = grid_quantity_absolute if grid_quantity_absolute else cash * (risk_config.get("max_position_pct", 10) / 100)
+        quantity = position_value / price
 
         executed_price, fees = self.execution_sim.simulate_market_order(
             price=price,

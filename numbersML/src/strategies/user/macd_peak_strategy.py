@@ -396,7 +396,7 @@ class MACDPeakStrategy(Strategy):
                 "reversal_type": "decline_to_uptrend",
                 "signal_count": self.signal_count,
                 "expected_profit_price": expected_profit_price,
-                "quantity_usdc": self.grid_quantity_absolute,
+                "quantity_usdc": float(effective_quantity),
                 "quantity_multiplier": quantity_multiplier,
                 "effective_quantity_usdc": float(effective_quantity),
             },

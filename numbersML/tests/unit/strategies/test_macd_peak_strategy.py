@@ -1386,4 +1386,4 @@ class TestMACDPeakStrategy:
         assert "quantity_multiplier" in signal.metadata
         assert "effective_quantity_usdc" in signal.metadata
         assert signal.metadata["quantity_multiplier"] > 1.0
-        assert signal.metadata["effective_quantity_usdc"] > signal.metadata["quantity_usdc"]
+        assert signal.metadata["quantity_usdc"] == signal.metadata["effective_quantity_usdc"]
