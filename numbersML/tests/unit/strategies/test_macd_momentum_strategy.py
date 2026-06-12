@@ -325,7 +325,8 @@ class TestMACDMomentumStrategy:
         strategy.bottom_border_macd_to_buy = 0.0
         strategy.min_relative_threshold = 1e-9
         strategy.trend_lookback = 3
-        strategy.in_position = True
+        strategy._initialized = True
+        strategy.max_open_positions = 0
 
         macd_sequence = [-0.0010, -0.0015, -0.0020, -0.0018]
 
@@ -482,20 +483,10 @@ class TestMACDMomentumStrategy:
         strategy.min_relative_threshold = 0.001
         strategy.trend_lookback = 3
 
-        macd_sequence = [-0.0010, -0.0010001, -0.0010002, -0.0010001]
-
-        for macd_val in macd_sequence[:-1]:
-            tick = EnrichedTick(
-                symbol="BTC/USDT",
-                price=Decimal("50000"),
-                volume=Decimal("1.5"),
-                time=datetime.now(UTC),
-                indicators={
-                    "macd_980_1960_100_macd": macd_val,
-                    "macd_980_1960_100_signal": macd_val - 0.0001,
-                },
-            )
-            strategy.on_tick(tick)
+        # Pre-populate history with larger changes so dynamic threshold kicks in
+        strategy._macd_change_history = [0.01] * 50
+        strategy._last_macd_value = -0.0010
+        strategy._macd_history = [-0.0015, -0.0014, -0.0013, -0.0012]
 
         tick = EnrichedTick(
             symbol="BTC/USDT",
@@ -503,8 +494,8 @@ class TestMACDMomentumStrategy:
             volume=Decimal("1.5"),
             time=datetime.now(UTC),
             indicators={
-                "macd_980_1960_100_macd": macd_sequence[-1],
-                "macd_980_1960_100_signal": macd_sequence[-1] - 0.0001,
+                "macd_980_1960_100_macd": -0.0010001,
+                "macd_980_1960_100_signal": -0.0011001,
             },
         )
 

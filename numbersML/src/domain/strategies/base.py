@@ -299,6 +299,11 @@ class Strategy(ABC):
         self.rsi_99_threshold: float = 32.0
         self.trend_lookback: int = 3
         self.max_open_positions: int = 5
+        self.macd_slow_indicator_name: str = "macd_8590_13800_195"
+
+        # Dynamic threshold state (used by _is_macd_change_noise)
+        self._macd_change_history: list[float] = []
+        self._last_macd_value: float | None = None
 
         logger.info(f"Strategy {strategy_id} initialized for {len(symbols)} symbols")
 
@@ -680,6 +685,9 @@ class Strategy(ABC):
         self.rsi_99_threshold = self.get_config("rsi_99_threshold", 32.0)
         self.trend_lookback = self.get_config("trend_lookback", 3)
         self.max_open_positions = self.get_config("max_open_positions", 5)
+        self.macd_slow_indicator_name = self.get_config(
+            "macd_slow_indicator_name", "macd_8590_13800_195"
+        )
 
     def _check_sma_filter(self, tick: EnrichedTick) -> bool:
         """Check if current price is below configured SMA indicators.
@@ -727,6 +735,38 @@ class Strategy(ABC):
                     return False
 
         return True
+
+    def _is_macd_change_noise(self, macd_value: float) -> bool:
+        """Check if MACD tick-to-tick change is noise using a dynamic threshold.
+
+        Tracks the last 200 absolute MACD changes and computes a rolling
+        median. Changes below ``median × 0.3`` are considered noise. During
+        warmup (< 50 ticks), no filtering is applied.
+
+        Args:
+            macd_value: Current MACD value
+
+        Returns:
+            True if the change is noise (should be rejected), False otherwise
+        """
+        if self._last_macd_value is None:
+            self._last_macd_value = macd_value
+            return False
+
+        macd_change = abs(macd_value - self._last_macd_value)
+        self._last_macd_value = macd_value
+
+        self._macd_change_history.append(macd_change)
+        if len(self._macd_change_history) > 200:
+            self._macd_change_history.pop(0)
+
+        if len(self._macd_change_history) >= 50:
+            sorted_changes = sorted(self._macd_change_history)
+            median_change = sorted_changes[len(sorted_changes) // 2]
+            dynamic_threshold = median_change * 0.3
+            return macd_change < dynamic_threshold
+
+        return False
 
     def get_indicator(self, tick: EnrichedTick, name: str, default: float = 0.0) -> float:
         """Convenience method to get indicator value from tick.

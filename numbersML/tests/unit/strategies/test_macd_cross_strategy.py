@@ -150,6 +150,7 @@ class TestMACDCrossStrategy:
         strategy.last_macd = 0.0015
         strategy.last_signal = 0.0010
         strategy.in_position = True
+        strategy.max_open_positions = 1
         strategy.min_relative_threshold = 1e-9
 
         signal = strategy._detect_crossover(0.0008, 0.0012, sample_tick)
@@ -168,6 +169,7 @@ class TestMACDCrossStrategy:
         strategy.last_macd = 0.0010
         strategy.last_signal = 0.0012
         strategy.in_position = True
+        strategy.max_open_positions = 1
         strategy.min_relative_threshold = 1e-9
 
         signal = strategy._detect_crossover(0.0015, 0.0010, sample_tick)
@@ -260,6 +262,7 @@ class TestMACDCrossStrategy:
         strategy.last_macd = 0.0015
         strategy.last_signal = 0.0010
         strategy.in_position = True
+        strategy.max_open_positions = 1
         strategy.min_relative_threshold = 1e-9
 
         tick = EnrichedTick(
@@ -305,6 +308,7 @@ class TestMACDCrossStrategy:
     def test_on_position_closed(self, strategy):
         """Test that on_position_closed resets position state."""
         strategy.in_position = True
+        strategy.max_open_positions = 1
 
         strategy.on_position_closed(
             symbol="BTC/USDT",
@@ -321,6 +325,7 @@ class TestMACDCrossStrategy:
         strategy.last_signal = 0.0010
         strategy.last_histogram = 0.0005
         strategy.in_position = True
+        strategy.max_open_positions = 1
         strategy.cross_count = 3
         strategy._tick_count = 500
 
@@ -352,6 +357,7 @@ class TestMACDCrossStrategy:
     def test_signal_sell_confidence(self, strategy, sample_tick):
         """Test that SELL signal confidence is calculated correctly."""
         strategy.in_position = True
+        strategy.max_open_positions = 1
         macd_value = 0.0010
         signal_value = 0.0050
 
@@ -361,11 +367,12 @@ class TestMACDCrossStrategy:
         assert signal.confidence == expected_confidence
 
     def test_detect_crossover_noise_filter_blocks_small_signals(self, strategy, sample_tick):
-        """Test that small histogram relative to signal line is filtered as noise."""
-        strategy.last_macd = 0.0000001
-        strategy.last_signal = 0.0000002
+        """Test that small MACD changes are filtered as noise when history exists."""
         strategy.in_position = False
-        strategy.min_relative_threshold = 0.1
+
+        # Pre-populate history with larger changes so dynamic threshold kicks in
+        strategy._macd_change_history = [0.01] * 50
+        strategy._last_macd_value = 1.0
 
         tick = EnrichedTick(
             symbol="BTC/USDT",
@@ -375,9 +382,11 @@ class TestMACDCrossStrategy:
             indicators={},
         )
 
-        # histogram=0.00000005, signal=0.0000001 → ratio=0.5 > 0.1 → passes
-        # Need smaller ratio: histogram=0.000000005, signal=0.0000001 → ratio=0.05 < 0.1
-        signal = strategy._detect_crossover(0.000000105, 0.0000001, tick)
+        # macd_change=0.00000005 << median=0.01 → filtered
+        signal = strategy._detect_crossover(1.00000005, 0.0000001, tick)
+
+        assert signal is None
+        assert strategy.cross_count == 0
 
         assert signal is None
         assert strategy.cross_count == 0

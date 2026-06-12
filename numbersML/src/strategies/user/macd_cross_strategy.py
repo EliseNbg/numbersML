@@ -38,13 +38,23 @@ class MACDCrossStrategy(Strategy):
         super().__init__(strategy_id, symbols, time_frame)
 
         # Persistent state
-        self.in_position: bool = False
+        self._open_position_count: int = 0
         self.cross_count: int = 0
 
         self._tick_count: int = 0
         self._initialized: bool = False
 
         logger.info(f"MACDCrossStrategy {strategy_id} initialized")
+
+    @property
+    def in_position(self) -> bool:
+        """Backward-compatible check: any positions open?"""
+        return self._open_position_count > 0
+
+    @in_position.setter
+    def in_position(self, value: bool) -> None:
+        """Backward-compatible setter for tests."""
+        self._open_position_count = 1 if value else 0
 
     def on_tick(self, tick: EnrichedTick) -> Signal | None:
         """Process tick and generate MACD crossover signals.
@@ -185,25 +195,21 @@ class MACDCrossStrategy(Strategy):
             Signal if crossover detected, None otherwise
         """
         signal = None
-        histogram = abs(macd_value - signal_value)
 
-        # Noise filter: histogram relative to signal line (same scale)
-        # Using signal_value instead of price ensures the threshold works
-        # across all asset price ranges (BTC, DOGE, etc.)
-        signal_magnitude = abs(signal_value) if abs(signal_value) > 1e-10 else abs(macd_value)
-        if signal_magnitude > 1e-10 and (histogram / signal_magnitude) < self.min_relative_threshold:
+        # Dynamic threshold: reject small MACD changes as noise
+        if self._is_macd_change_noise(macd_value):
             return None
 
         # Bullish crossover: MACD crosses above signal line
         if (
             self.last_macd <= self.last_signal
             and macd_value > signal_value
-            and not self.in_position
+            and self._open_position_count < self.max_open_positions
         ):
             signal = self._signal_buy(tick, macd_value, signal_value)
 
         # Bearish crossover: MACD crosses below signal line
-        elif self.last_macd >= self.last_signal and macd_value < signal_value and self.in_position:
+        elif self.last_macd >= self.last_signal and macd_value < signal_value and self._open_position_count > 0:
             signal = self._signal_sell(tick, macd_value, signal_value)
 
         return signal
@@ -224,7 +230,7 @@ class MACDCrossStrategy(Strategy):
         Returns:
             BUY signal
         """
-        self.in_position = True
+        self._open_position_count += 1
         self.cross_count += 1
 
         logger.info(
@@ -264,7 +270,7 @@ class MACDCrossStrategy(Strategy):
         Returns:
             SELL signal
         """
-        self.in_position = False
+        self._open_position_count = max(0, self._open_position_count - 1)
         self.cross_count += 1
 
         logger.info(
@@ -307,7 +313,7 @@ class MACDCrossStrategy(Strategy):
             f"[{self._strategy_id}] Position closed for {symbol}: "
             f"reason={exit_reason}, price={price:.8f}"
         )
-        self.in_position = False
+        self._open_position_count = max(0, self._open_position_count - 1)
 
     def get_stats(self) -> dict[str, Any]:
         """Override to include custom state in stats."""
@@ -318,6 +324,7 @@ class MACDCrossStrategy(Strategy):
                 "last_signal": self.last_signal,
                 "last_histogram": self.last_histogram,
                 "in_position": self.in_position,
+                "open_position_count": self._open_position_count,
                 "cross_count": self.cross_count,
                 "tick_count": self._tick_count,
                 "macd_indicator_name": self.macd_indicator_name,

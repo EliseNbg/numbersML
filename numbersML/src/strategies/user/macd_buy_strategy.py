@@ -230,16 +230,8 @@ class MACDBuyStrategy(Strategy):
         if not self._check_sma_filter(tick):
             return None
 
-        histogram = abs(macd_value - signal_value)
-
-        # Noise filter: histogram relative to signal line (same scale)
-        # Using signal_value instead of price ensures the threshold works
-        # across all asset price ranges (BTC, DOGE, etc.)
-        signal_magnitude = abs(signal_value) if abs(signal_value) > 1e-10 else abs(macd_value)
-        if (
-            signal_magnitude > 1e-10
-            and (histogram / signal_magnitude) < self.min_relative_threshold
-        ):
+        # Dynamic threshold: reject small MACD changes as noise
+        if self._is_macd_change_noise(macd_value):
             return None
 
         if macd_value > self.bottom_border_macd_to_buy:

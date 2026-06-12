@@ -58,9 +58,19 @@ class MACDMomentumStrategy(Strategy):
         self._initialized: bool = False
         self._macd_history: list[float] = []
         self._signal_cooldown: int = 0
-        self.in_position: bool = False
+        self._open_position_count: int = 0
 
         logger.info(f"MACDMomentumStrategy {strategy_id} initialized")
+
+    @property
+    def in_position(self) -> bool:
+        """Backward-compatible check: any positions open?"""
+        return self._open_position_count > 0
+
+    @in_position.setter
+    def in_position(self, value: bool) -> None:
+        """Backward-compatible setter for tests."""
+        self._open_position_count = 1 if value else 0
 
     def on_tick(self, tick: EnrichedTick) -> Signal | None:
         """Process tick and generate MACD momentum signals.
@@ -232,6 +242,19 @@ class MACDMomentumStrategy(Strategy):
             logger.debug(f"[{self._strategy_id}] Reject: SMA filter failed at price={tick.price}")
             return None
 
+        slow_macd_value = tick.indicators.get(f"{self.macd_slow_indicator_name}_macd")
+        if slow_macd_value is not None:
+            if self._open_position_count == 0 and slow_macd_value >= 0:
+                logger.debug(
+                    f"[{self._strategy_id}] Reject BUY: slow MACD {slow_macd_value:.6f} >= 0"
+                )
+                return None
+            if self._open_position_count > 0 and slow_macd_value <= 0:
+                logger.debug(
+                    f"[{self._strategy_id}] Reject SELL: slow MACD {slow_macd_value:.6f} <= 0"
+                )
+                return None
+
         avg_day = self.get_avg_price(tick.symbol, "day")
         avg_week = self.get_avg_price(tick.symbol, "week")
 
@@ -269,8 +292,6 @@ class MACDMomentumStrategy(Strategy):
             )
             return None
 
-        signal_magnitude = abs(signal_value) if abs(signal_value) > 1e-10 else abs(macd_value)
-
         was_declining = all(
             self._macd_history[i] > self._macd_history[i + 1]
             for i in range(len(self._macd_history) - 2)
@@ -283,20 +304,15 @@ class MACDMomentumStrategy(Strategy):
         )
         is_turning_down = macd_value < self._macd_history[-2]
 
-        macd_change = abs(macd_value - self._macd_history[-2])
-
-        if (
-            signal_magnitude > 1e-10
-            and (macd_change / signal_magnitude) < self.min_relative_threshold
-        ):
+        # Dynamic threshold: reject small MACD changes as noise
+        if self._is_macd_change_noise(macd_value):
             logger.debug(
-                f"[{self._strategy_id}] Reject: MACD change {macd_change:.6g} "
-                f"below threshold ({macd_change / signal_magnitude:.6g} < "
-                f"{self.min_relative_threshold})"
+                f"[{self._strategy_id}] Reject: MACD change "
+                f"below dynamic threshold"
             )
             return None
 
-        if was_declining and is_turning_up and not self.in_position:
+        if was_declining and is_turning_up and self._open_position_count < self.max_open_positions:
             if macd_value > self.bottom_border_macd_to_buy:
                 logger.debug(
                     f"[{self._strategy_id}] Reject BUY: MACD {macd_value:.6f} > "
@@ -310,7 +326,7 @@ class MACDMomentumStrategy(Strategy):
             )
             return self._signal_buy(tick, macd_value, signal_value)
 
-        if was_rising and is_turning_down and self.in_position:
+        if was_rising and is_turning_down and self._open_position_count > 0:
             logger.debug(
                 f"[{self._strategy_id}] Accept SELL: peak at MACD={macd_value:.6f}, "
                 f"price={tick.price}"
@@ -341,7 +357,7 @@ class MACDMomentumStrategy(Strategy):
         Returns:
             BUY signal
         """
-        self.in_position = True
+        self._open_position_count += 1
         self.signal_count += 1
         self._signal_cooldown = self.trend_lookback + 1
 
@@ -392,7 +408,7 @@ class MACDMomentumStrategy(Strategy):
         Returns:
             SELL signal
         """
-        self.in_position = False
+        self._open_position_count = max(0, self._open_position_count - 1)
         self.signal_count += 1
         self._signal_cooldown = self.trend_lookback + 1
 
@@ -437,7 +453,7 @@ class MACDMomentumStrategy(Strategy):
             f"[{self._strategy_id}] Position closed for {symbol}: "
             f"reason={exit_reason}, price={price:.8f}"
         )
-        self.in_position = False
+        self._open_position_count = max(0, self._open_position_count - 1)
 
     def get_stats(self) -> dict[str, Any]:
         """Override to include custom state in stats."""
@@ -449,6 +465,7 @@ class MACDMomentumStrategy(Strategy):
                 "last_histogram": self.last_histogram,
                 "prev_macd": self.prev_macd,
                 "in_position": self.in_position,
+                "open_position_count": self._open_position_count,
                 "signal_count": self.signal_count,
                 "tick_count": self._tick_count,
                 "macd_indicator_name": self.macd_indicator_name,
