@@ -513,11 +513,17 @@ class StrategyRunner:
                 if tp_raw is not None:
                     if not isinstance(tp_raw, Decimal):
                         tp_raw = Decimal(str(tp_raw))
+                    sell_qty = signal.quantity
+                    try:
+                        if order.filled_quantity and order.filled_quantity > 0:
+                            sell_qty = order.filled_quantity
+                    except TypeError:
+                        pass
                     tp_order = OrderRequest(
                         symbol=signal.symbol,
                         side=OrderSide.SELL,
                         order_type=OrderType.LIMIT,
-                        quantity=signal.quantity,
+                        quantity=sell_qty,
                         limit_price=tp_raw,
                         client_order_id=f"tp-{signal.signal_id.hex}",
                         metadata={"reason": "take_profit"},
@@ -526,7 +532,7 @@ class StrategyRunner:
                         tp_result = await self.market_service.place_order(tp_order)
                         logger.info(
                             f"Take-profit SELL LIMIT placed for {signal.symbol} "
-                            f"at {tp_raw} — status={tp_result.status.value}"
+                            f"qty={sell_qty} at {tp_raw} — status={tp_result.status.value}"
                         )
                     except Exception as tp_e:
                         logger.error(

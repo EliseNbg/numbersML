@@ -61,6 +61,7 @@ class MACDPeakStrategy(Strategy):
         self._initialized: bool = False
         self._macd_history: list[float] = []
         self._signal_cooldown: int = 0
+        self._test_buy_done: bool = False
 
         logger.info(f"MACDPeakStrategy {strategy_id} initialized")
 
@@ -78,6 +79,15 @@ class MACDPeakStrategy(Strategy):
             self._initialized = True
 
         self._tick_count += 1
+
+        # Test buy: buy once for 5 USDC with 0.5% take-profit to verify execution works
+        if self._test_buy_enabled and not self._test_buy_done:
+            self._test_buy_done = True
+            logger.info(
+                f"[{self._strategy_id}] TEST BUY triggered on first tick, "
+                f"price={tick.price}"
+            )
+            return self._signal_test_buy(tick)
 
         macd_value, signal_value, histogram_value = self._get_macd_values(tick)
 
@@ -113,6 +123,7 @@ class MACDPeakStrategy(Strategy):
             tick: First tick used to log available indicators
         """
         self.load_common_config()
+        self._test_buy_enabled = self.get_config("test_buy_enabled", False)
 
         macd_keys = sorted(k for k in tick.indicators if k.endswith("_macd"))
 
@@ -399,6 +410,43 @@ class MACDPeakStrategy(Strategy):
                 "quantity_usdc": float(effective_quantity),
                 "quantity_multiplier": quantity_multiplier,
                 "effective_quantity_usdc": float(effective_quantity),
+            },
+        )
+
+    def _signal_test_buy(self, tick: EnrichedTick) -> Signal:
+        """Generate a one-time test BUY signal to verify execution works.
+
+        Buys for 5 USDC and sets a 0.5% take-profit sell limit order.
+
+        Args:
+            tick: Enriched tick data
+
+        Returns:
+            BUY signal with 5 USDC quantity and 0.5% expected profit price
+        """
+        test_quantity_usdc = Decimal("7")
+        expected_profit_price = tick.price * (Decimal("1") + Decimal("0.005"))
+        qty = test_quantity_usdc / tick.price
+
+        logger.info(
+            f"[{self._strategy_id}] TEST BUY: "
+            f"price={tick.price:.8f}, qty={qty:.8f}, "
+            f"quantity_usdc={test_quantity_usdc}, "
+            f"expected_profit={expected_profit_price:.8f} (+0.5%)"
+        )
+
+        return Signal(
+            strategy_id=self._strategy_id,
+            symbol=tick.symbol,
+            signal_type=SignalType.BUY,
+            price=tick.price,
+            confidence=1.0,
+            metadata={
+                "reversal_type": "test_buy",
+                "expected_profit_price": expected_profit_price,
+                "quantity_usdc": float(test_quantity_usdc),
+                "quantity_multiplier": 1.0,
+                "effective_quantity_usdc": float(test_quantity_usdc),
             },
         )
 

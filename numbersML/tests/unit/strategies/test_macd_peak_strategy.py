@@ -17,10 +17,12 @@ class TestMACDPeakStrategy:
     @pytest.fixture
     def strategy(self):
         """Create a strategy instance for testing."""
-        return MACDPeakStrategy(
+        s = MACDPeakStrategy(
             strategy_id="test_macd_peak",
             symbols=["BTC/USDT"],
         )
+        s.set_config("test_buy_enabled", False)
+        return s
 
     @pytest.fixture
     def sample_tick(self):

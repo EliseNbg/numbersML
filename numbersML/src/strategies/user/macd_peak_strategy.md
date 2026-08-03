@@ -34,6 +34,7 @@ A BUY signal is generated when **all** of the following are true:
 | `trend_lookback` | int | `3` | Number of consecutive declining ticks required to confirm downtrend |
 | `avg_multiplicator_day` | float | `0.991` | Multiplier applied to daily average price for price filter |
 | `avg_multiplicator_week` | float | `0.991` | Multiplier applied to weekly average price for price filter |
+| `test_buy_enabled` | bool | `False` | Enable one-time test buy on first tick (7 USDC, +0.5% take-profit) |
 
 ### Trend Reversal Detection
 
@@ -164,6 +165,26 @@ The `sma_fast` and `sma_slow` parameters add an optional price filter that ensur
 | `None` | `None` | No price filter (default) |
 | `"sma_800"` | `None` | Buy only when price < 800-period SMA * 0.997 |
 | `"sma_800"` | `"sma_2000"` | Buy only when price < both SMAs * 0.997 |
+
+### Test Buy (Execution Verification)
+
+The `test_buy_enabled` parameter places a one-time test buy on the first tick to verify that the execution pipeline works end-to-end (order placement, take-profit placement, fill detection).
+
+When enabled:
+1. On the first tick, a MARKET BUY for **7 USDC** is placed
+2. A LIMIT SELL is placed at **+0.5%** above the fill price
+3. Subsequent ticks follow normal MACD strategy logic
+
+| test_buy_enabled | Effect |
+|------------------|--------|
+| `False` (default) | No test buy, normal strategy behavior |
+| `True` | One-time 7 USDC buy with 0.5% take-profit on first tick |
+
+```json
+{
+  "test_buy_enabled": true
+}
+```
 
 ## Architecture
 
